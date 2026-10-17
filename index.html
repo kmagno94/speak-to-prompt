@@ -110,6 +110,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
 details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--accent); }
 details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+.keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
@@ -189,6 +191,14 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" id="reset">Start over</button>
     </div>
     <p id="status" class="status"></p>
+    <div class="keep">
+      <p class="keephead">Keep it, or take it further</p>
+      <div class="row">
+        <button type="button" id="saveNote">Save to Notes</button>
+        <button type="button" id="copyClaude">Copy note for Claude</button>
+      </div>
+      <p id="keepStatus" class="status"></p>
+    </div>
     <p class="paste">Paste it into:
       <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
       <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
@@ -270,6 +280,7 @@ details.key[open] summary { margin-bottom: 10px; }
     if (busy) return;
     var key = gemini.key || gkey.value.trim();
     if (key) { geminiFlow(raw, key); return; }
+    session = { raw: raw, quick: true };
     showQuick(raw, "");
   });
 
@@ -328,6 +339,7 @@ details.key[open] summary { margin-bottom: 10px; }
     qa.hidden = true;
     qaList.textContent = "";
     session = null;
+    keepStatus.textContent = "";
     setBuild("");
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -525,7 +537,7 @@ details.key[open] summary { margin-bottom: 10px; }
     "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
     "",
     "Respond with JSON only, in exactly this shape:",
-    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "questions": [{"question": "...", "choices": ["...", "..."]}]}',
+    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
     "",
     "RAW THOUGHTS:",
     '"""'
@@ -584,6 +596,19 @@ details.key[open] summary { margin-bottom: 10px; }
     return {
       title: String(data.title || "").trim(),
       need: String(data.need || "").trim(),
+      note: (function (n) {
+        n = n && typeof n === "object" ? n : {};
+        function list(x) { return (Array.isArray(x) ? x : []).map(function (v) { return String(v).trim(); }).filter(Boolean); }
+        return {
+          headline: String(n.headline || "").trim(),
+          tags: list(n.tags).map(function (t) { return t.replace(/^#/, "").replace(/\s+/g, ""); }).slice(0, 5),
+          summary: String(n.summary || "").trim(),
+          keyIdeas: list(n.key_ideas),
+          actionItems: list(n.action_items),
+          unknowns: list(n.unknowns),
+          transcript: String(n.clean_transcript || "").trim()
+        };
+      })(data.note),
       questions: qs.slice(0, 3).map(function (q) {
         return {
           question: String((q && q.question) || "").trim(),
@@ -614,6 +639,7 @@ details.key[open] summary { margin-bottom: 10px; }
     }).then(function (intake) {
       session.title = intake.title;
       session.questions = intake.questions;
+      session.note = intake.note;
       setBusy(false);
       if (!intake.questions.length) { setBuild(""); return writeFinal([]); }
       setBuild("");
@@ -666,7 +692,8 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   function writeFinal(answers) {
-    var lines = answers.filter(function (a) { return a.answer; }).map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
+    session.answers = answers.filter(function (a) { return a.answer; });
+    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     setBusy(true, "Writing your prompt...");
     qaStatus.className = "buildstatus";
@@ -685,6 +712,125 @@ details.key[open] summary { margin-bottom: 10px; }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
     });
   }
+
+  /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */
+  var keepStatus = document.getElementById("keepStatus");
+  function stamp() {
+    var d = new Date();
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " at " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  /* style "notes": plain text that reads well in Apple Notes. style "md": Markdown for Claude. */
+  function buildNote(style, withPrompt) {
+    var s0 = session || { raw: thoughts.value.trim() };
+    var n = s0.note || {};
+    var md = style === "md";
+    var out = [];
+    function head(t) { out.push(""); out.push(md ? "### " + t : t.toUpperCase()); }
+    function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : (md ? "- " : "\u2022 ") + x); }); }
+    out.push("\ud83d\udcc5 " + stamp());
+    out.push("\u26a1 " + (s0.title || "Captured thought"));
+    if (n.tags && n.tags.length) { out.push(""); out.push("\ud83c\udff7\ufe0f TAGS: " + n.tags.map(function (t) { return "#" + t; }).join(" ")); }
+    if (n.headline) { out.push(""); out.push(md ? "## " + n.headline : n.headline); }
+    if (n.summary) { head("\ud83d\udcdd Summary"); out.push(n.summary); }
+    if (n.keyIdeas && n.keyIdeas.length) { head("\ud83d\udca1 Key Ideas"); bullets(n.keyIdeas); }
+    if (n.actionItems && n.actionItems.length) { head("\u2705 Action Items"); bullets(n.actionItems, true); }
+    if (n.unknowns && n.unknowns.length) { head("\u2753 Questions / Unknowns"); bullets(n.unknowns); }
+    if (s0.answers && s0.answers.length) {
+      head("\ud83e\udde9 Follow-up Answers");
+      s0.answers.forEach(function (a) { out.push((md ? "- **" + a.question + "** " : "\u2022 " + a.question + " ") + a.answer); });
+    }
+    head("\ud83d\udde3\ufe0f " + (n.transcript ? "Clean Transcript" : "Raw Thoughts"));
+    out.push(n.transcript || s0.raw || "");
+    if (withPrompt && output.value) { head("\ud83d\ude80 Prompt Built"); out.push(output.value); }
+    return out.join("\n").trim();
+  }
+
+  var WRAPPER_TOP = [
+    "You are an expert prompt engineer and strategic thinking partner",
+    "specializing in AI workflow continuity and context-driven execution.",
+    "",
+    "QUALITY STANDARD:",
+    "Before responding, create an internal rubric for what defines a world-class optimized prompt for this specific request. Internally iterate on your rewrite until it scores 10/10 against that rubric. Only output the final result. Never reference the rubric or iteration process in your response.",
+    "",
+    "STEP 1 \u2014 GENERATE SESSION LABEL",
+    "Generate a 5-6 word label that identifies this prompt at a glance. Rules:",
+    "\u2022\tFront-load the most distinctive, specific noun first",
+    "\u2022\tPack in as much meaning as the word limit allows",
+    "\u2022\tNo filler words (a, the, for, to, with)",
+    "\u2022\tNo category words up front (avoid leading with \u201cprompt\u201d, \u201cquery\u201d, \u201crequest\u201d)",
+    "Format: SESSION: [5-6 word label]",
+    "Weak: SESSION: Email sequence for Shopify abandoned cart",
+    "Strong: SESSION: Abandoned cart Shopify email sequence",
+    "",
+    "CONTEXT:",
+    "The following note was generated from a voice memo transcript using",
+    "an automated iPhone Shortcuts workflow. It represents a real captured",
+    "thought, session, or work context from the user. Read it in full \u2014",
+    "use it freely to understand intent, background, and direction. You",
+    "are not bound by its structure, but its content is the foundation",
+    "of this conversation.",
+    "",
+    "NOTE:",
+    "//"
+  ].join("\n");
+  var WRAPPER_BOTTOM = [
+    "//",
+    "",
+    "YOUR JOB:",
+    "1. Read the full note and absorb its context",
+    "2. Identify the Action Items as your entry point",
+    "3. Present each action item back to the user as a numbered path",
+    "4. For each path, provide a high-level picture of where it leads \u2014",
+    "   what gets built, explored, or produced if that direction is chosen.",
+    "   Not a sample output, not a one-liner \u2014 a clear sense of the journey",
+    "   and the destination",
+    "5. Ask the user to choose a path",
+    "6. Once a path is chosen, ask a clarifying question only if the answer",
+    "   would meaningfully change the quality of your output. Otherwise",
+    "   proceed directly and work from the note's context throughout",
+    "",
+    "FORMAT FOR STEP 4:",
+    "Path [N] \u2014 [Action Item]",
+    "[2\u20134 sentences. What this path produces, what decisions or thinking",
+    "it unlocks, and what the user walks away with. Write it like a",
+    "confident preview, not a hedge.]",
+    "",
+    "The note's context should remain present throughout the entire",
+    "conversation \u2014 not just at the start. Reference it, build on it,",
+    "and treat it as the source of record for this session."
+  ].join("\n");
+
+  function copyText(text, okMsg) {
+    function fallback() {
+      output.value = text;
+      output.focus(); output.select(); output.setSelectionRange(0, text.length);
+      keepStatus.textContent = "Selected in the box above. Press and hold, then tap Copy.";
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { keepStatus.textContent = okMsg; }, fallback);
+    } else { fallback(); }
+  }
+
+  document.getElementById("saveNote").addEventListener("click", function () {
+    var note = buildNote("notes", true);
+    var title = (session && session.title) || "Speak to Prompt note";
+    if (navigator.share) {
+      navigator.share({ title: title, text: note }).then(function () {
+        keepStatus.textContent = "Sent to the share sheet. Pick Notes to save it.";
+      }, function (e) {
+        if (e && e.name === "AbortError") return;
+        copyText(note, "Copied the note. Open Notes, start a new note, and paste.");
+      });
+    } else {
+      copyText(note, "Copied the note. Open Notes, start a new note, and paste.");
+    }
+  });
+
+  document.getElementById("copyClaude").addEventListener("click", function () {
+    var text = WRAPPER_TOP + "\n" + buildNote("md", false) + "\n" + WRAPPER_BOTTOM;
+    copyText(text, "Copied your note inside the action wrapper. Paste it into a new Claude chat.");
+  });
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
   document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal([]); });
