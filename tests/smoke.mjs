@@ -84,7 +84,7 @@ await check('full flow: Lite asks, Flash writes, answers and category shown', as
 
 await check('Quick mode writes on Flash-Lite at medium thinking', async () => {
   const p = await page();
-  await withKey(p); await p.check('#quickMode');
+  await withKey(p); await p.click('#moreOpts summary'); await p.check('#quickMode');
   await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   const write = p.calls.filter(c => !c.intake).pop();
   expect(/lite/.test(write.model) && write.level === 'medium', `got ${write.model} ${write.level}`);
@@ -93,13 +93,13 @@ await check('Quick mode writes on Flash-Lite at medium thinking', async () => {
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   const p = await page({ fail: { 'gemini-3.8-flash': 429 }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
-  expect(/gemini-3\.7-flash/.test(await p.textContent('#madeBy')), 'did not fall back to 3.7 Flash');
+  expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not fall back to 3.7 Flash');
 });
 
 await check('cut-off answer (finishReason MAX_TOKENS) is not shown', async () => {
   const p = await page({ finish: { 'gemini-3.8-flash': 'MAX_TOKENS' }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
-  expect(/gemini-3\.7-flash/.test(await p.textContent('#madeBy')), 'incomplete answer was accepted');
+  expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'incomplete answer was accepted');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {
@@ -117,7 +117,7 @@ await check('repeat shortcut run replaces the old transcript', async () => {
 
 await check('run stats: logs numbers only, never words; 4 models listed', async () => {
   const p = await page();
-  await p.check('#statsToggle');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', 'my secret memo'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
   await p.waitForTimeout(300);
@@ -143,6 +143,18 @@ await check('AI app links: Gemini opens the app on iPhone, web on computers', as
   const ctx = await browser.newContext({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
   const m = await ctx.newPage(); await m.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort()); await m.goto(BASE);
   expect(await m.getAttribute('#geminiLink', 'href') === 'https://gemini.google.com/app/download/mobile', 'iPhone Gemini link not set to the app path');
+});
+
+await check('first screen is simple; plain words; copy and open', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  for (const id of ['#quickMode', '#statsToggle', '#memoGuide']) expect(!(await p.isVisible(id)), id + ' should be folded under More options');
+  expect(!(await p.isVisible('#bannerPaste')), 'paste button should only show from the shortcut');
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  const made = await p.textContent('#madeBy');
+  expect(/^Ready in \d+s/.test(made) && !/gemini/i.test(made), 'technical words showing: ' + made);
+  await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
+  await p.click('.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'Copy and open did not copy the prompt');
 });
 
 await check('usage.json is valid', async () => {

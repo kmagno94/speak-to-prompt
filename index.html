@@ -161,6 +161,13 @@ details.key { background: var(--surface); border: 1px solid var(--line); border-
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
 .statsbody { display: flex; flex-direction: column; gap: 12px; }
+.morebody { display: flex; flex-direction: column; gap: 14px; }
+.morebody .how ol { margin: 6px 0; padding-left: 20px; font-size: 15px; }
+.morebody .how .sub { margin: 0; font-family: var(--display); font-weight: 600; }
+.morebody .how .hint { margin: 0; }
+.openrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.openrow span { font-size: 14px; color: var(--muted); flex-basis: 100%; }
+.openrow a { text-decoration: none; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 8px 14px; }
 .keybody { display: flex; flex-direction: column; gap: 10px; }
 .keybody p { margin: 0; font-size: 14px; color: var(--muted); }
 .keybody a { color: var(--accent); font-weight: 700; }
@@ -182,30 +189,13 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="lede">Say what's on your mind, messy is fine. Get back a prompt you can paste into any AI to get a great answer.</p>
   </header>
 
-  <ol class="steps" aria-label="How it works">
-    <li><b>1. Dump it</b>Type or talk. No need to be clear.</li>
-    <li><b>2. Copy it</b>Get one ready-to-paste prompt.</li>
-    <li><b>3. Paste it</b>Into ChatGPT, Claude, Gemini, or any AI.</li>
-  </ol>
-
   <form id="form" class="field" novalidate>
     <label for="thoughts">What's on your mind?</label>
-    <p class="hint">Type it, or talk it out. Messy is fine.</p>
-    <div class="voice">
+    <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
-    <p class="voicehint">Talk it out opens the Speak to Prompt shortcut: record in Voice Memos, copy the transcript, and it brings you back here to paste.</p>
-    <details class="memo" id="memoGuide">
-      <summary>No shortcut? Use Voice Memos by hand</summary>
-      <ol>
-        <li>Open <b>Voice Memos</b> and tap the red button. Ramble as long as you want, then tap it again to stop.</li>
-        <li>Tap the <b>three dots</b> on your recording (or press and hold it), then <b>Copy Transcript</b>. If it isn't there yet, wait a few seconds for the transcript to finish.</li>
-        <li>Come back here and tap <b>Paste my transcript</b>.</li>
-      </ol>
-      <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
-    </details>
-    <div id="pasteWrap" class="pastewrap">
+    <div id="pasteWrap" class="pastewrap" hidden>
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
     </div>
@@ -216,7 +206,6 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
-    <label class="check quickmode"><input type="checkbox" id="quickMode"> <span id="quickLabel">Quick mode: skip questions, ready in about 15 seconds</span></label>
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
@@ -256,6 +245,12 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" class="primary" id="copy">Copy prompt</button>
       <button type="button" id="reset">Start over</button>
     </div>
+    <div class="openrow">
+      <span>Copy and open in:</span>
+      <a class="openai" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
+      <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
+      <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
+    </div>
     <p id="status" class="status"></p>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
@@ -264,15 +259,10 @@ details.key[open] summary { margin-bottom: 10px; }
       </div>
       <p id="keepStatus" class="status"></p>
     </div>
-    <p class="paste">Paste it into:
-      <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
-      <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
-      <a id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
-    </p>
   </section>
 
   <details class="key" id="keyPanel">
-    <summary>Optional: add your free Gemini key</summary>
+    <summary>Unlock smarter prompts (free, 1 minute)</summary>
     <div class="keybody">
       <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture. It's free and takes about a minute:</p>
       <ol class="keysteps">
@@ -297,10 +287,34 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
   </details>
 
-  <div class="stats">
-    <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
-    <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
-  </div>
+  <details class="key" id="moreOpts">
+    <summary>More options</summary>
+    <div class="morebody">
+      <label class="check quickmode"><input type="checkbox" id="quickMode"> <span id="quickLabel">Quick mode: skip questions, ready in about 15 seconds</span></label>
+      <div class="how">
+        <p class="sub">How it works</p>
+        <ol>
+          <li><b>Dump it.</b> Type or talk. No need to be clear.</li>
+          <li><b>Answer a few taps.</b> With a key, Gemini asks what's missing.</li>
+          <li><b>Paste it.</b> Copy your prompt into ChatGPT, Claude, Gemini, or any AI.</li>
+        </ol>
+        <p class="hint">Talk it out runs the Speak to Prompt shortcut: record in Voice Memos, copy the transcript, and it brings you back here to paste. Afterward it takes you back to Voice Memos to move or delete the recording.</p>
+      </div>
+      <details class="memo" id="memoGuide">
+      <summary>No shortcut? Use Voice Memos by hand</summary>
+      <ol>
+        <li>Open <b>Voice Memos</b> and tap the red button. Ramble as long as you want, then tap it again to stop.</li>
+        <li>Tap the <b>three dots</b> on your recording (or press and hold it), then <b>Copy Transcript</b>. If it isn't there yet, wait a few seconds for the transcript to finish.</li>
+        <li>Come back here, press and hold the text box, and tap <b>Paste</b>.</li>
+      </ol>
+      <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
+    </details>
+      <div class="stats">
+        <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
+        <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
+      </div>
+    </div>
+  </details>
 
   <details class="key" id="testLog" hidden>
     <summary id="testLogHead">Run stats</summary>
@@ -621,6 +635,19 @@ details.key[open] summary { margin-bottom: 10px; }
     status.textContent = "Selected. Press and hold, then tap Copy.";
   }
 
+  /* Copy and open: the copy starts inside the tap, and the link opens the app
+     (or website) at the same time, so the prompt is ready to paste there. */
+  Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
+    a.addEventListener("click", function () {
+      if (!output.value) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(output.value).then(function () {
+          promptCopied = true;
+          status.textContent = "Copied. Paste it into " + a.textContent + ".";
+        }, function () {});
+      }
+    });
+  });
   document.getElementById("copy").addEventListener("click", function () {
     var text = output.value;
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -667,6 +694,7 @@ details.key[open] summary { margin-bottom: 10px; }
   var pasteBtn = document.getElementById("bannerPaste");
   var pasteHelp = document.getElementById("pasteHelp");
   function setShortcutMode(on) {
+    pasteWrap.hidden = !on;
     pasteWrap.classList.toggle("banner", on);
     pasteHelp.hidden = !on;
     pasteBtn.textContent = on ? "Tap to paste your transcript" : "Paste my transcript";
@@ -822,8 +850,9 @@ details.key[open] summary { margin-bottom: 10px; }
       gemini.model = plan.write[0];
       if (remember.checked) storeSet(key);
       var backups = plan.write.length - 1;
-      setKeyStatus("Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
-        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days." : "."), "good");
+      setKeyStatus(techOn() ? "Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
+        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days." : ".")
+        : "Key works. You're all set: Gemini will ask a few quick questions, then write your prompt.", "good");
       return gemini.model;
     });
   }
@@ -926,7 +955,10 @@ details.key[open] summary { margin-bottom: 10px; }
      Flash models stay in the list as backups. */
   function writeModels(quick) { return quick ? gemini.plan.intake : gemini.plan.write; }
   function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
-  function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
+  /* Model names and thinking levels only show with run stats on; everyone else
+     sees plain words and times. */
+  function techOn() { return testLog.on(); }
+  function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
   function askGemini(text, asJson, models, level, onModel, limit) {
     var started = Date.now();
     var history = [];
@@ -1039,7 +1071,7 @@ details.key[open] summary { margin-bottom: 10px; }
       right.classList.toggle("over", over);
       leftEl.textContent = over ? "Almost there" : clock(left);
       leftLbl.textContent = over ? "taking a bit longer than usual" : "estimated left";
-      detail.textContent = label + (model ? " · " + model : "");
+      detail.textContent = label + (model && techOn() ? " · " + model : "");
     }
     stopTicker();
     draw();
@@ -1193,7 +1225,7 @@ details.key[open] summary { margin-bottom: 10px; }
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
     var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
-    var eta = startEstimate(resultProg, depth.label + " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : ""), est.secs, "write", skipAsk);
+    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : "") : ""), est.secs, "write", skipAsk);
     return askGemini(text, false, writeModels(quick), depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT).then(function (r) {
@@ -1206,7 +1238,10 @@ details.key[open] summary { margin-bottom: 10px; }
       qaStatus.textContent = "";
       logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
         detours: (r.history || []).join("; "), words_out: words(prompt), outcome: "ok" });
-      showResult(prompt, "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
+      var secs = Math.max(1, Math.round(r.ms / 1000)) + "s";
+      showResult(prompt, techOn()
+        ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
+        : "Ready in " + secs + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
@@ -1288,6 +1323,8 @@ details.key[open] summary { margin-bottom: 10px; }
     var ua = navigator.userAgent || "";
     var appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
     if (appleTouch) document.getElementById("geminiLink").href = "https://gemini.google.com/app/download/mobile";
+    /* Talk it out needs the iPhone shortcut, so computers just get the text box. */
+    else document.getElementById("voiceRow").hidden = true;
   })();
   testLog.init();
 })();
