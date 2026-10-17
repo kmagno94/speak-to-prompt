@@ -51,7 +51,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - Hosted free on GitHub Pages.
 - Gemini is called directly from the browser. The page lists the models your key can use and builds a plan, so it keeps working when Google renames models:
   - **Questions** go to Flash-Lite first, which has the largest free daily allowance (500 requests on the free tier).
-  - **The final prompt** goes to the newest Flash model first, for the best writing.
+  - **The final prompt** goes to the newest Flash model first, for the best writing. Gemini rates each request as quick, standard, or complex, and the writing step thinks lightly, in a balanced way, or deeply to match. The plan and its usual time are shown before you start, and there's no rush: it only switches models if one errors out or hits its daily limit.
   - **Backups:** each model has its own daily limit, so when one runs out the page moves to the next. Only when every model is used up does it switch to the quick version.
 - The prompt logic comes from my Prompt Optimization Engine: a short chat title, working out what the person actually needs, clarifying questions, then a prompt built from role, context, task, example, format, and tone.
 

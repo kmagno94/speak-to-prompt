@@ -101,6 +101,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
+.plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
 .q { display: flex; flex-direction: column; gap: 8px; }
 .q > p { margin: 0; font-weight: 700; }
@@ -182,6 +183,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="eyebrow">A few quick questions</p>
     <h2 id="qaTitle"></h2>
     <p id="qaNeed" class="need"></p>
+    <p id="qaPlan" class="plan"></p>
     <div id="qaList" class="qalist"></div>
     <p class="need">Answer what you can. Blank is fine.</p>
     <div class="row">
@@ -593,7 +595,7 @@ details.key[open] summary { margin-bottom: 10px; }
     "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
     "",
     "Respond with JSON only, in exactly this shape:",
-    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
+    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
     "",
     "RAW THOUGHTS:",
     '"""'
@@ -619,13 +621,20 @@ details.key[open] summary { margin-bottom: 10px; }
      onModel(name) reports which model is working. Resolves to { text, model, ms }. */
   /* Flash-Lite answers fastest at its lightest setting; Flash models get "low". */
   function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
+  var DEPTH = {
+    simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
+    standard: { level: "medium", words: "balanced thinking", secs: 50,  range: "usually under a minute",   label: "Standard request" },
+    complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" }
+  };
+  function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
+  function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + d.range; }
   function askGemini(text, asJson, models, level, onModel, limit) {
     var started = Date.now();
     var history = [];
     function payload(withThinking, model) {
       var cfg = {};
       if (asJson) cfg.responseMimeType = "application/json";
-      var lvl = withThinking ? levelFor(model) : "";
+      var lvl = withThinking ? (level === "auto" ? levelFor(model) : level) : "";
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
       var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
@@ -675,23 +684,23 @@ details.key[open] summary { margin-bottom: 10px; }
     return attempt(0, null, true);
   }
 
-  var WRITE_LIMIT = 75000;
+  var WRITE_LIMIT = 300000;
   /* Usual seconds per model, used only for the progress estimate. */
-  function usualSeconds(model) { return /lite/.test(model) ? 15 : 45; }
+
   /* Time-based progress: honest estimate, never claims done early. */
-  function startEstimate(bar, el, label) {
+  function startEstimate(bar, el, label, usual) {
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setProgress(bar, "pct", 2);
     function draw() {
       var secs = Math.round((Date.now() - t0) / 1000);
-      var usual = usualSeconds(model);
       var since = (Date.now() - tModel) / 1000;
       var pct = Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))));
       setProgress(bar, "pct", Math.max(2, pct));
       var left = Math.round(usual - since);
       el.className = "buildstatus";
-      el.textContent = label + (model ? " with " + model : "") + " · " + secs + "s · " +
-        (left > 2 ? "about " + left + "s left" : "taking longer than usual, still working");
+      function fmt(n) { return n >= 60 ? Math.floor(n / 60) + "m " + (n % 60) + "s" : n + "s"; }
+      el.textContent = label + (model ? " \u00b7 " + model : "") + " \u00b7 " + fmt(secs) + " \u00b7 " +
+        (left > 2 ? "about " + fmt(left) + " left" : "taking longer than usual, still working");
     }
     stopTicker();
     draw();
@@ -723,6 +732,7 @@ details.key[open] summary { margin-bottom: 10px; }
     return {
       title: String(data.title || "").trim(),
       need: String(data.need || "").trim(),
+      complexity: (function (c) { c = String(c || "").toLowerCase(); return /simple/.test(c) ? "simple" : /complex/.test(c) ? "complex" : "standard"; })(data.complexity),
       note: (function (n) {
         n = n && typeof n === "object" ? n : {};
         function list(x) { return (Array.isArray(x) ? x : []).map(function (v) { return String(v).trim(); }).filter(Boolean); }
@@ -758,16 +768,17 @@ details.key[open] summary { margin-bottom: 10px; }
     setProgress(document.getElementById("buildProg"), "busy");
     var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
-      return askGemini(intakeText, true, gemini.plan.intake, "low", onIntakeModel);
+      return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
       try { return parseIntake(r.text); } catch (e) {
         var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
-        return askGemini(intakeText, true, others, "low", onIntakeModel).then(function (r2) { return parseIntake(r2.text); });
+        return askGemini(intakeText, true, others, "auto", onIntakeModel).then(function (r2) { return parseIntake(r2.text); });
       }
     }).then(function (intake) {
       session.title = intake.title;
       session.questions = intake.questions;
       session.note = intake.note;
+      session.complexity = intake.complexity;
       setBusy(false);
       if (!intake.questions.length) { setBuild(""); return writeFinal([]); }
       setBuild("");
@@ -782,6 +793,7 @@ details.key[open] summary { margin-bottom: 10px; }
   function renderQuestions(intake) {
     document.getElementById("qaTitle").textContent = intake.title || "Let's get the details right";
     document.getElementById("qaNeed").textContent = intake.need;
+    document.getElementById("qaPlan").textContent = "Your prompt: " + planText(intake.complexity, gemini.plan.write[0]);
     qaList.textContent = "";
     intake.questions.forEach(function (q, i) {
       var wrap = document.createElement("div"); wrap.className = "q";
@@ -829,8 +841,9 @@ details.key[open] summary { margin-bottom: 10px; }
     var run = ++writeRun;
     var resultProg = document.getElementById("resultProg");
     showWriting(session.title);
-    var eta = startEstimate(resultProg, status, "Writing your prompt");
-    return askGemini(text, false, gemini.plan.write, "low", function (m) {
+    var depth = depthOf(session.complexity);
+    var eta = startEstimate(resultProg, status, depth.label + " \u00b7 " + depth.words, depth.secs);
+    return askGemini(text, false, gemini.plan.write, depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
@@ -842,7 +855,7 @@ details.key[open] summary { margin-bottom: 10px; }
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      showResult(prompt, "Built with Gemini (" + r.model + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
+      showResult(prompt, "Built with Gemini (" + r.model + ", " + depth.words + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
