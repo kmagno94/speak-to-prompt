@@ -79,6 +79,10 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 footer { font-size: 13px; color: var(--muted); }
 #testLog .runs { font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
 .stats { display: flex; flex-direction: column; gap: 4px; }
+.folderrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.folderrow p { margin: 0; }
+.folderrow .hint { flex-basis: 100%; }
+.folderrow b { font-family: var(--display); }
 #testLog .sub { font-family: var(--display); font-size: 16px; margin: 4px 0 0; }
 #testLog .sub .hint { font-family: var(--body); font-weight: 400; }
 .usage { display: flex; flex-direction: column; gap: 10px; }
@@ -190,7 +194,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <label for="thoughts">What's on your mind?</label>
     <p class="hint">Type it, or talk it out. Messy is fine.</p>
     <div class="voice">
-      <a class="btnlink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
+      <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="getlink" href="https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
     <p class="voicehint">Talk it out opens the Speak to Prompt shortcut: record in Voice Memos, copy the transcript, and it brings you back here to paste.</p>
@@ -248,12 +252,17 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
     <p id="madeBy" class="madeby"></p>
     <p id="chatName" class="chatname" hidden></p>
+    <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <div class="row">
       <button type="button" class="primary" id="copy">Copy prompt</button>
       <button type="button" id="reset">Start over</button>
     </div>
     <p id="status" class="status"></p>
+    <div class="folderrow" id="folderRow" hidden>
+      <button type="button" id="fileMemo">File voice memo</button>
+      <p class="hint">Paste your prompt into your AI first. This copies the category and goes back to the shortcut to keep, archive, or delete the recording.</p>
+    </div>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
       <div class="row">
@@ -295,6 +304,8 @@ details.key[open] summary { margin-bottom: 10px; }
   </details>
 
   <div class="stats">
+    <label class="check"><input type="checkbox" id="folderToggle"> Voice memo filing (Speak to Prompt Plus)</label>
+    <p class="hint">Talk it out runs your Speak to Prompt Plus shortcut, and a File voice memo button appears after each prompt. Saved on this device.</p>
     <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
     <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
   </div>
@@ -509,6 +520,8 @@ details.key[open] summary { margin-bottom: 10px; }
   /* Opens the result card in "writing" mode so the prompt can appear as it streams in. */
   function showWriting(title) {
     if (typeof resetKeep === "function") resetKeep();
+    document.getElementById("folderRow").hidden = true;
+    document.getElementById("categoryLine").hidden = true;
     output.value = "";
     status.textContent = "";
     document.getElementById("madeBy").textContent = "";
@@ -518,8 +531,23 @@ details.key[open] summary { margin-bottom: 10px; }
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  /* Voice Memos folder: an opt-in setting for Kevin's Archive step. Off by default. */
+  var FOLDER_FLAG = "stp-folder";
+  function folderOn() { try { return localStorage.getItem(FOLDER_FLAG) === "1"; } catch (e) { return false; } }
+  function setFolderRow() {
+    var name = (session && session.category) || "";
+    document.getElementById("categoryLine").hidden = !name;
+    document.getElementById("categoryName").textContent = name;
+    /* The filing button shows for every Gemini prompt when filing is on; with no
+       category the shortcut just asks for a folder name. */
+    document.getElementById("folderRow").hidden = !(folderOn() && session && !session.quick);
+  }
+  function setTalkLink() {
+    document.getElementById("talkLink").href = "shortcuts://run-shortcut?name=" + encodeURIComponent(folderOn() ? "Speak to Prompt Plus" : "Speak to Prompt");
+  }
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
+    setFolderRow();
     setReady(true);
     output.value = text;
     status.className = "status";
@@ -566,6 +594,8 @@ details.key[open] summary { margin-bottom: 10px; }
   });
 
   function startOver() {
+    document.getElementById("folderRow").hidden = true;
+    document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     err.hidden = true;
     document.getElementById("handoff").hidden = true;
@@ -807,7 +837,7 @@ details.key[open] summary { margin-bottom: 10px; }
     "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
     "",
     "Respond with JSON only, in exactly this shape:",
-    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
+    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
     "",
     "RAW THOUGHTS:",
     '"""'
@@ -995,6 +1025,7 @@ details.key[open] summary { margin-bottom: 10px; }
     return {
       title: String(data.title || "").trim(),
       need: String(data.need || "").trim(),
+      category: String(data.category || data.folder || "").replace(/["'\/\\#]/g, "").replace(/\s+/g, " ").trim().slice(0, 30),
       complexity: (function (c) { c = String(c || "").toLowerCase(); return /simple/.test(c) ? "simple" : /complex/.test(c) ? "complex" : "standard"; })(data.complexity),
       note: (function (n) {
         n = n && typeof n === "object" ? n : {};
@@ -1046,6 +1077,7 @@ details.key[open] summary { margin-bottom: 10px; }
       session.questions = intake.questions;
       session.note = intake.note;
       session.complexity = intake.complexity;
+      session.category = intake.category;
       setBusy(false);
       if (document.getElementById("quickMode").checked) { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
@@ -1162,6 +1194,7 @@ details.key[open] summary { margin-bottom: 10px; }
     function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : (md ? "- " : "\u2022 ") + x); }); }
     out.push("\ud83d\udcc5 " + stamp());
     out.push("\u26a1 " + (s0.title || "Captured thought"));
+    if (s0.category) out.push("\ud83d\udcc1 Category: " + s0.category);
     if (n.tags && n.tags.length) { out.push(""); out.push("\ud83c\udff7\ufe0f TAGS: " + n.tags.map(function (t) { return "#" + t; }).join(" ")); }
     if (n.headline) { out.push(""); out.push(md ? "## " + n.headline : n.headline); }
     if (n.summary) { head("\ud83d\udcdd Summary"); out.push(n.summary); }
@@ -1202,6 +1235,29 @@ details.key[open] summary { margin-bottom: 10px; }
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
   document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
+  (function () {
+    var t = document.getElementById("folderToggle");
+    t.checked = folderOn();
+    setTalkLink();
+    t.addEventListener("change", function () {
+      try { if (t.checked) localStorage.setItem(FOLDER_FLAG, "1"); else localStorage.removeItem(FOLDER_FLAG); } catch (e) {}
+      setTalkLink();
+      if (!result.hidden) setFolderRow();
+    });
+    /* Copies "Category: <name>" (the shortcut looks for that prefix, so a prompt
+       left on the clipboard is never mistaken for a folder name), then opens
+       Shortcuts, which wakes the shortcut's Wait to Return. */
+    document.getElementById("fileMemo").addEventListener("click", function () {
+      var text = "Category: " + ((session && session.category) || "");
+      function go() { window.location.href = "shortcuts://"; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(go, function () {
+          status.textContent = "Couldn't copy the category. Going back to the shortcut; it will ask for a folder name.";
+          setTimeout(go, 1200);
+        });
+      } else { go(); }
+    });
+  })();
   testLog.init();
 })();
 </script>
