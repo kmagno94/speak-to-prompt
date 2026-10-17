@@ -197,7 +197,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="hint">Type it, or talk it out. Messy is fine.</p>
     <div class="voice">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
-      <a class="getlink" href="https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876" target="_blank" rel="noopener">First time? Get the shortcut</a>
+      <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
     <p class="voicehint">Talk it out opens the Speak to Prompt shortcut: record in Voice Memos, copy the transcript, and it brings you back here to paste.</p>
     <details class="memo" id="memoGuide">
@@ -262,8 +262,8 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
     <p id="status" class="status"></p>
     <div class="folderrow" id="folderRow" hidden>
-      <button type="button" id="fileMemo">File voice memo</button>
-      <p class="hint">Paste your prompt into your AI first. This copies the category and goes back to the shortcut to keep, archive, or delete the recording.</p>
+      <button type="button" id="fileMemo">Clean up voice memo</button>
+      <p class="hint">Paste your prompt into your AI first. This goes back to the shortcut, which opens Voice Memos so you can move or delete the recording, then brings you back here.</p>
     </div>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
@@ -306,8 +306,6 @@ details.key[open] summary { margin-bottom: 10px; }
   </details>
 
   <div class="stats">
-    <label class="check"><input type="checkbox" id="folderToggle"> Voice memo filing (Speak to Prompt Plus)</label>
-    <p class="hint">Talk it out runs your Speak to Prompt Plus shortcut, and a File voice memo button appears after each prompt. Saved on this device.</p>
     <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
     <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
   </div>
@@ -595,18 +593,16 @@ details.key[open] summary { margin-bottom: 10px; }
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   /* Voice Memos folder: an opt-in setting for Kevin's Archive step. Off by default. */
-  var FOLDER_FLAG = "stp-folder";
-  function folderOn() { try { return localStorage.getItem(FOLDER_FLAG) === "1"; } catch (e) { return false; } }
+  /* Set when the Speak to Prompt shortcut opened this page (#paste). The shortcut
+     waits in the background, so the result card offers a way back to it. */
+  var fromShortcut = false;
+  try { localStorage.removeItem("stp-folder"); } catch (e) {} /* retired setting */
   function setFolderRow() {
     var name = (session && session.category) || "";
     document.getElementById("categoryLine").hidden = !name;
     document.getElementById("categoryName").textContent = name;
-    /* The filing button shows for every Gemini prompt when filing is on; with no
-       category the shortcut just asks for a folder name. */
-    document.getElementById("folderRow").hidden = !(folderOn() && session && !session.quick);
-  }
-  function setTalkLink() {
-    document.getElementById("talkLink").href = "shortcuts://run-shortcut?name=" + encodeURIComponent(folderOn() ? "Speak to Prompt Plus" : "Speak to Prompt");
+    /* The cleanup button shows only when the shortcut opened the page. */
+    document.getElementById("folderRow").hidden = !fromShortcut;
   }
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
@@ -721,6 +717,7 @@ details.key[open] summary { margin-bottom: 10px; }
      hashchange and when the page comes back from Safari's page cache. Each time,
      the old run is cleared so a previous transcript can't linger in the box. */
   function enterPasteMode(firstLoad) {
+    fromShortcut = true;
     /* On first load the later parts of the page aren't set up yet, and there's
        no old run to clear, so only the box is emptied. */
     if (firstLoad) thoughts.value = ""; else startOver();
@@ -1300,29 +1297,10 @@ details.key[open] summary { margin-bottom: 10px; }
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
   document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
-  (function () {
-    var t = document.getElementById("folderToggle");
-    t.checked = folderOn();
-    setTalkLink();
-    t.addEventListener("change", function () {
-      try { if (t.checked) localStorage.setItem(FOLDER_FLAG, "1"); else localStorage.removeItem(FOLDER_FLAG); } catch (e) {}
-      setTalkLink();
-      if (!result.hidden) setFolderRow();
-    });
-    /* Copies "Category: <name>" (the shortcut looks for that prefix, so a prompt
-       left on the clipboard is never mistaken for a folder name), then opens
-       Shortcuts, which wakes the shortcut's Wait to Return. */
-    document.getElementById("fileMemo").addEventListener("click", function () {
-      var text = "Category: " + ((session && session.category) || "");
-      function go() { window.location.href = "shortcuts://"; }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(go, function () {
-          status.textContent = "Couldn't copy the category. Going back to the shortcut; it will ask for a folder name.";
-          setTimeout(go, 1200);
-        });
-      } else { go(); }
-    });
-  })();
+  /* Opening Shortcuts wakes the shortcut's Wait to Return; it then opens Voice
+     Memos for cleanup and comes back to Safari. The clipboard is left alone, so
+     the prompt stays copied. */
+  document.getElementById("fileMemo").addEventListener("click", function () { window.location.href = "shortcuts://"; });
   testLog.init();
 })();
 </script>
