@@ -111,6 +111,7 @@ details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color
 details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.openclaude { align-self: flex-start; color: var(--accent); font-weight: 700; }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
@@ -198,6 +199,7 @@ details.key[open] summary { margin-bottom: 10px; }
         <button type="button" id="copyClaude">Copy note for Claude</button>
       </div>
       <p id="keepStatus" class="status"></p>
+      <a id="openClaude" class="openclaude" href="https://claude.ai/new" target="_blank" rel="noopener" hidden>Open Claude</a>
     </div>
     <p class="paste">Paste it into:
       <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
@@ -285,6 +287,7 @@ details.key[open] summary { margin-bottom: 10px; }
   });
 
   function showResult(text, madeBy, title) {
+    if (typeof resetKeep === "function") resetKeep();
     output.value = text;
     status.textContent = "";
     document.getElementById("madeBy").textContent = madeBy;
@@ -339,7 +342,7 @@ details.key[open] summary { margin-bottom: 10px; }
     qa.hidden = true;
     qaList.textContent = "";
     session = null;
-    keepStatus.textContent = "";
+    resetKeep();
     setBuild("");
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -715,6 +718,14 @@ details.key[open] summary { margin-bottom: 10px; }
 
   /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */
   var keepStatus = document.getElementById("keepStatus");
+  var claudeBtn = document.getElementById("copyClaude");
+  var openClaude = document.getElementById("openClaude");
+  /* After saving, nudge toward Claude as the optional next step. */
+  function offerClaude(saved) {
+    claudeBtn.classList.toggle("primary", saved);
+    claudeBtn.textContent = saved ? "Continue to Claude" : "Copy note for Claude";
+  }
+  function resetKeep() { keepStatus.textContent = ""; openClaude.hidden = true; offerClaude(false); }
   function stamp() {
     var d = new Date();
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " at " +
@@ -817,19 +828,23 @@ details.key[open] summary { margin-bottom: 10px; }
     var title = (session && session.title) || "Speak to Prompt note";
     if (navigator.share) {
       navigator.share({ title: title, text: note }).then(function () {
-        keepStatus.textContent = "Sent to the share sheet. Pick Notes to save it.";
+        keepStatus.textContent = "Saved. Want to keep going? Tap Continue to Claude.";
+        offerClaude(true);
       }, function (e) {
         if (e && e.name === "AbortError") return;
-        copyText(note, "Copied the note. Open Notes, start a new note, and paste.");
+        copyText(note, "Copied the note. Paste it into a new note, then come back if you want to continue to Claude.");
+        offerClaude(true);
       });
     } else {
-      copyText(note, "Copied the note. Open Notes, start a new note, and paste.");
+      copyText(note, "Copied the note. Paste it into a new note, then come back if you want to continue to Claude.");
+      offerClaude(true);
     }
   });
 
   document.getElementById("copyClaude").addEventListener("click", function () {
     var text = WRAPPER_TOP + "\n" + buildNote("md", false) + "\n" + WRAPPER_BOTTOM;
-    copyText(text, "Copied your note inside the action wrapper. Paste it into a new Claude chat.");
+    copyText(text, "Copied your note inside the action wrapper. Open Claude and paste it into a new chat.");
+    openClaude.hidden = false;
   });
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
