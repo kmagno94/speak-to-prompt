@@ -89,6 +89,14 @@ details.memo p.shortcut a { color: var(--accent); font-weight: 700; }
 button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .pastewrap.banner { padding: 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
 .pastewrap.banner button.pastebtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 19px; padding: 16px 18px; }
+.progress { height: 8px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
+.progress .bar { height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width 0.3s ease; }
+.progress.indeterminate .bar { width: 35%; }
+@media (prefers-reduced-motion: no-preference) {
+  .progress.indeterminate .bar { animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
+}
+@media (prefers-reduced-motion: reduce) { .progress.indeterminate .bar { width: 100%; opacity: 0.5; } }
 .buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
@@ -166,6 +174,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
+    <div class="progress" id="buildProg" hidden><div class="bar"></div></div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
 
@@ -182,7 +191,8 @@ details.key[open] summary { margin-bottom: 10px; }
   </section>
 
   <section class="card" id="result" hidden aria-live="polite">
-    <h2>Your prompt is ready</h2>
+    <h2 id="resultHead">Your prompt is ready</h2>
+    <div class="progress" id="resultProg" hidden><div class="bar"></div></div>
     <p id="madeBy" class="madeby"></p>
     <p id="chatName" class="chatname" hidden></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
@@ -283,11 +293,7 @@ details.key[open] summary { margin-bottom: 10px; }
     showQuick(raw, "");
   });
 
-  function showResult(text, madeBy, title) {
-    if (typeof resetKeep === "function") resetKeep();
-    output.value = text;
-    status.textContent = "";
-    document.getElementById("madeBy").textContent = madeBy;
+  function setChatName(title) {
     var chatName = document.getElementById("chatName");
     if (title) {
       chatName.textContent = "";
@@ -297,6 +303,33 @@ details.key[open] summary { margin-bottom: 10px; }
     } else {
       chatName.hidden = true;
     }
+  }
+  function setReady(ready) {
+    document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
+    document.getElementById("copy").disabled = !ready;
+    document.getElementById("saveNote").disabled = !ready;
+    output.placeholder = ready ? "" : "Gemini is thinking. The prompt will appear here as it's written.";
+  }
+  /* Opens the result card in "writing" mode so the prompt can appear as it streams in. */
+  function showWriting(title) {
+    if (typeof resetKeep === "function") resetKeep();
+    output.value = "";
+    status.textContent = "";
+    document.getElementById("madeBy").textContent = "";
+    setChatName(title);
+    setReady(false);
+    qa.hidden = true;
+    result.hidden = false;
+    result.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function showResult(text, madeBy, title) {
+    if (typeof resetKeep === "function") resetKeep();
+    setReady(true);
+    output.value = text;
+    status.className = "status";
+    status.textContent = "";
+    document.getElementById("madeBy").textContent = madeBy;
+    setChatName(title);
     qa.hidden = true;
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -344,6 +377,12 @@ details.key[open] summary { margin-bottom: 10px; }
     qa.hidden = true;
     qaList.textContent = "";
     session = null;
+    writeRun++;
+    busy = false;
+    setBusy(false);
+    stopTicker();
+    setProgress(document.getElementById("resultProg"), "off");
+    setReady(true);
     resetKeep();
     setBuild("");
     thoughts.focus();
@@ -526,8 +565,14 @@ details.key[open] summary { margin-bottom: 10px; }
   var qaStatus = document.getElementById("qaStatus");
   var busy = false;
   var session = null;
+  var writeRun = 0;
 
-  function setBuild(text, bad) { stopTicker(); buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
+  function setProgress(el, mode, pct) {
+    el.hidden = mode === "off";
+    el.classList.toggle("indeterminate", mode === "busy");
+    el.firstElementChild.style.width = mode === "pct" ? pct + "%" : "";
+  }
+  function setBuild(text, bad) { stopTicker(); setProgress(document.getElementById("buildProg"), "off"); buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
   function setBusy(on, label) {
     busy = on;
     buildBtn.disabled = on;
@@ -571,7 +616,68 @@ details.key[open] summary { margin-bottom: 10px; }
      onModel(name) reports which model is working. Resolves to { text, model, ms }. */
   /* Flash-Lite answers fastest at its lightest setting; Flash models get "low". */
   function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
-  function askGemini(text, asJson, models, level, onModel) {
+  var IDLE_LIMIT = 20000;
+  var canStream = !!(window.ReadableStream && window.TextDecoder && window.AbortController);
+
+  /* Streams one model's answer. Calls onText(fullTextSoFar) as pieces arrive.
+     The first piece must come within TIME_LIMIT, later pieces within IDLE_LIMIT. */
+  function streamModel(model, body, onText) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, TIME_LIMIT);
+    function bump() { clearTimeout(timer); timer = setTimeout(function () { ctrl.abort(); }, IDLE_LIMIT); }
+    function timedOut() { var t = new Error("Gemini took too long."); t.status = "timeout"; return t; }
+    var path = "models/" + model + ":streamGenerateContent?alt=sse";
+    function open(useHeader) {
+      var url = API + path + (useHeader ? "" : "&key=" + encodeURIComponent(gemini.key));
+      var headers = { "Content-Type": "application/json" };
+      if (useHeader) headers["x-goog-api-key"] = gemini.key;
+      return fetch(url, { method: "POST", headers: headers, body: body, signal: ctrl.signal });
+    }
+    return open(true).catch(function () {
+      if (ctrl.signal.aborted) throw timedOut();
+      return open(false);
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          var e = new Error(googleError(r.status, b)); e.status = r.status; throw e;
+        });
+      }
+      var reader = r.body.getReader(), decoder = new TextDecoder(), buf = "", full = "";
+      function handleLine(line) {
+        line = line.replace(/\r$/, "");
+        if (line.indexOf("data:") !== 0) return;
+        var json = line.slice(5).trim();
+        if (!json || json === "[DONE]") return;
+        var chunk; try { chunk = JSON.parse(json); } catch (e) { return; }
+        var c = chunk.candidates && chunk.candidates[0];
+        var parts = (c && c.content && c.content.parts) || [];
+        var add = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("");
+        if (add) { full += add; bump(); onText(full); }
+      }
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) {
+            if (buf) handleLine(buf);
+            clearTimeout(timer);
+            return full;
+          }
+          buf += decoder.decode(res.value, { stream: true });
+          var lines = buf.split("\n");
+          buf = lines.pop();
+          lines.forEach(handleLine);
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function (e) {
+      clearTimeout(timer);
+      if (ctrl.signal.aborted && !e.status) throw timedOut();
+      if (e && e.name === "AbortError") throw timedOut();
+      throw e;
+    });
+  }
+
+  function askGemini(text, asJson, models, level, onModel, onText) {
     var started = Date.now();
     function payload(withThinking, model) {
       var cfg = {};
@@ -593,6 +699,18 @@ details.key[open] summary { margin-bottom: 10px; }
       }
       var model = models[i];
       if (onModel) onModel(model);
+      if (onText && canStream) {
+        onText("");
+        return streamModel(model, payload(withThinking, model), onText).then(function (full) {
+          var out = full.trim();
+          if (!out) { var e0 = new Error("Gemini sent back an empty answer."); e0.status = "empty"; throw e0; }
+          return { text: out, model: model, ms: Date.now() - started };
+        }).catch(function (e) {
+          if (e.status === 400 && withThinking) return attempt(i, e, false);
+          if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
+          throw e;
+        });
+      }
       var ctrl = window.AbortController ? new AbortController() : null;
       var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, TIME_LIMIT) : null;
       return callGoogle("models/" + model + ":generateContent", gemini.key, {
@@ -674,6 +792,7 @@ details.key[open] summary { margin-bottom: 10px; }
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
     var onIntakeModel = startTicker(buildStatus, "Reading your thoughts");
+    setProgress(document.getElementById("buildProg"), "busy");
     var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "low", onIntakeModel);
@@ -742,17 +861,43 @@ details.key[open] summary { margin-bottom: 10px; }
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     setBusy(true, "Writing your prompt...");
-    qaStatus.className = "buildstatus";
-    var onWriteModel = startTicker(qa.hidden ? buildStatus : qaStatus, "Writing your prompt");
-    return askGemini(text, false, gemini.plan.write, "low", onWriteModel).then(function (r) {
+    setBuild("");
+    qaStatus.textContent = "";
+    var run = ++writeRun;
+    var resultProg = document.getElementById("resultProg");
+    var answerLen = lines.join("").length;
+    var expected = Math.min(5000, Math.max(1200, 900 + session.raw.length * 0.6 + answerLen));
+    showWriting(session.title);
+    setProgress(resultProg, "busy");
+    var onWriteModel = startTicker(status, "Thinking");
+    return askGemini(text, false, gemini.plan.write, "low", function (m) {
+      if (run === writeRun) onWriteModel(m);
+    }, function (partial) {
+      if (run !== writeRun) return;
+      output.value = partial;
+      output.scrollTop = output.scrollHeight;
+      if (partial) {
+        stopTicker();
+        status.className = "buildstatus";
+        status.textContent = "Writing... " + partial.length + " characters so far";
+        setProgress(resultProg, "pct", Math.min(95, Math.round(partial.length / expected * 100)));
+      } else {
+        setProgress(resultProg, "busy");
+      }
+    }).then(function (r) {
+      if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
+      setProgress(resultProg, "pct", 100);
+      setTimeout(function () { if (run === writeRun) setProgress(resultProg, "off"); }, 600);
       var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
       showResult(prompt, "Built with Gemini (" + r.model + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s. Your AI can start working right away.", session.title);
     }).catch(function (e) {
+      if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
+      setProgress(resultProg, "off");
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
