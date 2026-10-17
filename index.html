@@ -76,6 +76,15 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }
+button.rec { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; border-color: var(--danger); color: var(--danger); }
+button.rec .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); }
+button.rec.live { background: var(--danger); color: var(--surface); }
+button.rec.live .dot { background: var(--surface); border-radius: 2px; }
+button.rec:disabled { opacity: 0.6; cursor: wait; }
+.recstatus { margin: 0; font-size: 14px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
+.recstatus.good { color: var(--ok); }
+.recstatus.bad { color: var(--danger); }
+@media (prefers-reduced-motion: no-preference) { button.rec.live .dot { animation: pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity: 0.35; } } }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
@@ -108,7 +117,11 @@ details.key[open] summary { margin-bottom: 10px; }
 
   <form id="form" class="field" novalidate>
     <label for="thoughts">What's on your mind?</label>
-    <p class="hint">Tap the microphone on your keyboard to talk instead of type.</p>
+    <p class="hint">Tap Record and think out loud as long as you like, or just type. Recording needs a free Gemini key (see the bottom of the page).</p>
+    <div class="row">
+      <button type="button" class="rec" id="recBtn"><span class="dot" aria-hidden="true"></span><span id="recLabel">Record</span></button>
+      <p id="recStatus" class="recstatus" role="status"></p>
+    </div>
     <textarea id="thoughts" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
     <p id="err" class="error" hidden>Type or say something first.</p>
     <div class="row">
@@ -281,36 +294,171 @@ details.key[open] summary { margin-bottom: 10px; }
     if (!remember.checked) storeDel();
   });
 
+  var API = "https://generativelanguage.googleapis.com/v1beta/";
+
+  function googleError(status, body) {
+    if (status === 400 || status === 403) return "Google didn't accept the key. Copy it again from AI Studio and paste it below.";
+    if (status === 429) return "Google says you've hit a limit. Wait a minute and try again.";
+    var msg = (body && body.error && body.error.message) || "";
+    return "Google returned an error (" + status + "). " + msg;
+  }
+  function callGoogle(url, options) {
+    return fetch(url, options).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (!r.ok) throw new Error(googleError(r.status, body));
+        return body;
+      });
+    }, function () { throw new Error("Couldn't reach Google. Check your connection and try again."); });
+  }
+
+  /* Confirms the key and picks a model. Resolves to the model name. */
+  function verifyKey(key) {
+    return callGoogle(API + "models?pageSize=1000&key=" + encodeURIComponent(key)).then(function (body) {
+      var model = pickModel(body.models || []);
+      if (!model) throw new Error("Your key works, but no Flash model showed up for it.");
+      gemini.key = key;
+      gemini.model = model;
+      if (remember.checked) storeSet(key);
+      setKeyStatus("Key works. Using " + model + ".", "good");
+      return model;
+    });
+  }
+
   document.getElementById("checkKey").addEventListener("click", function () {
     var key = gkey.value.trim();
     if (!key) { setKeyStatus("Paste your key first.", "bad"); gkey.focus(); return; }
     setKeyStatus("Checking with Google...");
-    fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=" + encodeURIComponent(key))
-      .then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (body) { return { ok: r.ok, status: r.status, body: body }; });
-      })
-      .then(function (res) {
-        if (!res.ok) {
-          var msg = (res.body && res.body.error && res.body.error.message) || "";
-          if (res.status === 400 || res.status === 403) {
-            setKeyStatus("Google didn't accept that key. Copy it again from AI Studio and paste it here.", "bad");
-          } else if (res.status === 429) {
-            setKeyStatus("Google says you've hit a limit. Wait a minute and try again.", "bad");
-          } else {
-            setKeyStatus("Google returned an error (" + res.status + "). " + msg, "bad");
-          }
-          return;
-        }
-        var model = pickModel((res.body && res.body.models) || []);
-        if (!model) { setKeyStatus("Your key works, but no Flash model showed up for it.", "bad"); return; }
-        gemini.key = key;
-        gemini.model = model;
-        if (remember.checked) storeSet(key);
-        setKeyStatus("Key works. Using " + model + ".", "good");
-      })
-      .catch(function () {
-        setKeyStatus("Couldn't reach Google. Check your connection and try again.", "bad");
+    verifyKey(key).catch(function (e) { setKeyStatus(e.message, "bad"); });
+  });
+
+  /* Recording: audio stays in memory, goes to Google once, then is dropped. */
+  var recBtn = document.getElementById("recBtn");
+  var recLabel = document.getElementById("recLabel");
+  var recStatus = document.getElementById("recStatus");
+  var keyPanel = document.getElementById("keyPanel");
+  var MAX_SECONDS = 30 * 60;
+  var rec = null, chunks = [], stream = null, timer = null, started = 0, busy = false;
+
+  function setRec(text, kind) { recStatus.textContent = text; recStatus.className = "recstatus " + (kind || ""); }
+  function clock(s) { var m = Math.floor(s / 60), r = s % 60; return m + ":" + (r < 10 ? "0" : "") + r; }
+  function pickMime() {
+    var options = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+    for (var i = 0; i < options.length; i++) if (MediaRecorder.isTypeSupported(options[i])) return options[i];
+    return "";
+  }
+  function geminiMime(type) {
+    var base = (type || "").split(";")[0];
+    if (base === "audio/mp4" || base === "audio/x-m4a") return "audio/m4a";
+    return base || "audio/webm";
+  }
+  function stopTracks() { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result).split(",")[1] || ""); };
+      fr.onerror = function () { reject(new Error("Couldn't read the recording. Try again.")); };
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  var TRANSCRIBE = "Transcribe this voice recording. The speaker is thinking out loud, so lightly clean it up: remove filler words (um, uh, like, you know), false starts, and words repeated by accident. Keep their meaning, their wording, and every detail they mention. Do not summarize, answer, or add anything. Output only the cleaned transcript as plain text.";
+
+  function transcribe(blob) {
+    if (blob.size > 19 * 1024 * 1024) return Promise.reject(new Error("That recording is too long to send in one go. Try a shorter one."));
+    return blobToBase64(blob).then(function (data) {
+      return callGoogle(API + "models/" + gemini.model + ":generateContent?key=" + encodeURIComponent(gemini.key), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [
+          { text: TRANSCRIBE },
+          { inline_data: { mime_type: geminiMime(blob.type), data: data } }
+        ] }] })
       });
+    }).then(function (body) {
+      var parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
+      var text = parts.map(function (p) { return p.text || ""; }).join("").trim();
+      if (!text) throw new Error("Gemini didn't hear any words. Try again a little closer to the mic.");
+      return text;
+    });
+  }
+
+  function finishRecording() {
+    clearInterval(timer);
+    recBtn.classList.remove("live");
+    recLabel.textContent = "Transcribing...";
+    recBtn.disabled = true;
+    busy = true;
+    var blob = new Blob(chunks, { type: (rec && rec.mimeType) || pickMime() || "audio/mp4" });
+    chunks = [];
+    rec = null;
+    stopTracks();
+    setRec("Sending to Gemini...");
+    transcribe(blob).then(function (text) {
+      var current = thoughts.value.trim();
+      thoughts.value = current ? current + "\n\n" + text : text;
+      err.hidden = true;
+      setRec("Done. Check the text, then tap Build my prompt.", "good");
+    }).catch(function (e) {
+      setRec(e.message, "bad");
+    }).then(function () {
+      blob = null;
+      busy = false;
+      recBtn.disabled = false;
+      recLabel.textContent = "Record";
+    });
+  }
+
+  function startRecording() {
+    var mime = pickMime();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      setRec("This browser can't record audio. Try Safari or Chrome.", "bad");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      stream = s;
+      chunks = [];
+      var opts = { audioBitsPerSecond: 64000 };
+      if (mime) opts.mimeType = mime;
+      rec = new MediaRecorder(s, opts);
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = finishRecording;
+      rec.start(1000);
+      started = Date.now();
+      recBtn.classList.add("live");
+      recLabel.textContent = "Stop 0:00";
+      setRec("Listening. Talk as long as you like, then tap Stop.");
+      timer = setInterval(function () {
+        var secs = Math.floor((Date.now() - started) / 1000);
+        recLabel.textContent = "Stop " + clock(secs);
+        if (secs >= MAX_SECONDS) rec.stop();
+      }, 500);
+    }).catch(function (e) {
+      stopTracks();
+      if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) {
+        setRec("Microphone access is off. Allow it for this site in your browser settings, then try again.", "bad");
+      } else {
+        setRec("Couldn't start the microphone. Try again.", "bad");
+      }
+    });
+  }
+
+  recBtn.addEventListener("click", function () {
+    if (busy) return;
+    if (rec && rec.state === "recording") { rec.stop(); return; }
+    var key = gemini.key || gkey.value.trim();
+    if (!key) {
+      keyPanel.open = true;
+      setRec("Recording needs a free Gemini key. Add it at the bottom of the page.", "bad");
+      gkey.focus();
+      return;
+    }
+    if (gemini.model && gemini.key === key) { startRecording(); return; }
+    setRec("Checking your key...");
+    verifyKey(key).then(startRecording, function (e) {
+      keyPanel.open = true;
+      setRec(e.message, "bad");
+    });
   });
 
   document.getElementById("removeKey").addEventListener("click", function () {
