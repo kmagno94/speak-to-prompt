@@ -308,7 +308,7 @@ details.key[open] summary { margin-bottom: 10px; }
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
     document.getElementById("copy").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
-    output.placeholder = ready ? "" : "Gemini is thinking. The prompt will appear here as it's written.";
+    output.placeholder = ready ? "" : "Your prompt will appear here when it's ready.";
   }
   /* Opens the result card in "writing" mode so the prompt can appear as it streams in. */
   function showWriting(title) {
@@ -616,69 +616,9 @@ details.key[open] summary { margin-bottom: 10px; }
      onModel(name) reports which model is working. Resolves to { text, model, ms }. */
   /* Flash-Lite answers fastest at its lightest setting; Flash models get "low". */
   function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
-  var IDLE_LIMIT = 20000;
-  var canStream = !!(window.ReadableStream && window.TextDecoder && window.AbortController);
-
-  /* Streams one model's answer. Calls onText(fullTextSoFar) as pieces arrive.
-     The first piece must come within TIME_LIMIT, later pieces within IDLE_LIMIT. */
-  function streamModel(model, body, onText) {
-    var ctrl = new AbortController();
-    var timer = setTimeout(function () { ctrl.abort(); }, TIME_LIMIT);
-    function bump() { clearTimeout(timer); timer = setTimeout(function () { ctrl.abort(); }, IDLE_LIMIT); }
-    function timedOut() { var t = new Error("Gemini took too long."); t.status = "timeout"; return t; }
-    var path = "models/" + model + ":streamGenerateContent?alt=sse";
-    function open(useHeader) {
-      var url = API + path + (useHeader ? "" : "&key=" + encodeURIComponent(gemini.key));
-      var headers = { "Content-Type": "application/json" };
-      if (useHeader) headers["x-goog-api-key"] = gemini.key;
-      return fetch(url, { method: "POST", headers: headers, body: body, signal: ctrl.signal });
-    }
-    return open(true).catch(function () {
-      if (ctrl.signal.aborted) throw timedOut();
-      return open(false);
-    }).then(function (r) {
-      if (!r.ok) {
-        return r.json().catch(function () { return {}; }).then(function (b) {
-          var e = new Error(googleError(r.status, b)); e.status = r.status; throw e;
-        });
-      }
-      var reader = r.body.getReader(), decoder = new TextDecoder(), buf = "", full = "";
-      function handleLine(line) {
-        line = line.replace(/\r$/, "");
-        if (line.indexOf("data:") !== 0) return;
-        var json = line.slice(5).trim();
-        if (!json || json === "[DONE]") return;
-        var chunk; try { chunk = JSON.parse(json); } catch (e) { return; }
-        var c = chunk.candidates && chunk.candidates[0];
-        var parts = (c && c.content && c.content.parts) || [];
-        var add = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("");
-        if (add) { full += add; bump(); onText(full); }
-      }
-      function pump() {
-        return reader.read().then(function (res) {
-          if (res.done) {
-            if (buf) handleLine(buf);
-            clearTimeout(timer);
-            return full;
-          }
-          buf += decoder.decode(res.value, { stream: true });
-          var lines = buf.split("\n");
-          buf = lines.pop();
-          lines.forEach(handleLine);
-          return pump();
-        });
-      }
-      return pump();
-    }).catch(function (e) {
-      clearTimeout(timer);
-      if (ctrl.signal.aborted && !e.status) throw timedOut();
-      if (e && e.name === "AbortError") throw timedOut();
-      throw e;
-    });
-  }
-
-  function askGemini(text, asJson, models, level, onModel, onText) {
+  function askGemini(text, asJson, models, level, onModel, limit) {
     var started = Date.now();
+    var history = [];
     function payload(withThinking, model) {
       var cfg = {};
       if (asJson) cfg.responseMimeType = "application/json";
@@ -699,20 +639,9 @@ details.key[open] summary { margin-bottom: 10px; }
       }
       var model = models[i];
       if (onModel) onModel(model);
-      if (onText && canStream) {
-        onText("");
-        return streamModel(model, payload(withThinking, model), onText).then(function (full) {
-          var out = full.trim();
-          if (!out) { var e0 = new Error("Gemini sent back an empty answer."); e0.status = "empty"; throw e0; }
-          return { text: out, model: model, ms: Date.now() - started };
-        }).catch(function (e) {
-          if (e.status === 400 && withThinking) return attempt(i, e, false);
-          if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
-          throw e;
-        });
-      }
       var ctrl = window.AbortController ? new AbortController() : null;
-      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, TIME_LIMIT) : null;
+      var tAttempt = Date.now();
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, limit || TIME_LIMIT) : null;
       return callGoogle("models/" + model + ":generateContent", gemini.key, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -724,9 +653,16 @@ details.key[open] summary { margin-bottom: 10px; }
         var parts = (c && c.content && c.content.parts) || [];
         var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
         if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
-        return { text: out, model: model, ms: Date.now() - started };
+        /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
+        if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
+        return { text: out, model: model, ms: Date.now() - started, history: history };
       }).catch(function (e) {
         clearTimeout(timer);
+        var secs = Math.round((Date.now() - tAttempt) / 1000);
+        if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
+        else if (e.status === 429) history.push(model + " was at its daily limit");
+        else if (e.status === "empty") history.push(model + " sent an incomplete answer");
+        else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable");
         /* A model that rejects the thinking setting gets one more try without it. */
         if (e.status === 400 && withThinking) return attempt(i, e, false);
         if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
@@ -734,6 +670,30 @@ details.key[open] summary { margin-bottom: 10px; }
       });
     }
     return attempt(0, null, true);
+  }
+
+  var WRITE_LIMIT = 75000;
+  /* Usual seconds per model, used only for the progress estimate. */
+  function usualSeconds(model) { return /lite/.test(model) ? 15 : 45; }
+  /* Time-based progress: honest estimate, never claims done early. */
+  function startEstimate(bar, el, label) {
+    var t0 = Date.now(), tModel = Date.now(), model = "";
+    setProgress(bar, "pct", 2);
+    function draw() {
+      var secs = Math.round((Date.now() - t0) / 1000);
+      var usual = usualSeconds(model);
+      var since = (Date.now() - tModel) / 1000;
+      var pct = Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))));
+      setProgress(bar, "pct", Math.max(2, pct));
+      var left = Math.round(usual - since);
+      el.className = "buildstatus";
+      el.textContent = label + (model ? " with " + model : "") + " · " + secs + "s · " +
+        (left > 2 ? "about " + left + "s left" : "taking longer than usual, still working");
+    }
+    stopTicker();
+    draw();
+    ticker = setInterval(draw, 1000);
+    return function (m) { model = m; tModel = Date.now(); draw(); };
   }
 
   /* Live progress so a slow answer never looks frozen. */
@@ -865,35 +825,21 @@ details.key[open] summary { margin-bottom: 10px; }
     qaStatus.textContent = "";
     var run = ++writeRun;
     var resultProg = document.getElementById("resultProg");
-    var answerLen = lines.join("").length;
-    var expected = Math.min(5000, Math.max(1200, 900 + session.raw.length * 0.6 + answerLen));
     showWriting(session.title);
-    setProgress(resultProg, "busy");
-    var onWriteModel = startTicker(status, "Thinking");
+    var eta = startEstimate(resultProg, status, "Writing your prompt");
     return askGemini(text, false, gemini.plan.write, "low", function (m) {
-      if (run === writeRun) onWriteModel(m);
-    }, function (partial) {
-      if (run !== writeRun) return;
-      output.value = partial;
-      output.scrollTop = output.scrollHeight;
-      if (partial) {
-        stopTicker();
-        status.className = "buildstatus";
-        status.textContent = "Writing... " + partial.length + " characters so far";
-        setProgress(resultProg, "pct", Math.min(95, Math.round(partial.length / expected * 100)));
-      } else {
-        setProgress(resultProg, "busy");
-      }
-    }).then(function (r) {
+      if (run === writeRun) eta(m);
+    }, WRITE_LIMIT).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
       setProgress(resultProg, "pct", 100);
+      var detour = r.history && r.history.length ? " (" + r.history.join("; ") + ")" : "";
       setTimeout(function () { if (run === writeRun) setProgress(resultProg, "off"); }, 600);
       var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      showResult(prompt, "Built with Gemini (" + r.model + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s. Your AI can start working right away.", session.title);
+      showResult(prompt, "Built with Gemini (" + r.model + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
