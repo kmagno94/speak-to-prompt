@@ -388,7 +388,7 @@ details.key[open] summary { margin-bottom: 10px; }
   var gkey = document.getElementById("gkey");
   var remember = document.getElementById("remember");
   var keyStatus = document.getElementById("keyStatus");
-  var gemini = { key: "", model: "" };
+  var gemini = { key: "", model: "", plan: null };
 
   function setKeyStatus(text, kind) {
     keyStatus.textContent = text;
@@ -402,19 +402,25 @@ details.key[open] summary { margin-bottom: 10px; }
     var m = /gemini-(\d+(?:\.\d+)?)-flash/.exec(name);
     return m ? parseFloat(m[1]) : 0;
   }
-  function pickModel(models) {
+  /* Each Gemini model has its own free daily limit, so the page keeps a backup order.
+     Writing uses the strongest Flash models first; questions use Flash-Lite first,
+     which has a much larger free allowance. */
+  function planModels(models) {
     var usable = models.filter(function (m) {
       var methods = m.supportedGenerationMethods || m.supportedActions || [];
       var n = m.name || "";
       return methods.indexOf("generateContent") !== -1 && /flash/.test(n) &&
-        !/lite|live|tts|image|audio|thinking|exp/.test(n);
+        !/live|tts|image|audio|thinking|exp|embedding/.test(n);
     });
-    usable.sort(function (a, b) {
-      var d = flashVersion(b.name) - flashVersion(a.name);
-      if (d) return d;
-      return (/preview/.test(a.name) ? 1 : 0) - (/preview/.test(b.name) ? 1 : 0);
-    });
-    return usable.length ? usable[0].name.replace(/^models\//, "") : "";
+    function byNewest(a, b) {
+      var p = (/preview/.test(a.name) ? 1 : 0) - (/preview/.test(b.name) ? 1 : 0);
+      if (p) return p;
+      return flashVersion(b.name) - flashVersion(a.name);
+    }
+    function names(list) { return list.map(function (m) { return m.name.replace(/^models\//, ""); }); }
+    var flashes = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest).slice(0, 3));
+    var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 2));
+    return { write: flashes.concat(lites), intake: lites.concat(flashes) };
   }
 
   var saved = storeGet();
@@ -425,7 +431,7 @@ details.key[open] summary { margin-bottom: 10px; }
     setKeyStatus("Key saved on this phone. Tap Check key to test it.");
   }
 
-  gkey.addEventListener("input", function () { setKeyStatus(""); gemini.model = ""; });
+  gkey.addEventListener("input", function () { setKeyStatus(""); gemini.model = ""; gemini.plan = null; });
 
   remember.addEventListener("change", function () {
     if (remember.checked && gkey.value.trim()) storeSet(gkey.value.trim());
@@ -447,7 +453,7 @@ details.key[open] summary { margin-bottom: 10px; }
     var headers = Object.assign({}, options.headers || {}, { "x-goog-api-key": key });
     function handle(r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
-        if (!r.ok) throw new Error(googleError(r.status, body));
+        if (!r.ok) { var e = new Error(googleError(r.status, body)); e.status = r.status; throw e; }
         return body;
       });
     }
@@ -462,13 +468,16 @@ details.key[open] summary { margin-bottom: 10px; }
   /* Confirms the key and picks a model. Resolves to the model name. */
   function verifyKey(key) {
     return callGoogle("models?pageSize=1000", key).then(function (body) {
-      var model = pickModel(body.models || []);
-      if (!model) throw new Error("Your key works, but no Flash model showed up for it.");
+      var plan = planModels(body.models || []);
+      if (!plan.write.length) throw new Error("Your key works, but no Flash model showed up for it.");
       gemini.key = key;
-      gemini.model = model;
+      gemini.plan = plan;
+      gemini.model = plan.write[0];
       if (remember.checked) storeSet(key);
-      setKeyStatus("Key works. Using " + model + ".", "good");
-      return model;
+      var backups = plan.write.length - 1;
+      setKeyStatus("Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
+        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days." : "."), "good");
+      return gemini.model;
     });
   }
 
@@ -483,7 +492,7 @@ details.key[open] summary { margin-bottom: 10px; }
     gkey.value = "";
     remember.checked = false;
     gemini.key = "";
-    gemini.model = "";
+    gemini.model = ""; gemini.plan = null;
     storeDel();
     setKeyStatus("Key removed from this page and this phone.");
   });
@@ -532,20 +541,39 @@ details.key[open] summary { margin-bottom: 10px; }
     "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
   ].join("\n");
 
-  function askGemini(text, asJson) {
+  var RETRY = [429, 403, 404, 500, 503, "empty"];
+  /* Tries each model in order. Moves on when a model is out of its daily limit,
+     unavailable, or sends back nothing. Resolves to { text, model }. */
+  function askGemini(text, asJson, models) {
     var payload = { contents: [{ role: "user", parts: [{ text: text }] }] };
     if (asJson) payload.generationConfig = { responseMimeType: "application/json" };
-    return callGoogle("models/" + gemini.model + ":generateContent", gemini.key, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).then(function (body) {
-      var c = body.candidates && body.candidates[0];
-      var parts = (c && c.content && c.content.parts) || [];
-      var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
-      if (!out) throw new Error("Gemini sent back an empty answer.");
-      return out;
-    });
+    var body = JSON.stringify(payload);
+    function attempt(i, lastErr) {
+      if (i >= models.length) {
+        if (lastErr && lastErr.status === 429) {
+          var all = new Error("Every free Gemini model on your key has hit today's limit. It resets overnight, around 3 AM Eastern.");
+          all.status = 429;
+          throw all;
+        }
+        throw lastErr || new Error("No Gemini model was available.");
+      }
+      var model = models[i];
+      return callGoogle("models/" + model + ":generateContent", gemini.key, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body
+      }).then(function (res) {
+        var c = res.candidates && res.candidates[0];
+        var parts = (c && c.content && c.content.parts) || [];
+        var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
+        if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
+        return { text: out, model: model };
+      }).catch(function (e) {
+        if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e);
+        throw e;
+      });
+    }
+    return attempt(0, null);
   }
 
   function parseIntake(text) {
@@ -566,7 +594,7 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   function ensureModel(key) {
-    if (gemini.model && gemini.key === key) return Promise.resolve(gemini.model);
+    if (gemini.plan && gemini.key === key) return Promise.resolve(gemini.model);
     return verifyKey(key);
   }
 
@@ -575,10 +603,15 @@ details.key[open] summary { margin-bottom: 10px; }
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
     setBuild("Gemini is reading what you wrote and deciding what to ask.");
+    var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
-      return askGemini(ANALYZE + "\n" + raw + '\n"""', true);
-    }).then(function (text) {
-      var intake = parseIntake(text);
+      return askGemini(intakeText, true, gemini.plan.intake);
+    }).then(function (r) {
+      try { return parseIntake(r.text); } catch (e) {
+        var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
+        return askGemini(intakeText, true, others).then(function (r2) { return parseIntake(r2.text); });
+      }
+    }).then(function (intake) {
       session.title = intake.title;
       session.questions = intake.questions;
       setBusy(false);
@@ -639,12 +672,12 @@ details.key[open] summary { margin-bottom: 10px; }
     qaStatus.className = "buildstatus";
     qaStatus.textContent = qa.hidden ? "" : "Writing your prompt with everything you told it...";
     if (qa.hidden) setBuild("Nothing important was missing. Writing your prompt...");
-    return askGemini(text, false).then(function (prompt) {
-      prompt = prompt.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+    return askGemini(text, false, gemini.plan.write).then(function (r) {
+      var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      showResult(prompt, "Built with Gemini (" + gemini.model + "). Your AI can start working right away.", session.title);
+      showResult(prompt, "Built with Gemini (" + r.model + "). Your AI can start working right away.", session.title);
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
