@@ -183,7 +183,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
-    <label class="check quickmode"><input type="checkbox" id="quickMode"> Quick mode: skip questions, ready in about 20 seconds</label>
+    <label class="check quickmode"><input type="checkbox" id="quickMode"> Quick mode: skip questions, ready in about 15 seconds</label>
     <div class="progress" id="buildProg" hidden><div class="bar"></div></div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
@@ -632,10 +632,14 @@ details.key[open] summary { margin-bottom: 10px; }
   function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
   var DEPTH = {
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
-    standard: { level: "medium", words: "balanced thinking", secs: 50,  range: "usually under a minute",   label: "Standard request" },
+    standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
-    quick:    { level: "low",    words: "light thinking",    secs: 20,  range: "about 20 seconds",         label: "Quick prompt" }
+    quick:    { level: "low",    words: "light thinking",    secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
   };
+  /* Quick prompts go to Flash-Lite first (largest free daily allowance, fastest),
+     so they don't spend the small Flash allowance that full prompts need.
+     Flash models stay in the list as backups. */
+  function writeModels(quick) { return quick ? gemini.plan.intake : gemini.plan.write; }
   function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
   function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + d.range; }
   function askGemini(text, asJson, models, level, onModel, limit) {
@@ -854,7 +858,7 @@ details.key[open] summary { margin-bottom: 10px; }
     showWriting(session.title);
     var depth = quick ? DEPTH.quick : depthOf(session.complexity);
     var eta = startEstimate(resultProg, status, depth.label + " \u00b7 " + depth.words, depth.secs);
-    return askGemini(text, false, gemini.plan.write, depth.level, function (m) {
+    return askGemini(text, false, writeModels(quick), depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
