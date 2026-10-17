@@ -76,15 +76,10 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }
-button.rec { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; border-color: var(--danger); color: var(--danger); }
-button.rec .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--danger); }
-button.rec.live { background: var(--danger); color: var(--surface); }
-button.rec.live .dot { background: var(--surface); border-radius: 2px; }
-button.rec:disabled { opacity: 0.6; cursor: wait; }
-.recstatus { margin: 0; font-size: 14px; color: var(--muted); flex: 1 1 200px; min-width: 0; }
-.recstatus.good { color: var(--ok); }
-.recstatus.bad { color: var(--danger); }
-@media (prefers-reduced-motion: no-preference) { button.rec.live .dot { animation: pulse 1s ease-in-out infinite; } @keyframes pulse { 50% { opacity: 0.35; } } }
+details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
+details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+details.memo p { margin: 0; font-size: 13px; color: var(--muted); }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
@@ -117,15 +112,22 @@ details.key[open] summary { margin-bottom: 10px; }
 
   <form id="form" class="field" novalidate>
     <label for="thoughts">What's on your mind?</label>
-    <p class="hint">Tap Record and think out loud as long as you like, or just type. Recording needs a free Gemini key (see the bottom of the page).</p>
-    <div class="row">
-      <button type="button" class="rec" id="recBtn"><span class="dot" aria-hidden="true"></span><span id="recLabel">Record</span></button>
-      <p id="recStatus" class="recstatus" role="status"></p>
-    </div>
+    <p class="hint">Type it, or paste a voice memo transcript. Messy is fine.</p>
+    <details class="memo" id="memoGuide">
+      <summary>Rather talk? Use Voice Memos</summary>
+      <ol>
+        <li>Open <b>Voice Memos</b> and tap the red button. Ramble as long as you want, then tap it again to stop.</li>
+        <li>Tap your recording, tap the <b>three dots</b>, then <b>View Transcript</b>.</li>
+        <li>Press and hold the text, tap <b>Select All</b>, then <b>Copy</b>.</li>
+        <li>Come back here and tap <b>Paste my transcript</b> below.</li>
+      </ol>
+      <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
+    </details>
     <textarea id="thoughts" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
-    <p id="err" class="error" hidden>Type or say something first.</p>
+    <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row">
       <button type="submit" class="primary" id="build">Build my prompt</button>
+      <button type="button" id="pasteBtn">Paste my transcript</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
   </form>
@@ -148,7 +150,7 @@ details.key[open] summary { margin-bottom: 10px; }
   <details class="key" id="keyPanel">
     <summary>Optional: add your free Gemini key</summary>
     <div class="keybody">
-      <p>A key unlocks voice recording (coming next). Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, then paste it here.</p>
+      <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture (coming next). Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, then paste it here.</p>
       <label for="gkey" class="hint">Gemini API key</label>
       <input id="gkey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
       <label class="check"><input type="checkbox" id="remember"> Remember my key on this phone</label>
@@ -205,7 +207,7 @@ details.key[open] summary { margin-bottom: 10px; }
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var raw = thoughts.value.trim();
-    if (!raw) { err.hidden = false; thoughts.focus(); return; }
+    if (!raw) { err.textContent = "Type or paste something first."; err.hidden = false; thoughts.focus(); return; }
     output.value = buildPrompt(raw);
     status.textContent = "";
     result.hidden = false;
@@ -243,6 +245,26 @@ details.key[open] summary { margin-bottom: 10px; }
     result.hidden = true;
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  document.getElementById("pasteBtn").addEventListener("click", function () {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      thoughts.focus();
+      err.textContent = "Press and hold inside the box, then tap Paste.";
+      err.hidden = false;
+      return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      text = (text || "").trim();
+      if (!text) { err.textContent = "Your clipboard is empty. Copy the transcript first."; err.hidden = false; return; }
+      var current = thoughts.value.trim();
+      thoughts.value = current ? current + "\n\n" + text : text;
+      err.hidden = true;
+    }, function () {
+      thoughts.focus();
+      err.textContent = "Press and hold inside the box, then tap Paste.";
+      err.hidden = false;
+    });
   });
 
   /* Gemini key: held in memory for this tab; saved to the phone only if "Remember" is ticked. */
@@ -329,136 +351,6 @@ details.key[open] summary { margin-bottom: 10px; }
     if (!key) { setKeyStatus("Paste your key first.", "bad"); gkey.focus(); return; }
     setKeyStatus("Checking with Google...");
     verifyKey(key).catch(function (e) { setKeyStatus(e.message, "bad"); });
-  });
-
-  /* Recording: audio stays in memory, goes to Google once, then is dropped. */
-  var recBtn = document.getElementById("recBtn");
-  var recLabel = document.getElementById("recLabel");
-  var recStatus = document.getElementById("recStatus");
-  var keyPanel = document.getElementById("keyPanel");
-  var MAX_SECONDS = 30 * 60;
-  var rec = null, chunks = [], stream = null, timer = null, started = 0, busy = false;
-
-  function setRec(text, kind) { recStatus.textContent = text; recStatus.className = "recstatus " + (kind || ""); }
-  function clock(s) { var m = Math.floor(s / 60), r = s % 60; return m + ":" + (r < 10 ? "0" : "") + r; }
-  function pickMime() {
-    var options = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
-    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
-    for (var i = 0; i < options.length; i++) if (MediaRecorder.isTypeSupported(options[i])) return options[i];
-    return "";
-  }
-  function geminiMime(type) {
-    var base = (type || "").split(";")[0];
-    if (base === "audio/mp4" || base === "audio/x-m4a") return "audio/m4a";
-    return base || "audio/webm";
-  }
-  function stopTracks() { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-  function blobToBase64(blob) {
-    return new Promise(function (resolve, reject) {
-      var fr = new FileReader();
-      fr.onload = function () { resolve(String(fr.result).split(",")[1] || ""); };
-      fr.onerror = function () { reject(new Error("Couldn't read the recording. Try again.")); };
-      fr.readAsDataURL(blob);
-    });
-  }
-
-  var TRANSCRIBE = "Transcribe this voice recording. The speaker is thinking out loud, so lightly clean it up: remove filler words (um, uh, like, you know), false starts, and words repeated by accident. Keep their meaning, their wording, and every detail they mention. Do not summarize, answer, or add anything. Output only the cleaned transcript as plain text.";
-
-  function transcribe(blob) {
-    if (blob.size > 19 * 1024 * 1024) return Promise.reject(new Error("That recording is too long to send in one go. Try a shorter one."));
-    return blobToBase64(blob).then(function (data) {
-      return callGoogle(API + "models/" + gemini.model + ":generateContent?key=" + encodeURIComponent(gemini.key), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [
-          { text: TRANSCRIBE },
-          { inline_data: { mime_type: geminiMime(blob.type), data: data } }
-        ] }] })
-      });
-    }).then(function (body) {
-      var parts = (body.candidates && body.candidates[0] && body.candidates[0].content && body.candidates[0].content.parts) || [];
-      var text = parts.map(function (p) { return p.text || ""; }).join("").trim();
-      if (!text) throw new Error("Gemini didn't hear any words. Try again a little closer to the mic.");
-      return text;
-    });
-  }
-
-  function finishRecording() {
-    clearInterval(timer);
-    recBtn.classList.remove("live");
-    recLabel.textContent = "Transcribing...";
-    recBtn.disabled = true;
-    busy = true;
-    var blob = new Blob(chunks, { type: (rec && rec.mimeType) || pickMime() || "audio/mp4" });
-    chunks = [];
-    rec = null;
-    stopTracks();
-    setRec("Sending to Gemini...");
-    transcribe(blob).then(function (text) {
-      var current = thoughts.value.trim();
-      thoughts.value = current ? current + "\n\n" + text : text;
-      err.hidden = true;
-      setRec("Done. Check the text, then tap Build my prompt.", "good");
-    }).catch(function (e) {
-      setRec(e.message, "bad");
-    }).then(function () {
-      blob = null;
-      busy = false;
-      recBtn.disabled = false;
-      recLabel.textContent = "Record";
-    });
-  }
-
-  function startRecording() {
-    var mime = pickMime();
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-      setRec("This browser can't record audio. Try Safari or Chrome.", "bad");
-      return;
-    }
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
-      stream = s;
-      chunks = [];
-      var opts = { audioBitsPerSecond: 64000 };
-      if (mime) opts.mimeType = mime;
-      rec = new MediaRecorder(s, opts);
-      rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
-      rec.onstop = finishRecording;
-      rec.start(1000);
-      started = Date.now();
-      recBtn.classList.add("live");
-      recLabel.textContent = "Stop 0:00";
-      setRec("Listening. Talk as long as you like, then tap Stop.");
-      timer = setInterval(function () {
-        var secs = Math.floor((Date.now() - started) / 1000);
-        recLabel.textContent = "Stop " + clock(secs);
-        if (secs >= MAX_SECONDS) rec.stop();
-      }, 500);
-    }).catch(function (e) {
-      stopTracks();
-      if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) {
-        setRec("Microphone access is off. Allow it for this site in your browser settings, then try again.", "bad");
-      } else {
-        setRec("Couldn't start the microphone. Try again.", "bad");
-      }
-    });
-  }
-
-  recBtn.addEventListener("click", function () {
-    if (busy) return;
-    if (rec && rec.state === "recording") { rec.stop(); return; }
-    var key = gemini.key || gkey.value.trim();
-    if (!key) {
-      keyPanel.open = true;
-      setRec("Recording needs a free Gemini key. Add it at the bottom of the page.", "bad");
-      gkey.focus();
-      return;
-    }
-    if (gemini.model && gemini.key === key) { startRecording(); return; }
-    setRec("Checking your key...");
-    verifyKey(key).then(startRecording, function (e) {
-      keyPanel.open = true;
-      setRec(e.message, "bad");
-    });
   });
 
   document.getElementById("removeKey").addEventListener("click", function () {
