@@ -111,7 +111,6 @@ details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color
 details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-.openclaude { align-self: flex-start; color: var(--accent); font-weight: 700; }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
@@ -193,13 +192,11 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
     <p id="status" class="status"></p>
     <div class="keep">
-      <p class="keephead">Keep it, or take it further</p>
+      <p class="keephead">Want a record of this?</p>
       <div class="row">
         <button type="button" id="saveNote">Save to Notes</button>
-        <button type="button" id="copyClaude">Copy note for Claude</button>
       </div>
       <p id="keepStatus" class="status"></p>
-      <a id="openClaude" class="openclaude" href="https://claude.ai/new" target="_blank" rel="noopener" hidden>Open Claude</a>
     </div>
     <p class="paste">Paste it into:
       <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
@@ -328,6 +325,11 @@ details.key[open] summary { margin-bottom: 10px; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
         status.textContent = "Copied. Now paste it into your AI.";
+        promptCopied = true;
+        if (!noteSaved) {
+          keepStatus.textContent = "Want a note of this too? Save it now. Your prompt stays copied.";
+          saveBtn.classList.add("primary");
+        }
       }, selectFallback);
     } else {
       selectFallback();
@@ -552,7 +554,7 @@ details.key[open] summary { margin-bottom: 10px; }
     "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
     "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
     "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
-    "End the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
+    "If the thoughts hold several distinct directions or action items and it is not clear which one to pursue, end the prompt by asking the AI to first lay them out as numbered options, each with 2 to 4 sentences on what it would produce, then wait for the person to choose. Otherwise, end the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
     "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
   ].join("\n");
 
@@ -718,14 +720,9 @@ details.key[open] summary { margin-bottom: 10px; }
 
   /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */
   var keepStatus = document.getElementById("keepStatus");
-  var claudeBtn = document.getElementById("copyClaude");
-  var openClaude = document.getElementById("openClaude");
-  /* After saving, nudge toward Claude as the optional next step. */
-  function offerClaude(saved) {
-    claudeBtn.classList.toggle("primary", saved);
-    claudeBtn.textContent = saved ? "Continue to Claude" : "Copy note for Claude";
-  }
-  function resetKeep() { keepStatus.textContent = ""; openClaude.hidden = true; offerClaude(false); }
+  var saveBtn = document.getElementById("saveNote");
+  var noteSaved = false, promptCopied = false;
+  function resetKeep() { keepStatus.textContent = ""; noteSaved = false; promptCopied = false; saveBtn.classList.remove("primary"); }
   function stamp() {
     var d = new Date();
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " at " +
@@ -757,94 +754,26 @@ details.key[open] summary { margin-bottom: 10px; }
     return out.join("\n").trim();
   }
 
-  var WRAPPER_TOP = [
-    "You are an expert prompt engineer and strategic thinking partner",
-    "specializing in AI workflow continuity and context-driven execution.",
-    "",
-    "QUALITY STANDARD:",
-    "Before responding, create an internal rubric for what defines a world-class optimized prompt for this specific request. Internally iterate on your rewrite until it scores 10/10 against that rubric. Only output the final result. Never reference the rubric or iteration process in your response.",
-    "",
-    "STEP 1 \u2014 GENERATE SESSION LABEL",
-    "Generate a 5-6 word label that identifies this prompt at a glance. Rules:",
-    "\u2022\tFront-load the most distinctive, specific noun first",
-    "\u2022\tPack in as much meaning as the word limit allows",
-    "\u2022\tNo filler words (a, the, for, to, with)",
-    "\u2022\tNo category words up front (avoid leading with \u201cprompt\u201d, \u201cquery\u201d, \u201crequest\u201d)",
-    "Format: SESSION: [5-6 word label]",
-    "Weak: SESSION: Email sequence for Shopify abandoned cart",
-    "Strong: SESSION: Abandoned cart Shopify email sequence",
-    "",
-    "CONTEXT:",
-    "The following note was generated from a voice memo transcript using",
-    "an automated iPhone Shortcuts workflow. It represents a real captured",
-    "thought, session, or work context from the user. Read it in full \u2014",
-    "use it freely to understand intent, background, and direction. You",
-    "are not bound by its structure, but its content is the foundation",
-    "of this conversation.",
-    "",
-    "NOTE:",
-    "//"
-  ].join("\n");
-  var WRAPPER_BOTTOM = [
-    "//",
-    "",
-    "YOUR JOB:",
-    "1. Read the full note and absorb its context",
-    "2. Identify the Action Items as your entry point",
-    "3. Present each action item back to the user as a numbered path",
-    "4. For each path, provide a high-level picture of where it leads \u2014",
-    "   what gets built, explored, or produced if that direction is chosen.",
-    "   Not a sample output, not a one-liner \u2014 a clear sense of the journey",
-    "   and the destination",
-    "5. Ask the user to choose a path",
-    "6. Once a path is chosen, ask a clarifying question only if the answer",
-    "   would meaningfully change the quality of your output. Otherwise",
-    "   proceed directly and work from the note's context throughout",
-    "",
-    "FORMAT FOR STEP 4:",
-    "Path [N] \u2014 [Action Item]",
-    "[2\u20134 sentences. What this path produces, what decisions or thinking",
-    "it unlocks, and what the user walks away with. Write it like a",
-    "confident preview, not a hedge.]",
-    "",
-    "The note's context should remain present throughout the entire",
-    "conversation \u2014 not just at the start. Reference it, build on it,",
-    "and treat it as the source of record for this session."
-  ].join("\n");
-
-  function copyText(text, okMsg) {
-    function fallback() {
-      output.value = text;
-      output.focus(); output.select(); output.setSelectionRange(0, text.length);
-      keepStatus.textContent = "Selected in the box above. Press and hold, then tap Copy.";
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { keepStatus.textContent = okMsg; }, fallback);
-    } else { fallback(); }
-  }
-
   document.getElementById("saveNote").addEventListener("click", function () {
     var note = buildNote("notes", true);
     var title = (session && session.title) || "Speak to Prompt note";
+    function done(msg) { noteSaved = true; saveBtn.classList.remove("primary"); keepStatus.textContent = msg; }
+    function copyNote() {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) { keepStatus.textContent = "This browser can't save notes from here."; return; }
+      navigator.clipboard.writeText(note).then(function () {
+        done("Copied the note. Paste it into a new note, then tap Copy prompt again before pasting into your AI.");
+      }, function () { keepStatus.textContent = "This browser can't save notes from here."; });
+    }
     if (navigator.share) {
       navigator.share({ title: title, text: note }).then(function () {
-        keepStatus.textContent = "Saved. Want to keep going? Tap Continue to Claude.";
-        offerClaude(true);
+        done(promptCopied ? "Saved. Your prompt is still copied, so paste it into your AI." : "Saved. Now tap Copy prompt and paste it into your AI.");
       }, function (e) {
         if (e && e.name === "AbortError") return;
-        copyText(note, "Copied the note. Paste it into a new note, then come back if you want to continue to Claude.");
-        offerClaude(true);
+        copyNote();
       });
     } else {
-      copyText(note, "Copied the note. Paste it into a new note, then come back if you want to continue to Claude.");
-      offerClaude(true);
+      copyNote();
     }
-  });
-
-  document.getElementById("copyClaude").addEventListener("click", function () {
-    var text = WRAPPER_TOP + "\n" + buildNote("md", false) + "\n" + WRAPPER_BOTTOM;
-    copyText(text, "Copied your note inside the action wrapper. Open Claude and paste it into a new chat.");
-    openClaude.hidden = false;
   });
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });

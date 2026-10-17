@@ -24,10 +24,10 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 
 If Gemini is unavailable, the page falls back to the quick version and says why.
 
-### Keep it, or take it further
+### One prompt, plus an optional note
 
-- **Save to Notes:** opens the iPhone share sheet with a structured note (date, title, tags, summary, key ideas, action items, questions, follow-up answers, clean transcript, and the prompt that was built). Pick Notes to save it to your own iCloud.
-- **Copy note for Claude:** copies the same note wrapped in an action prompt, so a new Claude chat reads it and offers numbered next steps.
+- **One prompt to copy.** If your thoughts point in one direction, the prompt tells the AI to start right away. If they hold several directions, it asks the AI to lay them out as numbered options and let you pick first.
+- **Save to Notes (optional):** after you copy the prompt, the page offers to save a structured note (date, title, tags, summary, key ideas, action items, questions, follow-up answers, clean transcript, and the prompt) through the iPhone share sheet. Saving doesn't touch your clipboard, so your prompt is still ready to paste.
 
 The page itself still saves nothing. Your notes live in Apple Notes, on your account.
 
