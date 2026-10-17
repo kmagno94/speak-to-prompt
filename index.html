@@ -105,6 +105,11 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .chatname { margin: 0; font-size: 15px; }
 .chatname b { font-family: var(--display); }
 button:disabled { opacity: 0.6; cursor: wait; }
+.keysteps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
+.keysteps a, details.lock a { color: var(--accent); font-weight: 700; }
+details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--accent); }
+details.lock p { margin-top: 8px; }
+details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
@@ -194,7 +199,13 @@ details.key[open] summary { margin-bottom: 10px; }
   <details class="key" id="keyPanel">
     <summary>Optional: add your free Gemini key</summary>
     <div class="keybody">
-      <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture. Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, then paste it here.</p>
+      <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture. It's free and takes about a minute:</p>
+      <ol class="keysteps">
+        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> and sign in with any Google account.</li>
+        <li>Tap <b>Create API key</b>. Accept the terms if it asks.</li>
+        <li>Copy the key it shows you.</li>
+        <li>Come back, paste it below, tick <b>Remember my key</b>, and tap <b>Check key</b>.</li>
+      </ol>
       <label for="gkey" class="hint">Gemini API key</label>
       <input id="gkey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
       <label class="check"><input type="checkbox" id="remember"> Remember my key on this phone</label>
@@ -203,11 +214,15 @@ details.key[open] summary { margin-bottom: 10px; }
         <button type="button" id="removeKey">Remove key</button>
       </div>
       <p id="keyStatus" role="status"></p>
+      <details class="lock">
+        <summary>Optional: lock your key to this site</summary>
+        <p>If your key ever leaked, it would only work here. In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Credentials</a>, open your key. Under <b>Application restrictions</b> choose <b>Websites</b> and add <code>https://kmagno94.github.io/*</code>. Under <b>API restrictions</b> choose <b>Generative Language API</b>. Save.</p>
+      </details>
       <p>Your key goes only to Google, never to this site. Remembering saves the key only, never your words. On Google's free tier, Google may use what you send to improve its products.</p>
     </div>
   </details>
 
-  <footer>Your words stay in this tab. Close or refresh it and everything is gone.</footer>
+  <footer>This site saves nothing. Close or refresh the tab and everything is gone. If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
 </div>
 
 <script>
@@ -419,23 +434,33 @@ details.key[open] summary { margin-bottom: 10px; }
   var API = "https://generativelanguage.googleapis.com/v1beta/";
 
   function googleError(status, body) {
-    if (status === 400 || status === 403) return "Google didn't accept the key. Copy it again from AI Studio and paste it below.";
+    if (status === 400 || status === 403) return "Google didn't accept the key. Copy it again from AI Studio and paste it below. If you locked the key to a website, check that this site is on its list.";
     if (status === 429) return "Google says you've hit a limit. Wait a minute and try again.";
     var msg = (body && body.error && body.error.message) || "";
     return "Google returned an error (" + status + ")." + (msg ? " " + msg : "");
   }
-  function callGoogle(url, options) {
-    return fetch(url, options).then(function (r) {
+  /* The key travels in a request header, not the web address. If a browser refuses
+     the header, it retries once with the key in the address, as Google's docs allow. */
+  function callGoogle(path, key, options) {
+    options = options || {};
+    var headers = Object.assign({}, options.headers || {}, { "x-goog-api-key": key });
+    function handle(r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
         if (!r.ok) throw new Error(googleError(r.status, body));
         return body;
       });
-    }, function () { throw new Error("Couldn't reach Google. Check your connection and try again."); });
+    }
+    return fetch(API + path, Object.assign({}, options, { headers: headers })).then(handle, function () {
+      var sep = path.indexOf("?") === -1 ? "?" : "&";
+      return fetch(API + path + sep + "key=" + encodeURIComponent(key), options).then(handle, function () {
+        throw new Error("Couldn't reach Google. Check your connection and try again.");
+      });
+    });
   }
 
   /* Confirms the key and picks a model. Resolves to the model name. */
   function verifyKey(key) {
-    return callGoogle(API + "models?pageSize=1000&key=" + encodeURIComponent(key)).then(function (body) {
+    return callGoogle("models?pageSize=1000", key).then(function (body) {
       var model = pickModel(body.models || []);
       if (!model) throw new Error("Your key works, but no Flash model showed up for it.");
       gemini.key = key;
@@ -509,7 +534,7 @@ details.key[open] summary { margin-bottom: 10px; }
   function askGemini(text, asJson) {
     var payload = { contents: [{ role: "user", parts: [{ text: text }] }] };
     if (asJson) payload.generationConfig = { responseMimeType: "application/json" };
-    return callGoogle(API + "models/" + gemini.model + ":generateContent?key=" + encodeURIComponent(gemini.key), {
+    return callGoogle("models/" + gemini.model + ":generateContent", gemini.key, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
