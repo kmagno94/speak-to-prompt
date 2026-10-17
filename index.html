@@ -79,10 +79,6 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 footer { font-size: 13px; color: var(--muted); }
 #testLog .runs { font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
 .stats { display: flex; flex-direction: column; gap: 4px; }
-.folderrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
-.folderrow p { margin: 0; }
-.folderrow .hint { flex-basis: 100%; }
-.folderrow b { font-family: var(--display); }
 #testLog .sub { font-family: var(--display); font-size: 16px; margin: 4px 0 0; }
 #testLog .sub .hint { font-family: var(--body); font-weight: 400; }
 .usage { display: flex; flex-direction: column; gap: 10px; }
@@ -261,10 +257,6 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" id="reset">Start over</button>
     </div>
     <p id="status" class="status"></p>
-    <div class="folderrow" id="folderRow" hidden>
-      <button type="button" id="fileMemo">Clean up voice memo</button>
-      <p class="hint">Paste your prompt into your AI first. This goes back to the shortcut, which opens Voice Memos so you can move or delete the recording, then brings you back here.</p>
-    </div>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
       <div class="row">
@@ -581,7 +573,6 @@ details.key[open] summary { margin-bottom: 10px; }
   /* Opens the result card in "writing" mode so the prompt can appear as it streams in. */
   function showWriting(title) {
     if (typeof resetKeep === "function") resetKeep();
-    document.getElementById("folderRow").hidden = true;
     document.getElementById("categoryLine").hidden = true;
     output.value = "";
     status.textContent = "";
@@ -592,21 +583,15 @@ details.key[open] summary { margin-bottom: 10px; }
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  /* Voice Memos folder: an opt-in setting for Kevin's Archive step. Off by default. */
-  /* Set when the Speak to Prompt shortcut opened this page (#paste). The shortcut
-     waits in the background, so the result card offers a way back to it. */
-  var fromShortcut = false;
   try { localStorage.removeItem("stp-folder"); } catch (e) {} /* retired setting */
-  function setFolderRow() {
+  function setCategoryLine() {
     var name = (session && session.category) || "";
     document.getElementById("categoryLine").hidden = !name;
     document.getElementById("categoryName").textContent = name;
-    /* The cleanup button shows only when the shortcut opened the page. */
-    document.getElementById("folderRow").hidden = !fromShortcut;
   }
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
-    setFolderRow();
+    setCategoryLine();
     setReady(true);
     output.value = text;
     status.className = "status";
@@ -653,7 +638,6 @@ details.key[open] summary { margin-bottom: 10px; }
   });
 
   function startOver() {
-    document.getElementById("folderRow").hidden = true;
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     err.hidden = true;
@@ -717,7 +701,6 @@ details.key[open] summary { margin-bottom: 10px; }
      hashchange and when the page comes back from Safari's page cache. Each time,
      the old run is cleared so a previous transcript can't linger in the box. */
   function enterPasteMode(firstLoad) {
-    fromShortcut = true;
     /* On first load the later parts of the page aren't set up yet, and there's
        no old run to clear, so only the box is emptied. */
     if (firstLoad) thoughts.value = ""; else startOver();
@@ -1297,10 +1280,6 @@ details.key[open] summary { margin-bottom: 10px; }
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
   document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
-  /* Opening Shortcuts wakes the shortcut's Wait to Return; it then opens Voice
-     Memos for cleanup and comes back to Safari. The clipboard is left alone, so
-     the prompt stays copied. */
-  document.getElementById("fileMemo").addEventListener("click", function () { window.location.href = "shortcuts://"; });
   /* AI app links. claude.ai/new and chatgpt.com are https links the apps claim
      (universal links), so on iPhone they open the app when it's installed and the
      website when it isn't. Gemini's app only claims a few paths, so iPhone and

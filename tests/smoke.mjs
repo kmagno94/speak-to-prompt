@@ -131,19 +131,10 @@ await check('run stats: logs numbers only, never words; 4 models listed', async 
   expect(!after[0] && !after[1], 'turning stats off did not delete them');
 });
 
-await check('from the shortcut: Clean up voice memo shows and leaves the clipboard alone', async () => {
-  const p = await page({ intake: { title: 'T', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [] } });
+await check('Talk it out runs the Speak to Prompt shortcut', async () => {
+  const p = await page();
   expect(/name=Speak%20to%20Prompt$/.test(await p.getAttribute('#talkLink', 'href')), 'Talk it out not pointing at Speak to Prompt');
-  await withKey(p); await p.fill('#thoughts', 'typed, not from the shortcut'); await p.click('#build'); await done(p);
-  expect(await p.$eval('#folderRow', e => e.hidden), 'cleanup button showed without the shortcut');
-  await p.goto(BASE + '#paste');
-  await p.evaluate(() => navigator.clipboard.writeText('memo from shortcut'));
-  await p.click('#bannerPaste'); await p.waitForTimeout(200);
-  await p.click('#build'); // same tab: the key is still filled in
-  await p.waitForSelector('#folderRow:not([hidden])', { timeout: 15000 }).catch(() => { throw new Error('cleanup button missing after a shortcut run'); });
-  await p.evaluate(() => navigator.clipboard.writeText('THE PROMPT'));
-  await p.click('#fileMemo').catch(() => {}); await p.waitForTimeout(300);
-  expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'clipboard was changed');
+  expect(!(await p.$('#fileMemo')), 'cleanup button should be gone');
 });
 
 await check('AI app links: Gemini opens the app on iPhone, web on computers', async () => {

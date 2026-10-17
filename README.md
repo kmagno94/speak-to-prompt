@@ -38,7 +38,7 @@ The page itself still saves nothing. Your notes live in Apple Notes, on your acc
 Tap **Talk it out** on the page to run the **Speak to Prompt** shortcut (`shortcuts://run-shortcut?name=Speak%20to%20Prompt`). It opens Voice Memos, then brings you back to the page with one big paste button. First time? Install it here:
 https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b
 
-After you build your prompt, the shortcut waits in the background. Paste the prompt into your AI, then tap **Clean up voice memo** (or the shortcut's notification): Voice Memos opens so you can move or delete the recording, and the shortcut brings you back to Safari. The shortcut uses whatever text is on your clipboard, so you can also copy text from anywhere before running it. Every Gemini prompt also shows a short **Category** under the chat name.
+After you build your prompt, the shortcut waits in the background. Paste the prompt into your AI, then tap the shortcut's notification: Voice Memos opens so you can move or delete the recording, and the shortcut brings you back to Safari. The shortcut uses whatever text is on your clipboard, so you can also copy text from anywhere before running it. Every Gemini prompt also shows a short **Category** under the chat name.
 
 Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPhone 12 or newer.
 
@@ -63,7 +63,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 
 ## Tests
 
-`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, repeat shortcut runs, run stats privacy, the voice memo cleanup button, and usage.json.
+`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, repeat shortcut runs, run stats privacy, the Talk it out link, and usage.json.
 
 ## Status
 
