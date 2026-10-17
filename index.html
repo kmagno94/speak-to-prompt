@@ -92,6 +92,9 @@ footer { font-size: 13px; color: var(--muted); }
 .usage .bar { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
 .usage .bar i { display: block; height: 100%; background: var(--accent); }
 .usage .m.out .bar i { background: var(--danger); }
+.usageform { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; }
+.usageform label { display: grid; grid-template-columns: 1fr 5.5em; align-items: center; gap: 10px; font-family: var(--mono); font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+.usageform input { font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); width: 100%; }
 details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
 details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
@@ -314,7 +317,9 @@ details.key[open] summary { margin-bottom: 10px; }
     <h2 id="testLogHead">Run stats</h2>
     <h3 class="sub">Today's usage <span class="hint" id="usageReset"></span></h3>
     <div id="usage" class="usage"></div>
-    <p class="hint">Estimated from runs while stats were on. If a model says it's out for the day, it's marked used up, even if earlier runs weren't counted.</p>
+    <p class="hint">Estimated from runs while stats were on. If a model says it's out for the day, it's marked used up, even if earlier runs weren't counted. For exact numbers, copy today's requests from AI Studio's Usage page.</p>
+    <button type="button" class="link" id="usageEdit">Match AI Studio</button>
+    <div id="usageForm" class="usageform" hidden></div>
     <h3 class="sub">Runs</h3>
     <pre class="runs" id="testRuns"></pre>
     <div class="row">
@@ -374,6 +379,7 @@ details.key[open] summary { margin-bottom: 10px; }
       names.sort(function (a, b) { return (dailyLimit(a) || 999) - (dailyLimit(b) || 999); });
       names.forEach(function (m) {
         var s = u.models[m] || { calls: 0, tokens: 0, out: false }, lim = dailyLimit(m);
+        if (lim && s.calls >= lim) s.out = true;
         var used = s.out && lim ? lim : s.calls;
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
@@ -383,10 +389,49 @@ details.key[open] summary { margin-bottom: 10px; }
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
         var d = document.createElement("span"); d.style.gridColumn = "1 / -1"; d.style.textAlign = "left";
-        d.textContent = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
+        d.textContent = s.calls + " request" + (s.calls === 1 ? "" : "s") + (s.synced ? " (matched to AI Studio)" : " counted") + ", " + n(s.tokens) + " tokens";
         row.appendChild(b); row.appendChild(t); row.appendChild(bar); row.appendChild(d);
         box.appendChild(row);
       });
+    }
+    /* Match AI Studio: type in today's request counts from AI Studio's Usage page
+       (runs made before stats were on, or on other devices, aren't counted here). */
+    var KNOWN = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+    function openEditor() {
+      var u = usage(), form = document.getElementById("usageForm");
+      var names = Object.keys(u.models);
+      (gemini.plan ? gemini.plan.write : []).concat(KNOWN).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
+      names.sort(function (a, b) { return (dailyLimit(a) || 999) - (dailyLimit(b) || 999) || (a < b ? 1 : -1); });
+      form.textContent = "";
+      var p = document.createElement("p"); p.className = "hint";
+      p.textContent = "Requests today, from AI Studio \u2192 Usage \u2192 Requests per model. Leave a model at 0 if it has none.";
+      form.appendChild(p);
+      names.forEach(function (m) {
+        var l = document.createElement("label"); l.textContent = m;
+        var i = document.createElement("input"); i.type = "number"; i.min = "0"; i.inputMode = "numeric"; i.setAttribute("data-model", m);
+        i.value = (u.models[m] && u.models[m].calls) || 0;
+        l.appendChild(i); form.appendChild(l);
+      });
+      var row = document.createElement("div"); row.className = "row";
+      var save = document.createElement("button"); save.type = "button"; save.className = "primary"; save.textContent = "Save";
+      var cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel";
+      save.addEventListener("click", function () {
+        var u2 = usage();
+        Array.prototype.forEach.call(form.querySelectorAll("input"), function (i) {
+          var m = i.getAttribute("data-model"), v = Math.max(0, parseInt(i.value, 10) || 0), lim = dailyLimit(m);
+          var prev = u2.models[m] || { calls: 0, tokens: 0 };
+          if (!v && !u2.models[m]) return;
+          u2.models[m] = { calls: v, tokens: prev.tokens || 0, out: !!(lim && v >= lim), synced: true };
+        });
+        store(TEST_USAGE, JSON.stringify(u2));
+        form.hidden = true;
+        render();
+        document.getElementById("testStatus").textContent = "Usage matched to AI Studio. New runs add on from here.";
+      });
+      cancel.addEventListener("click", function () { form.hidden = true; });
+      row.appendChild(save); row.appendChild(cancel); form.appendChild(row);
+      form.hidden = false;
+      var first = form.querySelector("input"); if (first) first.focus();
     }
     function render() {
       document.getElementById("testLog").hidden = !on;
@@ -439,6 +484,7 @@ details.key[open] summary { margin-bottom: 10px; }
       document.getElementById("testCopy").addEventListener("click", function () {
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(asText()).then(function () { ts.textContent = "Copied. Paste it into the build chat."; }, function () { ts.textContent = "Couldn't copy."; });
       });
+      document.getElementById("usageEdit").addEventListener("click", openEditor);
       document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); store(TEST_USAGE, null); render(); ts.textContent = "Cleared."; });
     }
     return { init: init, add: add, request: request, runs: runs, on: function () { return on; }, refresh: function () { if (on) render(); } };
