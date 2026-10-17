@@ -352,6 +352,7 @@ details.key[open] summary { margin-bottom: 10px; }
     navigator.clipboard.readText().then(function (text) {
       text = (text || "").trim();
       if (!text) { err.textContent = "Your clipboard is empty. Copy the transcript in Voice Memos first."; err.hidden = false; return; }
+      if (text === "Speak to Prompt: waiting for your transcript") { err.textContent = "That's the shortcut's placeholder, not your transcript. In Voice Memos, choose Copy Transcript first."; err.hidden = false; return; }
       var current = thoughts.value.trim();
       thoughts.value = current ? current + "\n\n" + text : text;
       err.hidden = true;
