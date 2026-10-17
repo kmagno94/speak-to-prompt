@@ -176,7 +176,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
     </div>
-    <textarea id="thoughts" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
+    <textarea id="thoughts" autocomplete="off" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row">
@@ -381,8 +381,10 @@ details.key[open] summary { margin-bottom: 10px; }
     }
   });
 
-  document.getElementById("reset").addEventListener("click", function () {
+  function startOver() {
     thoughts.value = "";
+    err.hidden = true;
+    document.getElementById("handoff").hidden = true;
     output.value = "";
     status.textContent = "";
     result.hidden = true;
@@ -397,6 +399,9 @@ details.key[open] summary { margin-bottom: 10px; }
     setReady(true);
     resetKeep();
     setBuild("");
+  }
+  document.getElementById("reset").addEventListener("click", function () {
+    startOver();
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
@@ -421,7 +426,9 @@ details.key[open] summary { margin-bottom: 10px; }
       text = (text || "").trim();
       if (!text) { err.textContent = "Your clipboard is empty. Copy the transcript in Voice Memos first."; err.hidden = false; return; }
       if (text === "Speak to Prompt: waiting for your transcript") { err.textContent = "That's the shortcut's placeholder, not your transcript. In Voice Memos, choose Copy Transcript first."; err.hidden = false; return; }
-      var current = thoughts.value.trim();
+      /* From the shortcut, the transcript replaces whatever was in the box
+         (a fresh run). Tapped by hand, it adds to what's already typed. */
+      var current = fromShortcut ? "" : thoughts.value.trim();
       thoughts.value = current ? current + "\n\n" + text : text;
       err.hidden = true;
       setShortcutMode(false);
@@ -432,14 +439,23 @@ details.key[open] summary { margin-bottom: 10px; }
 
   /* Shortcut hand-off: the shortcut opens this page with #t=<transcript>.
      The text after # never leaves the phone; it is cleared from the address right away. */
+  /* #paste: the shortcut is back with a new transcript on the clipboard.
+     Safari often reuses the open tab without reloading it, so this also runs on
+     hashchange and when the page comes back from Safari's page cache. Each time,
+     the old run is cleared so a previous transcript can't linger in the box. */
+  function enterPasteMode(firstLoad) {
+    /* On first load the later parts of the page aren't set up yet, and there's
+       no old run to clear, so only the box is emptied. */
+    if (firstLoad) thoughts.value = ""; else startOver();
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    setShortcutMode(true);
+    setTimeout(function () { pasteWrap.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
+  }
+  window.addEventListener("hashchange", function () { if (location.hash === "#paste") enterPasteMode(); });
+  window.addEventListener("pageshow", function (e) { if (e.persisted && location.hash === "#paste") enterPasteMode(); });
   (function () {
     var h = location.hash || "";
-    if (h === "#paste") {
-      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-      setShortcutMode(true);
-      setTimeout(function () { pasteWrap.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
-      return;
-    }
+    if (h === "#paste") { enterPasteMode(true); return; }
     if (h.indexOf("#t=") !== 0) return;
     var text = "";
     try { text = decodeURIComponent(h.slice(3)).trim(); } catch (e) { text = ""; }
