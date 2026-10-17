@@ -78,7 +78,16 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }
 #testLog .runs { font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
-#testLog .warn { margin: 0; font-size: 14px; color: var(--muted); }
+.stats { display: flex; flex-direction: column; gap: 4px; }
+#testLog .sub { font-family: var(--display); font-size: 16px; margin: 4px 0 0; }
+#testLog .sub .hint { font-family: var(--body); font-weight: 400; }
+.usage { display: flex; flex-direction: column; gap: 10px; }
+.usage .m { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 14px; }
+.usage .m b { font-family: var(--mono); font-weight: 400; font-size: 13px; overflow-wrap: anywhere; }
+.usage .m span { color: var(--muted); text-align: right; }
+.usage .bar { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.usage .bar i { display: block; height: 100%; background: var(--accent); }
+.usage .m.out .bar i { background: var(--danger); }
 details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
 details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
@@ -255,14 +264,21 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
   </details>
 
+  <div class="stats">
+    <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
+    <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
+  </div>
+
   <section class="card" id="testLog" hidden aria-labelledby="testLogHead">
-    <h2 id="testLogHead">Test runs</h2>
-    <p class="warn">Test mode is on for this phone only. Each run's timings, models, and word counts are saved here so we can tune the wait times. Your words and prompts are never saved.</p>
+    <h2 id="testLogHead">Run stats</h2>
+    <h3 class="sub">Today's usage <span class="hint" id="usageReset"></span></h3>
+    <div id="usage" class="usage"></div>
+    <p class="hint">Estimated from runs while stats were on. If a model says it's out for the day, it's marked used up, even if earlier runs weren't counted.</p>
+    <h3 class="sub">Runs</h3>
     <pre class="runs" id="testRuns"></pre>
     <div class="row">
       <button type="button" class="primary" id="testCopy">Copy log</button>
       <button type="button" id="testClear">Clear log</button>
-      <button type="button" class="link" id="testOff">Turn off test mode</button>
     </div>
     <p id="testStatus" class="status" role="status"></p>
   </section>
@@ -279,64 +295,111 @@ details.key[open] summary { margin-bottom: 10px; }
   var output = document.getElementById("output");
   var status = document.getElementById("status");
 
-  /* Test mode: a temporary build aid. Off unless this phone opens the page with
-     ?test=on once. It saves only run stats (times, models, counts), never words
-     or prompts, and only on this phone. ?test=off or "Turn off test mode" wipes it. */
-  var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log";
+  /* Run stats: a temporary build aid, off by default and switched on with the
+     "Show run stats" toggle. While on, it saves only numbers on this device:
+     each run's times, models, tokens, and word counts, plus today's request count
+     per model. Never words or prompts. Turning it off deletes all of it. */
+  var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log", TEST_USAGE = "stp-test-usage";
+  /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). */
+  function dailyLimit(model) { return /lite/.test(model) ? 500 : /flash/.test(model) ? 20 : null; }
+  /* Google's daily limits reset at midnight Pacific. */
+  function pacificDay() { try { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); } catch (e) { return new Date().toISOString().slice(0, 10); } }
   var testLog = (function () {
     var on = false;
     function store(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
     function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
     function runs() { try { return JSON.parse(read(TEST_LOG) || "[]"); } catch (e) { return []; } }
-    var COLS = ["when", "mode", "complexity", "est_s", "intake_model", "intake_s", "write_model", "thinking", "write_s", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
+    function usage() {
+      var u = null;
+      try { u = JSON.parse(read(TEST_USAGE) || "null"); } catch (e) {}
+      if (!u || u.day !== pacificDay()) u = { day: pacificDay(), models: {} };
+      return u;
+    }
+    var COLS = ["when", "mode", "complexity", "est_s", "intake_model", "intake_s", "intake_tokens", "write_model", "thinking", "write_s", "write_tokens", "thinking_tokens", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
+    function n(x) { return x == null ? "?" : Number(x).toLocaleString(); }
     function fmt(r) {
       return r.when + "  " + r.mode + (r.complexity ? " (" + r.complexity + ")" : "") + "\n" +
-        "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model : "-") +
-        "\n  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s)" : "-") + "\n" +
+        "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model + ", " + n(r.intake_tokens) + " tokens" : "-") + "\n" +
+        "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
-        (r.detours ? ", detours: " + r.detours : "") + (r.outcome !== "ok" ? ", " + r.outcome : "");
+        (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
+    }
+    function renderUsage() {
+      var u = usage(), box = document.getElementById("usage");
+      box.textContent = "";
+      var names = Object.keys(u.models);
+      (gemini.plan ? gemini.plan.write : []).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
+      if (!names.length) { box.textContent = "No requests yet today. Add your key and build a prompt."; return; }
+      names.sort(function (a, b) { return (dailyLimit(a) || 999) - (dailyLimit(b) || 999); });
+      names.forEach(function (m) {
+        var s = u.models[m] || { calls: 0, tokens: 0, out: false }, lim = dailyLimit(m);
+        var used = s.out && lim ? lim : s.calls;
+        var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
+        var b = document.createElement("b"); b.textContent = m;
+        var t = document.createElement("span");
+        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + " left" : s.calls + " used";
+        var bar = document.createElement("div"); bar.className = "bar";
+        var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
+        bar.appendChild(fill);
+        var d = document.createElement("span"); d.style.gridColumn = "1 / -1"; d.style.textAlign = "left";
+        d.textContent = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
+        row.appendChild(b); row.appendChild(t); row.appendChild(bar); row.appendChild(d);
+        box.appendChild(row);
+      });
     }
     function render() {
-      var el = document.getElementById("testLog");
-      el.hidden = !on;
+      document.getElementById("testLog").hidden = !on;
+      document.getElementById("statsToggle").checked = on;
+      var f = document.getElementById("footerLead");
+      if (f) f.textContent = on ? "Run stats are on: timings and counts (never your words) are saved on this device until you turn them off. Your words are gone when you close the tab." : "This site saves nothing. Close or refresh the tab and everything is gone.";
       if (!on) return;
+      document.getElementById("usageReset").textContent = "(resets 3 AM Eastern)";
+      renderUsage();
       var list = runs();
-      document.getElementById("testLogHead").textContent = "Test runs (" + list.length + ")";
+      document.getElementById("testLogHead").textContent = "Run stats (" + list.length + " run" + (list.length === 1 ? "" : "s") + ")";
       document.getElementById("testRuns").textContent = list.length ? list.slice().reverse().map(fmt).join("\n\n") : "No runs yet. Build a prompt and it will show up here.";
     }
     function setOn(v) {
       on = v;
       store(TEST_FLAG, v ? "1" : null);
-      if (!v) store(TEST_LOG, null);
-      var f = document.getElementById("footerLead");
-      if (f) f.textContent = v ? "Test mode is on: run stats (never your words) are saved on this phone until you turn it off. Your words are gone when you close the tab." : "This site saves nothing. Close or refresh the tab and everything is gone.";
+      if (!v) { store(TEST_LOG, null); store(TEST_USAGE, null); }
       render();
     }
     function add(r) {
       if (!on) return;
-      var d = new Date(), pad = function (n) { return (n < 10 ? "0" : "") + n; };
+      var d = new Date(), pad = function (x) { return (x < 10 ? "0" : "") + x; };
       r.when = (d.getMonth() + 1) + "/" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
       var list = runs(); list.push(r);
       store(TEST_LOG, JSON.stringify(list.slice(-200)));
       render();
     }
+    /* Called for every request Gemini answers or refuses. A refusal for the daily
+       limit marks the model used up, which also corrects for uncounted runs. */
+    function request(model, tokens, limitHit) {
+      if (!on) return;
+      var u = usage(), s = u.models[model] || (u.models[model] = { calls: 0, tokens: 0, out: false });
+      if (limitHit) s.out = true; else { s.calls++; s.tokens += tokens || 0; }
+      store(TEST_USAGE, JSON.stringify(u));
+      render();
+    }
     function asText() {
-      var list = runs();
-      return COLS.join("\t") + "\n" + list.map(function (r) { return COLS.map(function (c) { return r[c] == null ? "" : String(r[c]); }).join("\t"); }).join("\n");
+      var u = usage();
+      var head = "usage " + u.day + ": " + Object.keys(u.models).map(function (m) { var s = u.models[m]; return m + " " + s.calls + " req, " + s.tokens + " tok" + (s.out ? ", used up" : ""); }).join(" | ");
+      return head + "\n" + COLS.join("\t") + "\n" + runs().map(function (r) { return COLS.map(function (c) { return r[c] == null ? "" : String(r[c]); }).join("\t"); }).join("\n");
     }
     function init() {
-      var q = new URLSearchParams(location.search).get("test");
-      if (q === "on") setOn(true); else if (q === "off") setOn(false); else setOn(read(TEST_FLAG) === "1");
-      if (q) { try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {} }
+      setOn(read(TEST_FLAG) === "1");
       var ts = document.getElementById("testStatus");
-      document.getElementById("testCopy").addEventListener("click", function () {
-        var t = asText();
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { ts.textContent = "Copied. Paste it into the build chat."; }, function () { ts.textContent = "Couldn't copy."; });
+      document.getElementById("statsToggle").addEventListener("change", function (e) {
+        setOn(e.target.checked);
+        if (e.target.checked) { ts.textContent = ""; document.getElementById("testLog").scrollIntoView({ behavior: "smooth", block: "start" }); }
       });
-      document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); render(); ts.textContent = "Log cleared."; });
-      document.getElementById("testOff").addEventListener("click", function () { setOn(false); });
+      document.getElementById("testCopy").addEventListener("click", function () {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(asText()).then(function () { ts.textContent = "Copied. Paste it into the build chat."; }, function () { ts.textContent = "Couldn't copy."; });
+      });
+      document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); store(TEST_USAGE, null); render(); ts.textContent = "Cleared."; });
     }
-    return { init: init, add: add, on: function () { return on; } };
+    return { init: init, add: add, request: request, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -345,7 +408,7 @@ details.key[open] summary { margin-bottom: 10px; }
     var r = {
       mode: session.mode || "Quick version (no key)",
       complexity: session.complexity || "",
-      intake_model: session.intakeModel || "", intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
+      intake_model: session.intakeModel || "", intake_tokens: session.intakeTokens, intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
       words_in: words(session.raw),
       questions: (session.questions || []).length,
       answered: (session.answers || []).length
@@ -649,6 +712,7 @@ details.key[open] summary { margin-bottom: 10px; }
       if (!plan.write.length) throw new Error("Your key works, but no Flash model showed up for it.");
       gemini.key = key;
       gemini.plan = plan;
+      testLog.refresh();
       gemini.model = plan.write[0];
       if (remember.checked) storeSet(key);
       var backups = plan.write.length - 1;
@@ -788,18 +852,20 @@ details.key[open] summary { margin-bottom: 10px; }
         signal: ctrl ? ctrl.signal : undefined
       }).then(function (res) {
         clearTimeout(timer);
+        var um = res.usageMetadata || {};
+        testLog.request(model, um.totalTokenCount || 0, false);
         var c = res.candidates && res.candidates[0];
         var parts = (c && c.content && c.content.parts) || [];
         var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
         if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
         /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
         if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
-        return { text: out, model: model, ms: Date.now() - started, history: history };
+        return { text: out, model: model, ms: Date.now() - started, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 };
       }).catch(function (e) {
         clearTimeout(timer);
         var secs = Math.round((Date.now() - tAttempt) / 1000);
         if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
-        else if (e.status === 429) history.push(model + " was at its daily limit");
+        else if (e.status === 429) { history.push(model + " was at its daily limit"); testLog.request(model, 0, true); }
         else if (e.status === "empty") history.push(model + " sent an incomplete answer");
         else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable");
         /* A model that rejects the thinking setting gets one more try without it. */
@@ -897,11 +963,11 @@ details.key[open] summary { margin-bottom: 10px; }
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
-      session.intakeModel = r.model; session.intakeMs = r.ms;
+      session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeTokens = r.tokens;
       try { return parseIntake(r.text); } catch (e) {
         var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
         return askGemini(intakeText, true, others, "auto", onIntakeModel).then(function (r2) {
-          session.intakeModel = r2.model + " (retry)"; session.intakeMs += r2.ms;
+          session.intakeModel = r2.model + " (retry)"; session.intakeMs += r2.ms; session.intakeTokens = (session.intakeTokens || 0) + (r2.tokens || 0);
           return parseIntake(r2.text);
         });
       }
@@ -990,7 +1056,7 @@ details.key[open] summary { margin-bottom: 10px; }
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      logRun({ est_s: depth.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10,
+      logRun({ est_s: depth.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
         detours: (r.history || []).join("; "), words_out: words(prompt), outcome: "ok" });
       showResult(prompt, "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
