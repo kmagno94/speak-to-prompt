@@ -1,0 +1,18 @@
+{
+  "note": "Gemini free-tier usage, read from Kevin's AI Studio screenshots by Claude (Usage Check). Day is the Pacific day AI Studio uses; limits reset at midnight Pacific (3 AM Eastern). Values read off chart lines are approximate.",
+  "updated": "2026-10-17T17:39:00-04:00",
+  "day": "2026-10-17",
+  "limits": {
+    "gemini-3.8-flash": 20,
+    "gemini-3.7-flash": 20,
+    "gemini-3.6-flash": 20,
+    "gemini-3.5-flash-lite": 500
+  },
+  "assumed": ["gemini-3.7-flash"],
+  "models": {
+    "gemini-3.8-flash": { "requests": 20, "input_tokens": 15200, "output_tokens": 21500 },
+    "gemini-3.7-flash": { "requests": 2, "input_tokens": 1400, "output_tokens": 900 },
+    "gemini-3.6-flash": { "requests": 0, "input_tokens": 0, "output_tokens": 0 },
+    "gemini-3.5-flash-lite": { "requests": 17, "input_tokens": null, "output_tokens": 10800 }
+  }
+}

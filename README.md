@@ -46,6 +46,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - **Your Gemini key** is only saved on your phone if you tick "Remember my key," and it is sent only to Google, in a request header.
 - **With a key, your words go to Google** to build the prompt, and nowhere else. On Google's free tier, Google may use what you send to improve its products.
 - **Run stats (optional, for testing):** a "Show run stats and daily usage" toggle at the bottom saves timings, token counts, and today's requests per model on your device, so you can see what's left of each free limit. It never saves your words or prompts, and turning it off deletes everything it saved.
+- **usage.json** holds daily Gemini request and token counts read from AI Studio screenshots (no prompts, no words, no key). Run stats shows it next to the runs counted on your device.
 - **Lock your key to this site** (optional): in Google Cloud Credentials, restrict it to the website `https://kmagno94.github.io/*` and to the Generative Language API, so a leaked key is useless anywhere else.
 
 ## How it's built

@@ -315,7 +315,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <h2 id="testLogHead">Run stats</h2>
     <h3 class="sub">Today's usage <span class="hint" id="usageReset"></span></h3>
     <div id="usage" class="usage"></div>
-    <p class="hint">Estimated from runs while stats were on. If a model says it's out for the day, it's marked used up, even if earlier runs weren't counted.</p>
+    <p class="hint" id="usageSource">Counted from runs on this device while stats were on. If a model says it's out for the day, it's marked used up.</p>
     <h3 class="sub">Runs</h3>
     <pre class="runs" id="testRuns"></pre>
     <div class="row">
@@ -346,7 +346,11 @@ details.key[open] summary { margin-bottom: 10px; }
      listed here show their count without a limit. */
   var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500 };
   var ASSUMED = { "gemini-3.7-flash": true };
-  function dailyLimit(model) { return LIMITS[model] || null; }
+  function dailyLimit(model) { return (studio && studio.limits && studio.limits[model]) || LIMITS[model] || null; }
+  /* usage.json: Kevin's AI Studio numbers, updated by Claude from screenshots
+     (the "Usage Check" key phrase). Counts from this device are added on top for
+     runs after that snapshot. Only used when it's for today's Pacific day. */
+  var studio = null;
   /* Google's daily limits reset at midnight Pacific. */
   function pacificDay() { try { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); } catch (e) { return new Date().toISOString().slice(0, 10); } }
   var testLog = (function () {
@@ -383,30 +387,57 @@ details.key[open] summary { margin-bottom: 10px; }
       if (plan.intake.indexOf(m) !== -1) return "backup for questions";
       return "available, not used by the page";
     }
+    var studioLoaded = false;
+    function loadStudio() {
+      if (studioLoaded) return;
+      studioLoaded = true;
+      fetch("usage.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { studio = j && j.models ? j : null; render(); }, function () {});
+    }
+    function studioToday() { return studio && studio.day === pacificDay() ? studio : null; }
+    function since(s, t) { return (s.log || []).filter(function (e) { return e[0] > t; }); }
+    function clockTime(iso) { try { return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
     function renderUsage() {
       var u = usage(), box = document.getElementById("usage");
       box.textContent = "";
+      loadStudio();
+      var st = studioToday(), stTime = st ? Date.parse(st.updated) : 0;
+      document.getElementById("usageSource").textContent = st
+        ? "From your AI Studio screenshots at " + clockTime(st.updated) + " (Usage Check), plus runs on this device since then. Chart readings are approximate."
+        : "Counted from runs on this device while stats were on. Send Usage Check with AI Studio screenshots for the full picture.";
       var order = gemini.plan ? gemini.plan.all : Object.keys(LIMITS);
       var names = order.slice();
-      Object.keys(u.models).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
+      Object.keys(u.models).concat(st ? Object.keys(st.models) : []).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
       if (!gemini.plan && !planLoading) {
         var k = gemini.key || (document.getElementById("gkey").value || "").trim();
         if (k) { planLoading = true; ensureModel(k).catch(function () {}).then(function () { planLoading = false; if (gemini.plan) render(); }); }
       }
       names.forEach(function (m) {
-        var s = u.models[m] || { calls: 0, tokens: 0, out: false }, lim = dailyLimit(m);
+        var local = u.models[m] || { calls: 0, tokens: 0, out: false, log: [] }, lim = dailyLimit(m);
+        var sm = st && st.models[m], s, detail;
+        if (sm) {
+          var extra = since(local, stTime);
+          var tok = (sm.input_tokens || 0) + (sm.output_tokens || 0) + extra.reduce(function (a, e) { return a + (e[1] || 0); }, 0);
+          s = { calls: (sm.requests || 0) + extra.length, tokens: tok, out: !!local.out };
+          detail = (sm.requests || 0) + " in AI Studio" + (extra.length ? " + " + extra.length + " since" : "") + ", about " + n(tok) + " tokens";
+        } else {
+          s = local;
+          detail = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
+        }
+        if (lim && s.calls >= lim) s.out = true;
         var used = s.out && lim ? lim : s.calls;
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
         var role = roleOf(m);
         if (role) { var r = document.createElement("small"); r.className = "role"; r.textContent = role; b.appendChild(r); }
         var t = document.createElement("span");
-        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (ASSUMED[m] ? " (assumed)" : "") + " left" : "limit unknown";
+        var assumed = studio && studio.assumed ? studio.assumed.indexOf(m) !== -1 : ASSUMED[m];
+        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (assumed ? " (assumed)" : "") + " left" : "limit unknown";
         var bar = document.createElement("div"); bar.className = "bar";
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
         var d = document.createElement("span"); d.style.gridColumn = "1 / -1"; d.style.textAlign = "left";
-        d.textContent = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
+        d.textContent = detail;
         row.appendChild(b); row.appendChild(t); row.appendChild(bar); row.appendChild(d);
         box.appendChild(row);
       });
@@ -443,7 +474,7 @@ details.key[open] summary { margin-bottom: 10px; }
     function request(model, tokens, limitHit) {
       if (!on) return;
       var u = usage(), s = u.models[model] || (u.models[model] = { calls: 0, tokens: 0, out: false });
-      if (limitHit) s.out = true; else { s.calls++; s.tokens += tokens || 0; }
+      if (limitHit) s.out = true; else { s.calls++; s.tokens += tokens || 0; (s.log || (s.log = [])).push([Date.now(), tokens || 0]); }
       store(TEST_USAGE, JSON.stringify(u));
       render();
     }
