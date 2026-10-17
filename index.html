@@ -275,7 +275,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="paste">Paste it into:
       <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
       <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
-      <a href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
+      <a id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
     </p>
   </section>
 
@@ -1301,6 +1301,15 @@ details.key[open] summary { margin-bottom: 10px; }
      Memos for cleanup and comes back to Safari. The clipboard is left alone, so
      the prompt stays copied. */
   document.getElementById("fileMemo").addEventListener("click", function () { window.location.href = "shortcuts://"; });
+  /* AI app links. claude.ai/new and chatgpt.com are https links the apps claim
+     (universal links), so on iPhone they open the app when it's installed and the
+     website when it isn't. Gemini's app only claims a few paths, so iPhone and
+     iPad get its "open the app" path; computers keep the regular web address. */
+  (function () {
+    var ua = navigator.userAgent || "";
+    var appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (appleTouch) document.getElementById("geminiLink").href = "https://gemini.google.com/app/download/mobile";
+  })();
   testLog.init();
 })();
 </script>

@@ -139,11 +139,19 @@ await check('from the shortcut: Clean up voice memo shows and leaves the clipboa
   await p.goto(BASE + '#paste');
   await p.evaluate(() => navigator.clipboard.writeText('memo from shortcut'));
   await p.click('#bannerPaste'); await p.waitForTimeout(200);
-  await p.click('#build'); await done(p); // same tab: the key is still filled in
-  expect(!(await p.$eval('#folderRow', e => e.hidden)), 'cleanup button missing after a shortcut run');
+  await p.click('#build'); // same tab: the key is still filled in
+  await p.waitForSelector('#folderRow:not([hidden])', { timeout: 15000 }).catch(() => { throw new Error('cleanup button missing after a shortcut run'); });
   await p.evaluate(() => navigator.clipboard.writeText('THE PROMPT'));
   await p.click('#fileMemo').catch(() => {}); await p.waitForTimeout(300);
   expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'clipboard was changed');
+});
+
+await check('AI app links: Gemini opens the app on iPhone, web on computers', async () => {
+  const p = await page();
+  expect(await p.getAttribute('#geminiLink', 'href') === 'https://gemini.google.com/app', 'desktop Gemini link changed');
+  const ctx = await browser.newContext({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  const m = await ctx.newPage(); await m.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort()); await m.goto(BASE);
+  expect(await m.getAttribute('#geminiLink', 'href') === 'https://gemini.google.com/app/download/mobile', 'iPhone Gemini link not set to the app path');
 });
 
 await check('usage.json is valid', async () => {
