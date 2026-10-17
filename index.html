@@ -164,6 +164,7 @@ details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: an
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
+.statsbody { display: flex; flex-direction: column; gap: 12px; }
 .keybody { display: flex; flex-direction: column; gap: 10px; }
 .keybody p { margin: 0; font-size: 14px; color: var(--muted); }
 .keybody a { color: var(--accent); font-weight: 700; }
@@ -311,8 +312,9 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>
   </div>
 
-  <section class="card" id="testLog" hidden aria-labelledby="testLogHead">
-    <h2 id="testLogHead">Run stats</h2>
+  <details class="key" id="testLog" hidden>
+    <summary id="testLogHead">Run stats</summary>
+    <div class="statsbody">
     <h3 class="sub">Today's usage <span class="hint" id="usageReset"></span></h3>
     <div id="usage" class="usage"></div>
     <p class="hint" id="usageSource">Counted from runs on this device while stats were on. If a model says it's out for the day, it's marked used up.</p>
@@ -323,7 +325,8 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" id="testClear">Clear log</button>
     </div>
     <p id="testStatus" class="status" role="status"></p>
-  </section>
+    </div>
+  </details>
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
 </div>
@@ -397,7 +400,9 @@ details.key[open] summary { margin-bottom: 10px; }
     function studioToday() { return studio && studio.day === pacificDay() ? studio : null; }
     function since(s, t) { return (s.log || []).filter(function (e) { return e[0] > t; }); }
     function clockTime(iso) { try { return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+    var fullLeft = null;
     function renderUsage() {
+      fullLeft = null;
       var u = usage(), box = document.getElementById("usage");
       box.textContent = "";
       loadStudio();
@@ -428,6 +433,7 @@ details.key[open] summary { margin-bottom: 10px; }
         }
         if (lim && s.calls >= lim) s.out = true;
         var used = s.out && lim ? lim : s.calls;
+        if (lim && !/lite/.test(m)) fullLeft = (fullLeft || 0) + Math.max(0, lim - used);
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
         var role = roleOf(m);
@@ -454,7 +460,8 @@ details.key[open] summary { margin-bottom: 10px; }
       document.getElementById("usageReset").textContent = "(resets 3 AM Eastern)";
       renderUsage();
       var list = runs();
-      document.getElementById("testLogHead").textContent = "Run stats (" + list.length + " run" + (list.length === 1 ? "" : "s") + ")";
+      document.getElementById("testLogHead").textContent = "Run stats \u00b7 " + list.length + " run" + (list.length === 1 ? "" : "s") +
+        (fullLeft != null ? " \u00b7 ~" + fullLeft + " full prompts left today" : "");
       document.getElementById("testRuns").textContent = list.length ? list.slice().reverse().map(fmt).join("\n\n") : "No runs yet. Build a prompt and it will show up here.";
     }
     function setOn(v) {
@@ -490,7 +497,7 @@ details.key[open] summary { margin-bottom: 10px; }
       var ts = document.getElementById("testStatus");
       document.getElementById("statsToggle").addEventListener("change", function (e) {
         setOn(e.target.checked);
-        if (e.target.checked) { ts.textContent = ""; document.getElementById("testLog").scrollIntoView({ behavior: "smooth", block: "start" }); }
+        if (e.target.checked) { ts.textContent = ""; var tl = document.getElementById("testLog"); tl.open = true; tl.scrollIntoView({ behavior: "smooth", block: "start" }); }
       });
       document.getElementById("testCopy").addEventListener("click", function () {
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(asText()).then(function () { ts.textContent = "Copied. Paste it into the build chat."; }, function () { ts.textContent = "Couldn't copy."; });
