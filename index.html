@@ -87,6 +87,22 @@ details.memo p.shortcut a { color: var(--accent); font-weight: 700; }
 .banner { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
 .banner p { margin: 0; font-size: 14px; color: var(--ink); }
 button.big { font-size: 19px; padding: 16px 18px; width: 100%; }
+.buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
+.buildstatus.bad { color: var(--danger); }
+.eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.need { margin: 0; color: var(--muted); }
+.qalist { display: flex; flex-direction: column; gap: 18px; }
+.q { display: flex; flex-direction: column; gap: 8px; }
+.q > p { margin: 0; font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { padding: 8px 12px; border-radius: 999px; font-size: 15px; }
+.chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.q input { font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.q input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.madeby { margin: 0; font-size: 13px; color: var(--muted); }
+.chatname { margin: 0; font-size: 15px; }
+.chatname b { font-family: var(--display); }
+button:disabled { opacity: 0.6; cursor: wait; }
 details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
 details.key[open] summary { margin-bottom: 10px; }
@@ -142,10 +158,25 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" id="pasteBtn">Paste my transcript</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
+    <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
+
+  <section class="card" id="qa" hidden aria-live="polite">
+    <p class="eyebrow">A few quick questions</p>
+    <h2 id="qaTitle"></h2>
+    <p id="qaNeed" class="need"></p>
+    <div id="qaList" class="qalist"></div>
+    <div class="row">
+      <button type="button" class="primary" id="qaGo">Write my prompt</button>
+      <button type="button" id="qaSkip">Skip questions</button>
+    </div>
+    <p id="qaStatus" class="buildstatus" role="status"></p>
+  </section>
 
   <section class="card" id="result" hidden aria-live="polite">
     <h2>Your prompt is ready</h2>
+    <p id="madeBy" class="madeby"></p>
+    <p id="chatName" class="chatname" hidden></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <div class="row">
       <button type="button" class="primary" id="copy">Copy prompt</button>
@@ -162,7 +193,7 @@ details.key[open] summary { margin-bottom: 10px; }
   <details class="key" id="keyPanel">
     <summary>Optional: add your free Gemini key</summary>
     <div class="keybody">
-      <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture (coming next). Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, then paste it here.</p>
+      <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture. Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>, then paste it here.</p>
       <label for="gkey" class="hint">Gemini API key</label>
       <input id="gkey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
       <label class="check"><input type="checkbox" id="remember"> Remember my key on this phone</label>
@@ -220,11 +251,34 @@ details.key[open] summary { margin-bottom: 10px; }
     e.preventDefault();
     var raw = thoughts.value.trim();
     if (!raw) { err.textContent = "Type or paste something first."; err.hidden = false; thoughts.focus(); return; }
-    output.value = buildPrompt(raw);
+    if (busy) return;
+    var key = gemini.key || gkey.value.trim();
+    if (key) { geminiFlow(raw, key); return; }
+    showQuick(raw, "");
+  });
+
+  function showResult(text, madeBy, title) {
+    output.value = text;
     status.textContent = "";
+    document.getElementById("madeBy").textContent = madeBy;
+    var chatName = document.getElementById("chatName");
+    if (title) {
+      chatName.textContent = "";
+      chatName.appendChild(document.createTextNode("Name the chat: "));
+      var b = document.createElement("b"); b.textContent = title; chatName.appendChild(b);
+      chatName.hidden = false;
+    } else {
+      chatName.hidden = true;
+    }
+    qa.hidden = true;
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+  }
+  function showQuick(raw, reason) {
+    showResult(buildPrompt(raw),
+      reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
+      "");
+  }
 
   document.getElementById("example").addEventListener("click", function () {
     thoughts.value = EXAMPLE;
@@ -255,6 +309,10 @@ details.key[open] summary { margin-bottom: 10px; }
     output.value = "";
     status.textContent = "";
     result.hidden = true;
+    qa.hidden = true;
+    qaList.textContent = "";
+    session = null;
+    setBuild("");
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
@@ -357,7 +415,7 @@ details.key[open] summary { margin-bottom: 10px; }
     if (status === 400 || status === 403) return "Google didn't accept the key. Copy it again from AI Studio and paste it below.";
     if (status === 429) return "Google says you've hit a limit. Wait a minute and try again.";
     var msg = (body && body.error && body.error.message) || "";
-    return "Google returned an error (" + status + "). " + msg;
+    return "Google returned an error (" + status + ")." + (msg ? " " + msg : "");
   }
   function callGoogle(url, options) {
     return fetch(url, options).then(function (r) {
@@ -396,6 +454,174 @@ details.key[open] summary { margin-bottom: 10px; }
     storeDel();
     setKeyStatus("Key removed from this page and this phone.");
   });
+
+  /* Gemini flow: read the thoughts, ask up to 3 questions, then write one complete prompt.
+     Everything lives in this tab only; nothing is stored. */
+  var qa = document.getElementById("qa");
+  var qaList = document.getElementById("qaList");
+  var buildBtn = document.getElementById("build");
+  var buildStatus = document.getElementById("buildStatus");
+  var qaStatus = document.getElementById("qaStatus");
+  var busy = false;
+  var session = null;
+
+  function setBuild(text, bad) { buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
+  function setBusy(on, label) {
+    busy = on;
+    buildBtn.disabled = on;
+    document.getElementById("qaGo").disabled = on;
+    document.getElementById("qaSkip").disabled = on;
+    buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
+  }
+
+  var ANALYZE = [
+    "You are the intake step of a prompt-building tool for people who are new to AI.",
+    "Read the person's raw thoughts below. They may be a messy voice transcript.",
+    "1. Work out what they actually need: an answer, a plan, a decision, a piece of writing, ideas, or something else. If the thoughts are just a note or a meeting recap, the need is a clean summary with action items.",
+    "2. Decide what is missing that would most improve the final result: their goal, who it is for, limits like time or budget, what a great result looks like, or key facts.",
+    "3. Ask only questions whose answers would clearly change the result. Ask at most 3, fewer when possible, and none if nothing important is missing. Never ask about something they already said.",
+    "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
+    "",
+    "Respond with JSON only, in exactly this shape:",
+    '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "questions": [{"question": "...", "choices": ["...", "..."]}]}',
+    "",
+    "RAW THOUGHTS:",
+    '"""'
+  ].join("\n");
+
+  var WRITE = [
+    "You are a world-class prompt engineer. Turn a person's raw thoughts and their answers into one complete, ready-to-paste prompt for any AI assistant, such as ChatGPT, Claude, or Gemini.",
+    "Before writing, privately decide what a 10 out of 10 prompt for this exact request looks like, and revise until yours meets it. Never mention this process.",
+    "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
+    "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
+    "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
+    "End the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
+    "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
+  ].join("\n");
+
+  function askGemini(text, asJson) {
+    var payload = { contents: [{ role: "user", parts: [{ text: text }] }] };
+    if (asJson) payload.generationConfig = { responseMimeType: "application/json" };
+    return callGoogle(API + "models/" + gemini.model + ":generateContent?key=" + encodeURIComponent(gemini.key), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (body) {
+      var c = body.candidates && body.candidates[0];
+      var parts = (c && c.content && c.content.parts) || [];
+      var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
+      if (!out) throw new Error("Gemini sent back an empty answer.");
+      return out;
+    });
+  }
+
+  function parseIntake(text) {
+    var t = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    var a = t.indexOf("{"), b = t.lastIndexOf("}");
+    var data = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
+    var qs = Array.isArray(data.questions) ? data.questions : [];
+    return {
+      title: String(data.title || "").trim(),
+      need: String(data.need || "").trim(),
+      questions: qs.slice(0, 3).map(function (q) {
+        return {
+          question: String((q && q.question) || "").trim(),
+          choices: (Array.isArray(q && q.choices) ? q.choices : []).slice(0, 4).map(function (c) { return String(c).trim(); }).filter(Boolean)
+        };
+      }).filter(function (q) { return q.question; })
+    };
+  }
+
+  function ensureModel(key) {
+    if (gemini.model && gemini.key === key) return Promise.resolve(gemini.model);
+    return verifyKey(key);
+  }
+
+  function geminiFlow(raw, key) {
+    session = { raw: raw };
+    result.hidden = true;
+    setBusy(true, "Reading your thoughts...");
+    setBuild("Gemini is reading what you wrote and deciding what to ask.");
+    ensureModel(key).then(function () {
+      return askGemini(ANALYZE + "\n" + raw + '\n"""', true);
+    }).then(function (text) {
+      var intake = parseIntake(text);
+      session.title = intake.title;
+      session.questions = intake.questions;
+      setBusy(false);
+      if (!intake.questions.length) { setBuild(""); return writeFinal([]); }
+      setBuild("");
+      renderQuestions(intake);
+    }).catch(function (e) {
+      setBusy(false);
+      setBuild("");
+      showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
+    });
+  }
+
+  function renderQuestions(intake) {
+    document.getElementById("qaTitle").textContent = intake.title || "Let's get the details right";
+    document.getElementById("qaNeed").textContent = intake.need;
+    qaList.textContent = "";
+    intake.questions.forEach(function (q, i) {
+      var wrap = document.createElement("div"); wrap.className = "q";
+      var label = document.createElement("p"); label.id = "q" + i; label.textContent = (i + 1) + ". " + q.question;
+      wrap.appendChild(label);
+      if (q.choices.length) {
+        var chips = document.createElement("div"); chips.className = "chips"; chips.setAttribute("role", "group"); chips.setAttribute("aria-labelledby", label.id);
+        q.choices.forEach(function (c) {
+          var btn = document.createElement("button"); btn.type = "button"; btn.textContent = c; btn.setAttribute("aria-pressed", "false");
+          btn.addEventListener("click", function () {
+            var on = btn.getAttribute("aria-pressed") !== "true";
+            Array.prototype.forEach.call(chips.children, function (x) { x.setAttribute("aria-pressed", "false"); });
+            btn.setAttribute("aria-pressed", on ? "true" : "false");
+          });
+          chips.appendChild(btn);
+        });
+        wrap.appendChild(chips);
+      }
+      var own = document.createElement("input"); own.type = "text"; own.id = "qa-own-" + i;
+      own.placeholder = "Or type your own answer"; own.setAttribute("aria-labelledby", label.id);
+      wrap.appendChild(own);
+      qaList.appendChild(wrap);
+    });
+    qaStatus.textContent = "";
+    qa.hidden = false;
+    qa.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function collectAnswers() {
+    return Array.prototype.map.call(qaList.children, function (wrap, i) {
+      var picked = wrap.querySelector('button[aria-pressed="true"]');
+      var typed = wrap.querySelector("input").value.trim();
+      var answer = [picked ? picked.textContent : "", typed].filter(Boolean).join(". ");
+      return { question: session.questions[i].question, answer: answer };
+    });
+  }
+
+  function writeFinal(answers) {
+    var lines = answers.filter(function (a) { return a.answer; }).map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
+    var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    setBusy(true, "Writing your prompt...");
+    qaStatus.className = "buildstatus";
+    qaStatus.textContent = qa.hidden ? "" : "Writing your prompt with everything you told it...";
+    if (qa.hidden) setBuild("Nothing important was missing. Writing your prompt...");
+    return askGemini(text, false).then(function (prompt) {
+      prompt = prompt.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+      setBusy(false);
+      setBuild("");
+      qaStatus.textContent = "";
+      showResult(prompt, "Built with Gemini (" + gemini.model + "). Your AI can start working right away.", session.title);
+    }).catch(function (e) {
+      setBusy(false);
+      setBuild("");
+      qaStatus.textContent = "";
+      showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+    });
+  }
+
+  document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
+  document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal([]); });
 })();
 </script>
 </body>
