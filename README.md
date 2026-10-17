@@ -19,7 +19,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | | Quick version | With a free Gemini key |
 |---|---|---|
 | Setup | None | About a minute at Google AI Studio |
-| Follow-up questions | Asked by the AI you paste into | Asked on the page, up to 3, tap to answer |
+| Follow-up questions | Asked by the AI you paste into | Asked on the page, tap to answer: usually 1 to 3, up to 5 for complex requests |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
 If Gemini is unavailable, the page falls back to the quick version and says why.
