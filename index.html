@@ -81,8 +81,6 @@ details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10p
 details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
 details.memo p { margin: 0; font-size: 13px; color: var(--muted); }
-details.memo p.shortcut { font-size: 15px; color: var(--ink); margin-bottom: 6px; }
-details.memo p.shortcut a { color: var(--accent); font-weight: 700; }
 .handoff { margin: 0; font-size: 14px; color: var(--ok); }
 .pastewrap { display: flex; flex-direction: column; gap: 8px; }
 .pastewrap p { margin: 0; font-size: 14px; color: var(--ink); }
@@ -101,6 +99,11 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
+.voice { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.btnlink { display: inline-block; text-decoration: none; font-weight: 700; border-radius: 10px; padding: 11px 18px; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+.btnlink:focus-visible, .getlink:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.getlink { color: var(--accent); font-weight: 700; text-underline-offset: 3px; }
+.voicehint { margin: 0; font-size: 13px; color: var(--muted); }
 .quickmode { font-size: 15px; color: var(--muted); }
 .plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
@@ -154,15 +157,19 @@ details.key[open] summary { margin-bottom: 10px; }
 
   <form id="form" class="field" novalidate>
     <label for="thoughts">What's on your mind?</label>
-    <p class="hint">Type it, or paste a voice memo transcript. Messy is fine.</p>
+    <p class="hint">Type it, or talk it out. Messy is fine.</p>
+    <div class="voice">
+      <a class="btnlink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
+      <a class="getlink" href="https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876" target="_blank" rel="noopener">First time? Get the shortcut</a>
+    </div>
+    <p class="voicehint">Talk it out opens the Speak to Prompt shortcut: record in Voice Memos, copy the transcript, and it brings you back here to paste.</p>
     <details class="memo" id="memoGuide">
-      <summary>Rather talk? Use Voice Memos</summary>
+      <summary>No shortcut? Use Voice Memos by hand</summary>
       <ol>
         <li>Open <b>Voice Memos</b> and tap the red button. Ramble as long as you want, then tap it again to stop.</li>
         <li>Tap the <b>three dots</b> on your recording (or press and hold it), then <b>Copy Transcript</b>. If it isn't there yet, wait a few seconds for the transcript to finish.</li>
         <li>Come back here and tap <b>Paste my transcript</b>.</li>
       </ol>
-      <p class="shortcut">Faster on iPhone: <a href="https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876" target="_blank" rel="noopener">get the Speak to Prompt shortcut</a>. It opens Voice Memos for you, then brings your transcript back here.</p>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
     <div id="pasteWrap" class="pastewrap">

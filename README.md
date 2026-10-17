@@ -35,7 +35,7 @@ The page itself still saves nothing. Your notes live in Apple Notes, on your acc
 
 ### Voice on iPhone
 
-The **Speak to Prompt** shortcut opens Voice Memos, then brings you back to the page with one big paste button:
+Tap **Talk it out** on the page to run the **Speak to Prompt** shortcut (`shortcuts://run-shortcut?name=Speak%20to%20Prompt`). It opens Voice Memos, then brings you back to the page with one big paste button. First time? Install it here:
 https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876
 
 Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPhone 12 or newer.
