@@ -84,9 +84,11 @@ details.memo p { margin: 0; font-size: 13px; color: var(--muted); }
 details.memo p.shortcut { font-size: 15px; color: var(--ink); margin-bottom: 6px; }
 details.memo p.shortcut a { color: var(--accent); font-weight: 700; }
 .handoff { margin: 0; font-size: 14px; color: var(--ok); }
-.banner { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
-.banner p { margin: 0; font-size: 14px; color: var(--ink); }
-button.big { font-size: 19px; padding: 16px 18px; width: 100%; }
+.pastewrap { display: flex; flex-direction: column; gap: 8px; }
+.pastewrap p { margin: 0; font-size: 14px; color: var(--ink); }
+button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
+.pastewrap.banner { padding: 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
+.pastewrap.banner button.pastebtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 19px; padding: 16px 18px; }
 .buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
@@ -141,21 +143,20 @@ details.key[open] summary { margin-bottom: 10px; }
       <ol>
         <li>Open <b>Voice Memos</b> and tap the red button. Ramble as long as you want, then tap it again to stop.</li>
         <li>Tap the <b>three dots</b> on your recording (or press and hold it), then <b>Copy Transcript</b>. If it isn't there yet, wait a few seconds for the transcript to finish.</li>
-        <li>Come back here and tap <b>Paste my transcript</b> below.</li>
+        <li>Come back here and tap <b>Paste my transcript</b>.</li>
       </ol>
       <p class="shortcut">Faster on iPhone: <a href="https://www.icloud.com/shortcuts/53056246606441b9b88e6dc450f57ce3" target="_blank" rel="noopener">get the Speak to Prompt shortcut</a>. It opens Voice Memos for you, then brings your transcript back here.</p>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
-    <div id="pasteBanner" class="banner" hidden>
-      <button type="button" class="primary big" id="bannerPaste">Tap to paste your transcript</button>
-      <p>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
+    <div id="pasteWrap" class="pastewrap">
+      <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
+      <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
     </div>
     <textarea id="thoughts" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row">
       <button type="submit" class="primary" id="build">Build my prompt</button>
-      <button type="button" id="pasteBtn">Paste my transcript</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
@@ -317,7 +318,14 @@ details.key[open] summary { margin-bottom: 10px; }
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
-  var pasteBanner = document.getElementById("pasteBanner");
+  var pasteWrap = document.getElementById("pasteWrap");
+  var pasteBtn = document.getElementById("bannerPaste");
+  var pasteHelp = document.getElementById("pasteHelp");
+  function setShortcutMode(on) {
+    pasteWrap.classList.toggle("banner", on);
+    pasteHelp.hidden = !on;
+    pasteBtn.textContent = on ? "Tap to paste your transcript" : "Paste my transcript";
+  }
   var handoff = document.getElementById("handoff");
   function pasteFailed() {
     thoughts.focus();
@@ -332,12 +340,11 @@ details.key[open] summary { margin-bottom: 10px; }
       var current = thoughts.value.trim();
       thoughts.value = current ? current + "\n\n" + text : text;
       err.hidden = true;
-      pasteBanner.hidden = true;
+      setShortcutMode(false);
       if (fromShortcut) handoff.hidden = false;
     }, pasteFailed);
   }
-  document.getElementById("pasteBtn").addEventListener("click", function () { pasteFromClipboard(false); });
-  document.getElementById("bannerPaste").addEventListener("click", function () { pasteFromClipboard(true); });
+  pasteBtn.addEventListener("click", function () { pasteFromClipboard(pasteWrap.classList.contains("banner")); });
 
   /* Shortcut hand-off: the shortcut opens this page with #t=<transcript>.
      The text after # never leaves the phone; it is cleared from the address right away. */
@@ -345,8 +352,8 @@ details.key[open] summary { margin-bottom: 10px; }
     var h = location.hash || "";
     if (h === "#paste") {
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-      pasteBanner.hidden = false;
-      setTimeout(function () { pasteBanner.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
+      setShortcutMode(true);
+      setTimeout(function () { pasteWrap.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
       return;
     }
     if (h.indexOf("#t=") !== 0) return;
