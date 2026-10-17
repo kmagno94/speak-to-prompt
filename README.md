@@ -38,6 +38,8 @@ The page itself still saves nothing. Your notes live in Apple Notes, on your acc
 Tap **Talk it out** on the page to run the **Speak to Prompt** shortcut (`shortcuts://run-shortcut?name=Speak%20to%20Prompt`). It opens Voice Memos, then brings you back to the page with one big paste button. First time? Install it here:
 https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876
 
+**Voice memo filing (optional):** every Gemini prompt shows a short **Category** under the chat name. Turn on **Voice memo filing (Speak to Prompt Plus)** at the bottom of the page and Talk it out runs the Speak to Prompt Plus shortcut instead, with a **File voice memo** button that copies `Category: X` and returns to the shortcut to keep, archive, or delete the recording.
+
 Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPhone 12 or newer.
 
 ## Privacy
@@ -58,6 +60,10 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   - **The final prompt** goes to the newest Flash model first, for the best writing. Gemini rates each request as quick, standard, or complex, and the writing step thinks lightly, in a balanced way, or deeply to match. The plan and its usual time are shown before you start, and there's no rush: it only switches models if one errors out or hits its daily limit.
   - **Backups:** each model has its own daily limit, so when one runs out the page moves to the next. Only when every model is used up does it switch to the quick version.
 - The prompt logic comes from my Prompt Optimization Engine: a short chat title, working out what the person actually needs, clarifying questions, then a prompt built from role, context, task, example, format, and tone.
+
+## Tests
+
+`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, repeat shortcut runs, run stats privacy, voice memo filing, and usage.json.
 
 ## Status
 
