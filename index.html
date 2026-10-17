@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Speak to Prompt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: one narrow column. Loose scratchpad in, clean index card out. */
+:root {
+  --bg: #e9edf2;
+  --surface: #ffffff;
+  --ink: #18212c;
+  --muted: #566170;
+  --line: #d3dae3;
+  --rule: #c9d6e6;
+  --accent: #1d5c8c;
+  --accent-ink: #ffffff;
+  --accent-soft: #dbe8f3;
+  --danger: #a3332b;
+  --ok: #2f6b3f;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --body: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
+    --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
+    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
+  --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
+  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body);
+  font-size: 17px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+header { display: flex; flex-direction: column; gap: 8px; }
+h1 { font-family: var(--display); font-size: clamp(30px, 8vw, 42px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 52ch; }
+.chip { align-self: flex-start; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ok); border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
+.steps b { display: block; font-family: var(--display); color: var(--accent); font-size: 15px; }
+@media (max-width: 460px) { .steps { grid-template-columns: 1fr; } }
+label { font-family: var(--display); font-weight: 600; font-size: 19px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.hint { margin: 0; font-size: 14px; color: var(--muted); }
+textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; border: 1px solid var(--line); resize: vertical; }
+#thoughts {
+  min-height: 190px; padding: 12px 14px; line-height: 32px;
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--rule) 31px 32px);
+  background-position: 0 11px; background-attachment: local;
+}
+textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button { font: inherit; cursor: pointer; border-radius: 10px; padding: 11px 18px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+button.link { border: none; background: none; padding: 6px 2px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.error { color: var(--danger); font-size: 14px; margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 0 var(--line), 0 10px 24px -18px rgba(20, 40, 70, 0.35); }
+.card h2 { font-family: var(--display); font-size: 21px; margin: 0; }
+#output { font-family: var(--mono); font-size: 13.5px; line-height: 1.6; min-height: 260px; padding: 12px; background: var(--bg); border-color: var(--line); }
+.status { font-size: 14px; color: var(--ok); min-height: 1.2em; margin: 0; }
+.paste { font-size: 15px; color: var(--muted); }
+.paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
+footer { font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .card { animation: rise 220ms ease-out; } @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="chip">Nothing is saved</span>
+    <h1>Speak to Prompt</h1>
+    <p class="lede">Say what's on your mind, messy is fine. Get back a prompt you can paste into any AI to get a great answer.</p>
+  </header>
+
+  <ol class="steps" aria-label="How it works">
+    <li><b>1. Dump it</b>Type or talk. No need to be clear.</li>
+    <li><b>2. Copy it</b>Get one ready-to-paste prompt.</li>
+    <li><b>3. Paste it</b>Into ChatGPT, Claude, Gemini, or any AI.</li>
+  </ol>
+
+  <form id="form" class="field" novalidate>
+    <label for="thoughts">What's on your mind?</label>
+    <p class="hint">Tap the microphone on your keyboard to talk instead of type.</p>
+    <textarea id="thoughts" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
+    <p id="err" class="error" hidden>Type or say something first.</p>
+    <div class="row">
+      <button type="submit" class="primary" id="build">Build my prompt</button>
+      <button type="button" class="link" id="example">Try an example</button>
+    </div>
+  </form>
+
+  <section class="card" id="result" hidden aria-live="polite">
+    <h2>Your prompt is ready</h2>
+    <textarea id="output" readonly aria-label="Your prompt"></textarea>
+    <div class="row">
+      <button type="button" class="primary" id="copy">Copy prompt</button>
+      <button type="button" id="reset">Start over</button>
+    </div>
+    <p id="status" class="status"></p>
+    <p class="paste">Paste it into:
+      <a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
+      <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
+      <a href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
+    </p>
+  </section>
+
+  <footer>Your words stay in this tab. Close or refresh it and everything is gone.</footer>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById("form");
+  var thoughts = document.getElementById("thoughts");
+  var err = document.getElementById("err");
+  var result = document.getElementById("result");
+  var output = document.getElementById("output");
+  var status = document.getElementById("status");
+
+  var EXAMPLE = "ok so I want to start running but I always quit after like a week, I work mornings at a coffee shop, I have a bad knee sometimes, and I kind of want to do a 5k with my cousins in the spring but no pressure";
+
+  function buildPrompt(raw) {
+    return [
+      "I want help with something, but I'm not sure how to ask for it well. My raw thoughts are below, exactly as they came out. Please be my guide.",
+      "",
+      "Do these steps in order:",
+      "",
+      "1. Give this chat a short title (5 to 6 words, most specific word first). Write it as: TITLE: [title]",
+      "",
+      "2. Work out what I actually need: an answer, a plan, a decision, a piece of writing, ideas, or something else. If my thoughts are just a note or a meeting recap, tidy them into a clean summary with action items instead.",
+      "",
+      "3. If something important is missing (my goal, who this is for, limits like time or budget, or what the result should look like), ask me up to 3 short questions, one at a time, and wait for each answer. If nothing important is missing, skip this step.",
+      "",
+      "4. Rewrite my request as a clear, complete prompt. Use whatever helps: the expert you should act as, the background, the exact task, an example of a good result, the format, and the tone. Show it under the heading YOUR BETTER PROMPT so I can reuse it.",
+      "",
+      "5. Then follow that prompt and give me the result.",
+      "",
+      "Use plain, friendly language. Keep it practical.",
+      "",
+      "MY RAW THOUGHTS:",
+      "\"\"\"",
+      raw,
+      "\"\"\""
+    ].join("\n");
+  }
+
+  thoughts.addEventListener("input", function () { err.hidden = true; });
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var raw = thoughts.value.trim();
+    if (!raw) { err.hidden = false; thoughts.focus(); return; }
+    output.value = buildPrompt(raw);
+    status.textContent = "";
+    result.hidden = false;
+    result.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  document.getElementById("example").addEventListener("click", function () {
+    thoughts.value = EXAMPLE;
+    err.hidden = true;
+    thoughts.focus();
+  });
+
+  function selectFallback() {
+    output.focus();
+    output.select();
+    output.setSelectionRange(0, output.value.length);
+    status.textContent = "Selected. Press and hold, then tap Copy.";
+  }
+
+  document.getElementById("copy").addEventListener("click", function () {
+    var text = output.value;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        status.textContent = "Copied. Now paste it into your AI.";
+      }, selectFallback);
+    } else {
+      selectFallback();
+    }
+  });
+
+  document.getElementById("reset").addEventListener("click", function () {
+    thoughts.value = "";
+    output.value = "";
+    status.textContent = "";
+    result.hidden = true;
+    thoughts.focus();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+})();
+</script>
+</body>
+</html>
