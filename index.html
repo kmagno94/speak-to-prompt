@@ -92,6 +92,7 @@ footer { font-size: 13px; color: var(--muted); }
 .usage .bar { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
 .usage .bar i { display: block; height: 100%; background: var(--accent); }
 .usage .m.out .bar i { background: var(--danger); }
+.usage .m b .role { display: block; font-family: var(--body); font-size: 12px; color: var(--muted); }
 details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
 details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
@@ -341,8 +342,11 @@ details.key[open] summary { margin-bottom: 10px; }
      each run's times, models, tokens, and word counts, plus today's request count
      per model. Never words or prompts. Turning it off deletes all of it. */
   var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log", TEST_USAGE = "stp-test-usage";
-  /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). */
-  function dailyLimit(model) { return /lite/.test(model) ? 500 : /flash/.test(model) ? 20 : null; }
+  /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). Models not
+     listed here show their count without a limit. */
+  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500 };
+  var ASSUMED = { "gemini-3.7-flash": true };
+  function dailyLimit(model) { return LIMITS[model] || null; }
   /* Google's daily limits reset at midnight Pacific. */
   function pacificDay() { try { return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); } catch (e) { return new Date().toISOString().slice(0, 10); } }
   var testLog = (function () {
@@ -365,20 +369,39 @@ details.key[open] summary { margin-bottom: 10px; }
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
+    /* Every Flash model the key can use (from Google's model list), plus any
+       model that ran today. Before the key is checked, the known models show. */
+    var planLoading = false;
+    function roleOf(m) {
+      var plan = gemini.plan;
+      if (!plan) return "";
+      var flashes = plan.write.filter(function (x) { return !/lite/.test(x); });
+      var i = flashes.indexOf(m);
+      if (i === 0) return "writes full prompts";
+      if (i > 0) return "backup " + i + " for full prompts";
+      if (plan.intake[0] === m) return "questions and Quick prompts";
+      if (plan.intake.indexOf(m) !== -1) return "backup for questions";
+      return "available, not used by the page";
+    }
     function renderUsage() {
       var u = usage(), box = document.getElementById("usage");
       box.textContent = "";
-      var names = Object.keys(u.models);
-      (gemini.plan ? gemini.plan.write : []).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
-      if (!names.length) { box.textContent = "No requests yet today. Add your key and build a prompt."; return; }
-      names.sort(function (a, b) { return (dailyLimit(a) || 999) - (dailyLimit(b) || 999); });
+      var order = gemini.plan ? gemini.plan.all : Object.keys(LIMITS);
+      var names = order.slice();
+      Object.keys(u.models).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
+      if (!gemini.plan && !planLoading) {
+        var k = gemini.key || (document.getElementById("gkey").value || "").trim();
+        if (k) { planLoading = true; ensureModel(k).catch(function () {}).then(function () { planLoading = false; if (gemini.plan) render(); }); }
+      }
       names.forEach(function (m) {
         var s = u.models[m] || { calls: 0, tokens: 0, out: false }, lim = dailyLimit(m);
         var used = s.out && lim ? lim : s.calls;
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
+        var role = roleOf(m);
+        if (role) { var r = document.createElement("small"); r.className = "role"; r.textContent = role; b.appendChild(r); }
         var t = document.createElement("span");
-        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + " left" : s.calls + " used";
+        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (ASSUMED[m] ? " (assumed)" : "") + " left" : "limit unknown";
         var bar = document.createElement("div"); bar.className = "bar";
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
@@ -718,7 +741,9 @@ details.key[open] summary { margin-bottom: 10px; }
     function names(list) { return list.map(function (m) { return m.name.replace(/^models\//, ""); }); }
     var flashes = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest).slice(0, 3));
     var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 2));
-    return { write: flashes.concat(lites), intake: lites.concat(flashes) };
+    var all = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest))
+      .concat(names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest)));
+    return { write: flashes.concat(lites), intake: lites.concat(flashes), all: all };
   }
 
   var saved = storeGet();
