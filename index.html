@@ -405,9 +405,11 @@ details.key[open] summary { margin-bottom: 10px; }
       document.getElementById("usageSource").textContent = st
         ? "From your AI Studio screenshots at " + clockTime(st.updated) + " (Usage Check), plus runs on this device since then. Chart readings are approximate."
         : "Counted from runs on this device while stats were on. Send Usage Check with AI Studio screenshots for the full picture.";
-      var order = gemini.plan ? gemini.plan.all : Object.keys(LIMITS);
-      var names = order.slice();
-      Object.keys(u.models).concat(st ? Object.keys(st.models) : []).forEach(function (m) { if (names.indexOf(m) === -1) names.push(m); });
+      /* Just the 4 models the page uses: 3 Flash models for full prompts, plus the
+         Flash-Lite that handles questions and Quick prompts. */
+      var names = gemini.plan
+        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.slice(0, 1))
+        : Object.keys(LIMITS);
       if (!gemini.plan && !planLoading) {
         var k = gemini.key || (document.getElementById("gkey").value || "").trim();
         if (k) { planLoading = true; ensureModel(k).catch(function () {}).then(function () { planLoading = false; if (gemini.plan) render(); }); }
