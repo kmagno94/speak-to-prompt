@@ -634,8 +634,15 @@ details.key[open] summary { margin-bottom: 10px; }
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
     standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
-    quick:    { level: "low",    words: "light thinking",    secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
+    quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
   };
+  /* Quick prompts: Flash-Lite is fast enough to think a bit more, which keeps
+     it from dropping details. A Flash backup stays light so it stays quick. */
+  function quickLevel(model) { return /lite/.test(model) ? "medium" : "low"; }
+  function depthWords(depth, model) {
+    if (depth.level !== "quick") return depth.words;
+    return quickLevel(model) === "medium" ? "balanced thinking" : "light thinking";
+  }
   /* Quick prompts go to Flash-Lite first (largest free daily allowance, fastest),
      so they don't spend the small Flash allowance that full prompts need.
      Flash models stay in the list as backups. */
@@ -648,7 +655,7 @@ details.key[open] summary { margin-bottom: 10px; }
     function payload(withThinking, model) {
       var cfg = {};
       if (asJson) cfg.responseMimeType = "application/json";
-      var lvl = withThinking ? (level === "auto" ? levelFor(model) : level) : "";
+      var lvl = withThinking ? (level === "auto" ? levelFor(model) : level === "quick" ? quickLevel(model) : level) : "";
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
       var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
@@ -870,7 +877,7 @@ details.key[open] summary { margin-bottom: 10px; }
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      showResult(prompt, "Built with Gemini (" + r.model + ", " + depth.words + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
+      showResult(prompt, "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
