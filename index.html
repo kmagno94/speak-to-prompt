@@ -107,6 +107,26 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) { .progress.indeterminate .bar { width: 100%; opacity: 0.5; } }
 .buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
+/* Step tracker: where the run is, how long it's been, and about how long is left. */
+.tracker { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }
+.tracker li::before { content: ""; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); box-sizing: border-box; }
+.tracker li.done { color: var(--ink); }
+.tracker li.done::before { content: "\2713"; display: grid; place-items: center; color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-size: 14px; font-weight: 700; }
+.tracker li.active { color: var(--accent); font-weight: 700; }
+.tracker li.active::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, var(--accent-soft) 6px); }
+.tracker li.skip { opacity: 0.45; text-decoration: line-through; }
+@media (prefers-reduced-motion: no-preference) {
+  .tracker li.active::before { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+}
+.tracker .nums { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.tracker .nums b { font-family: var(--mono); font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tracker .nums small { display: block; font-size: 12px; color: var(--muted); }
+.tracker .nums .right { text-align: right; }
+.tracker .nums .over b { font-size: 15px; font-family: var(--body); color: var(--muted); }
+.tracker .detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
@@ -194,8 +214,13 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
-    <label class="check quickmode"><input type="checkbox" id="quickMode"> Quick mode: skip questions, ready in about 15 seconds</label>
-    <div class="progress" id="buildProg" hidden><div class="bar"></div></div>
+    <label class="check quickmode"><input type="checkbox" id="quickMode"> <span id="quickLabel">Quick mode: skip questions, ready in about 15 seconds</span></label>
+    <div class="tracker" id="buildTrack" hidden>
+      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <div class="progress" id="buildProg"><div class="bar"></div></div>
+      <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
+      <p class="detail"></p>
+    </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
 
@@ -215,7 +240,12 @@ details.key[open] summary { margin-bottom: 10px; }
 
   <section class="card" id="result" hidden aria-live="polite">
     <h2 id="resultHead">Your prompt is ready</h2>
-    <div class="progress" id="resultProg" hidden><div class="bar"></div></div>
+    <div class="tracker" id="resultTrack" hidden>
+      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <div class="progress" id="resultProg"><div class="bar"></div></div>
+      <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
+      <p class="detail"></p>
+    </div>
     <p id="madeBy" class="madeby"></p>
     <p id="chatName" class="chatname" hidden></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
@@ -315,7 +345,7 @@ details.key[open] summary { margin-bottom: 10px; }
       if (!u || u.day !== pacificDay()) u = { day: pacificDay(), models: {} };
       return u;
     }
-    var COLS = ["when", "mode", "complexity", "est_s", "intake_model", "intake_s", "intake_tokens", "write_model", "thinking", "write_s", "write_tokens", "thinking_tokens", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
+    var COLS = ["when", "mode", "complexity", "depth", "est_s", "intake_model", "intake_s", "intake_tokens", "write_model", "thinking", "write_s", "write_tokens", "thinking_tokens", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
     function n(x) { return x == null ? "?" : Number(x).toLocaleString(); }
     function fmt(r) {
       return r.when + "  " + r.mode + (r.complexity ? " (" + r.complexity + ")" : "") + "\n" +
@@ -350,6 +380,7 @@ details.key[open] summary { margin-bottom: 10px; }
     function render() {
       document.getElementById("testLog").hidden = !on;
       document.getElementById("statsToggle").checked = on;
+      if (typeof updateQuickLabel === "function") updateQuickLabel();
       var f = document.getElementById("footerLead");
       if (f) f.textContent = on ? "Run stats are on: timings and counts (never your words) are saved on this device until you turn them off. Your words are gone when you close the tab." : "This site saves nothing. Close or refresh the tab and everything is gone.";
       if (!on) return;
@@ -399,7 +430,7 @@ details.key[open] summary { margin-bottom: 10px; }
       });
       document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); store(TEST_USAGE, null); render(); ts.textContent = "Cleared."; });
     }
-    return { init: init, add: add, request: request, on: function () { return on; }, refresh: function () { if (on) render(); } };
+    return { init: init, add: add, request: request, runs: runs, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -751,6 +782,8 @@ details.key[open] summary { margin-bottom: 10px; }
 
   function setProgress(el, mode, pct) {
     el.hidden = mode === "off";
+    var track = el.closest ? el.closest(".tracker") : null;
+    if (track) { track.hidden = mode === "off"; el.hidden = false; }
     el.classList.toggle("indeterminate", mode === "busy");
     el.firstElementChild.style.width = mode === "pct" ? pct + "%" : "";
   }
@@ -818,7 +851,7 @@ details.key[open] summary { margin-bottom: 10px; }
      Flash models stay in the list as backups. */
   function writeModels(quick) { return quick ? gemini.plan.intake : gemini.plan.write; }
   function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
-  function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + d.range; }
+  function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
   function askGemini(text, asJson, models, level, onModel, limit) {
     var started = Date.now();
     var history = [];
@@ -880,41 +913,78 @@ details.key[open] summary { margin-bottom: 10px; }
   var WRITE_LIMIT = 300000;
   /* Usual seconds per model, used only for the progress estimate. */
 
-  /* Time-based progress: honest estimate, never claims done early. */
-  function startEstimate(bar, el, label, usual) {
+  /* Learned estimates: while run stats are on, each finished run teaches the
+     page how long that kind of run really takes (median of the last 8, once
+     there are at least 2). With stats off, the built-in defaults are used. */
+  var INTAKE_SECS = 6;
+  function depthKeyOf(r) { return r.depth || (/Quick/.test(r.mode || "") ? "quick" : (r.complexity || "standard")); }
+  function learned(field, key) {
+    if (!testLog.on()) return null;
+    var vals = testLog.runs().filter(function (r) {
+      return r.outcome === "ok" && typeof r[field] === "number" && (key == null || depthKeyOf(r) === key);
+    }).slice(-8).map(function (r) { return r[field]; }).sort(function (a, b) { return a - b; });
+    if (vals.length < 2) return null;
+    var mid = Math.floor(vals.length / 2);
+    var med = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+    return { secs: Math.max(2, Math.round(med)), n: vals.length };
+  }
+  function clock(n) { n = Math.max(0, Math.round(n)); return Math.floor(n / 60) + ":" + (n % 60 < 10 ? "0" : "") + (n % 60); }
+  function writeEstimate(key) {
+    var l = learned("write_s", key), d = DEPTH[key] || DEPTH.standard;
+    return l ? { secs: l.secs, range: "usually about " + clock(l.secs) + " (from your last " + l.n + " runs)", learned: true } : { secs: d.secs, range: d.range, learned: false };
+  }
+  function intakeEstimate() { var l = learned("intake_s", null); return l ? l.secs : INTAKE_SECS; }
+  function updateQuickLabel() {
+    var q = writeEstimate("quick"), total = intakeEstimate() + q.secs;
+    document.getElementById("quickLabel").textContent = "Quick mode: skip questions, ready in about " + (q.learned ? total + " seconds (learned)" : "15 seconds");
+  }
+
+  /* Step tracker with time-based progress: elapsed and an honest estimate of
+     what's left. The bar never claims done early (it stops at 95%). */
+  function setSteps(track, active, skipAsk) {
+    var order = ["read", "ask", "write", "ready"], at = order.indexOf(active);
+    Array.prototype.forEach.call(track.querySelectorAll("li"), function (li, i) {
+      var step = li.getAttribute("data-step");
+      li.className = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
+      if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    });
+  }
+  function startEstimate(bar, label, usual, step, skipAsk) {
+    var track = bar.closest(".tracker");
+    var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
+    setSteps(track, step, skipAsk);
     setProgress(bar, "pct", 2);
     function draw() {
-      var secs = Math.round((Date.now() - t0) / 1000);
-      var since = (Date.now() - tModel) / 1000;
-      var pct = Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))));
-      setProgress(bar, "pct", Math.max(2, pct));
-      var left = Math.round(usual - since);
-      el.className = "buildstatus";
-      function fmt(n) { return n >= 60 ? Math.floor(n / 60) + "m " + (n % 60) + "s" : n + "s"; }
-      el.textContent = label + (model ? " \u00b7 " + model : "") + " \u00b7 " + fmt(secs) + " \u00b7 " +
-        (left > 2 ? "about " + fmt(left) + " left" : "taking longer than usual, still working");
+      var secs = (Date.now() - t0) / 1000, since = (Date.now() - tModel) / 1000;
+      setProgress(bar, "pct", Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))))));
+      var left = usual - since;
+      elEl.textContent = clock(secs);
+      var over = left <= 1;
+      right.classList.toggle("over", over);
+      leftEl.textContent = over ? "Almost there" : clock(left);
+      leftLbl.textContent = over ? "taking a bit longer than usual" : "estimated left";
+      detail.textContent = label + (model ? " · " + model : "");
     }
     stopTicker();
     draw();
     ticker = setInterval(draw, 1000);
     return function (m) { model = m; tModel = Date.now(); draw(); };
   }
-
-  /* Live progress so a slow answer never looks frozen. */
-  var ticker = null;
-  function startTicker(el, label) {
-    var t0 = Date.now(), model = "";
-    function draw() {
-      var secs = Math.round((Date.now() - t0) / 1000);
-      el.className = "buildstatus";
-      el.textContent = label + (model ? " with " + model : "") + "... " + secs + "s";
-    }
+  function finishTrack(bar, secs, skipAsk) {
+    var track = bar.closest(".tracker");
     stopTicker();
-    draw();
-    ticker = setInterval(draw, 1000);
-    return function (m) { model = m; draw(); };
+    setSteps(track, "ready", skipAsk);
+    track.querySelector("li[data-step='ready']").className = "done";
+    setProgress(bar, "pct", 100);
+    track.querySelector(".el").textContent = clock(secs);
+    var right = track.querySelector(".right");
+    right.classList.add("over");
+    track.querySelector(".left").textContent = "Done";
+    track.querySelector(".leftlbl").textContent = "";
   }
+
+  var ticker = null;
   function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
 
   function parseIntake(text) {
@@ -957,8 +1027,8 @@ details.key[open] summary { margin-bottom: 10px; }
     session = { raw: raw };
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
-    var onIntakeModel = startTicker(buildStatus, "Reading your thoughts");
-    setProgress(document.getElementById("buildProg"), "busy");
+    buildStatus.textContent = "";
+    var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", intakeEstimate(), "read", false);
     var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
@@ -1043,20 +1113,21 @@ details.key[open] summary { margin-bottom: 10px; }
     var resultProg = document.getElementById("resultProg");
     showWriting(session.title);
     var depth = quick ? DEPTH.quick : depthOf(session.complexity);
-    var eta = startEstimate(resultProg, status, depth.label + " \u00b7 " + depth.words, depth.secs);
+    var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
+    var est = writeEstimate(depthKey);
+    var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
+    var eta = startEstimate(resultProg, depth.label + " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : ""), est.secs, "write", skipAsk);
     return askGemini(text, false, writeModels(quick), depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
-      stopTicker();
-      setProgress(resultProg, "pct", 100);
+      finishTrack(resultProg, r.ms / 1000, skipAsk);
       var detour = r.history && r.history.length ? " (" + r.history.join("; ") + ")" : "";
-      setTimeout(function () { if (run === writeRun) setProgress(resultProg, "off"); }, 600);
       var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      logRun({ est_s: depth.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
+      logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
         detours: (r.history || []).join("; "), words_out: words(prompt), outcome: "ok" });
       showResult(prompt, "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
@@ -1067,7 +1138,7 @@ details.key[open] summary { margin-bottom: 10px; }
       setBuild("");
       qaStatus.textContent = "";
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
-      logRun({ est_s: depth.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
+      logRun({ depth: depthKey, est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
 
