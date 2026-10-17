@@ -27,7 +27,7 @@ If Gemini is unavailable, the page falls back to the quick version and says why.
 ### Voice on iPhone
 
 The **Speak to Prompt** shortcut opens Voice Memos, then brings you back to the page with one big paste button:
-https://www.icloud.com/shortcuts/53056246606441b9b88e6dc450f57ce3
+https://www.icloud.com/shortcuts/dd0556b734bd4c5783a3d9421a1e7876
 
 Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPhone 12 or newer.
 
