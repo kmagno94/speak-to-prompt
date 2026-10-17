@@ -474,9 +474,12 @@ details.key[open] summary { margin-bottom: 10px; }
         return body;
       });
     }
+    function timedOut() { var t = new Error("Gemini took too long."); t.status = "timeout"; return t; }
     return fetch(API + path, Object.assign({}, options, { headers: headers })).then(handle, function () {
+      if (options.signal && options.signal.aborted) throw timedOut();
       var sep = path.indexOf("?") === -1 ? "?" : "&";
       return fetch(API + path + sep + "key=" + encodeURIComponent(key), options).then(handle, function () {
+        if (options.signal && options.signal.aborted) throw timedOut();
         throw new Error("Couldn't reach Google. Check your connection and try again.");
       });
     });
@@ -524,7 +527,7 @@ details.key[open] summary { margin-bottom: 10px; }
   var busy = false;
   var session = null;
 
-  function setBuild(text, bad) { buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
+  function setBuild(text, bad) { stopTicker(); buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
   function setBusy(on, label) {
     busy = on;
     buildBtn.disabled = on;
@@ -550,22 +553,34 @@ details.key[open] summary { margin-bottom: 10px; }
 
   var WRITE = [
     "You are a world-class prompt engineer. Turn a person's raw thoughts and their answers into one complete, ready-to-paste prompt for any AI assistant, such as ChatGPT, Claude, or Gemini.",
-    "Before writing, privately decide what a 10 out of 10 prompt for this exact request looks like, and revise until yours meets it. Never mention this process.",
     "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
     "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
     "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
     "If the thoughts hold several distinct directions or action items and it is not clear which one to pursue, end the prompt by asking the AI to first lay them out as numbered options, each with 2 to 4 sentences on what it would produce, then wait for the person to choose. Otherwise, end the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
+    "Before you finish, check once that every key fact is kept, the task is unmistakable, and the format is stated. Do not show this check.",
     "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
   ].join("\n");
 
-  var RETRY = [429, 403, 404, 500, 503, "empty"];
+  var RETRY = [429, 403, 404, 500, 503, "empty", "timeout"];
+  var TIME_LIMIT = 45000;
   /* Tries each model in order. Moves on when a model is out of its daily limit,
-     unavailable, or sends back nothing. Resolves to { text, model }. */
-  function askGemini(text, asJson, models) {
-    var payload = { contents: [{ role: "user", parts: [{ text: text }] }] };
-    if (asJson) payload.generationConfig = { responseMimeType: "application/json" };
-    var body = JSON.stringify(payload);
-    function attempt(i, lastErr) {
+     unavailable, slower than TIME_LIMIT, or sends back nothing.
+     level sets how much the model thinks first ("low" keeps it quick).
+     onModel(name) reports which model is working. Resolves to { text, model, ms }. */
+  /* Flash-Lite answers fastest at its lightest setting; Flash models get "low". */
+  function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
+  function askGemini(text, asJson, models, level, onModel) {
+    var started = Date.now();
+    function payload(withThinking, model) {
+      var cfg = {};
+      if (asJson) cfg.responseMimeType = "application/json";
+      var lvl = withThinking ? levelFor(model) : "";
+      if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
+      var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
+      if (Object.keys(cfg).length) p.generationConfig = cfg;
+      return JSON.stringify(p);
+    }
+    function attempt(i, lastErr, withThinking) {
       if (i >= models.length) {
         if (lastErr && lastErr.status === 429) {
           var all = new Error("Every free Gemini model on your key has hit today's limit. It resets overnight, around 3 AM Eastern.");
@@ -575,23 +590,47 @@ details.key[open] summary { margin-bottom: 10px; }
         throw lastErr || new Error("No Gemini model was available.");
       }
       var model = models[i];
+      if (onModel) onModel(model);
+      var ctrl = window.AbortController ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, TIME_LIMIT) : null;
       return callGoogle("models/" + model + ":generateContent", gemini.key, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: body
+        body: payload(withThinking, model),
+        signal: ctrl ? ctrl.signal : undefined
       }).then(function (res) {
+        clearTimeout(timer);
         var c = res.candidates && res.candidates[0];
         var parts = (c && c.content && c.content.parts) || [];
         var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
         if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
-        return { text: out, model: model };
+        return { text: out, model: model, ms: Date.now() - started };
       }).catch(function (e) {
-        if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e);
+        clearTimeout(timer);
+        /* A model that rejects the thinking setting gets one more try without it. */
+        if (e.status === 400 && withThinking) return attempt(i, e, false);
+        if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
         throw e;
       });
     }
-    return attempt(0, null);
+    return attempt(0, null, true);
   }
+
+  /* Live progress so a slow answer never looks frozen. */
+  var ticker = null;
+  function startTicker(el, label) {
+    var t0 = Date.now(), model = "";
+    function draw() {
+      var secs = Math.round((Date.now() - t0) / 1000);
+      el.className = "buildstatus";
+      el.textContent = label + (model ? " with " + model : "") + "... " + secs + "s";
+    }
+    stopTicker();
+    draw();
+    ticker = setInterval(draw, 1000);
+    return function (m) { model = m; draw(); };
+  }
+  function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
 
   function parseIntake(text) {
     var t = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
@@ -632,14 +671,14 @@ details.key[open] summary { margin-bottom: 10px; }
     session = { raw: raw };
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
-    setBuild("Gemini is reading what you wrote and deciding what to ask.");
+    var onIntakeModel = startTicker(buildStatus, "Reading your thoughts");
     var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
-      return askGemini(intakeText, true, gemini.plan.intake);
+      return askGemini(intakeText, true, gemini.plan.intake, "low", onIntakeModel);
     }).then(function (r) {
       try { return parseIntake(r.text); } catch (e) {
         var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
-        return askGemini(intakeText, true, others).then(function (r2) { return parseIntake(r2.text); });
+        return askGemini(intakeText, true, others, "low", onIntakeModel).then(function (r2) { return parseIntake(r2.text); });
       }
     }).then(function (intake) {
       session.title = intake.title;
@@ -702,15 +741,16 @@ details.key[open] summary { margin-bottom: 10px; }
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     setBusy(true, "Writing your prompt...");
     qaStatus.className = "buildstatus";
-    qaStatus.textContent = qa.hidden ? "" : "Writing your prompt with everything you told it...";
-    if (qa.hidden) setBuild("Nothing important was missing. Writing your prompt...");
-    return askGemini(text, false, gemini.plan.write).then(function (r) {
+    var onWriteModel = startTicker(qa.hidden ? buildStatus : qaStatus, "Writing your prompt");
+    return askGemini(text, false, gemini.plan.write, "low", onWriteModel).then(function (r) {
+      stopTicker();
       var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
-      showResult(prompt, "Built with Gemini (" + r.model + "). Your AI can start working right away.", session.title);
+      showResult(prompt, "Built with Gemini (" + r.model + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s. Your AI can start working right away.", session.title);
     }).catch(function (e) {
+      stopTicker();
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
