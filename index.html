@@ -77,6 +77,8 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }
+#testLog .runs { font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
+#testLog .warn { margin: 0; font-size: 14px; color: var(--muted); }
 details.memo { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 14px; }
 details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); }
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
@@ -253,7 +255,19 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
   </details>
 
-  <footer>This site saves nothing. Close or refresh the tab and everything is gone. If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
+  <section class="card" id="testLog" hidden aria-labelledby="testLogHead">
+    <h2 id="testLogHead">Test runs</h2>
+    <p class="warn">Test mode is on for this phone only. Each run's timings, models, and word counts are saved here so we can tune the wait times. Your words and prompts are never saved.</p>
+    <pre class="runs" id="testRuns"></pre>
+    <div class="row">
+      <button type="button" class="primary" id="testCopy">Copy log</button>
+      <button type="button" id="testClear">Clear log</button>
+      <button type="button" class="link" id="testOff">Turn off test mode</button>
+    </div>
+    <p id="testStatus" class="status" role="status"></p>
+  </section>
+
+  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
 </div>
 
 <script>
@@ -264,6 +278,81 @@ details.key[open] summary { margin-bottom: 10px; }
   var result = document.getElementById("result");
   var output = document.getElementById("output");
   var status = document.getElementById("status");
+
+  /* Test mode: a temporary build aid. Off unless this phone opens the page with
+     ?test=on once. It saves only run stats (times, models, counts), never words
+     or prompts, and only on this phone. ?test=off or "Turn off test mode" wipes it. */
+  var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log";
+  var testLog = (function () {
+    var on = false;
+    function store(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+    function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function runs() { try { return JSON.parse(read(TEST_LOG) || "[]"); } catch (e) { return []; } }
+    var COLS = ["when", "mode", "complexity", "est_s", "intake_model", "intake_s", "write_model", "thinking", "write_s", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
+    function fmt(r) {
+      return r.when + "  " + r.mode + (r.complexity ? " (" + r.complexity + ")" : "") + "\n" +
+        "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model : "-") +
+        "\n  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s)" : "-") + "\n" +
+        "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
+        (r.detours ? ", detours: " + r.detours : "") + (r.outcome !== "ok" ? ", " + r.outcome : "");
+    }
+    function render() {
+      var el = document.getElementById("testLog");
+      el.hidden = !on;
+      if (!on) return;
+      var list = runs();
+      document.getElementById("testLogHead").textContent = "Test runs (" + list.length + ")";
+      document.getElementById("testRuns").textContent = list.length ? list.slice().reverse().map(fmt).join("\n\n") : "No runs yet. Build a prompt and it will show up here.";
+    }
+    function setOn(v) {
+      on = v;
+      store(TEST_FLAG, v ? "1" : null);
+      if (!v) store(TEST_LOG, null);
+      var f = document.getElementById("footerLead");
+      if (f) f.textContent = v ? "Test mode is on: run stats (never your words) are saved on this phone until you turn it off. Your words are gone when you close the tab." : "This site saves nothing. Close or refresh the tab and everything is gone.";
+      render();
+    }
+    function add(r) {
+      if (!on) return;
+      var d = new Date(), pad = function (n) { return (n < 10 ? "0" : "") + n; };
+      r.when = (d.getMonth() + 1) + "/" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+      var list = runs(); list.push(r);
+      store(TEST_LOG, JSON.stringify(list.slice(-200)));
+      render();
+    }
+    function asText() {
+      var list = runs();
+      return COLS.join("\t") + "\n" + list.map(function (r) { return COLS.map(function (c) { return r[c] == null ? "" : String(r[c]); }).join("\t"); }).join("\n");
+    }
+    function init() {
+      var q = new URLSearchParams(location.search).get("test");
+      if (q === "on") setOn(true); else if (q === "off") setOn(false); else setOn(read(TEST_FLAG) === "1");
+      if (q) { try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {} }
+      var ts = document.getElementById("testStatus");
+      document.getElementById("testCopy").addEventListener("click", function () {
+        var t = asText();
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { ts.textContent = "Copied. Paste it into the build chat."; }, function () { ts.textContent = "Couldn't copy."; });
+      });
+      document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); render(); ts.textContent = "Log cleared."; });
+      document.getElementById("testOff").addEventListener("click", function () { setOn(false); });
+    }
+    return { init: init, add: add, on: function () { return on; } };
+  })();
+  function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
+  /* One log entry per run, built from what the session already knows. */
+  function logRun(extra) {
+    if (!testLog.on() || !session) return;
+    var r = {
+      mode: session.mode || "Quick version (no key)",
+      complexity: session.complexity || "",
+      intake_model: session.intakeModel || "", intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
+      words_in: words(session.raw),
+      questions: (session.questions || []).length,
+      answered: (session.answers || []).length
+    };
+    for (var k in extra) r[k] = extra[k];
+    testLog.add(r);
+  }
 
   var EXAMPLE = "ok so I want to start running but I always quit after like a week, I work mornings at a coffee shop, I have a bad knee sometimes, and I kind of want to do a 5k with my cousins in the spring but no pressure";
 
@@ -303,6 +392,7 @@ details.key[open] summary { margin-bottom: 10px; }
     if (key) { geminiFlow(raw, key); return; }
     session = { raw: raw, quick: true };
     showQuick(raw, "");
+    logRun({ outcome: "ok", words_out: words(output.value) });
   });
 
   function setChatName(title) {
@@ -807,9 +897,13 @@ details.key[open] summary { margin-bottom: 10px; }
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
+      session.intakeModel = r.model; session.intakeMs = r.ms;
       try { return parseIntake(r.text); } catch (e) {
         var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
-        return askGemini(intakeText, true, others, "auto", onIntakeModel).then(function (r2) { return parseIntake(r2.text); });
+        return askGemini(intakeText, true, others, "auto", onIntakeModel).then(function (r2) {
+          session.intakeModel = r2.model + " (retry)"; session.intakeMs += r2.ms;
+          return parseIntake(r2.text);
+        });
       }
     }).then(function (intake) {
       session.title = intake.title;
@@ -817,14 +911,16 @@ details.key[open] summary { margin-bottom: 10px; }
       session.note = intake.note;
       session.complexity = intake.complexity;
       setBusy(false);
-      if (document.getElementById("quickMode").checked) { setBuild(""); return writeFinal([], true); }
-      if (!intake.questions.length) { setBuild(""); return writeFinal([]); }
+      if (document.getElementById("quickMode").checked) { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
+      if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
       setBuild("");
       renderQuestions(intake);
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
+      session.mode = "Intake";
+      logRun({ outcome: "intake failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
 
@@ -870,6 +966,7 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   function writeFinal(answers, quick) {
+    if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
@@ -893,6 +990,8 @@ details.key[open] summary { margin-bottom: 10px; }
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
+      logRun({ est_s: depth.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10,
+        detours: (r.history || []).join("; "), words_out: words(prompt), outcome: "ok" });
       showResult(prompt, "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + Math.max(1, Math.round(r.ms / 1000)) + "s" + detour + ". Your AI can start working right away.", session.title);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
@@ -902,6 +1001,7 @@ details.key[open] summary { margin-bottom: 10px; }
       setBuild("");
       qaStatus.textContent = "";
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+      logRun({ est_s: depth.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
 
@@ -965,6 +1065,7 @@ details.key[open] summary { margin-bottom: 10px; }
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
   document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
+  testLog.init();
 })();
 </script>
 </body>
