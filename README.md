@@ -22,6 +22,8 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | Follow-up questions | Asked by the AI you paste into | Asked on the page, tap to answer: usually 1 to 3, up to 5 for complex requests |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
+**In a pinch?** Turn on **Quick mode** before you start to skip the questions and get a prompt in about 20 seconds, or tap **Quick prompt** on the questions card to write right away with whatever you've answered.
+
 If Gemini is unavailable, the page falls back to the quick version and says why.
 
 ### One prompt, plus an optional note

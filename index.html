@@ -101,6 +101,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
+.quickmode { font-size: 15px; color: var(--muted); }
 .plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
 .q { display: flex; flex-direction: column; gap: 8px; }
@@ -175,6 +176,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
+    <label class="check quickmode"><input type="checkbox" id="quickMode"> Quick mode: skip questions, ready in about 20 seconds</label>
     <div class="progress" id="buildProg" hidden><div class="bar"></div></div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
@@ -188,7 +190,7 @@ details.key[open] summary { margin-bottom: 10px; }
     <p class="need">Answer what you can. Blank is fine.</p>
     <div class="row">
       <button type="button" class="primary" id="qaGo">Write my prompt</button>
-      <button type="button" id="qaSkip">Skip questions</button>
+      <button type="button" id="qaSkip">Quick prompt</button>
     </div>
     <p id="qaStatus" class="buildstatus" role="status"></p>
   </section>
@@ -624,7 +626,8 @@ details.key[open] summary { margin-bottom: 10px; }
   var DEPTH = {
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
     standard: { level: "medium", words: "balanced thinking", secs: 50,  range: "usually under a minute",   label: "Standard request" },
-    complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" }
+    complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
+    quick:    { level: "low",    words: "light thinking",    secs: 20,  range: "about 20 seconds",         label: "Quick prompt" }
   };
   function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
   function planText(c, model) { var d = depthOf(c); return d.label + " \u00b7 " + model + " with " + d.words + " \u00b7 " + d.range; }
@@ -780,6 +783,7 @@ details.key[open] summary { margin-bottom: 10px; }
       session.note = intake.note;
       session.complexity = intake.complexity;
       setBusy(false);
+      if (document.getElementById("quickMode").checked) { setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { setBuild(""); return writeFinal([]); }
       setBuild("");
       renderQuestions(intake);
@@ -831,7 +835,7 @@ details.key[open] summary { margin-bottom: 10px; }
     });
   }
 
-  function writeFinal(answers) {
+  function writeFinal(answers, quick) {
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
@@ -841,7 +845,7 @@ details.key[open] summary { margin-bottom: 10px; }
     var run = ++writeRun;
     var resultProg = document.getElementById("resultProg");
     showWriting(session.title);
-    var depth = depthOf(session.complexity);
+    var depth = quick ? DEPTH.quick : depthOf(session.complexity);
     var eta = startEstimate(resultProg, status, depth.label + " \u00b7 " + depth.words, depth.secs);
     return askGemini(text, false, gemini.plan.write, depth.level, function (m) {
       if (run === writeRun) eta(m);
@@ -926,7 +930,7 @@ details.key[open] summary { margin-bottom: 10px; }
   });
 
   document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
-  document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal([]); });
+  document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
 })();
 </script>
 </body>
