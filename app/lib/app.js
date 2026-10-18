@@ -4,6 +4,7 @@ import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
 import { report, RELAY } from './report.svelte.js';
+import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
@@ -229,6 +230,7 @@ export function startApp() {
   }
   function setReady(ready) {
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
+    if (!ready) xray.clear();
     document.getElementById("copy").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
     document.getElementById("saveShare").disabled = !ready;
@@ -257,6 +259,7 @@ export function startApp() {
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
+    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? session.answers : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
     setCategoryLine();
     setReady(true);
     output.value = text;

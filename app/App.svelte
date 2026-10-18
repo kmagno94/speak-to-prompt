@@ -7,6 +7,7 @@
   import CoreToggle from './CoreToggle.svelte';
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
+  import PromptXray from './PromptXray.svelte';
   import { core } from './lib/core.svelte.js';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
@@ -95,6 +96,7 @@
     <p id="numWarn" class="numwarn" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
+    <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <ReportIssue />
     <div class="row">

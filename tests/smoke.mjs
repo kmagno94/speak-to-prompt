@@ -662,6 +662,42 @@ await check('ghost coach: meter and notes follow what you write; tap a note to a
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('prompt x-ray: your words colored, added parts dashed, dropped sentences and stray numbers flagged', async () => {
+  const write = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $400.\nFormat: Use a table for each day with morning, afternoon, and evening.\nStart right away, and ask at most one short question only if something essential is missing.';
+  const p = await page({ write, intake: { title: 'Tokyo Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [{ question: 'What should the plan look like?', choices: ['Day by day schedule'] }] } });
+  await withKey(p);
+  await p.fill('#thoughts', 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.');
+  await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
+  await p.click('#qaList .chips button >> text=Day by day schedule');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  expect(!(await p.$('#xray')) && await p.isVisible('#output'), 'X-ray starts closed');
+  await p.click('#xrayBtn');
+  await p.waitForSelector('#xray', { state: 'visible' });
+  expect(await p.isHidden('#output'), 'X-ray should take the prompt box\'s place: ' + await p.evaluate(() => getComputedStyle(document.getElementById('output')).display));
+  const kinds = await p.$$eval('#xrayText .seg[data-kind]', l => l.map(b => b.dataset.kind));
+  expect(kinds[0] === 'added' && kinds.filter(k => k === 'from').length >= 3 && kinds.filter(k => k === 'added').length >= 2, 'parts sorted wrong: ' + kinds);
+  expect(/Expert role/.test(await p.textContent('#xrayText .seg[data-kind="added"] .tag')), 'role line should be tagged Expert role');
+  const sum = await p.textContent('#xraySummary');
+  expect(/\d+%/.test(sum) && /1 thing you said isn't in it/.test(sum) && /1 number you never said/.test(sum), 'summary wrong: ' + sum);
+  expect(/motion sick/.test(await p.textContent('#xraySources li.dropped')), 'motion sick should be flagged as not in the prompt');
+  expect(await p.textContent('#xrayText .stray') === '$400.', 'the $400 should be marked as a number you never said');
+  // Tap a part from your words: shows where it came from and dims the rest
+  await p.click('#xrayText .seg[data-kind="from"] >> nth=0');
+  expect(/From what you said/.test(await p.textContent('#xrayWhy')) && /Tokyo/.test(await p.textContent('#xrayWhy .quote')), 'tapping should show the source sentence');
+  expect(await p.$$eval('#xrayText .seg.dim', l => l.length) > 0 && await p.$$eval('#xraySources li.active', l => l.length) === 1, 'other parts should dim and the source should light up');
+  // Tap an added part: explains why
+  await p.click('#xrayText .seg[data-kind="added"] >> nth=0');
+  expect(/Added to help: Expert role/.test(await p.textContent('#xrayWhy')), 'added part should explain itself');
+  // Answers count as your words
+  expect(await p.$$eval('#xraySources li small', l => l.some(x => /Answer/.test(x.textContent))), 'your answers should be listed as sources');
+  // Done brings the prompt back; copy still copies the real prompt
+  await p.click('#xrayBtn');
+  await p.waitForSelector('#xray', { state: 'detached' });
+  expect(await p.isVisible('#output'), 'Done should bring the prompt back');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
   const { default: relay } = await import('../worker/report-relay.js');
   const sent = [];
