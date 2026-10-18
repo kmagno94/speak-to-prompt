@@ -157,6 +157,31 @@ await check('first screen is simple; plain words; copy and open', async () => {
   expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'Copy and open did not copy the prompt');
 });
 
+await check('idea strip: fits the box, clears on tap, fills on Try, returns when empty', async () => {
+  const p = await page();
+  await p.waitForTimeout(300);
+  expect(await p.isVisible('#ideas .ideas-track'), 'ideas not showing on an empty box');
+  const fit = await p.evaluate(() => {
+    const t = document.getElementById('ideasTrack'), box = document.getElementById('thoughts'), panel = document.getElementById('ideasPanel');
+    const tallest = Math.max(...[...t.children].map(d => d.scrollHeight));
+    return { tallest, track: t.clientHeight, panelBottom: panel.getBoundingClientRect().bottom, boxBottom: box.getBoundingClientRect().bottom, n: t.children.length };
+  });
+  expect(fit.n === 32, 'expected 32 ideas, got ' + fit.n);
+  expect(fit.tallest <= fit.track, `longest idea (${fit.tallest}px) taller than the strip (${fit.track}px)`);
+  expect(fit.panelBottom <= fit.boxBottom + 1, 'idea panel spills past the box');
+  await p.click('#thoughts', { position: { x: 20, y: 12 } });
+  await p.waitForTimeout(250);
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas did not clear when tapping in');
+  await p.click('#build', { trial: true }); await p.evaluate(() => document.activeElement.blur());
+  await p.waitForTimeout(1900);
+  expect(await p.isVisible('#ideas .ideas-track'), 'ideas did not come back to an empty box');
+  await p.click('#ideasTry');
+  expect((await p.inputValue('#thoughts')).length > 20, 'Try this one did not fill the box');
+  await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(1900);
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas came back over text');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

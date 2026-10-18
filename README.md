@@ -11,6 +11,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 ## How to use it
 
 1. **Get your thoughts in.** Type them, or talk in Voice Memos and paste the transcript.
+   Stuck? The empty box rotates silly but real ideas (swipe through them, or tap **Try this one**). They clear the moment you tap in to type.
 2. **Tap Build my prompt.**
 3. **Copy the prompt** and paste it into any AI, or tap **ChatGPT**, **Claude**, or **Gemini** under **Copy and open in** to copy it and open that app in one tap.
 

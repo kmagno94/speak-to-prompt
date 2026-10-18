@@ -76,6 +76,33 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
   background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--rule) 31px 32px);
   background-position: 0 11px; background-attachment: local;
 }
+/* Idea strip: silly but real requests float on frosted glass over the ruled box,
+   and clear the moment you tap in to type. */
+.ideabox { position: relative; }
+.ideabox #thoughts { min-height: 240px; }
+.ideas { position: absolute; inset: 0; padding: 9px; pointer-events: none; border-radius: 10px; overflow: hidden; transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s; }
+.ideas.gone { opacity: 0; transform: translateY(-4px); visibility: hidden; transition: opacity 0.15s ease-out, transform 0.15s ease-out, visibility 0s 0.15s; }
+.ideas .blob { position: absolute; border-radius: 50%; }
+.ideas .b1 { width: 150px; height: 150px; right: -30px; top: -40px; background: color-mix(in srgb, var(--record) 30%, transparent); }
+.ideas .b2 { width: 170px; height: 170px; left: -50px; bottom: -70px; background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.ideas .panel {
+  position: relative; min-height: 100%; display: grid; grid-template-rows: auto auto auto; align-content: space-between; gap: 8px;
+  padding: 10px 12px 10px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .ideas .panel { background: color-mix(in srgb, var(--surface) 94%, transparent); } }
+@media (prefers-reduced-transparency: reduce) { .ideas .panel { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+.ideas-top, .ideas-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ideas-top span, .ideas-bottom span { font-size: 13px; font-weight: 700; color: var(--muted); }
+.ideas button { pointer-events: auto; min-height: 40px; border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
+.ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -6px -4px -6px 0; }
+.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); }
+.ideas-track { pointer-events: auto; display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; cursor: text; }
+.ideas-track::-webkit-scrollbar { display: none; }
+.idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
+.idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
 textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 button { font: inherit; cursor: pointer; border-radius: 12px; padding: 12px 18px; min-height: 46px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
@@ -238,7 +265,17 @@ details.key[open] summary { margin-bottom: 10px; }
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
     </div>
-    <textarea id="thoughts" autocomplete="off" placeholder="Example: my landlord hasn't fixed the heat in two weeks and I don't know if I should email him again or call the city, I'm kind of annoyed and don't want to burn the bridge"></textarea>
+    <div class="ideabox">
+      <textarea id="thoughts" autocomplete="off" placeholder="Type or paste your thoughts. Messy is fine."></textarea>
+      <div class="ideas gone" id="ideas">
+        <i class="blob b1"></i><i class="blob b2"></i>
+        <div class="panel" id="ideasPanel">
+          <div class="ideas-top"><span>Swipe for ideas, or tap to type</span><button type="button" class="ideas-pause" id="ideasPause" aria-pressed="false">Pause</button></div>
+          <div class="ideas-track" id="ideasTrack" aria-hidden="true"></div>
+          <div class="ideas-bottom"><span id="ideasCat"></span><button type="button" class="ideas-try" id="ideasTry">Try this one</button></div>
+        </div>
+      </div>
+    </div>
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row">
@@ -665,6 +702,7 @@ details.key[open] summary { margin-bottom: 10px; }
     thoughts.value = EXAMPLE;
     err.hidden = true;
     thoughts.focus();
+    ideasSync();
   });
 
   function selectFallback() {
@@ -722,6 +760,7 @@ details.key[open] summary { margin-bottom: 10px; }
     setReady(true);
     resetKeep();
     setBuild("");
+    ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
     startOver();
@@ -737,6 +776,7 @@ details.key[open] summary { margin-bottom: 10px; }
     pasteWrap.classList.toggle("banner", on);
     pasteHelp.hidden = !on;
     pasteBtn.textContent = on ? "Tap to paste your transcript" : "Paste my transcript";
+    ideasSync();
   }
   var handoff = document.getElementById("handoff");
   function pasteFailed() {
@@ -757,6 +797,7 @@ details.key[open] summary { margin-bottom: 10px; }
       err.hidden = true;
       setShortcutMode(false);
       if (fromShortcut) handoff.hidden = false;
+      ideasSync();
     }, pasteFailed);
   }
   pasteBtn.addEventListener("click", function () { pasteFromClipboard(pasteWrap.classList.contains("banner")); });
@@ -790,6 +831,137 @@ details.key[open] summary { margin-bottom: 10px; }
     handoff.hidden = false;
   })();
   thoughts.addEventListener("input", function () { handoff.hidden = true; });
+
+  /* Idea strip. Silly but real requests rotate inside the empty box. They clear the
+     instant you tap in, paste, or text arrives, and come back only if the box is
+     still empty after you leave it. Nothing here is saved. */
+  var IDEAS = [
+    ["home", "\u{1F9E6}", "One sock vanishes every laundry day. Help me crack this sole-less crime."],
+    ["home", "\u{1F50C}", "I own 47 charging cables and none of them fit anything. Help me get my life back on cord."],
+    ["home", "\u{1F9F9}", "Make a cleaning plan for someone whose strategy is 'shove it in the closet.' Time for a clean sweep."],
+    ["home", "\u{1FAB4}", "My plant looks sad. Write it a pep talk so it can turn over a new leaf."],
+    ["home", "\u{1F37D}\uFE0F", "The dishes have been 'soaking' since Tuesday. Help me make a plan that keeps me out of hot water."],
+    ["home", "\u{1F9FA}", "The clean laundry on my chair is basically furniture now. Help me stop folding under pressure."],
+    ["home", "\u{1F5C4}\uFE0F", "My junk drawer is out of control. Help me organize it, because I've lost the handle on it."],
+    ["home", "\u{1F9FD}", "How often should I replace my kitchen sponge? Mine is pretty absorbed in its work."],
+    ["home", "\u{1F5D1}\uFE0F", "Make a fair chore chart for my roommates. Always being the one who takes out the trash is rubbish."],
+    ["home", "\u{1F5BC}\uFE0F", "Two years in and my walls are still bare. Help me decorate, because I've been framed for having no style."],
+    ["home", "\u{1F511}", "I lose my keys every single morning. Help me build a system so I can finally unlock my potential."],
+    ["home", "\u{1F34B}", "Plan dinner around what's in my fridge: half a lemon, mustard, and regret. I'm in a bit of a jam."],
+    ["home", "\u{1F6CB}\uFE0F", "My couch has more blankets than seats. Help me declutter. It's a throw-away decision."],
+    ["home", "\u{1F4A1}", "Nobody knows what half my light switches do. Write a guide so guests aren't left in the dark."],
+    ["home", "\u{1F41C}", "Ants found my kitchen. Help me evict them without making a mountain out of an anthill."],
+    ["home", "\u{1F4E6}", "Help me pack for a move without labeling every box 'misc.' I need to think outside the box."],
+    ["money", "\u{1F4B8}", "Build a budget for someone whose savings plan is mostly vibes. I'm tired of being cents-less."],
+    ["money", "\u{1F634}", "I hit snooze nine times every morning. Build me a routine that's less alarm-ing."],
+    ["money", "\u{1F6D2}", "Make a grocery list for someone who goes in for milk and leaves with a kayak. I keep going overboard."],
+    ["money", "\u{1F5D3}\uFE0F", "Help me finally start the thing I've been putting off since March. I'm a pro at crastinating."],
+    ["money", "\u2615", "I spend $7 a day on coffee and then complain about money. Help me find a budget that's less of a grind."],
+    ["money", "\u{1F4FA}", "I pay for 11 streaming services and watch one show. Help me cut the rest. Time to stop streaming money."],
+    ["money", "\u231A", "I'm 10 minutes late to everything. Help me plan my mornings so I'm finally on time. Just watch me."],
+    ["money", "\u{1F5C2}\uFE0F", "I have 14 tabs open and they're all 'important.' Help me prioritize before my brain tabs out."],
+    ["money", "\u{1F4B3}", "Help me make a plan to pay off my credit card. I want to stop charging into trouble."],
+    ["money", "\u{1F437}", "Help me save $500 for a trip without eating ramen every night. I need a piggy plan that doesn't hog my fun."],
+    ["money", "\u{1F6CD}\uFE0F", "Add to cart is my cardio. Help me set a spending rule before I shop till my bank drops."],
+    ["money", "\u{1F4B0}", "Explain how to start investing with $50 and a dream. I want my money to grow, not just my interest."],
+    ["money", "\u{1F4F1}", "My screen time report is a horror movie. Help me cut it in half. I need fewer scroll-ercoasters."],
+    ["money", "\u{1F9FE}", "Help me split a dinner bill with 6 friends who 'only had an appetizer.' Time to settle up, not settle scores."],
+    ["money", "\u{1F381}", "Help me budget for the holidays before December sleighs my bank account."],
+    ["money", "\u{1F4C5}", "My calendar is so full it needs its own calendar. Help me clear some space. I'm overdue for some me-time."]
+  ];
+  var ideasEl = document.getElementById("ideas");
+  var ideasPanel = document.getElementById("ideasPanel");
+  var ideasTrack = document.getElementById("ideasTrack");
+  var ideasCat = document.getElementById("ideasCat");
+  var ideasTry = document.getElementById("ideasTry");
+  var ideasPause = document.getElementById("ideasPause");
+  var ideasCalm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var ideasIdx = 0, ideasTimer = null, ideasIdle = null, ideasBack = null, ideasPaused = false, ideasScrollT = null;
+  /* Shuffle once per visit, so every idea shows before any repeats. */
+  for (var ii = IDEAS.length - 1; ii > 0; ii--) { var jj = Math.floor(Math.random() * (ii + 1)); var tmp = IDEAS[ii]; IDEAS[ii] = IDEAS[jj]; IDEAS[jj] = tmp; }
+  IDEAS.forEach(function (it) {
+    var d = document.createElement("div"); d.className = "idea";
+    var b = document.createElement("b"); b.textContent = it[1];
+    var t = document.createElement("span"); t.textContent = it[2];
+    d.appendChild(b); d.appendChild(t); ideasTrack.appendChild(d);
+  });
+  if (ideasCalm) { ideasPause.textContent = "Next"; ideasPause.removeAttribute("aria-pressed"); ideasPause.setAttribute("aria-label", "Next idea"); }
+  function ideasLabel() {
+    var it = IDEAS[ideasIdx];
+    ideasCat.textContent = it[0] === "home" ? "\u{1F3E0} Home life" : "\u23F0 Money and time";
+    ideasTry.setAttribute("aria-label", "Try this idea: " + it[2]);
+  }
+  function ideasGo(i, smooth) {
+    ideasIdx = (i + IDEAS.length) % IDEAS.length;
+    ideasTrack.scrollTo({ left: ideasIdx * ideasTrack.clientWidth, behavior: smooth && !ideasCalm ? "smooth" : "auto" });
+    ideasLabel();
+  }
+  function ideasStop() { clearInterval(ideasTimer); ideasTimer = null; }
+  function ideasStart() {
+    ideasStop();
+    if (ideasCalm || ideasPaused || ideasEl.classList.contains("gone")) return;
+    ideasTimer = setInterval(function () { ideasGo(ideasIdx + 1, ideasIdx + 1 < IDEAS.length); }, 4500);
+  }
+  function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); }
+  function ideasSync() {
+    if (!ideasEl) return;
+    if (thoughts.value.trim() || document.activeElement === thoughts || !pasteWrap.hidden) { ideasHide(); return; }
+    var wasGone = ideasEl.classList.contains("gone");
+    ideasEl.classList.remove("gone");
+    if (wasGone || !ideasTimer) ideasStart();
+  }
+  /* Make the box tall enough for the longest idea at the current width. */
+  function ideasFit() {
+    ideasTrack.style.height = "auto";
+    var tallest = 0;
+    Array.prototype.forEach.call(ideasTrack.children, function (d) { tallest = Math.max(tallest, d.offsetHeight); });
+    ideasTrack.style.height = tallest + "px";
+    ideasPanel.style.minHeight = "0";
+    var need = ideasPanel.offsetHeight + 18 + 2;
+    ideasPanel.style.minHeight = "";
+    thoughts.style.minHeight = Math.max(240, need) + "px";
+    ideasGo(ideasIdx, false);
+  }
+  thoughts.addEventListener("pointerdown", ideasHide);
+  thoughts.addEventListener("focus", ideasHide);
+  thoughts.addEventListener("input", ideasSync);
+  thoughts.addEventListener("blur", function () {
+    clearTimeout(ideasBack);
+    ideasBack = setTimeout(function () { if (document.activeElement !== thoughts) ideasSync(); }, 1500);
+  });
+  ideasTrack.addEventListener("click", function () { thoughts.focus(); });
+  ideasTrack.addEventListener("scroll", function () {
+    clearTimeout(ideasScrollT);
+    ideasScrollT = setTimeout(function () {
+      var w = ideasTrack.clientWidth || 1;
+      ideasIdx = Math.round(ideasTrack.scrollLeft / w) % IDEAS.length;
+      ideasLabel();
+    }, 120);
+  });
+  /* A finger or cursor on the strip pauses it; it picks back up after 6 quiet seconds. */
+  ["pointerdown", "pointerenter", "wheel"].forEach(function (ev) {
+    ideasPanel.addEventListener(ev, function () {
+      ideasStop(); clearTimeout(ideasIdle);
+      ideasIdle = setTimeout(ideasStart, 6000);
+    }, { passive: true });
+  });
+  ideasPause.addEventListener("click", function () {
+    if (ideasCalm) { ideasGo(ideasIdx + 1, false); return; }
+    ideasPaused = !ideasPaused;
+    ideasPause.textContent = ideasPaused ? "Play" : "Pause";
+    ideasPause.setAttribute("aria-pressed", String(ideasPaused));
+    if (ideasPaused) { ideasStop(); clearTimeout(ideasIdle); } else ideasStart();
+  });
+  ideasTry.addEventListener("click", function () {
+    thoughts.value = IDEAS[ideasIdx][2];
+    err.hidden = true;
+    handoff.hidden = true;
+    ideasHide();
+  });
+  window.addEventListener("resize", function () { clearTimeout(ideasScrollT); ideasScrollT = setTimeout(ideasFit, 150); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(ideasFit);
+  ideasFit();
+  ideasSync();
 
   /* Gemini key: held in memory for this tab; saved to the phone only if "Remember" is ticked. */
   var KEY_NAME = "stp-gemini-key";
