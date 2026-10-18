@@ -480,7 +480,7 @@ export function startApp() {
     ideasTimer = setInterval(function () {
       if (ideasIdx + 1 < DECK.length) ideasGo(ideasIdx + 1, true);
       else ideasGo(0, true, ideasDeal);
-    }, 3000);
+    }, 5000);
   }
   var ideasShowBtn = document.getElementById("ideasShow");
   /* The Show ideas button appears whenever the box is empty and the ideas are tucked away. */
