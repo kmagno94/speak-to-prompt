@@ -5,6 +5,7 @@
   import ChatBuilder from './ChatBuilder.svelte';
   import StartHelper from './StartHelper.svelte';
   import CoreToggle from './CoreToggle.svelte';
+  import { core } from './lib/core.svelte.js';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -159,6 +160,10 @@
       </ol>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
+      <div class="stats">
+        <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
+        <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
+      </div>
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
         <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>

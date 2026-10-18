@@ -2,7 +2,7 @@
   import { core } from './lib/core.svelte.js';
 </script>
 
-{#if core.has}
+{#if core.dev && core.has}
   <label class="coretoggle">
     <input type="checkbox" id="coreToggle" role="switch" bind:checked={core.on} onchange={() => core.save()}>
     <span><b>Use my core</b><small>{core.on ? 'Who you are and how the AI should act get added to your prompt' + (core.role ? ' (' + core.role + ')' : '') : 'Off for now'}</small></span>

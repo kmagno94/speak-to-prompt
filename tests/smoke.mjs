@@ -31,6 +31,8 @@ async function check(name, fn) {
 function expect(cond, msg) { if (!cond) throw new Error(msg); }
 
 /* Gemini mock. opts: models, intake (object), write (string), fail (model -> status), finish (model -> reason) */
+async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
+
 async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}) });
   const p = await ctx.newPage();
@@ -261,13 +263,17 @@ await check('chat questions: tap, type, skip, edit an answer, live summary, all 
   await p.waitForSelector('#qaList .msg.ai >> text=Budget?');
   await p.click('#qaList .chips .skip');
   await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  expect(await p.isVisible('#qaList .msg.ai >> text=Quick check: you tapped a suggested answer'), 'should ask to double-check the tapped answer');
   expect(await p.$$eval('.brief li', l => l.length) === 2, 'summary should list the 2 answered questions');
+  expect(await p.$$eval('.brief li em.tapped', l => l.length) === 1, 'only the tapped answer should be marked as suggested');
   await p.click('.brief li button >> text=Tokyo');
   await p.waitForSelector('#qaList .msg.ai >> text=let\'s change that');
+  expect(await p.inputValue('#qaOwn') === 'Tokyo', 'changing a tapped answer should load it into the box to say it your way');
   await p.click('#qaList .chips button >> text=Paris');
   await p.waitForSelector('.brief li >> text=Paris');
   await p.click('#qaGo'); await done(p);
   const write = p.calls.find(c => !c.intake).text;
+  expect(/A: Paris \(tapped from suggested options\)/.test(write) && /A: 5 days(\n|$)/.test(write) && /treat it as approximate/.test(write), 'writer should know which answers were tapped: ' + write.slice(-200));
   expect(/Q: Where to\?\nA: Paris/.test(write) && /A: 5 days/.test(write) && !/A: Tokyo/.test(write) && !/Budget\?/.test(write), 'writer got the wrong answers: ' + write.slice(-200));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -344,7 +350,7 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
 });
 
 await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, switch, kept on reload, delete', async () => {
-  const p = await page();
+  const p = await page(); await devOn(p);
   expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
   await p.click('#starterBtn'); await p.click('#coreBtn');
   await p.waitForSelector('#coreEditor');
@@ -390,7 +396,7 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
 });
 
 await check('starter: Improve this app writes a starting point with the app background built in', async () => {
-  const p = await page();
+  const p = await page(); await devOn(p);
   await p.click('#starterBtn'); await p.click('#starter .cats button >> text=Improve this app');
   await p.waitForSelector('#starter .msg.ai >> text=What do you want to change?');
   await p.click('#starter .chips button >> text=Add a feature');
@@ -405,8 +411,31 @@ await check('starter: Improve this app writes a starting point with the app back
     && /What I want back:/.test(box.split('\n').pop()), 'app starting text wrong: ' + box);
 });
 
+await check('dev tools: hidden by default, switch shows them, an existing core turns them on and gets the new ask wording', async () => {
+  const p = await page();
+  await p.click('#starterBtn'); await p.waitForSelector('#starter .cats button');
+  expect(!(await p.$('#coreBtn')) && !(await p.$('#starter .cats button >> text=Improve this app')), 'dev tools should be hidden by default');
+  await p.click('#starterClose');
+  await p.click('#moreOpts summary'); await p.check('#devTools');
+  await p.click('#starterBtn'); await p.waitForSelector('#starter .cats button');
+  expect(await p.isVisible('#coreBtn') && await p.isVisible('#starter .cats button >> text=Improve this app'), 'switch should show Your core and Improve this app');
+  // A phone that already has a core (Kevin's) gets dev tools on by itself, and the old chip is reworded
+  const q = await page();
+  await q.evaluate(() => localStorage.setItem('stp-core', JSON.stringify({ user: '- Student', soul: '- Ask before assuming\n- Be direct', role: 'Thinking partner', identity: '', on: true })));
+  await q.reload();
+  expect(await q.isChecked('#coreToggle'), 'existing core should switch dev tools on');
+  await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
+  const out = await q.inputValue('#output');
+  expect(/- Ask if something essential is missing/.test(out) && !/Ask before assuming/.test(out), 'old ask wording should be replaced: ' + out.slice(-200));
+  // Switch off: the core stops being added
+  await q.click('#moreOpts summary'); await q.uncheck('#devTools');
+  await q.fill('#thoughts', 'plan my week again'); await q.click('#build'); await done(q);
+  expect(!/MY CORE/.test(await q.inputValue('#output')) && !(await q.$('#coreToggle')), 'dev tools off should drop the core');
+});
+
 await check('starter answers: 5 at a time, same all window, new set every 3 hours, More options shows others', async () => {
   const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-dev', '1'));
   const visible = () => p.$$eval('#starter .chips button', l => l.filter(b => !b.classList.contains('skip') && b.id !== 'rotateMore').map(b => b.textContent.trim()));
   async function openMoney(time) {
     await p.clock.setFixedTime(new Date(time));
@@ -430,7 +459,8 @@ await check('starter answers: 5 at a time, same all window, new set every 3 hour
   await p.click('#starterClose'); await p.click('#starterBtn');
   await p.click('#starter .cats button >> text=Improve this app');
   await p.waitForSelector('#starter .msg.ai >> text=What do you want to change?');
-  expect((await visible()).length === 6 && !(await p.$('#rotateMore')), 'Improve this app should show all 6 options, no rotation');
+  expect((await visible()).length === 7 && !(await p.$('#rotateMore')), 'Improve this app should show all 7 options, no rotation');
+  expect((await visible()).includes("Review how it's going"), 'Improve this app should offer Review how it\'s going');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

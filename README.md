@@ -21,10 +21,12 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | | Quick version | With a free Gemini key |
 |---|---|---|
 | Setup | None | About a minute at Google AI Studio |
-| Follow-up questions | Asked by the AI you paste into | Asked as a short chat on the page: tap an answer, type your own, or skip. Usually 1 to 3, up to 5 for complex requests |
+| Follow-up questions | Asked by the AI you paste into | Asked as a short chat on the page: tap an answer, type your own, or skip. Usually 1 to 3, up to 5 for complex requests. Tapped answers are marked as suggested: the page asks you to double-check them, tapping one loads it into the box to say it your way, and the writer treats them as approximate so they can't steer the prompt away from what you said |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
 ### Your core (testing)
+
+Hidden unless **More options > Show my dev tools** is on (it turns itself on for a phone that already has a core). The switch also shows Improve this app.
 
 Set up once in **Not sure where to start? > Set up your core**, then every prompt ends with it, so the AI already knows you:
 
@@ -32,7 +34,7 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 - **SOUL (How the AI should act):** voice and rules, like "Be direct" or "Challenge me, with care".
 - **IDENTITY (The AI's role):** Coach, Chief of staff, Accountability partner, Tutor, Thinking partner, or Expert advisor, plus what that means to you.
 
-**Improve this app (testing):** the last option in Not sure where to start? asks what you want to change and which part of the app, then writes a starting point with the app's background built in (what it is, the stack, how changes ship), ready to build into a prompt for a build chat.
+**Improve this app (testing):** the last option in Not sure where to start? asks what you want to change (including **Review how it's going** for audits) and which part of the app, then writes a starting point with the app's background built in (what it is, the stack, how changes ship), ready to build into a prompt for a build chat.
 
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
 
@@ -74,7 +76,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - **Your Gemini key** is only saved on your phone if you tick "Remember my key," and it is sent only to Google, in a request header.
 - **With a key, your words go to Google** to build the prompt, and nowhere else. On Google's free tier, Google may use what you send to improve its products.
 - **Run stats (optional, for testing):** a "Show run stats and daily usage" toggle under **More options** saves timings, token counts, and today's requests per model on your device, so you can see what's left of each free limit. It never saves your words or prompts, and turning it off deletes everything it saved.
-- **Your core (testing only):** saved in Safari on your phone while the app is being built, and only ever sent inside prompts you build. Delete it any time from the core screen. It will be taken out before the app ships.
+- **Your core (testing only):** saved in Safari on your phone while the app is being built, and only ever sent inside prompts you build. Delete it any time from the core screen. Plan: keep it as a dev tool behind Show my dev tools rather than delete it; decide about shipping after a real user test.
 - **usage.json** holds daily Gemini request and token counts read from AI Studio screenshots (no prompts, no words, no key). Run stats shows it next to the runs counted on your device.
 - **Lock your key to this site** (optional): in Google Cloud Credentials, restrict it to the website `https://kmagno94.github.io/*` and to the Generative Language API, so a leaked key is useless anywhere else.
 

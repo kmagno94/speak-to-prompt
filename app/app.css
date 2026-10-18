@@ -291,3 +291,5 @@ details.key[open] summary { margin-bottom: 10px; }
 /* File voice note: a quieter pill beside Talk it out (only with "Use my Notes shortcuts") */
 .filelink { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; border-radius: 999px; padding: 10px 16px; min-height: 44px; color: var(--ink); border: 1.5px dashed var(--line); background: transparent; }
 .filelink:active { transform: translateY(1px); }
+
+.brief li em.tapped { font-style: normal; font-weight: 500; }

@@ -58,9 +58,9 @@
     <div class="head">
       <b>{showCore ? 'Your core' : "Let's find a starting point"}</b>
       <div class="headbtns">
-        <button type="button" class="corebtn" id="coreBtn" aria-pressed={showCore} onclick={() => (showCore = !showCore)}>
+        {#if core.dev}<button type="button" class="corebtn" id="coreBtn" aria-pressed={showCore} onclick={() => (showCore = !showCore)}>
           {showCore ? 'Back' : core.has ? '🧬 Your core' : '🧬 Set up your core'}
-        </button>
+        </button>{/if}
         <button type="button" class="x" id="starterClose" aria-label="Close" onclick={() => starter.close()}>✕</button>
       </div>
     </div>
@@ -77,7 +77,7 @@
         <div class="msg ai typing" aria-label="Writing the next question"><span></span><span></span><span></span></div>
       {:else if !starter.cat}
         <div class="cats" role="group" aria-label="What do you want help with?" in:fly={{ y: 6, duration: ms(180) }}>
-          {#each CATEGORIES as c (c.id)}
+          {#each CATEGORIES.filter((c) => !c.dev || core.dev) as c (c.id)}
             <button type="button" class:general={c.id === 'general'} class:dev={c.dev} onclick={() => starter.pick(c)}><span aria-hidden="true">{c.emoji}</span>{c.label}</button>
           {/each}
         </div>

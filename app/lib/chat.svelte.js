@@ -12,6 +12,7 @@ class ChatSession {
   plan = $state('');
   questions = $state([]);   // [{ question, choices }]
   answers = $state([]);     // per question: null = not asked yet, '' = skipped, text = answer
+  tapped = $state([]);      // per question: true when the answer was a suggested option, not typed
   messages = $state([]);    // [{ id, from: 'ai' | 'me', text, q }]
   current = $state(-1);     // question being asked; questions.length when all are done
   typing = $state(false);   // the "..." bubble before the next question
@@ -21,7 +22,7 @@ class ChatSession {
   /* What the person has told us so far, in question order, for the live summary. */
   brief = $derived(
     this.questions
-      .map((q, i) => ({ i, question: q.question, answer: this.answers[i] }))
+      .map((q, i) => ({ i, question: q.question, answer: this.answers[i], tapped: !!this.tapped[i] }))
       .filter((a) => a.answer)
   );
 
@@ -35,6 +36,7 @@ class ChatSession {
     this.plan = plan || '';
     this.questions = intake.questions;
     this.answers = intake.questions.map(() => null);
+    this.tapped = intake.questions.map(() => false);
     this.#say('ai', 'Got it. ' + (intake.questions.length === 1 ? 'One quick question' : intake.questions.length + ' quick questions') + ' so your prompt gets it right. Tap an answer, type your own, or skip.');
     this.#ask(0);
   }
@@ -42,14 +44,17 @@ class ChatSession {
   reset() {
     clearTimeout(this.#timer);
     this.title = this.need = this.plan = '';
-    this.questions = []; this.answers = []; this.messages = [];
+    this.questions = []; this.answers = []; this.tapped = []; this.messages = [];
     this.current = -1; this.typing = false;
   }
 
-  reply(text) {
+  /* tapped: the answer came from a suggested option. Those are often only close,
+     so the writer is told to trust the raw thoughts over them. */
+  reply(text, tapped = false) {
     const t = String(text || '').trim();
     if (!t || this.typing || this.current < 0 || this.done) return;
     this.answers[this.current] = t;
+    this.tapped[this.current] = !!tapped;
     this.#say('me', t, this.current);
     this.#ask(this.#nextOpen());
   }
@@ -57,6 +62,7 @@ class ChatSession {
   skip() {
     if (this.typing || this.current < 0 || this.done) return;
     this.answers[this.current] = '';
+    this.tapped[this.current] = false;
     this.#say('me', 'Skip', this.current);
     this.#ask(this.#nextOpen());
   }
@@ -72,7 +78,7 @@ class ChatSession {
 
   finish(quick) {
     if (this.busy || !this.onFinish) return;
-    const answers = this.questions.map((q, i) => ({ question: q.question, answer: this.answers[i] || '' }));
+    const answers = this.questions.map((q, i) => ({ question: q.question, answer: this.answers[i] || '', tapped: !!(this.answers[i] && this.tapped[i]) }));
     this.onFinish(answers, !!quick);
   }
 
@@ -87,7 +93,12 @@ class ChatSession {
     this.typing = true;
     this.#timer = setTimeout(() => {
       this.typing = false;
-      if (i >= this.questions.length) this.#say('ai', 'That\'s everything I need. Tap Write my prompt when you\'re ready, or tap any answer to change it.');
+      if (i >= this.questions.length) {
+        const n = this.answers.filter((a, k) => a && this.tapped[k]).length;
+        this.#say('ai', n
+          ? 'That\'s everything I need. Quick check: you tapped ' + (n === 1 ? 'a suggested answer' : n + ' suggested answers') + '. If one is only close, tap it below and say it your way. Otherwise, tap Write my prompt.'
+          : 'That\'s everything I need. Tap Write my prompt when you\'re ready, or tap any answer to change it.');
+      }
       else this.#say('ai', this.questions[i].question, i);
     }, ms(450));
   }

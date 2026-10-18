@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell' });
+const c = await b.newContext({ viewport:{width:393,height:852}, deviceScaleFactor:2 });
+const p = await c.newPage(); await p.route(/fonts\./, r=>r.abort());
+await p.route(/generativelanguage/, r => r.fulfill({ status:200, headers:{'access-control-allow-origin':'*','content-type':'application/json'}, body: JSON.stringify({candidates:[{content:{parts:[{text: JSON.stringify({title:'Audit App Core Runs',need:'A quality audit',category:'Work',complexity:'standard',questions:[{question:'What is the main goal for the core?',choices:['Boost user engagement','Save me time']},{question:'Where is the feedback?',choices:['In the Claude chat']}],note:{headline:'h',tags:[],summary:'s',key_ideas:[],action_items:[],unknowns:[],clean_transcript:'t'}})}]},finishReason:'STOP'}]}) }));
+await p.goto(process.argv[2]);
+await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); await p.click('#keyPanel summary');
+await p.fill('#thoughts','audit the core runs'); await p.click('#build');
+await p.waitForSelector('#qa:not([hidden])',{timeout:8000}).catch(()=>{});
+await p.click('#qaList .chips button >> text=Boost user engagement').catch(()=>{});
+await p.waitForSelector('#qaList .msg.ai >> text=Where is the feedback?').catch(()=>{});
+await p.fill('#qaOwn','In the Claude chat where we build'); await p.press('#qaOwn','Enter');
+await p.waitForSelector('#qaList .msg.ai >> text=Quick check').catch(()=>{});
+await p.waitForTimeout(400);
+await (await p.$('#qa')).screenshot({ path: process.argv[3] });
+await b.close();

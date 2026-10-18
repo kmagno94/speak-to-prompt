@@ -6,6 +6,11 @@
    shaped, like run stats. To remove later, delete this file, CoreEditor.svelte,
    CoreToggle.svelte, and the lines in app.js marked "core". */
 const KEY = 'stp-core';
+/* "Show my dev tools" (More options): Your core and Improve this app only show
+   when it's on. Off by default; turns itself on for a phone that already has a core. */
+const DEV_KEY = 'stp-dev';
+const OLD_ASK = 'Ask before assuming';
+const NEW_ASK = 'Ask if something essential is missing';
 
 function read() { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
 function write(v) { try { if (v) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch (e) {} }
@@ -16,8 +21,10 @@ class Core {
   role = $state('');       // IDENTITY.md: the AI's role (Coach, Chief of staff, ...)
   identity = $state('');   // IDENTITY.md: what that role means for you
   on = $state(true);       // the "Use my core" switch
+  dev = $state(false);     // the "Show my dev tools" switch
 
   has = $derived(!!(this.user.trim() || this.soul.trim() || this.role || this.identity.trim()));
+  active = $derived(this.dev && this.on && this.has);   // is the core added to prompts right now
 
   /* The block added to the end of each prompt. */
   block = $derived.by(() => {
@@ -34,6 +41,12 @@ class Core {
   constructor() {
     const v = read();
     if (v) { this.user = v.user || ''; this.soul = v.soul || ''; this.role = v.role || ''; this.identity = v.identity || ''; this.on = v.on !== false; }
+    /* "Ask before assuming" clashed with every prompt's "start right away" ending. */
+    if (this.soul.includes(OLD_ASK)) { this.soul = this.soul.split(OLD_ASK).join(NEW_ASK); this.save(); }
+    let d = null;
+    try { d = localStorage.getItem(DEV_KEY); } catch (e) {}
+    this.dev = d === '1' || (d === null && !!v);
+    if (d === null && v) this.saveDev();
   }
 
   save() {
@@ -62,7 +75,9 @@ class Core {
   }
 
   /* Used by app.js on every finished prompt. */
-  apply(prompt) { return this.on && this.has ? prompt + '\n\n' + this.block : prompt; }
+  apply(prompt) { return this.active ? prompt + '\n\n' + this.block : prompt; }
+
+  saveDev() { try { if (this.dev) localStorage.setItem(DEV_KEY, '1'); else localStorage.setItem(DEV_KEY, '0'); } catch (e) {} }
 }
 
 export const core = new Core();
@@ -75,7 +90,7 @@ export const CORE_OPTIONS = {
     { group: 'What I value', items: ['Progress over perfection', 'Keep it simple', 'Learn by doing', 'Save money where I can', 'Protect my time'] }
   ],
   soul: [
-    { group: 'Voice and behavior', items: ['Be direct', 'Challenge me, with care', 'No hedging or filler', 'Ask before assuming', 'Give one clear recommendation', 'Use plain words, no jargon', 'Keep me accountable', 'Celebrate wins briefly'] }
+    { group: 'Voice and behavior', items: ['Be direct', 'Challenge me, with care', 'No hedging or filler', 'Ask if something essential is missing', 'Give one clear recommendation', 'Use plain words, no jargon', 'Keep me accountable', 'Celebrate wins briefly'] }
   ],
   roles: ['Coach', 'Chief of staff', 'Accountability partner', 'Tutor', 'Thinking partner', 'Expert advisor']
 };

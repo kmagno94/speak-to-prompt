@@ -6,6 +6,15 @@
 
   let draft = $state('');
   let thread;
+  let own;
+
+  /* Change an answer. A tapped one is loaded into the box so you can say it your way. */
+  function change(i) {
+    const was = chat.tapped[i] ? chat.answers[i] : '';
+    chat.edit(i);
+    draft = was || '';
+    if (was) setTimeout(() => own?.focus(), 0);
+  }
 
   function send(e) {
     e.preventDefault();
@@ -24,7 +33,7 @@
 {#snippet bubble(m)}
   {#if m.from === 'me'}
     <button type="button" class="mine" class:skipped={m.text === 'Skip'} disabled={chat.busy}
-            onclick={() => chat.edit(m.q)} aria-label="Your answer: {m.text}. Tap to change it">{m.text}</button>
+            onclick={() => change(m.q)} aria-label="Your answer: {m.text}. Tap to change it">{m.text}</button>
   {:else}
     <p>{m.text}</p>
   {/if}
@@ -44,7 +53,7 @@
   {:else if chat.current >= 0 && !chat.done}
     <div class="chips" role="group" aria-label="Quick answers" in:fly={{ y: 6, duration: ms(180) }}>
       {#each chat.questions[chat.current].choices as c}
-        <button type="button" disabled={chat.busy} onclick={() => chat.reply(c)}>{c}</button>
+        <button type="button" disabled={chat.busy} onclick={() => chat.reply(c, true)}>{c}</button>
       {/each}
       <button type="button" class="skip" disabled={chat.busy} onclick={() => chat.skip()}>Skip</button>
     </div>
@@ -53,7 +62,7 @@
 
 {#if chat.current >= 0 && !chat.done}
   <form class="composer" onsubmit={send}>
-    <input id="qaOwn" bind:value={draft} placeholder="Or type your own answer" autocomplete="off"
+    <input id="qaOwn" bind:this={own} bind:value={draft} placeholder="Or type your own answer" autocomplete="off"
            enterkeyhint="send" aria-label="Type your own answer" disabled={chat.busy || chat.typing}>
     <button type="submit" disabled={!draft.trim() || chat.busy || chat.typing}>Send</button>
   </form>
@@ -65,8 +74,8 @@
     <ul>
       {#each chat.brief as a (a.i)}
         <li animate:flip={{ duration: ms(250) }}>
-          <button type="button" disabled={chat.busy} onclick={() => chat.edit(a.i)}>
-            <span>{a.question}</span><b>{a.answer}</b>
+          <button type="button" disabled={chat.busy} onclick={() => change(a.i)}>
+            <span>{a.question}{#if a.tapped}<em class="tapped"> (suggested, tap to say it your way)</em>{/if}</span><b>{a.answer}</b>
           </button>
         </li>
       {/each}

@@ -47,6 +47,7 @@ export const WRITE = [
   "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
   "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
   "Never add devices, people, facts, or requirements they did not mention or confirm.",
+  "An answer marked (tapped from suggested options) is the closest of a few preset choices, not their own words, so treat it as approximate. If it conflicts with, narrows, or shifts the goal stated in the raw thoughts, follow the raw thoughts and use the tapped answer only where it fits. Typed answers are their own words.",
   "Keep every number, version, and product name exactly as they said it, even if you don't recognize it. Newer versions may exist that you don't know about, so never swap in a different version or round a number.",
   "Keep the full scope of what they want. Do not narrow it. When it helps them succeed, ask the AI to also cover how it works, the steps, and known limits or troubleshooting.",
   "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",

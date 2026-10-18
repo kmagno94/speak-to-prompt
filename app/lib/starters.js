@@ -49,7 +49,7 @@ export const CATEGORIES = [
     ],
     ask: 'What I want back: the change and why it helps, the exact steps to build it, and how we will know it worked.',
     questions: [
-      { q: 'What do you want to change?', say: 'Change', choices: ['Add a feature', 'Fix something broken', 'Change how it looks', 'Make it faster', 'Change the wording', 'Remove something'] },
+      { q: 'What do you want to change?', say: 'Change', choices: ['Add a feature', 'Fix something broken', 'Change how it looks', 'Make it faster', 'Change the wording', 'Remove something', 'Review how it\'s going'] },
       { q: 'Which part of the app?', say: 'Part of the app', choices: ['Idea strip', 'Not sure where to start', 'Follow-up questions', 'Your prompt and copy buttons', 'Quick and Normal modes', 'Talk it out and the shortcut', 'Your core', 'Run stats', 'The whole page'] }
     ] }
 ];
