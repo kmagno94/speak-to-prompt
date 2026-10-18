@@ -200,8 +200,8 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .buildrow #build { padding: 12px 14px; }
 .buildrow #example { grid-column: 1 / -1; justify-self: start; }
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
-/* Mode picker beside Build: Quick, Normal, Deep. Each radio fills its segment so a tap anywhere picks it. */
-.modes { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+/* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
+.modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
 .mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: 38px; line-height: 1.1; }
 .mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
 .mode b, .mode small { position: relative; pointer-events: none; }
@@ -211,14 +211,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .mode:has(input:checked) b { color: var(--accent); }
 .mode:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 1px; }
 .modehint { grid-column: 1 / -1; margin: 0; font-size: 14px; color: var(--muted); }
-.polish { margin: 0; font-size: 14px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
-.polish::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
-@media (prefers-reduced-motion: no-preference) { .polish::before { animation: pulse 1.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } } }
-.refine { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); font-size: 14px; }
-.refine summary { font-weight: 700; cursor: pointer; }
-.refine p { margin: 8px 0 2px; }
-.refine ul, .refine ol { margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; }
-.refine .score { font-weight: 700; color: var(--accent); }
+.numwarn { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--surface)); }
 .plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
 .q { display: flex; flex-direction: column; gap: 8px; }
@@ -317,7 +310,6 @@ details.key[open] summary { margin-bottom: 10px; }
       <div class="modes" role="radiogroup" aria-label="How much thinking">
         <label class="mode"><input type="radio" name="mode" id="quickMode" value="quick"><b>Quick</b><small id="quickLabel">~15s</small></label>
         <label class="mode"><input type="radio" name="mode" id="normalMode" value="normal" checked><b>Normal</b><small>~1 min</small></label>
-        <label class="mode"><input type="radio" name="mode" id="deepMode" value="deep"><b>Deep</b><small>~1 min +</small></label>
       </div>
       <p class="modehint" id="modeHint"></p>
       <button type="button" class="link" id="example">Try an example</button>
@@ -354,8 +346,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
-    <p id="polishStatus" class="polish" role="status" hidden></p>
-    <details class="refine" id="refineLog" hidden><summary>How Deep mode refined it</summary><div id="refineBody"></div></details>
+    <p id="numWarn" class="numwarn" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
@@ -708,8 +699,7 @@ details.key[open] summary { margin-bottom: 10px; }
     output.value = "";
     status.textContent = "";
     document.getElementById("madeBy").textContent = "";
-    document.getElementById("refineLog").hidden = true;
-    document.getElementById("polishStatus").hidden = true;
+    document.getElementById("numWarn").hidden = true;
     setChatName(title);
     setReady(false);
     qa.hidden = true;
@@ -730,7 +720,7 @@ details.key[open] summary { margin-bottom: 10px; }
     status.className = "status";
     status.textContent = "";
     document.getElementById("madeBy").textContent = madeBy;
-    document.getElementById("refineLog").hidden = true;
+    document.getElementById("numWarn").hidden = true;
     setChatName(title);
     qa.hidden = true;
     result.hidden = false;
@@ -804,8 +794,7 @@ details.key[open] summary { margin-bottom: 10px; }
     setReady(true);
     resetKeep();
     setBuild("");
-    document.getElementById("refineLog").hidden = true;
-    document.getElementById("polishStatus").hidden = true;
+    document.getElementById("numWarn").hidden = true;
     ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
@@ -1283,8 +1272,7 @@ details.key[open] summary { margin-bottom: 10px; }
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
     standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
-    quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" },
-    deep:     { level: "high",   words: "deep thinking, then polished in the background", secs: 90, range: "first draft in 1 to 2 minutes, then polishes in the background", label: "Deep prompt" }
+    quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
   };
   /* Quick prompts: Flash-Lite is fast enough to think a bit more, which keeps
      it from dropping details. A Flash backup stays light so it stays quick. */
@@ -1301,8 +1289,8 @@ details.key[open] summary { margin-bottom: 10px; }
   /* Model names and thinking levels only show with run stats on; everyone else
      sees plain words and times. */
   function techOn() { return testLog.on(); }
-  function planText(c, model) { if (session && session.deep) c = "deep"; var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
-  function askGemini(text, asJson, models, level, onModel, limit, extra) {
+  function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
+  function askGemini(text, asJson, models, level, onModel, limit) {
     var started = Date.now();
     var history = [];
     function payload(withThinking, model) {
@@ -1312,7 +1300,6 @@ details.key[open] summary { margin-bottom: 10px; }
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
       var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
-      if (extra && extra.tools) p.tools = extra.tools;
       return JSON.stringify(p);
     }
     function attempt(i, lastErr, withThinking) {
@@ -1350,7 +1337,7 @@ details.key[open] summary { margin-bottom: 10px; }
         clearTimeout(timer);
         var secs = Math.round((Date.now() - tAttempt) / 1000);
         if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
-        else if (e.status === 429) { history.push(model + " was at its daily limit"); if (!(extra && extra.tools)) testLog.request(model, 0, true); }
+        else if (e.status === 429) { history.push(model + " was at its daily limit"); testLog.request(model, 0, true); }
         else if (e.status === "empty") history.push(model + " sent an incomplete answer");
         else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable");
         /* A model that rejects the thinking setting gets one more try without it. */
@@ -1391,12 +1378,10 @@ details.key[open] summary { margin-bottom: 10px; }
     document.getElementById("quickLabel").textContent = "~" + (q.learned ? total : 15) + "s";
   }
 
-  /* Mode picker. Quick skips the questions; Normal asks, then writes; Deep asks,
-     looks up current facts, then rewrites until a strict review scores it 10/10. */
+  /* Mode picker. Quick skips the questions; Normal asks a few, then writes. */
   var MODE_HINTS = {
     quick: "Quick: skips the questions and writes right away.",
-    normal: "Normal: asks a few quick questions, then writes.",
-    deep: "Deep: looks up current facts and shows a first draft, then keeps polishing in the background. A better version swaps in only if it wins a blind comparison."
+    normal: "Normal: asks a few quick questions, then writes."
   };
   function currentMode() { var el = document.querySelector('input[name="mode"]:checked'); return el ? el.value : "normal"; }
   function updateModeHint() {
@@ -1438,11 +1423,7 @@ details.key[open] summary { margin-bottom: 10px; }
     stopTicker();
     draw();
     ticker = setInterval(draw, 1000);
-    var api = function (m) { model = m; tModel = Date.now(); draw(); };
-    /* Deep mode runs several steps under one clock: these update the words without restarting it. */
-    api.label = function (l) { label = l; draw(); };
-    api.model = function (m) { model = m; draw(); };
-    return api;
+    return function (m) { model = m; tModel = Date.now(); draw(); };
   }
   function finishTrack(bar, secs, skipAsk) {
     var track = bar.closest(".tracker");
@@ -1525,9 +1506,6 @@ details.key[open] summary { margin-bottom: 10px; }
       setBusy(false);
       var mode = currentMode();
       if (mode === "quick") { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
-      session.deep = mode === "deep";
-      /* Deep mode looks things up while the person answers the questions, so the wait overlaps. */
-      if (session.deep) startResearch();
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
       setBuild("");
       renderQuestions(intake);
@@ -1582,7 +1560,6 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   function writeFinal(answers, quick) {
-    if (!quick && session.deep) return writeDeep(answers);
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
@@ -1614,6 +1591,7 @@ details.key[open] summary { margin-bottom: 10px; }
       showResult(prompt, techOn()
         ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
         : "Ready in " + secs + ". Your AI can start working right away.", session.title);
+      showNumberCheck(prompt);
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
@@ -1626,95 +1604,11 @@ details.key[open] summary { margin-bottom: 10px; }
     });
   }
 
-  /* ---------- Deep mode ----------
-     Tests showed a grader-chasing loop makes prompts worse (a weak reviewer kept
-     cutting useful sections and inventing word limits while the score climbed).
-     So Deep now works like this:
-     1. Research: Google Search grounded call, Flash-Lite first, then the top Flash.
-        Runs while the person answers the questions. Skipped quietly if search fails.
-     2. Draft: the strongest Flash at high thinking. Shown right away, so the wait
-        is about the same as Normal. Polishing carries on in the background.
-     3. Review: the strongest Flash runs 10 pass/fail checks; the page counts passes.
-     4. Rewrite with the fixes (up to 2), reviewing after the first.
-     5. Blind head-to-head: the strongest Flash ranks the draft and the rewrites in
-        shuffled order. A rewrite replaces the draft only if it wins, so Deep can
-        never end up worse than its own first draft. */
-  var MAX_REWRITES = 2, DEEP_BUDGET = 8 * 60 * 1000;
-  var RESEARCH = [
-    "You are the research step of a prompt-building tool. Use Google Search to look up current, verifiable facts that would make an AI prompt for the request below more accurate.",
-    "Look for: the latest versions and details of any devices, apps, or services they mention; current rules, prices, or limits that apply; and well-established best practices and common pitfalls.",
-    "Return 3 to 8 short bullets. Start each with \"- \" and end it with the source site's name in parentheses. Only include facts you found in search results, never guesses.",
-    "If nothing in this request depends on current facts, return only the word NONE."
-  ].join("\n");
-  var CHECKS = [
-    ["Keeps every detail", "Keeps every relevant detail from the thoughts and answers: names, numbers, dates, limits, and preferences, in the person's own terms."],
-    ["Invents nothing", "Adds no facts, people, devices, dates, numbers, or requirements the person did not give. Turning something vague into something specific counts as invented (for example \"next fall\" becoming \"November\"). A word or length limit the person did not ask for counts as invented. NOT invented, and fine: asking the AI to explain how it works, give steps, cover limits or troubleshooting, recommend the best approach, state assumptions, or start right away. Looked-up facts are fine when their source is named."],
-    ["Keeps full scope", "Covers everything the person wants, without narrowing it. Keeps sections that help them succeed, such as how it works, steps, and limits or troubleshooting. A rewrite that drops a requirement or section fails this."],
-    ["Right expert", "Gives the AI an expert role that fits the task."],
-    ["Full context", "Gives enough background that the AI will not need to ask basic questions."],
-    ["Clear task", "States the exact task and what a finished result looks like."],
-    ["Format set", "Asks for a clear structure that suits the task, such as headings, numbered steps, or bullets. It does not need a length limit."],
-    ["Fitting tone", "Sets a tone that fits the person and the situation."],
-    ["Handles gaps", "Tells the AI how to handle anything unclear: start right away and ask at most one short question if essential, or lay out numbered options when the person raised several separate goals."],
-    ["Ready to paste", "Written in first person as the person, with no placeholders, filler, repetition, meta commentary, or code fences."]
-  ];
-  var REVIEW = [
-    "You are a strict quality reviewer for AI prompts. Score the PROMPT below against the person's RAW THOUGHTS, their ANSWERS, and any LOOKED-UP FACTS.",
-    "Run these 10 checks. A check passes only if it fully passes. If you are unsure, it fails.",
-    "Before scoring, compare every number, version, time, and name in the prompt with the raw thoughts and answers. Any that was changed, dropped, or added fails checks 1 or 2, even if you think the person's version is wrong.",
-    CHECKS.map(function (c, i) { return (i + 1) + ". " + c[0] + ": " + c[1]; }).join("\n"),
-    "For every failed check, write one specific fix that says exactly what to add, cut, or change. Never suggest a word or length limit the person did not ask for, never suggest removing a section that helps them succeed, and never suggest details the person did not give unless they come from the looked-up facts.",
-    "Respond with JSON only, in exactly this shape, with all 10 checks:",
-    '{"checks": [{"id": 1, "pass": true, "fix": ""}]}'
-  ].join("\n");
-  var RANK = [
-    "You are judging which version of an AI prompt will get the person the most useful answer. Compare them blind against the person's RAW THOUGHTS, ANSWERS, and LOOKED-UP FACTS.",
-    "Prefer the version that keeps every detail the person gave, invents nothing (no new dates, numbers, or length limits they did not ask for), covers everything they want, and is clearest for the AI to act on. Longer is not better by itself, and shorter is not better by itself.",
-    "Respond with JSON only: {\"best\": \"A\", \"why\": \"one short plain sentence\"}"
-  ].join("\n");
-  var DEEP_NOTE = "\nLooked-up facts below are current and come from Google Search. Use the ones that help, and keep each one's source in parentheses.";
-  var REWRITE_NOTE = "\nYou are improving an existing prompt. Apply every one of the reviewer's fixes and keep everything that already works. Never remove a requirement, detail, or helpful section, never add a word or length limit the person did not ask for, and never make vague details specific (keep \"next fall\" as next fall). Do not add details the person never gave, except looked-up facts with their source.";
-
-  function startResearch() {
-    var ask = RESEARCH + "\n\nREQUEST:\n\"\"\"\n" + session.raw + "\n\"\"\"\nWHAT THEY NEED: " + (session.need || "");
-    var models = gemini.plan.intake.filter(function (m) { return /lite/.test(m); }).concat(gemini.plan.write.filter(function (m) { return !/lite/.test(m); }).slice(0, 1));
-    var errors = [];
-    function tryAt(i) {
-      if (i >= models.length) { session.researchFailed = true; session.researchError = errors.join("; "); return []; }
-      return askGemini(ask, false, [models[i]], "medium", null, 120000, { tools: [{ google_search: {} }] }).then(function (r) {
-        session.researchModel = r.model;
-        return parseResearch(r.text);
-      }, function (e) {
-        errors.push(models[i] + ": " + (e && (e.google || e.message) ? (e.google || e.message) : "failed"));
-        return tryAt(i + 1);
-      });
-    }
-    session.research = tryAt(0);
-  }
-  function parseResearch(text) {
-    if (/^\s*NONE\b/i.test(text || "")) return [];
-    return String(text || "").split(/\n+/).map(function (l) { return l.trim(); })
-      .filter(function (l) { return /^([-*•]|\d+[.)])\s+/.test(l); })
-      .map(function (l) { return l.replace(/^([-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "").slice(0, 300); })
-      .filter(Boolean).slice(0, 8);
-  }
-  function parseJson(text) { return JSON.parse(String(text).replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); }
-  function parseReview(text) {
-    var data = parseJson(text);
-    var list = Array.isArray(data.checks) ? data.checks : [];
-    var fails = [], score = 0;
-    CHECKS.forEach(function (c, i) {
-      var hit = list.filter(function (x) { return x && Number(x.id) === i + 1; })[0];
-      /* A check the reviewer skipped counts as a fail. */
-      if (hit && hit.pass === true) { score++; return; }
-      fails.push({ name: c[0], fix: String((hit && hit.fix) || "").trim() || ("Improve: " + c[1]) });
-    });
-    return { score: score, fails: fails };
-  }
-  /* Number guard. The page itself checks that every number the person gave (times,
-     money, versions like iOS 27) is still in the prompt, and that the prompt adds no
-     new ones (like iOS 18 or a 400-word limit). Small counts like "3 tips" are fine
-     unless they follow a version word. This doesn't depend on any model noticing. */
+  /* Number check (free, no Gemini request). The page compares the numbers in the
+     prompt (times, money, versions like iOS 27) with what the person said. A writer
+     that "corrects" a version it doesn't know (iOS 27 to iOS 18), drops a number, or
+     invents one (a 400-word limit) gets flagged before the prompt is pasted anywhere.
+     Small counts like "3 tips" are fine unless they follow a version word. */
   var VERSION_WORD = /(ios|ipados|macos|watchos|tvos|visionos|android|windows|version|v)\s*$/i;
   function numberTokens(text, keepSmall) {
     var out = {}, t = String(text || "");
@@ -1731,198 +1625,24 @@ details.key[open] summary { margin-bottom: 10px; }
     }
     return out;
   }
-  function numberIssues(promptText, facts) {
-    var src = session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n") + "\n" + (facts || []).join("\n");
-    var have = numberTokens(src, true), got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false);
-    var given = numberTokens(session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n"), false);
+  function numberIssues(promptText) {
+    var said = session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n");
+    var have = numberTokens(said, true), given = numberTokens(said, false);
+    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false);
     return {
       missing: Object.keys(given).filter(function (n) { return !got[n]; }),
       extra: Object.keys(gotBig).filter(function (n) { return !have[n]; })
     };
   }
-  function applyGuard(v, facts) {
-    var g = numberIssues(v.text, facts);
-    v.guard = g;
-    function force(name, fix) {
-      var hit = v.fails.filter(function (f) { return f.name === name; })[0];
-      if (hit) hit.fix = fix + " " + hit.fix;
-      else { v.fails.push({ name: name, fix: fix }); v.score = Math.max(0, v.score - 1); }
-    }
-    if (g.missing.length) force(CHECKS[0][0], "Keep these exactly as I gave them: " + g.missing.join(", ") + ".");
-    if (g.extra.length) force(CHECKS[1][0], "Remove or correct numbers I never gave: " + g.extra.join(", ") + ".");
-  }
-  function applyGuardOnly(v) { v.guard = numberIssues(v.text, lastFacts); }
-  var lastFacts = [];
-  function clean(v) { return !v.guard || (!v.guard.missing.length && !v.guard.extra.length); }
-  function deepContext(facts) {
-    var lines = (session.answers || []).map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
-    return "RAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.") +
-      "\n\nLOOKED-UP FACTS:\n" + (facts.length ? facts.map(function (f) { return "- " + f; }).join("\n") : "None needed.");
-  }
-  function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
-  var polishEl = document.getElementById("polishStatus");
-  function setPolish(text) { polishEl.hidden = !text; polishEl.textContent = text || ""; }
-
-  function writeDeep(answers) {
-    session.mode = "Deep";
-    session.answers = answers.filter(function (a) { return a.answer; });
-    setBusy(true, "Writing your prompt...");
-    setBuild("");
-    qaStatus.textContent = "";
-    var run = ++writeRun;
-    var resultProg = document.getElementById("resultProg");
-    showWriting(session.title);
-    var est = writeEstimate("deep");
-    var skipAsk = !(session.questions && session.questions.length);
-    var eta = startEstimate(resultProg, "Looking up current facts", est.secs, "write", skipAsk);
-    var t0 = Date.now(), draftSecs = 0, facts = [], writers = [], judges = [], versions = [];
-    var STALE = { stale: true };
-    function live() { return run === writeRun; }
-    function onModel(m) { if (live()) eta.model(m); }
-    function keep(list, m) { if (m && list.indexOf(m) === -1) list.push(m); }
-    function name(v) { return v.round ? "Rewrite " + v.round : "First draft"; }
-
-    /* Background polishing is over: keep the draft or swap in the winner. */
-    function settle(winner, reason, why) {
-      if (!live()) return;
-      setPolish("");
-      var draft = versions[0], total = (Date.now() - t0) / 1000;
-      var swapped = winner && winner !== draft;
-      var tech = techOn() ? " Writer: " + writers.join(", ") + (judges.length ? ". Reviewer: " + judges.join(", ") : "") + "." : "";
-      var msg = "First draft ready in " + clock(draftSecs) + ". ";
-      if (swapped) {
-        output.value = winner.text;
-        msg += "Polished version swapped in at " + clock(total) + (winner.score != null ? " (scored " + winner.score + "/10)" : "") + ": it beat the draft in a blind comparison.";
-        status.textContent = "Updated with the polished version. If you already copied the draft, copy again.";
-      } else {
-        msg += draft.score != null ? "Deep mode checked it and the first draft held up best (scored " + draft.score + "/10), so it stays." : "Deep mode couldn't finish polishing, so the first draft stays.";
-      }
-      if (why) msg += " " + why;
-      document.getElementById("madeBy").textContent = msg + tech;
-      logRun({ depth: "deep", est_s: est.secs, write_model: writers.join(", "), thinking: "high", write_s: Math.round(draftSecs * 10) / 10, total_s: Math.round(total * 10) / 10,
-        words_out: words(output.value), scores: versions.map(function (v) { return v.score == null ? "?" : v.score; }).join(" > "),
-        kept: swapped ? name(winner) : "First draft", facts: facts.length, stop: reason, outcome: "ok" });
-      renderRefine(versions, facts, swapped ? winner : draft, why);
-    }
-    function fail(e) {
-      if (e === STALE || !live()) return;
-      if (versions.length) { settle(null, "stopped early: " + (e && e.message ? e.message : "error")); return; }
-      stopTicker();
-      setProgress(resultProg, "off");
-      setBusy(false);
-      setBuild("");
-      qaStatus.textContent = "";
-      showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
-      logRun({ depth: "deep", est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
-    }
-    function review(v) {
-      if (!live()) throw STALE;
-      setPolish("Polishing in the background: reviewing " + name(v).toLowerCase() + " against 10 checks...");
-      /* A different model reviews when one is free, so the writer doesn't grade itself. */
-      var reviewers = gemini.plan.write.filter(function (m) { return writers.indexOf(m) === -1; }).concat(writers);
-      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, reviewers, "high", null, WRITE_LIMIT).then(function (g) {
-        keep(judges, g.model);
-        var res = parseReview(g.text);
-        v.score = res.score; v.fails = res.fails;
-        applyGuard(v, facts);
-        return true;
-      }, function () { return false; });
-    }
-    function rewrite(from) {
-      if (!live()) throw STALE;
-      var n = versions.length;
-      setPolish("Polishing in the background: rewrite " + n + " of " + MAX_REWRITES + (from.score != null ? " (" + name(from).toLowerCase() + " scored " + from.score + "/10)" : "") + "...");
-      var fixes = from.fails.map(function (f) { return "- " + f.name + ": " + f.fix; }).join("\n");
-      return askGemini(WRITE + REWRITE_NOTE + "\n\n" + deepContext(facts) + "\n\nCURRENT PROMPT:\n\"\"\"\n" + from.text + "\n\"\"\"\n\nREVIEWER'S FIXES:\n" + fixes,
-        false, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (r) {
-        keep(writers, r.model);
-        var v = { text: cleanPrompt(r.text), round: n, score: null, fails: [] };
-        versions.push(v);
-        return v;
-      });
-    }
-    /* Blind ranking: versions are shown as A, B, C in shuffled order. */
-    function rank(list, reason) {
-      if (!live()) throw STALE;
-      var ok = list.filter(function (v) { if (!v.guard) applyGuardOnly(v); return clean(v); });
-      if (ok.length && ok.length < list.length) {
-        if (ok.length === 1) return settle(ok[0], reason, "Why: it's the only version that kept every number you gave and added none.");
-        list = ok;
-      }
-      setPolish("Polishing in the background: comparing versions blind...");
-      var order = shuffled(list), labels = ["A", "B", "C"];
-      var body = order.map(function (v, i) { return "VERSION " + labels[i] + ":\n\"\"\"\n" + v.text + "\n\"\"\""; }).join("\n\n");
-      return askGemini(RANK + "\n\n" + deepContext(facts) + "\n\n" + body, true, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (r) {
-        keep(judges, r.model);
-        var data = parseJson(r.text), at = labels.indexOf(String(data.best || "").trim().toUpperCase().charAt(0));
-        if (at < 0 || at >= order.length) throw new Error("no pick");
-        var why = String(data.why || "").trim();
-        settle(order[at], reason, why ? "Why: " + why.replace(/\s*$/, "").replace(/([^.!?])$/, "$1.") : "");
-      }, function () {
-        /* No ranking: fall back to the best review score, with the draft winning ties. */
-        var best = versions[0];
-        list.forEach(function (v) { if (v.score != null && best.score != null && v.score > best.score) best = v; });
-        settle(best, reason + " (comparison unavailable)");
-      });
-    }
-
-    Promise.resolve(session.research || []).then(function (f) {
-      if (!live()) throw STALE;
-      facts = f || [];
-      lastFacts = facts;
-      eta.label("Writing a first draft with deep thinking");
-      return askGemini(WRITE + DEEP_NOTE + "\n\n" + deepContext(facts), false, gemini.plan.write, "high", onModel, WRITE_LIMIT);
-    }).then(function (r) {
-      if (!live()) throw STALE;
-      keep(writers, r.model);
-      draftSecs = (Date.now() - t0) / 1000;
-      var draft = { text: cleanPrompt(r.text), round: 0, score: null, fails: [] };
-      versions.push(draft);
-      /* Show the draft now. Polishing carries on in the background. */
-      finishTrack(resultProg, draftSecs, skipAsk);
-      setBusy(false);
-      setBuild("");
-      qaStatus.textContent = "";
-      showResult(draft.text, "First draft ready in " + clock(draftSecs) + ". You can copy it now. Deep mode is polishing it and will swap in a better version only if it wins a blind comparison.", session.title);
-      return review(draft).then(function (ok) {
-        if (!live()) throw STALE;
-        if (!ok) return settle(null, "review unavailable");
-        if (draft.score >= 10) return settle(draft, "draft scored 10/10");
-        return rewrite(draft).then(function (r1) {
-          return review(r1).then(function (ok1) {
-            if (!live()) throw STALE;
-            if (!ok1) return rank([draft, r1], "second review unavailable");
-            if (r1.score <= draft.score) return settle(draft, "rewrite 1 didn't score higher");
-            if (r1.score >= 10 || Date.now() - t0 > DEEP_BUDGET) return rank([draft, r1], r1.score >= 10 ? "rewrite 1 scored 10/10" : "time limit");
-            return rewrite(r1).then(function (r2) { return rank([draft, r1, r2], "reached " + MAX_REWRITES + " rewrites"); });
-          });
-        });
-      });
-    }).catch(fail);
-  }
-
-  function renderRefine(versions, facts, shown, why) {
-    var box = document.getElementById("refineBody");
-    box.textContent = "";
-    function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
-    box.appendChild(el("p", facts.length ? "Looked up:" : session.researchFailed ? "Couldn't look anything up this time." : "No lookups were needed."));
-    if (facts.length) { var ul = el("ul"); facts.forEach(function (f) { ul.appendChild(el("li", f)); }); box.appendChild(ul); }
-    if (session.researchFailed && techOn() && session.researchError) box.appendChild(el("p", "Search errors: " + session.researchError));
-    box.appendChild(el("p", "Versions:"));
-    var ol = el("ol");
-    versions.forEach(function (v) {
-      var li = el("li");
-      li.appendChild(el("span", (v.round ? "Rewrite " + v.round : "First draft") + ": "));
-      li.appendChild(el("span", v.score == null ? "not reviewed" : v.score + "/10", "score"));
-      if (v === shown) li.appendChild(el("span", " (shown)"));
-      if (v.fails && v.fails.length && v.score != null) li.appendChild(el("span", ". Flagged: " + v.fails.map(function (f) { return f.name; }).join(", ") + "."));
-      if (v.guard && v.guard.extra.length) li.appendChild(el("span", " Numbers you never gave: " + v.guard.extra.join(", ") + "."));
-      if (v.guard && v.guard.missing.length) li.appendChild(el("span", " Numbers it dropped: " + v.guard.missing.join(", ") + "."));
-      ol.appendChild(li);
-    });
-    box.appendChild(ol);
-    if (why) box.appendChild(el("p", why));
-    document.getElementById("refineLog").hidden = false;
+  function listWords(a) { return a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]; }
+  function showNumberCheck(promptText) {
+    var el = document.getElementById("numWarn");
+    var g = numberIssues(promptText), parts = [];
+    if (g.extra.length) parts.push("mentions " + listWords(g.extra) + ", which you never said");
+    if (g.missing.length) parts.push("leaves out " + listWords(g.missing) + ", which you did");
+    el.hidden = !parts.length;
+    el.textContent = parts.length ? "Heads up: this prompt " + parts.join(", and ") + ". Check those numbers before you paste it." : "";
+    return g;
   }
 
   /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */

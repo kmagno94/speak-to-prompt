@@ -35,7 +35,6 @@ async function page(opts = {}) {
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
-  let reviewN = 0, rewriteN = 0;
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -46,35 +45,16 @@ async function page(opts = {}) {
     const model = (u.match(/models\/([^:]+):/) || [])[1];
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
-    const intake = /intake step/.test(ask), research = !!body.tools, review = /strict quality reviewer/.test(ask), rewrite = /REVIEWER'S FIXES/.test(ask), rank = /judging which version/.test(ask);
-    p.calls.push({ model, intake, research, review, rewrite, rank, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+    const intake = /intake step/.test(ask);
+    p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
-    if (research && opts.researchFail && opts.researchFail[model]) return r.fulfill({ status: 400, headers: h, body: JSON.stringify({ error: { code: 400, message: 'Search not supported' } }) });
-    if (review && opts.reviewDelay) await new Promise(res => setTimeout(res, opts.reviewDelay));
-    let pick = null;
-    if (rank) {
-      const blocks = [...ask.matchAll(/VERSION ([A-C]):\n"""\n([\s\S]*?)\n"""/g)].map(m => ({ label: m[1], text: m[2] }));
-      const draftText = opts.write || 'THE PROMPT';
-      const want = opts.pick === 'draft' ? blocks.find(b => b.text === draftText) : (blocks.filter(b => b.text !== draftText).pop() || blocks[0]);
-      pick = { best: want.label, why: 'Mock judge picked it.', seen: blocks.length };
-      p.rankSeen = blocks.length;
-    }
-    const reviews = opts.review || [grade(10)];
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
-      : research ? (opts.research || '- iOS 27 is the current iPhone software (apple.com)')
-      : review ? JSON.stringify(reviews[Math.min(reviewN++, reviews.length - 1)])
-      : rewrite ? (opts.rewriteText || 'BETTER PROMPT ' + (++rewriteN))
-      : rank ? JSON.stringify(pick)
       : (opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
   await p.goto(BASE);
   return p;
-}
-/* A review where the first n of 10 checks pass; claim is what the reviewer says its total is. */
-function grade(n, claim) {
-  return { score: claim, checks: Array.from({ length: 10 }, (_, i) => ({ id: i + 1, pass: i < n, fix: i < n ? '' : 'Fix check ' + (i + 1) })) };
 }
 async function withKey(p) { await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
 async function done(p) { await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 }); }
@@ -124,67 +104,19 @@ await check('cut-off answer (finishReason MAX_TOKENS) is not shown', async () =>
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'incomplete answer was accepted');
 });
 
-const SIMPLE = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-await check('Deep mode: shows the draft at once, polishes in the background, swaps in a rewrite that wins blind', async () => {
-  const p = await page({ intake: SIMPLE, review: [grade(7), grade(10)], researchFail: { 'gemini-3.5-flash-lite': 400 }, reviewDelay: 900 });
-  await withKey(p); await p.check('#deepMode');
-  expect(/blind comparison/.test(await p.textContent('#modeHint')), 'Deep hint missing');
-  await p.fill('#thoughts', 'memo'); await p.click('#build');
-  await p.waitForFunction(() => document.getElementById('output').value === 'THE PROMPT', null, { timeout: 15000 });
-  expect(await p.isVisible('#polishStatus'), 'polishing status should show while the draft is up');
-  expect(!(await p.isDisabled('#copy')), 'draft should be copyable right away');
-  await p.waitForFunction(() => /swapped in/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  const research = p.calls.filter(c => c.research), draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite && !c.rank);
-  expect(research.some(c => /lite/.test(c.model)) && research.some(c => c.model === 'gemini-3.8-flash'), 'research should fall back from Flash-Lite to Flash');
-  expect(draft.model === 'gemini-3.8-flash' && draft.level === 'high', `draft should be 3.8 Flash at high, got ${draft.model} ${draft.level}`);
-  expect(/iOS 27 is the current/.test(draft.text), 'looked-up facts not passed to the writer');
-  const reviews = p.calls.filter(c => c.review), rewrites = p.calls.filter(c => c.rewrite);
-  expect(reviews.length === 2 && reviews.every(c => !/lite/.test(c.model)), 'reviews should run on Flash, not Flash-Lite');
-  expect(/length limit the person did not ask for counts as invented/.test(reviews[0].text), 'rubric missing the no-invented-length rule');
-  expect(rewrites.length === 1 && /Fix check 8/.test(rewrites[0].text), 'rewrite did not get the reviewer fixes');
-  expect(p.calls.filter(c => c.rank).length === 1, 'expected one blind comparison');
-  expect(await p.inputValue('#output') === 'BETTER PROMPT 1', 'winning rewrite not swapped in');
-  expect(!(await p.isVisible('#polishStatus')), 'polishing status should clear when done');
-  expect(await p.isVisible('#refineLog'), 'refine log hidden');
-  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
-});
-
-await check('Deep mode: 2 rewrites max, scores counted not claimed, draft kept when it wins blind', async () => {
-  const p = await page({ intake: SIMPLE, review: [grade(6), grade(7, 10)], pick: 'draft' });
-  await withKey(p); await p.check('#deepMode');
-  await p.fill('#thoughts', 'memo'); await p.click('#build');
-  await p.waitForFunction(() => /held up best/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  expect(p.calls.filter(c => c.rewrite).length === 2, 'a claimed 10/10 was trusted, or the cap is wrong');
-  expect(p.rankSeen === 3, 'blind comparison should see the draft and both rewrites');
-  expect(await p.inputValue('#output') === 'THE PROMPT', 'draft should stay when it wins');
-  expect(/6\/10/.test(await p.textContent('#madeBy')), 'draft score missing: ' + await p.textContent('#madeBy'));
-});
-
-await check('Deep mode: a rewrite that scores lower keeps the draft (questions path)', async () => {
-  const p = await page({ review: [grade(8), grade(6)] });
-  await withKey(p); await p.check('#deepMode');
-  await p.fill('#thoughts', 'memo'); await p.click('#build');
-  await p.waitForSelector('#qa:not([hidden])');
-  expect(/Deep prompt/.test(await p.textContent('#qaPlan')), 'questions card should say Deep prompt');
-  expect(p.calls.some(c => c.research), 'research should start while the questions are showing');
-  await p.click('#qaList .chips button'); await p.click('#qaGo');
-  await p.waitForFunction(() => /held up best/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  expect(p.calls.filter(c => c.rewrite).length === 1, 'should stop after the lower-scoring rewrite');
-  expect(!p.calls.some(c => c.rank), 'no comparison needed when the rewrite scored lower');
-  expect(await p.inputValue('#output') === 'THE PROMPT', 'should keep the 8/10 draft');
-});
-
-await check('Deep mode: the page catches a changed version number even when the reviewer gives 10/10', async () => {
-  const p = await page({ intake: SIMPLE, review: [grade(10), grade(10)], write: 'Set it up on iOS 18 at 10:15 PM.', rewriteText: 'Set it up on iOS 27 at 10:15 PM.' });
-  await withKey(p); await p.check('#deepMode');
-  await p.fill('#thoughts', 'every night at 10:15 on my iPhone, I am on iOS 27'); await p.click('#build');
-  await p.waitForFunction(() => /swapped in/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  const draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite && !c.rank);
-  expect(/even if you don't recognize it/.test(draft.text), 'writer missing the keep-versions rule');
-  const rw = p.calls.find(c => c.rewrite);
-  expect(rw && /Keep these exactly as I gave them: 27/.test(rw.text) && /never gave: 18/.test(rw.text), 'rewrite did not get the number fixes');
-  expect(await p.inputValue('#output') === 'Set it up on iOS 27 at 10:15 PM.', 'corrected version not shown');
-  expect(/Numbers you never gave: 18/.test(await p.textContent('#refineBody')), 'refine log should show the bad number');
+await check('number check flags a changed version, and stays quiet when numbers match', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [] }, write: 'Set it up on iOS 18 at 10:15 PM. Keep it under 400 words.' });
+  await withKey(p);
+  await p.fill('#thoughts', 'every night at 10:15 on my iPhone, I am on iOS 27'); await p.click('#build'); await done(p);
+  const warn = await p.textContent('#numWarn');
+  expect(await p.isVisible('#numWarn') && /mentions 18 and 400, which you never said/.test(warn) && /leaves out 27/.test(warn), 'number warning wrong: ' + warn);
+  const write = p.calls.find(c => !c.intake);
+  expect(/even if you don't recognize it/.test(write.text), 'writer missing the keep-versions rule');
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [] }, write: 'Set it up on iOS 27 at 10:15 PM. Give me 3 options.' });
+  await withKey(q);
+  await q.fill('#thoughts', 'every night at 10:15 on my iPhone, I am on iOS 27'); await q.click('#build'); await done(q);
+  expect(!(await q.isVisible('#numWarn')), 'number warning showed on a clean prompt');
+  expect(!(await q.$('#deepMode')), 'Deep mode should be gone');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {
