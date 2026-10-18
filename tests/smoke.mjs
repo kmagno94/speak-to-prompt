@@ -84,7 +84,7 @@ await check('full flow: Lite asks, Flash writes, answers and category shown', as
 
 await check('Quick mode writes on Flash-Lite at medium thinking', async () => {
   const p = await page();
-  await withKey(p); await p.click('#moreOpts summary'); await p.check('#quickMode');
+  await withKey(p); await p.check('#quickMode');
   await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   const write = p.calls.filter(c => !c.intake).pop();
   expect(/lite/.test(write.model) && write.level === 'medium', `got ${write.model} ${write.level}`);
@@ -147,7 +147,10 @@ await check('AI app links: Gemini opens the app on iPhone, web on computers', as
 
 await check('first screen is simple; plain words; copy and open', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
-  for (const id of ['#quickMode', '#statsToggle', '#memoGuide']) expect(!(await p.isVisible(id)), id + ' should be folded under More options');
+  for (const id of ['#statsToggle', '#memoGuide']) expect(!(await p.isVisible(id)), id + ' should be folded under More options');
+  expect(await p.isVisible('#quickMode'), 'Quick mode should sit next to Build my prompt');
+  const qRow = await p.evaluate(() => document.getElementById('quickMode').closest('.row') === document.getElementById('build').closest('.row'));
+  expect(qRow, 'Quick mode is not in the Build row');
   expect(!(await p.isVisible('#bannerPaste')), 'paste button should only show from the shortcut');
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   const made = await p.textContent('#madeBy');

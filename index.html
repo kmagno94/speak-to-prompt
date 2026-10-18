@@ -191,7 +191,21 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .btnlink:focus-visible, .getlink:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .getlink { color: var(--accent); font-weight: 700; text-underline-offset: 3px; }
 .voicehint { margin: 0; font-size: 13px; color: var(--muted); }
-.quickmode { font-size: 15px; color: var(--muted); }
+/* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
+.buildrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.buildrow #build { padding: 12px 14px; }
+.buildrow #example { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 359px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
+.qtoggle { min-width: 0; display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 6px 10px 6px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
+.qtoggle:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.qtoggle:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+.qtoggle input { appearance: none; -webkit-appearance: none; flex: none; width: 32px; height: 20px; margin: 0; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background 0.15s ease; }
+.qtoggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease; }
+.qtoggle input:checked { background: var(--accent); }
+.qtoggle input:checked::after { transform: translateX(12px); }
+.qtext { display: grid; line-height: 1.15; }
+.qtext b { font-size: 15px; }
+.qtext small { font-size: 12.5px; color: var(--muted); }
 .plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
 .q { display: flex; flex-direction: column; gap: 8px; }
@@ -285,8 +299,9 @@ details.key[open] summary { margin-bottom: 10px; }
     </div>
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
-    <div class="row">
+    <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
+      <label class="qtoggle" for="quickMode"><input type="checkbox" id="quickMode" role="switch"><span class="qtext"><b>Quick mode</b><small id="quickLabel">No questions, ~15s</small></span></label>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
     <div class="tracker" id="buildTrack" hidden>
@@ -373,7 +388,6 @@ details.key[open] summary { margin-bottom: 10px; }
   <details class="key" id="moreOpts">
     <summary>More options</summary>
     <div class="morebody">
-      <label class="check quickmode"><input type="checkbox" id="quickMode"> <span id="quickLabel">Quick mode: skip questions, ready in about 15 seconds</span></label>
       <div class="how">
         <p class="sub">How it works</p>
         <ol>
@@ -958,7 +972,7 @@ details.key[open] summary { margin-bottom: 10px; }
       if (ideasIdx + 1 < DECK.length) { ideasGo(ideasIdx + 1, true); return; }
       ideasDeal();
       ideasGo(0, false);
-    }, 4500);
+    }, 5000);
   }
   var ideasShowBtn = document.getElementById("ideasShow");
   /* The Show ideas button appears whenever the box is empty and the ideas are tucked away. */
@@ -1335,7 +1349,7 @@ details.key[open] summary { margin-bottom: 10px; }
   function intakeEstimate() { var l = learned("intake_s", null); return l ? l.secs : INTAKE_SECS; }
   function updateQuickLabel() {
     var q = writeEstimate("quick"), total = intakeEstimate() + q.secs;
-    document.getElementById("quickLabel").textContent = "Quick mode: skip questions, ready in about " + (q.learned ? total + " seconds (learned)" : "15 seconds");
+    document.getElementById("quickLabel").textContent = "No questions, ~" + (q.learned ? total : 15) + "s";
   }
 
   /* Step tracker with time-based progress: elapsed and an honest estimate of
