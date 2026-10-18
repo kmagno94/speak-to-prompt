@@ -20,6 +20,7 @@
   --accent-soft: #dbe8f3;
   --danger: #a3332b;
   --ok: #2f6b3f;
+  --record: #d93a3f;
   --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
   --body: "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -28,13 +29,13 @@
   :root:not([data-theme="light"]) {
     --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; color-scheme: dark;
+    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; color-scheme: dark;
+  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -47,9 +48,20 @@ body {
 }
 .wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
 header { display: flex; flex-direction: column; gap: 8px; }
-h1 { font-family: var(--display); font-size: clamp(30px, 8vw, 42px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-height: 0.98; margin: 0; letter-spacing: -0.025em; text-wrap: balance; }
+/* The one signature: a voice waveform that settles into lines of text. */
+.wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; }
+.wave .v rect { fill: var(--record); transform-box: fill-box; transform-origin: center; }
+.wave .t rect { fill: var(--accent); opacity: 0.85; }
+@media (prefers-reduced-motion: no-preference) {
+  .wave .v rect { animation: speak 0.9s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 40ms); }
+  .wave .t rect { animation: settle 0.6s ease-out both; animation-delay: calc(700ms + var(--i) * 90ms); transform-box: fill-box; transform-origin: left center; }
+  @keyframes speak { from { transform: scaleY(0.1); } }
+  @keyframes settle { from { transform: scaleX(0); } }
+}
 .lede { margin: 0; color: var(--muted); max-width: 52ch; }
-.chip { align-self: flex-start; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ok); border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; }
+.chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-radius: 999px; padding: 4px 11px; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
 .steps b { display: block; font-family: var(--display); color: var(--accent); font-size: 15px; }
@@ -66,13 +78,21 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 }
 textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-button { font: inherit; cursor: pointer; border-radius: 10px; padding: 11px 18px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+button { font: inherit; cursor: pointer; border-radius: 12px; padding: 12px 18px; min-height: 46px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 25%, transparent); }
+button.primary:active, .btnlink:active { transform: translateY(1px); }
 button.link { border: none; background: none; padding: 6px 2px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .error { color: var(--danger); font-size: 14px; margin: 0; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 0 var(--line), 0 10px 24px -18px rgba(20, 40, 70, 0.35); }
-.card h2 { font-family: var(--display); font-size: 21px; margin: 0; }
-#output { font-family: var(--mono); font-size: 13.5px; line-height: 1.6; min-height: 260px; padding: 12px; background: var(--bg); border-color: var(--line); }
+.card h2 { font-family: var(--display); font-size: 23px; letter-spacing: -0.01em; margin: 0; }
+/* Scratchpad in, index card out: the prompt sits on a ruled card with the red top line. */
+#result h2 { padding-bottom: 10px; border-bottom: 2px solid var(--record); }
+#output {
+  font-family: var(--body); font-size: 15.5px; line-height: 28px; min-height: 280px; padding: 10px 14px;
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule) 27px 28px);
+  background-position: 0 9px; background-attachment: local; border-color: var(--line);
+}
 .status { font-size: 14px; color: var(--ok); min-height: 1.2em; margin: 0; }
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
@@ -129,10 +149,12 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .tracker .nums .over b { font-size: 15px; font-family: var(--body); color: var(--muted); }
 .tracker .detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .buildstatus.bad { color: var(--danger); }
-.eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.eyebrow { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
 .voice { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-.btnlink { display: inline-block; text-decoration: none; font-weight: 700; border-radius: 10px; padding: 11px 18px; background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent); }
+.btnlink { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; border-radius: 999px; padding: 11px 20px 11px 12px; min-height: 48px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line), 0 8px 20px -16px rgba(20, 40, 70, 0.5); }
+/* Voice Memos' red record dot: the voice way in. */
+.btnlink::before { content: ""; width: 24px; height: 24px; border-radius: 50%; background: var(--record); box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 18%, transparent); }
 .btnlink:focus-visible, .getlink:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .getlink { color: var(--accent); font-weight: 700; text-underline-offset: 3px; }
 .voicehint { margin: 0; font-size: 13px; color: var(--muted); }
@@ -142,7 +164,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .q { display: flex; flex-direction: column; gap: 8px; }
 .q > p { margin: 0; font-weight: 700; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips button { padding: 8px 12px; border-radius: 999px; font-size: 15px; }
+.chips button { padding: 8px 14px; min-height: 40px; border-radius: 999px; font-size: 15px; background: var(--bg); border-color: transparent; }
 .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .q input { font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .q input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -167,7 +189,8 @@ details.key[open] summary { margin-bottom: 10px; }
 .morebody .how .hint { margin: 0; }
 .openrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .openrow span { font-size: 14px; color: var(--muted); flex-basis: 100%; }
-.openrow a { text-decoration: none; font-weight: 700; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 8px 14px; }
+.openrow a { text-decoration: none; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 9px 16px; min-height: 42px; display: inline-flex; align-items: center; }
+.openrow a:active { transform: translateY(1px); }
 .keybody { display: flex; flex-direction: column; gap: 10px; }
 .keybody p { margin: 0; font-size: 14px; color: var(--muted); }
 .keybody a { color: var(--accent); font-weight: 700; }
@@ -186,6 +209,22 @@ details.key[open] summary { margin-bottom: 10px; }
   <header>
     <span class="chip">Nothing is saved</span>
     <h1>Speak to Prompt</h1>
+    <svg class="wave" viewBox="0 0 340 30" aria-hidden="true" focusable="false">
+      <g class="v">
+        <rect style="--i:0" x="0" y="11" width="4" height="8" rx="2"/><rect style="--i:1" x="8" y="6" width="4" height="18" rx="2"/>
+        <rect style="--i:2" x="16" y="2" width="4" height="26" rx="2"/><rect style="--i:3" x="24" y="8" width="4" height="14" rx="2"/>
+        <rect style="--i:4" x="32" y="4" width="4" height="22" rx="2"/><rect style="--i:5" x="40" y="10" width="4" height="10" rx="2"/>
+        <rect style="--i:6" x="48" y="5" width="4" height="20" rx="2"/><rect style="--i:7" x="56" y="1" width="4" height="28" rx="2"/>
+        <rect style="--i:8" x="64" y="7" width="4" height="16" rx="2"/><rect style="--i:9" x="72" y="11" width="4" height="8" rx="2"/>
+        <rect style="--i:10" x="80" y="9" width="4" height="12" rx="2"/><rect style="--i:11" x="88" y="12" width="4" height="6" rx="2"/>
+        <rect style="--i:12" x="96" y="13" width="4" height="4" rx="2"/>
+      </g>
+      <g class="t">
+        <rect style="--i:0" x="112" y="4" width="200" height="4" rx="2"/>
+        <rect style="--i:1" x="112" y="13" width="228" height="4" rx="2"/>
+        <rect style="--i:2" x="112" y="22" width="140" height="4" rx="2"/>
+      </g>
+    </svg>
     <p class="lede">Say what's on your mind, messy is fine. Get back a prompt you can paste into any AI to get a great answer.</p>
   </header>
 
