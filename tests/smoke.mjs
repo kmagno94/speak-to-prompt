@@ -298,6 +298,26 @@ await check('not sure where to start: pick a category, tap and type answers, get
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('idea strip: a swipe never counts as a tap; a clean tap still starts typing', async () => {
+  const p = await page();
+  await p.waitForTimeout(300);
+  const box = await (await p.$('#ideasTrack')).boundingBox();
+  const y = box.y + box.height / 2;
+  // Swipe: press, drag left 60px while the strip scrolls, release
+  await p.mouse.move(box.x + box.width * 0.7, y); await p.mouse.down();
+  await p.mouse.move(box.x + box.width * 0.7 - 60, y, { steps: 6 });
+  await p.$eval('#ideasTrack', t => t.scrollBy({ left: t.clientWidth }));
+  await p.mouse.up();
+  await p.waitForTimeout(250);
+  expect(await p.evaluate(() => document.activeElement.id) !== 'thoughts', 'a swipe opened the text box');
+  expect(await p.isVisible('#ideas .ideas-track'), 'ideas cleared after a swipe');
+  // Clean tap, after the strip has settled
+  await p.waitForTimeout(500);
+  await p.mouse.click(box.x + box.width / 2, y);
+  await p.waitForTimeout(250);
+  expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

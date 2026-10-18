@@ -512,7 +512,25 @@ export function startApp() {
     clearTimeout(ideasBack);
     ideasBack = setTimeout(function () { if (document.activeElement !== thoughts) ideasSync(); }, 1500);
   });
-  ideasTrack.addEventListener("click", function () { thoughts.focus(); });
+  /* A tap on the idea strip starts typing, but a swipe must never count as a tap.
+     iPhone can fire a click after a short or slow swipe, so the click is ignored
+     when the finger moved, the strip scrolled, the press was long, or the strip
+     was still gliding from a swipe a moment ago. */
+  var tapX = 0, tapY = 0, tapT = 0, tapLeft = 0, tapBad = false, lastSlide = 0;
+  ideasTrack.addEventListener("pointerdown", function (e) {
+    tapX = e.clientX; tapY = e.clientY; tapT = Date.now(); tapLeft = ideasTrack.scrollLeft;
+    tapBad = Date.now() - lastSlide < 400;
+  }, { passive: true });
+  ideasTrack.addEventListener("pointermove", function (e) {
+    if (Math.abs(e.clientX - tapX) > 8 || Math.abs(e.clientY - tapY) > 8) tapBad = true;
+  }, { passive: true });
+  ideasTrack.addEventListener("pointercancel", function () { tapBad = true; });
+  ideasTrack.addEventListener("scroll", function () { lastSlide = Date.now(); tapBad = true; }, { passive: true });
+  ideasTrack.addEventListener("click", function (e) {
+    var moved = Math.abs(e.clientX - tapX) > 8 || Math.abs(e.clientY - tapY) > 8;
+    if (tapBad || moved || Date.now() - tapT > 400 || Math.abs(ideasTrack.scrollLeft - tapLeft) > 2) return;
+    thoughts.focus();
+  });
   ideasShowBtn.addEventListener("click", function () {
     clearTimeout(ideasBack);
     thoughts.blur();
