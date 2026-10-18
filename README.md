@@ -11,7 +11,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 ## How to use it
 
 1. **Get your thoughts in.** Type them, or talk in Voice Memos and paste the transcript.
-   Blank page? Tap **Not sure where to start?** (under Build my prompt). Pick a category (or "Not sure yet"), tap or type a couple of quick answers, then use the sliders to dial **Detail**, **Tone**, **My level**, and **Ideas** up or down. It writes a starting point you can build from right away or put in the box to add more.
+   Blank page? Tap **Not sure where to start?** (under Build my prompt). Pick a category (or "Not sure yet"), tap or type a couple of quick answers, then use the sliders to dial **Detail**, **Tone**, **My level**, and **Ideas** up or down. The tap answers rotate: each question has a pool of up to 10, shows 5, and serves a new 5 every 3 hours (12, 3, 6, and 9 o'clock, morning and night). Nothing is saved; the clock picks them. **More options** shows the rest right away. It writes a starting point you can build from right away or put in the box to add more.
    Stuck? The empty box rotates silly but real ideas (swipe through them, or tap **Try this one**). They clear the moment you tap in to type.
 2. **Tap Build my prompt.**
 3. **Copy the prompt** and paste it into any AI, or tap **ChatGPT**, **Claude**, or **Gemini** under **Copy and open in** to copy it and open that app in one tap.
@@ -88,6 +88,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/App.svelte` | The page markup |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
+  | `app/lib/rotate.js` | Picks which 5 starter answers show, from the current 3-hour window (no storage) |
   | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY). Testing only; remove these files, the lines marked "core" in app.js, and the "Improve this app" category in starters.js before shipping |
   | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |

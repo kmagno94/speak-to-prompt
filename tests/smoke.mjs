@@ -57,6 +57,18 @@ async function page(opts = {}) {
   await p.goto(BASE);
   return p;
 }
+/* Starter answers rotate, so a given option may be in the next group: tap
+   "More options" until it shows up. */
+async function pickChip(p, text) {
+  for (let i = 0; i < 4; i++) {
+    const hit = await p.$(`#starter .chips button:text-is("${text}")`);
+    if (hit) return hit.click();
+    const more = await p.$('#rotateMore');
+    if (!more) break;
+    await more.click();
+  }
+  throw new Error('option not found: ' + text);
+}
 async function withKey(p) { await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
 async function done(p) { await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 }); }
 
@@ -267,7 +279,7 @@ await check('not sure where to start: pick a category, tap and type answers, get
   expect(await p.$$eval('#starter .cats button', l => l.length) >= 8, 'expected a general option plus specific categories');
   await p.click('#starter .cats button >> text=Money and budgeting');
   await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
-  await p.click('#starter .chips button >> text=Save for something');
+  await pickChip(p, 'Save for something');
   await p.waitForSelector('#starter .msg.ai >> text=What makes it hard?');
   await p.fill('#starterOwn', 'late night delivery'); await p.press('#starterOwn', 'Enter');
   await p.waitForSelector('#starter .msg.ai >> text=Anything else');
@@ -289,7 +301,7 @@ await check('not sure where to start: pick a category, tap and type answers, get
   await p.click('#starterBtn'); await p.waitForSelector('#starter .cats button');
   await p.fill('#starterOwn', 'my car makes a weird noise'); await p.press('#starterOwn', 'Enter');
   await p.waitForSelector('#starter .msg.ai >> text=What kind of help');
-  await p.click('#starter .chips button >> text=Fix a problem');
+  await pickChip(p, 'Fix a problem');
   await p.waitForSelector('#starter .msg.ai >> text=Anything else');
   await p.click("#starter .chips button >> text=That's it");
   await p.click('#starterBuild'); await done(p);
@@ -378,6 +390,35 @@ await check('starter: Improve this app writes a starting point with the app back
   expect(/improving my Speak to Prompt web app/.test(box) && /Svelte 5 \+ Vite/.test(box) && /tests\/smoke\.mjs/.test(box)
     && /Change: Add a feature\./.test(box) && /Part of the app: Idea strip\./.test(box) && /Also: let me save favorite ideas\./.test(box)
     && /What I want back:/.test(box.split('\n').pop()), 'app starting text wrong: ' + box);
+});
+
+await check('starter answers: 5 at a time, same all window, new set every 3 hours, More options shows others', async () => {
+  const p = await page();
+  const visible = () => p.$$eval('#starter .chips button', l => l.filter(b => !b.classList.contains('skip') && b.id !== 'rotateMore').map(b => b.textContent.trim()));
+  async function openMoney(time) {
+    await p.clock.setFixedTime(new Date(time));
+    await p.reload(); await p.waitForTimeout(150);
+    await p.click('#starterBtn'); await p.click('#starter .cats button >> text=Money and budgeting');
+    await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
+    return visible();
+  }
+  const t0 = new Date('2026-10-20T09:10:00-04:00').getTime();   // 9:10 AM Eastern (the test page runs on New York time), inside the 9 to 12 window
+  const a = await openMoney(t0);
+  const same = await openMoney(t0 + 2.5 * 3600000);              // 11:40 AM, same window
+  const next = await openMoney(t0 + 3 * 3600000);                // 12:10 PM, next window
+  expect(a.length === 5 && next.length === 5, 'should show 5 options, got ' + a.length + ' and ' + next.length);
+  expect(a.join('|') === same.join('|'), 'options changed inside the same 3-hour window');
+  expect(a.join('|') !== next.join('|'), 'options did not change in the next window');
+  await p.click('#rotateMore');
+  const more = await visible();
+  expect(more.length === 5 && more.some(x => !next.includes(x)), 'More options should show a different group');
+  // Categories never rotate, and the dev category shows every option
+  expect((await p.$$eval('#starter .cats button', l => l.length)) === 0, 'categories gone after picking');
+  await p.click('#starterClose'); await p.click('#starterBtn');
+  await p.click('#starter .cats button >> text=Improve this app');
+  await p.waitForSelector('#starter .msg.ai >> text=What do you want to change?');
+  expect((await visible()).length === 6 && !(await p.$('#rotateMore')), 'Improve this app should show all 6 options, no rotation');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('usage.json is valid', async () => {

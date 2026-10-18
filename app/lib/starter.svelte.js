@@ -2,6 +2,7 @@
    of tap-or-type questions, and get starting text for the main box. */
 import { CATEGORIES, EXTRA, SLIDERS } from './starters.js';
 import { ms } from './motion.js';
+import { rotating, SHOW } from './rotate.js';
 
 let nextId = 1;
 
@@ -12,10 +13,19 @@ class StarterSession {
   messages = $state([]);     // [{ id, from: 'ai' | 'me', text }]
   current = $state(-1);      // -1 = choosing a category; then the question index
   typing = $state(false);
+  page = $state(0);          // taps on "More options" for the current question
   tune = $state(Object.fromEntries(SLIDERS.map((s) => [s.key, 3])));   // fine-tune sliders, 1 to 5
 
   questions = $derived(this.cat ? [...this.cat.questions, EXTRA] : []);
   done = $derived(this.cat !== null && this.current >= this.questions.length);
+  /* The answer options showing right now: 5 from the question's pool, picked by
+     the current 3-hour window. The dev-only category always shows everything. */
+  choices = $derived.by(() => {
+    const q = this.questions[this.current];
+    if (!q) return [];
+    return this.cat.dev ? q.choices.slice() : rotating(q.choices, this.cat.id + ':' + this.current, this.page);
+  });
+  canRotate = $derived(!!this.cat && !this.cat.dev && (this.questions[this.current]?.choices.length || 0) > SHOW);
   /* The starting text, rebuilt as answers change. */
   text = $derived.by(() => {
     if (!this.cat) return '';
@@ -81,9 +91,12 @@ class StarterSession {
     return i === -1 ? this.questions.length : i;
   }
 
+  more() { if (!this.typing) this.page++; }
+
   #ask(i) {
     clearTimeout(this.#timer);
     this.current = i;
+    this.page = 0;
     this.typing = true;
     this.#timer = setTimeout(() => {
       this.typing = false;

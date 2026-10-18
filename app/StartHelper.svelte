@@ -80,9 +80,12 @@
         </div>
       {:else if !starter.done}
         <div class="chips" role="group" aria-label="Quick answers" in:fly={{ y: 6, duration: ms(180) }}>
-          {#each starter.questions[starter.current].choices as c}
+          {#each starter.choices as c (c)}
             <button type="button" onclick={() => starter.reply(c)}>{c}</button>
           {/each}
+          {#if starter.canRotate}
+            <button type="button" class="moreopts" id="rotateMore" onclick={() => starter.more()}>🔀 More options</button>
+          {/if}
           {#if !starter.questions[starter.current].end}
             <button type="button" class="skip" onclick={() => starter.skip()}>Skip</button>
           {/if}
@@ -160,6 +163,7 @@
   .slider .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
   .slider b { font-size: 13px; color: var(--accent); }
   .slider b.off { color: var(--muted); font-weight: 400; }
+  .chips .moreopts { color: var(--accent); border-style: dashed; }
   .out { display: grid; gap: 6px; }
   .out p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
   .out .text { white-space: pre-wrap; padding: 12px 14px; border-radius: 12px; background: var(--bg); line-height: 1.5; }
