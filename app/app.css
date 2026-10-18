@@ -1,6 +1,7 @@
 /* Layout: one narrow column. Loose scratchpad in, clean index card out. */
 :root {
   --bg: #e9edf2;
+  --bubble: #e9edf2;   /* question bubbles; a shade lighter than the card in dark mode */
   --surface: #ffffff;
   --ink: #18212c;
   --muted: #566170;
@@ -18,13 +19,13 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
+    --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
     --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #11161d; --surface: #19212b; --ink: #e6ebf1; --muted: #9aa6b5;
+  --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
   --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
 }
@@ -208,7 +209,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .q { display: flex; flex-direction: column; gap: 8px; }
 .q > p { margin: 0; font-weight: 700; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips button { padding: 8px 14px; min-height: 40px; border-radius: 999px; font-size: 15px; background: var(--bg); border-color: transparent; }
+.chips button { padding: 8px 14px; min-height: 40px; border-radius: 999px; font-size: 15px; background: var(--surface); border: 1.5px solid var(--line); }
 .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .q input { font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .q input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -252,14 +253,14 @@ details.key[open] summary { margin-bottom: 10px; }
 .msg { max-width: 86%; }
 .msg.ai { align-self: flex-start; }
 .msg.me { align-self: flex-end; }
-.msg p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: var(--bg); line-height: 1.4; }
+.msg p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: var(--bubble); line-height: 1.4; }
 .mine {
   padding: 10px 14px; min-height: 0; border: 0; border-radius: 18px 18px 6px 18px;
   background: var(--accent); color: var(--accent-ink); font-weight: 700; text-align: left;
 }
 .mine.skipped { background: var(--line); color: var(--muted); }
 .mine:active { transform: scale(0.97); }
-.typing { display: flex; gap: 5px; padding: 14px 16px; border-radius: 18px 18px 18px 6px; background: var(--bg); }
+.typing { display: flex; gap: 5px; padding: 14px 16px; border-radius: 18px 18px 18px 6px; background: var(--bubble); }
 .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); opacity: 0.5; }
 .chips .skip { color: var(--muted); }
 .composer { display: flex; gap: 8px; }
