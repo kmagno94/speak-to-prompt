@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { startApp } from './lib/app.js';
   import ModePicker from './ModePicker.svelte';
+  import ChatBuilder from './ChatBuilder.svelte';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -67,18 +68,8 @@
     <p id="buildStatus" class="buildstatus" role="status"></p>
   </form>
 
-  <section class="card" id="qa" hidden aria-live="polite">
-    <p class="eyebrow">A few quick questions</p>
-    <!-- svelte-ignore a11y_missing_content (filled in by app.js) -->
-    <h2 id="qaTitle"></h2>
-    <p id="qaNeed" class="need"></p>
-    <p id="qaPlan" class="plan"></p>
-    <div id="qaList" class="qalist"></div>
-    <p class="need">Answer what you can. Blank is fine.</p>
-    <div class="row">
-      <button type="button" class="primary" id="qaGo">Write my prompt</button>
-      <button type="button" id="qaSkip">Quick prompt</button>
-    </div>
+  <section class="card" id="qa" hidden>
+    <ChatBuilder />
     <p id="qaStatus" class="buildstatus" role="status"></p>
   </section>
 

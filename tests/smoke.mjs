@@ -233,6 +233,31 @@ await check('mode picker (Svelte component): hint follows the mode and the key',
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('chat questions: tap, type, skip, edit an answer, live summary, all sent to the writer', async () => {
+  const p = await page({ intake: { title: 'Trip Plan', need: 'N', category: 'Travel', complexity: 'standard', questions: [
+    { question: 'Where to?', choices: ['Tokyo', 'Paris'] },
+    { question: 'How long?', choices: ['3 days'] },
+    { question: 'Budget?', choices: ['Under $1,000'] }] } });
+  await withKey(p); await p.fill('#thoughts', 'plan a trip'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(await p.textContent('#qaTitle') === 'Trip Plan', 'chat title missing');
+  await p.click('#qaList .chips button >> text=Tokyo');
+  await p.waitForSelector('#qaList .msg.ai >> text=How long?');
+  await p.fill('#qaOwn', '5 days'); await p.press('#qaOwn', 'Enter');
+  await p.waitForSelector('#qaList .msg.ai >> text=Budget?');
+  await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  expect(await p.$$eval('.brief li', l => l.length) === 2, 'summary should list the 2 answered questions');
+  await p.click('.brief li button >> text=Tokyo');
+  await p.waitForSelector('#qaList .msg.ai >> text=let\'s change that');
+  await p.click('#qaList .chips button >> text=Paris');
+  await p.waitForSelector('.brief li >> text=Paris');
+  await p.click('#qaGo'); await done(p);
+  const write = p.calls.find(c => !c.intake).text;
+  expect(/Q: Where to\?\nA: Paris/.test(write) && /A: 5 days/.test(write) && !/A: Tokyo/.test(write) && !/Budget\?/.test(write), 'writer got the wrong answers: ' + write.slice(-200));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

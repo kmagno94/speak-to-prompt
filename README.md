@@ -20,7 +20,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | | Quick version | With a free Gemini key |
 |---|---|---|
 | Setup | None | About a minute at Google AI Studio |
-| Follow-up questions | Asked by the AI you paste into | Asked on the page, tap to answer: usually 1 to 3, up to 5 for complex requests |
+| Follow-up questions | Asked by the AI you paste into | Asked as a short chat on the page: tap an answer, type your own, or skip. Usually 1 to 3, up to 5 for complex requests |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
 ### Two modes (next to Build my prompt)
@@ -73,6 +73,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   |---|---|
   | `app/App.svelte` | The page markup |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
+  | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |
   | `app/lib/prompts.js` | What gets sent to Gemini, and the no-key quick version |

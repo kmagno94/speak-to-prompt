@@ -1,6 +1,7 @@
 import { EXAMPLE, buildPrompt, ANALYZE, WRITE } from './prompts.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
+import { chat } from './chat.svelte.js';
 
 export function startApp() {
   /* The deck shuffles in place, so each start works on its own copy. */
@@ -319,7 +320,7 @@ export function startApp() {
     status.textContent = "";
     result.hidden = true;
     qa.hidden = true;
-    qaList.textContent = "";
+    chat.reset();
     session = null;
     writeRun++;
     busy = false;
@@ -689,7 +690,6 @@ export function startApp() {
   /* Gemini flow: read the thoughts, ask up to 3 questions, then write one complete prompt.
      Everything lives in this tab only; nothing is stored. */
   var qa = document.getElementById("qa");
-  var qaList = document.getElementById("qaList");
   var buildBtn = document.getElementById("build");
   var buildStatus = document.getElementById("buildStatus");
   var qaStatus = document.getElementById("qaStatus");
@@ -708,8 +708,7 @@ export function startApp() {
   function setBusy(on, label) {
     busy = on;
     buildBtn.disabled = on;
-    document.getElementById("qaGo").disabled = on;
-    document.getElementById("qaSkip").disabled = on;
+    chat.busy = on;
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
   }
 
@@ -964,46 +963,14 @@ export function startApp() {
     });
   }
 
+  /* The questions are a chat now (ChatBuilder.svelte + chat.svelte.js). */
   function renderQuestions(intake) {
-    document.getElementById("qaTitle").textContent = intake.title || "Let's get the details right";
-    document.getElementById("qaNeed").textContent = intake.need;
-    document.getElementById("qaPlan").textContent = "Your prompt: " + planText(intake.complexity, gemini.plan.write[0]);
-    qaList.textContent = "";
-    intake.questions.forEach(function (q, i) {
-      var wrap = document.createElement("div"); wrap.className = "q";
-      var label = document.createElement("p"); label.id = "q" + i; label.textContent = (i + 1) + ". " + q.question;
-      wrap.appendChild(label);
-      if (q.choices.length) {
-        var chips = document.createElement("div"); chips.className = "chips"; chips.setAttribute("role", "group"); chips.setAttribute("aria-labelledby", label.id);
-        q.choices.forEach(function (c) {
-          var btn = document.createElement("button"); btn.type = "button"; btn.textContent = c; btn.setAttribute("aria-pressed", "false");
-          btn.addEventListener("click", function () {
-            var on = btn.getAttribute("aria-pressed") !== "true";
-            Array.prototype.forEach.call(chips.children, function (x) { x.setAttribute("aria-pressed", "false"); });
-            btn.setAttribute("aria-pressed", on ? "true" : "false");
-          });
-          chips.appendChild(btn);
-        });
-        wrap.appendChild(chips);
-      }
-      var own = document.createElement("input"); own.type = "text"; own.id = "qa-own-" + i;
-      own.placeholder = "Or type your own answer"; own.setAttribute("aria-labelledby", label.id);
-      wrap.appendChild(own);
-      qaList.appendChild(wrap);
-    });
+    chat.start(intake, "Your prompt: " + planText(intake.complexity, gemini.plan.write[0]));
     qaStatus.textContent = "";
     qa.hidden = false;
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-
-  function collectAnswers() {
-    return Array.prototype.map.call(qaList.children, function (wrap, i) {
-      var picked = wrap.querySelector('button[aria-pressed="true"]');
-      var typed = wrap.querySelector("input").value.trim();
-      var answer = [picked ? picked.textContent : "", typed].filter(Boolean).join(". ");
-      return { question: session.questions[i].question, answer: answer };
-    });
-  }
+  chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
   function writeFinal(answers, quick) {
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
@@ -1150,8 +1117,6 @@ export function startApp() {
     }
   });
 
-  document.getElementById("qaGo").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers()); });
-  document.getElementById("qaSkip").addEventListener("click", function () { if (!busy && session) writeFinal(collectAnswers(), true); });
   /* AI app links. claude.ai/new and chatgpt.com are https links the apps claim
      (universal links), so on iPhone they open the app when it's installed and the
      website when it isn't. Gemini's app only claims a few paths, so iPhone and
