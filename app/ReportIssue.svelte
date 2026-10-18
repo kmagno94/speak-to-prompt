@@ -1,6 +1,6 @@
 <script>
   import { slide } from 'svelte/transition';
-  import { report, REASONS } from './lib/report.svelte.js';
+  import { report, REASONS, RELAY } from './lib/report.svelte.js';
   import { core } from './lib/core.svelte.js';
   import { ms } from './lib/motion.js';
 
@@ -8,29 +8,41 @@
   let note = $state('');
   let status = $state('');
   let sent = $state(false);
+  let sending = $state(false);
 
   /* A new prompt means a new report. */
   $effect(() => { report.run; picked = []; note = ''; status = ''; sent = false; });
 
   const ready = $derived(picked.length > 0 || note.trim().length > 0);
   const preview = $derived(report.open ? report.text(picked, note) : '');
-  const issue = $derived(report.open && core.dev ? report.issueUrl(picked, note) : '');
+  const issue = $derived(report.open && core.dev && !RELAY ? report.issueUrl(picked, note) : '');
 
   function pick(r) { picked = picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r]; }
 
   function done(msg) { sent = true; status = msg; }
 
   function send() {
+    if (RELAY) {
+      sending = true; status = 'Sending...';
+      report.relay(picked, note).then(
+        (n) => { sending = false; done('Sent! It\'s report #' + n + ' on the bug list. Thanks, this helps fix it.'); },
+        () => { sending = false; shareOrCopy('Couldn\'t reach the bug list, so '); });
+      return;
+    }
+    shareOrCopy('');
+  }
+
+  function shareOrCopy(lead) {
     const text = report.text(picked, note);
     const copy = () => {
       if (!navigator.clipboard?.writeText) { status = "This browser can't send it from here. Open \"See exactly what's sent\" and copy it."; return; }
       navigator.clipboard.writeText(text).then(
-        () => done('Copied. Paste it into a message to whoever shared this app with you. Thanks!'),
+        () => done((lead ? lead + 'it was copied instead. ' : 'Copied. ') + 'Paste it into a message to whoever shared this app with you. Thanks!'),
         () => { status = "Couldn't copy. Open \"See exactly what's sent\" and copy it."; });
     };
     if (navigator.share) {
       navigator.share({ title: 'Speak to Prompt report', text }).then(
-        () => done('Sent. Thanks, this helps fix it.'),
+        () => done(lead ? lead + 'it went through your share sheet instead. Thanks!' : 'Sent. Thanks, this helps fix it.'),
         (e) => { if (e?.name !== 'AbortError') copy(); });
     } else copy();
   }
@@ -49,14 +61,14 @@
       </div>
       <label for="reportNote">Anything else? <span>(optional)</span></label>
       <textarea id="reportNote" rows="2" bind:value={note} placeholder="What did you expect instead?"></textarea>
-      <p class="hint">Your thoughts, answers, and prompt are never included. Only how the run went: timing, lengths, models, and settings.</p>
+      <p class="hint">{RELAY ? 'Goes to the app\'s public bug list. ' : ''}Your thoughts, answers, and prompt are never included. Only how the run went: timing, lengths, models, and settings.</p>
       <details class="what">
         <summary>See exactly what's sent</summary>
         <pre id="reportPreview">{preview}</pre>
       </details>
       <div class="row">
-        <button type="button" class="primary" id="reportSend" disabled={!ready} onclick={send}>{sent ? 'Send again' : 'Send report'}</button>
-        {#if core.dev}
+        <button type="button" class="primary" id="reportSend" disabled={!ready || sending} onclick={send}>{sending ? 'Sending...' : sent ? 'Send again' : 'Send report'}</button>
+        {#if issue}
           <a class="ghlink" id="reportIssue" href={issue} target="_blank" rel="noopener"
              aria-disabled={!ready} onclick={(e) => { if (!ready) e.preventDefault(); else done('Opened GitHub. Tap Submit there, and the next review picks it up.'); }}>File a GitHub issue</a>
         {/if}

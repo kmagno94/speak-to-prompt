@@ -519,6 +519,14 @@ await check('something went wrong: quick report with run facts only, never your 
     { question: 'Where to?', choices: ['Tokyo', 'Paris'] },
     { question: 'How long?', choices: ['3 days'] }] } });
   await p.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; });
+  // The report relay (a fake address in tests): answer CORS, record what was sent
+  let relayUp = true; const relayed = [];
+  await p.route('https://relay.test/report', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    relayed.push(JSON.parse(r.request().postData()));
+    return relayUp ? r.fulfill({ status: 201, headers: h, body: JSON.stringify({ ok: true, number: 7 }) }) : r.fulfill({ status: 500, headers: h, body: JSON.stringify({ ok: false }) });
+  });
   await withKey(p); await p.fill('#thoughts', 'plan a secretword trip'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])');
   await p.click('#qaList .chips button >> text=Tokyo');
@@ -539,20 +547,27 @@ await check('something went wrong: quick report with run facts only, never your 
   expect(/What went wrong: Missed my point; Too long/.test(text) && /Note: expected a packing list/.test(text), 'picks or note missing: ' + text);
   expect(/- App version: \S+/.test(text) && /- Mode: Full/.test(text) && /- Words in: 4/.test(text) && /- Questions: 2 asked, 2 answered \(1 tapped, 1 typed\), 0 skipped/.test(text) && /- Write step: \S+/.test(text) && /- Sliders: Detail 3/.test(text), 'run facts missing: ' + text);
   expect(!/secretword|Tokyo|five lazy|THE PROMPT/.test(text), 'report must never include thoughts, answers, or the prompt: ' + text);
+  expect(/public bug list/.test(await p.textContent('#reportBox .hint')), 'should say reports go to the public bug list');
+  // One tap: the relay files it, no account, no share sheet
   await p.click('#reportSend');
-  expect(await p.evaluate(() => window.__shared && window.__shared.text) === text, 'share sheet should get exactly the preview');
-  expect(/Sent/.test(await p.textContent('#reportStatus')), 'should confirm it was sent');
-  // Computers without a share sheet: copy instead
+  await p.waitForFunction(() => /report #7/.test(document.getElementById('reportStatus').textContent));
+  expect(relayed.length === 1 && relayed[0].title === 'Report: Missed my point, Too long' && relayed[0].body === text, 'relay should get exactly the preview: ' + JSON.stringify(relayed[0]).slice(0, 120));
+  expect(!(await p.evaluate(() => window.__shared)), 'share sheet should not open when the relay works');
+  // Relay down: falls back to the share sheet
+  relayUp = false;
+  await p.click('#reportSend');
+  await p.waitForFunction(() => /share sheet instead/.test(document.getElementById('reportStatus').textContent));
+  expect(await p.evaluate(() => window.__shared && window.__shared.text) === text, 'fallback share sheet should get exactly the preview');
+  // Relay down on a computer without a share sheet: copy instead
   await p.evaluate(() => { navigator.share = undefined; });
   await p.click('#reportSend');
-  await p.waitForFunction(() => /Copied/.test(document.getElementById('reportStatus').textContent));
+  await p.waitForFunction(() => /copied instead/.test(document.getElementById('reportStatus').textContent));
   expect((await p.evaluate(() => navigator.clipboard.readText())) === text, 'copy fallback should copy the report');
-  // Dev tools: a prefilled GitHub issue labeled report
+  // Dev tools: the core line shows; the manual GitHub link isn't needed with the relay
   await p.click('#moreOpts summary'); await p.check('#devTools');
-  const href = await p.getAttribute('#reportIssue', 'href');
   const devText = await p.$eval('#reportPreview', el => el.textContent);
   expect(/- Core: (on|off)/.test(devText), 'dev reports should say whether the core was on');
-  expect(href.startsWith('https://github.com/kmagno94/speak-to-prompt/issues/new?labels=report&title=Report%3A%20Missed%20my%20point%2C%20Too%20long&body=') && decodeURIComponent(href.split('&body=')[1]) === devText, 'GitHub issue link wrong: ' + href.slice(0, 140));
+  expect(!(await p.$('#reportIssue')), 'with the relay, no manual GitHub link');
   // A new prompt starts a fresh, closed report
   await p.click('#reset'); await p.fill('#thoughts', 'another one'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
@@ -561,6 +576,38 @@ await check('something went wrong: quick report with run facts only, never your 
   await p.click('#reportBtn');
   expect(await p.$$eval('#reportBox .chips button[aria-pressed="true"]', l => l.length) === 0 && (await p.inputValue('#reportNote')) === '', 'a new prompt should clear the old picks');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
+  const { default: relay } = await import('../worker/report-relay.js');
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { sent.push({ url, init }); return new Response(JSON.stringify({ number: 42 }), { status: 201 }); };
+  const APP = 'https://kmagno94.github.io', env = { GITHUB_TOKEN: 'tok' };
+  const post = (body, origin = APP, ip = '1.1.1.1', e = env) => relay.fetch(new Request('https://relay.example/', { method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify(body) }), e);
+  const good = { title: 'Report: Too long', body: 'Speak to Prompt report\n\nWhat went wrong: Too long\nNote: ask @kmagno94 <b>now</b>' };
+  try {
+    const pre = await relay.fetch(new Request('https://relay.example/', { method: 'OPTIONS', headers: { Origin: APP } }), env);
+    expect(pre.status === 204 && pre.headers.get('Access-Control-Allow-Origin') === APP, 'preflight from the app should pass');
+    const evilPre = await relay.fetch(new Request('https://relay.example/', { method: 'OPTIONS', headers: { Origin: 'https://evil.example' } }), env);
+    expect(evilPre.status === 403, 'preflight from other sites should fail');
+    expect((await post(good, 'https://evil.example')).status === 403, 'posts from other sites should be refused');
+    expect((await post(good, APP, '2.2.2.2', {})).status === 500, 'missing key should fail clearly');
+    expect((await post({ title: 'hello', body: 'spam' }, APP, '3.3.3.3')).status === 400, 'non-report text should be refused');
+    expect(sent.length === 0, 'nothing should reach GitHub for refused requests');
+    const ok = await post(good, APP, '4.4.4.4');
+    const out = await ok.json();
+    expect(ok.status === 201 && out.ok && out.number === 42, 'good report should return the issue number');
+    const call = sent[0], gh = JSON.parse(call.init.body);
+    expect(call.url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues' && call.init.headers.Authorization === 'Bearer tok', 'should call GitHub issues with the key');
+    expect(JSON.stringify(gh.labels) === '["report"]' && gh.title === 'Report: Too long', 'label should be fixed to report');
+    expect(!/@kmagno94/.test(gh.body) && /@​kmagno94/.test(gh.body) && !/<b>/.test(gh.body), 'mentions and HTML should be defused: ' + gh.body);
+    expect(!JSON.stringify(out).includes('tok'), 'the key must never come back to the page');
+    let last;
+    for (let i = 0; i < 5; i++) last = await post(good, APP, '5.5.5.5');
+    expect(last.status === 201 && (await post(good, APP, '5.5.5.5')).status === 429, 'a 6th report in an hour should be refused');
+  } finally { globalThis.fetch = realFetch; }
 });
 
 await check('usage.json is valid', async () => {

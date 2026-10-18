@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "vite build && node tests/smoke.mjs"
+    "test": "VITE_REPORT_RELAY=https://relay.test/report vite build && node tests/smoke.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

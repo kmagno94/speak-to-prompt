@@ -17,6 +17,10 @@ export const REASONS = [
 
 const REPO_ISSUES = 'https://github.com/kmagno94/speak-to-prompt/issues/new';
 
+/* The report relay (worker/report-relay.js on Cloudflare). Set in .env at the repo
+   root; empty means reports go out through the share sheet instead. */
+export const RELAY = import.meta.env.VITE_REPORT_RELAY || '';
+
 class Report {
   open = $state(false);
   run = $state(0);          // bumps on every new result, so the form starts fresh
@@ -32,9 +36,22 @@ class Report {
     return lines.join('\n');
   }
 
+  title(picked) { return 'Report: ' + (picked.length ? picked.join(', ') : 'see note'); }
+
   issueUrl(picked, note) {
-    const title = 'Report: ' + (picked.length ? picked.join(', ') : 'see note');
-    return REPO_ISSUES + '?labels=report&title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(this.text(picked, note));
+    return REPO_ISSUES + '?labels=report&title=' + encodeURIComponent(this.title(picked)) + '&body=' + encodeURIComponent(this.text(picked, note));
+  }
+
+  /* One tap, no account: the relay files the GitHub issue. Resolves to the issue number. */
+  relay(picked, note) {
+    return fetch(RELAY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: this.title(picked), body: this.text(picked, note) })
+    }).then((r) => r.json().catch(() => ({})).then((d) => {
+      if (!r.ok || !d.ok) throw new Error(d.error || 'status ' + r.status);
+      return d.number;
+    }));
   }
 }
 
