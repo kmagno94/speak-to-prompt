@@ -6,6 +6,7 @@
   import StartHelper from './StartHelper.svelte';
   import CoreToggle from './CoreToggle.svelte';
   import ReportIssue from './ReportIssue.svelte';
+  import GhostCoach from './GhostCoach.svelte';
   import { core } from './lib/core.svelte.js';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
@@ -58,6 +59,7 @@
       </div>
       <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
     </div>
+    <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row buildrow">

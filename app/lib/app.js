@@ -314,6 +314,7 @@ export function startApp() {
   function startOver() {
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     err.hidden = true;
     document.getElementById("handoff").hidden = true;
     output.value = "";
@@ -367,6 +368,7 @@ export function startApp() {
       var current = fromShortcut ? "" : thoughts.value.trim();
       if (wrap) text = wrap(text);
       thoughts.value = current ? current + "\n\n" + text : text;
+      thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
       err.hidden = true;
       setShortcutMode(false);
       if (fromShortcut) handoff.hidden = false;
@@ -390,6 +392,7 @@ export function startApp() {
     /* On first load the later parts of the page aren't set up yet, and there's
        no old run to clear, so only the box is emptied. */
     if (firstLoad) thoughts.value = ""; else startOver();
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     setShortcutMode(true);
     setTimeout(function () { pasteWrap.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
@@ -406,6 +409,7 @@ export function startApp() {
     if (!text) return;
     var current = thoughts.value.trim();
     thoughts.value = current ? current + "\n\n" + text : text;
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     handoff.hidden = false;
   })();
   thoughts.addEventListener("input", function () { handoff.hidden = true; });
@@ -582,6 +586,7 @@ export function startApp() {
   });
   ideasTry.addEventListener("click", function () {
     thoughts.value = DECK[ideasIdx][2];
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     err.hidden = true;
     handoff.hidden = true;
     ideasHide();

@@ -619,6 +619,30 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('ghost coach: meter and notes follow what you write; tap a note to add its phrase', async () => {
+  const p = await page();
+  expect(!(await p.$('#coach')), 'coach should wait until there are a few words');
+  await p.fill('#thoughts', 'meal prep ideas');
+  await p.waitForSelector('#coach');
+  const seg = () => p.$$eval('#coach .meter span.on', l => l.length);
+  const notes = () => p.$$eval('#coach .note', l => l.map(b => b.dataset.key));
+  expect(await seg() === 0 && (await notes()).join() === 'goal,who', 'bare thoughts: 0 of 5, notes for goal and who: ' + (await notes()));
+  await p.click('#coach .note[data-key="goal"]');
+  expect(await p.inputValue('#thoughts') === 'meal prep ideas\nWhat I want: ', 'tapping a note should add its phrase on a new line');
+  expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'cursor should be in the box after a note');
+  await p.type('#thoughts', 'help me plan a week of lunches');
+  expect(await seg() >= 1 && (await notes())[0] === 'who', 'goal covered, next note is who');
+  await p.fill('#thoughts', 'Help me plan a week of lunches for me and my girlfriend. Budget is under $60 and each one should take 20 minutes or less. I want a shopping list and a simple schedule so that Sunday prep is quick. We both like spicy food, no pork.');
+  expect(await seg() === 5 && /Ready to shine/.test(await p.textContent('#coachLevel')) && !(await p.$('#coach .note')), 'full thoughts should hit 5 of 5 with no notes');
+  expect(/5 of 5/.test(await p.getAttribute('#coach .meter', 'aria-valuetext')), 'meter should be readable by VoiceOver');
+  // Text set by the app (an idea from the strip) updates the coach too
+  await p.fill('#thoughts', ''); await p.waitForSelector('#coach', { state: 'detached' });
+  await p.evaluate(() => { const t = document.getElementById('thoughts'); t.value = 'plan a trip to Japan next fall'; t.dispatchEvent(new Event('stp:changed')); });
+  await p.waitForSelector('#coach');
+  expect(await seg() >= 2, 'coach should update when the app changes the box');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
   const { default: relay } = await import('../worker/report-relay.js');
   const sent = [];
