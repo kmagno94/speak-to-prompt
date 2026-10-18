@@ -103,6 +103,12 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 .ideas-track::-webkit-scrollbar { display: none; }
 .idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
 .idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
+.ideabox .ideas-show {
+  position: absolute; right: 22px; bottom: 12px; min-height: 40px; padding: 8px 14px; border-radius: 999px;
+  font-size: 14px; font-weight: 700; color: var(--accent); border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
 textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 button { font: inherit; cursor: pointer; border-radius: 12px; padding: 12px 18px; min-height: 46px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
@@ -275,6 +281,7 @@ details.key[open] summary { margin-bottom: 10px; }
           <div class="ideas-bottom"><span id="ideasCat"></span><button type="button" class="ideas-try" id="ideasTry">Try this one</button></div>
         </div>
       </div>
+      <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
     </div>
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <p id="err" class="error" hidden>Type or paste something first.</p>
@@ -902,12 +909,18 @@ details.key[open] summary { margin-bottom: 10px; }
     if (ideasCalm || ideasPaused || ideasEl.classList.contains("gone")) return;
     ideasTimer = setInterval(function () { ideasGo(ideasIdx + 1, ideasIdx + 1 < IDEAS.length); }, 4500);
   }
-  function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); }
+  var ideasShowBtn = document.getElementById("ideasShow");
+  /* The Show ideas button appears whenever the box is empty and the ideas are tucked away. */
+  function ideasBtnSync() {
+    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && pasteWrap.hidden);
+  }
+  function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); ideasBtnSync(); }
   function ideasSync() {
     if (!ideasEl) return;
     if (thoughts.value.trim() || document.activeElement === thoughts || !pasteWrap.hidden) { ideasHide(); return; }
     var wasGone = ideasEl.classList.contains("gone");
     ideasEl.classList.remove("gone");
+    ideasBtnSync();
     if (wasGone || !ideasTimer) ideasStart();
   }
   /* Make the box tall enough for the longest idea at the current width. */
@@ -930,6 +943,20 @@ details.key[open] summary { margin-bottom: 10px; }
     ideasBack = setTimeout(function () { if (document.activeElement !== thoughts) ideasSync(); }, 1500);
   });
   ideasTrack.addEventListener("click", function () { thoughts.focus(); });
+  ideasShowBtn.addEventListener("click", function () {
+    clearTimeout(ideasBack);
+    thoughts.blur();
+    ideasEl.classList.remove("gone");
+    ideasBtnSync();
+    ideasStart();
+  });
+  /* iPhone keeps an empty box focused when you tap blank page space, so the ideas
+     never got their cue to return. Tapping outside an empty box now lets go of it. */
+  document.addEventListener("pointerdown", function (e) {
+    if (document.activeElement !== thoughts || thoughts.value.trim()) return;
+    if (e.target.closest(".ideabox, input, textarea, select, label[for='thoughts']")) return;
+    thoughts.blur();
+  });
   ideasTrack.addEventListener("scroll", function () {
     clearTimeout(ideasScrollT);
     ideasScrollT = setTimeout(function () {

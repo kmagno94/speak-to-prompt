@@ -179,6 +179,15 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   expect((await p.inputValue('#thoughts')).length > 20, 'Try this one did not fill the box');
   await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(1900);
   expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas came back over text');
+  expect(!(await p.isVisible('#ideasShow')), 'Show ideas button showing over text');
+  await p.fill('#thoughts', ''); await p.focus('#thoughts'); await p.waitForTimeout(250);
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas showing while typing');
+  await p.click('#ideasShow'); await p.waitForTimeout(350);
+  expect(await p.isVisible('#ideas .ideas-track'), 'Show ideas button did not bring them back');
+  expect(!(await p.isVisible('#ideasShow')), 'Show ideas button should hide once ideas are back');
+  await p.click('#thoughts', { position: { x: 20, y: 12 } }); await p.waitForTimeout(250);
+  await p.click('h1'); await p.waitForTimeout(1900);
+  expect(await p.isVisible('#ideas .ideas-track'), 'tapping outside an empty box did not bring the ideas back');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
