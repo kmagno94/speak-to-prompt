@@ -600,6 +600,21 @@ await check('front page report: its own link and choices, page facts only, sent 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('shortcut banner: Paste for Improve this app wraps the transcript (dev tools only)', async () => {
+  const p = await page();
+  await p.goto(BASE + '#paste'); await p.waitForSelector('#pasteWrap.banner');
+  expect(!(await p.$('#pasteImprove')), 'Improve this app paste is a dev tool');
+  await p.evaluate(() => localStorage.setItem('stp-dev', '1'));
+  await p.evaluate(() => navigator.clipboard.writeText('add a dark mode toggle to the idea strip'));
+  await p.goto(BASE + '#paste'); await p.reload(); await p.waitForSelector('#pasteWrap.banner');
+  await p.click('#pasteImprove');
+  await p.waitForFunction(() => document.getElementById('thoughts').value.length > 0);
+  const box = await p.inputValue('#thoughts');
+  expect(/^I need help with improving my Speak to Prompt web app\./.test(box) && /Svelte 5 \+ Vite/.test(box) && /My idea, in my own words:\nadd a dark mode toggle to the idea strip/.test(box) && /What I want back:/.test(box.split('\n').pop()), 'wrapped text wrong: ' + box);
+  expect(await p.isHidden('#pasteWrap'), 'banner should close after pasting');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
   const { default: relay } = await import('../worker/report-relay.js');
   const sent = [];

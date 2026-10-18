@@ -355,7 +355,8 @@ export function startApp() {
     err.textContent = "Press and hold inside the box, then tap Paste.";
     err.hidden = false;
   }
-  function pasteFromClipboard(fromShortcut) {
+  /* wrap (optional): turns the transcript into the box text, e.g. the Improve this app background. */
+  function pasteFromClipboard(fromShortcut, wrap) {
     if (!navigator.clipboard || !navigator.clipboard.readText) { pasteFailed(); return; }
     navigator.clipboard.readText().then(function (text) {
       text = (text || "").trim();
@@ -364,6 +365,7 @@ export function startApp() {
       /* From the shortcut, the transcript replaces whatever was in the box
          (a fresh run). Tapped by hand, it adds to what's already typed. */
       var current = fromShortcut ? "" : thoughts.value.trim();
+      if (wrap) text = wrap(text);
       thoughts.value = current ? current + "\n\n" + text : text;
       err.hidden = true;
       setShortcutMode(false);
@@ -372,6 +374,11 @@ export function startApp() {
     }, pasteFailed);
   }
   pasteBtn.addEventListener("click", function () { pasteFromClipboard(pasteWrap.classList.contains("banner")); });
+  /* Dev tools: the same paste, already wrapped for Improve this app (the button is Svelte-owned, so listen on the wrapper). */
+  pasteWrap.addEventListener("click", function (e) {
+    if (!e.target.closest("#pasteImprove")) return;
+    pasteFromClipboard(pasteWrap.classList.contains("banner"), function (t) { return starter.improveText(t); });
+  });
 
   /* Shortcut hand-off: the shortcut opens this page with #t=<transcript>.
      The text after # never leaves the phone; it is cleared from the address right away. */

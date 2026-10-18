@@ -34,6 +34,8 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 - **SOUL (How the AI should act):** voice and rules, like "Be direct" or "Challenge me, with care".
 - **IDENTITY (The AI's role):** Coach, Chief of staff, Accountability partner, Tutor, Thinking partner, or Expert advisor, plus what that means to you.
 
+**Paste for Improve this app (dev tools):** when Talk it out brings you back, a second button under Tap to paste your transcript pastes it already wrapped in the Improve this app background and your saved sliders, so you can build right away.
+
 **Improve this app (testing):** the last option in Not sure where to start? asks what you want to change (including **Review how it's going** for audits) and which part of the app, then writes a starting point with the app's background built in (what it is, the stack, how changes ship), ready to build into a prompt for a build chat.
 
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.

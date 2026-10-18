@@ -118,6 +118,20 @@ class StarterSession {
 
   more() { if (!this.typing) this.page++; }
 
+  /* "Paste for Improve this app" (dev tools, shortcut banner): wrap a transcript in
+     the Improve this app background and your saved sliders, no questions. */
+  improveText(transcript) {
+    const app = CATEGORIES.find((c) => c.id === 'app');
+    const lines = ['I need help with ' + app.phrase + '.'].concat(app.context || []);
+    lines.push('My idea, in my own words:', String(transcript || '').trim());
+    SLIDERS.forEach((s) => {
+      const said = s.steps[this.tune[s.key] - 1];
+      if (said) lines.push(s.say + ': ' + said + '.');
+    });
+    if (app.ask) lines.push(app.ask);
+    return lines.join('\n');
+  }
+
   #ask(i) {
     clearTimeout(this.#timer);
     this.current = i;
