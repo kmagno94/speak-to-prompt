@@ -437,12 +437,18 @@ await check('Save to Notes: title on the first line, then the original voice-not
   expect(note.includes('### \u{1F680} Prompt Built\nTHE PROMPT'), 'prompt missing from the note');
 });
 
-await check('Save to Notes on iPhone runs the Save Voice Note shortcut, Share instead keeps the share sheet', async () => {
+await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save Voice Note and shows File voice note', async () => {
   const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
     intake: { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [], note: { headline: 'H', tags: [], summary: 'S', key_ideas: [], action_items: [], unknowns: [], clean_transcript: 'every night' } } });
   await p.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; });
   await withKey(p); await p.fill('#thoughts', 'every night'); await p.click('#build'); await done(p);
-  expect(await p.isVisible('#saveShare'), 'Share instead should show on iPhone');
+  expect(!(await p.isVisible('#saveShare')) && !(await p.isVisible('#fileLink')), 'switch off: no Share instead, no File voice note');
+  await p.click('#saveNote');
+  expect(await p.evaluate(() => window.__shared && window.__shared.text.startsWith('Pre-Sleep Focus Setup')), 'switch off: Save to Notes should use the share sheet');
+  await p.evaluate(() => { window.__shared = null; });
+  await p.click('#moreOpts summary'); await p.check('#myShortcuts');
+  expect(await p.isVisible('#saveShare'), 'Share instead should show with the switch on');
+  expect(await p.isVisible('#fileLink') && (await p.getAttribute('#fileLink', 'href')) === 'shortcuts://run-shortcut?name=File%20Voice%20Note', 'File voice note button missing or wrong link');
   await p.click('#saveNote');
   const href = await p.getAttribute('#shortcutLink', 'href');
   expect(href.startsWith('shortcuts://run-shortcut?name=Save%20Voice%20Note&input=text&text='), 'wrong shortcut link: ' + href.slice(0, 80));
@@ -455,9 +461,14 @@ await check('Save to Notes on iPhone runs the Save Voice Note shortcut, Share in
   expect(await p.evaluate(() => window.__shared && window.__shared.text.startsWith('Pre-Sleep Focus Setup')), 'Share instead should open the share sheet with the note');
 });
 
-await check('Share instead stays hidden on computers', async () => {
-  const p = await page();
-  expect(!(await p.isVisible('#saveShare')), 'Share instead should be hidden off iPhone');
+await check('my Notes shortcuts: kept on reload; never offered on computers', async () => {
+  const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await p.click('#moreOpts summary'); await p.check('#myShortcuts');
+  await p.reload();
+  expect(await p.isVisible('#fileLink'), 'File voice note should still show after reload');
+  const c = await page();
+  await c.click('#moreOpts summary');
+  expect(!(await c.isVisible('#myShortcutsRow')) && !(await c.isVisible('#saveShare')) && !(await c.isVisible('#fileLink')), 'computers should not see the switch or shortcut buttons');
 });
 
 await check('usage.json is valid', async () => {

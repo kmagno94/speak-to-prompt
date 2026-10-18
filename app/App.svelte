@@ -36,6 +36,7 @@
     <label for="thoughts">What's on your mind?</label>
     <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
+      <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
       <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
     <div id="pasteWrap" class="pastewrap" hidden>
@@ -158,6 +159,10 @@
       </ol>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
+      <div class="stats" id="myShortcutsRow" hidden>
+        <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
+        <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>
+      </div>
       <div class="stats">
         <label class="check"><input type="checkbox" id="statsToggle"> Show run stats and daily usage</label>
         <p class="hint">For testing. Saves timings and counts on this device, never your words. Turning it off deletes them.</p>

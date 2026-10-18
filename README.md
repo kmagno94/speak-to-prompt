@@ -54,7 +54,8 @@ If Gemini is unavailable, the page falls back to the quick version and says why.
 ### One prompt, plus an optional note
 
 - **One prompt to copy.** If your thoughts point in one direction, the prompt tells the AI to start right away. If they hold several directions, it asks the AI to lay them out as numbered options and let you pick first.
-- **Save to Notes (optional):** after you copy the prompt, the page offers to save a structured note (date, title, tags, summary, key ideas, action items, questions, follow-up answers, clean transcript, and the prompt) in your original voice-note layout. On iPhone and iPad it runs the **Save Voice Note** shortcut, which creates the note straight in the 💪Process Voice Note💪 folder (the note is also copied as a backup, so tap Copy prompt again before pasting into your AI). **Share instead** opens the share sheet if the shortcut isn't installed. Computers use the share sheet or copy.
+- **Save to Notes (optional):** after you copy the prompt, the page offers to save a structured note (date, title, tags, summary, key ideas, action items, questions, follow-up answers, clean transcript, and the prompt) in your original voice-note layout. With **Use my Notes shortcuts** on (More options, iPhone and iPad only, off by default), it runs the **Save Voice Note** shortcut, which creates the note straight in the 💪Process Voice Note💪 folder (the note is also copied as a backup, so tap Copy prompt again before pasting into your AI). **Share instead** opens the share sheet if the shortcut isn't installed. With the switch off, and on computers, it uses the share sheet or copy.
+- **File voice note (with Use my Notes shortcuts on):** a button next to Talk it out runs the **File Voice Note** shortcut: it copies a note from 💪Process Voice Note💪, moves it to Voice Notes, and opens Claude so you can paste it.
 
 The page itself still saves nothing. Your notes live in Apple Notes, on your account.
 

@@ -1128,7 +1128,25 @@ export function startApp() {
   var shareBtn = document.getElementById("saveShare");
   var uaKeep = navigator.userAgent || "";
   var appleKeep = /iPhone|iPad|iPod/.test(uaKeep) || (/Macintosh/.test(uaKeep) && navigator.maxTouchPoints > 1);
-  shareBtn.hidden = !appleKeep;
+  /* "Use my Notes shortcuts" (More options, iPhone and iPad only, off by default).
+     Kevin's phone has Save Voice Note and File Voice Note; other people don't, so
+     without the switch Save to Notes keeps the share sheet and no File button shows. */
+  var MINE_KEY = "stp-myshortcuts";
+  var mineBox = document.getElementById("myShortcuts");
+  var fileLink = document.getElementById("fileLink");
+  function mineOn() { try { return appleKeep && localStorage.getItem(MINE_KEY) === "1"; } catch (e) { return false; } }
+  function applyMine() {
+    var on = mineOn();
+    mineBox.checked = on;
+    fileLink.hidden = !on;
+    shareBtn.hidden = !on;
+  }
+  document.getElementById("myShortcutsRow").hidden = !appleKeep;
+  mineBox.addEventListener("change", function () {
+    try { if (mineBox.checked) localStorage.setItem(MINE_KEY, "1"); else localStorage.removeItem(MINE_KEY); } catch (e) {}
+    applyMine();
+  });
+  applyMine();
   function keepDone(msg) { noteSaved = true; saveBtn.classList.remove("primary"); keepStatus.textContent = msg; }
   function shareNote() {
     var note = buildNote("notes", true);
@@ -1159,7 +1177,7 @@ export function startApp() {
     promptCopied = false;
     keepDone("Sent to your " + SAVE_SHORTCUT + " shortcut. It lands in \ud83d\udcaaProcess Voice Note\ud83d\udcaa. Tap Copy prompt again before pasting into your AI. Nothing happened? Tap Share instead.");
   }
-  saveBtn.addEventListener("click", function () { if (appleKeep) runSaveShortcut(); else shareNote(); });
+  saveBtn.addEventListener("click", function () { if (mineOn()) runSaveShortcut(); else shareNote(); });
   shareBtn.addEventListener("click", shareNote);
 
   /* AI app links. claude.ai/new and chatgpt.com are https links the apps claim
