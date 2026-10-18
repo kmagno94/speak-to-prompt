@@ -15,7 +15,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 2. **Tap Build my prompt.**
 3. **Copy the prompt** and paste it into any AI, or tap **ChatGPT**, **Claude**, or **Gemini** under **Copy and open in** to copy it and open that app in one tap.
 
-### Two versions
+### With or without a key
 
 | | Quick version | With a free Gemini key |
 |---|---|---|
@@ -23,7 +23,17 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | Follow-up questions | Asked by the AI you paste into | Asked on the page, tap to answer: usually 1 to 3, up to 5 for complex requests |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
-**In a pinch?** Flip the **Quick mode** switch next to **Build my prompt** to skip the questions and get a prompt in about 15 seconds, or tap **Quick prompt** on the questions card to write right away with whatever you've answered. Quick prompts are written by Flash-Lite (500 free requests a day), so they don't use up the smaller Flash allowance that full prompts rely on.
+### Three modes (next to Build my prompt)
+
+| Mode | What it does | Time |
+|---|---|---|
+| **Quick** | Skips the questions and writes right away on Flash-Lite (500 free requests a day), so it doesn't touch the smaller Flash allowance. | about 15 seconds |
+| **Normal** | Asks a few questions, then writes on the newest Flash. | usually 1 to 2 minutes |
+| **Deep** | Asks, looks up current facts with Google Search while you answer, drafts at the highest thinking level, then has a different model review it against 10 pass/fail checks and rewrites until it scores 10/10. | usually 2 to 5 minutes |
+
+You can also tap **Quick prompt** on the questions card to write right away with whatever you've answered.
+
+**How Deep mode decides it's done.** The reviewer marks each of 10 checks pass or fail (keeps every detail, invents nothing, right expert, full context, clear task, format set, fitting tone, handles gaps, tight, ready to paste) and writes a specific fix for each fail. The page counts the passes itself, so a reviewer can't just claim 10/10. It stops at 10/10, when a rewrite doesn't beat the best score so far, after 3 rewrites, or after 8 minutes, and always shows the best-scoring version. "How Deep mode refined it" under the prompt shows what was looked up and each round's score. A Deep run uses up to 4 Flash requests and about 6 Flash-Lite requests.
 
 If Gemini is unavailable, the page falls back to the quick version and says why.
 
@@ -48,6 +58,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - **The site saves nothing.** There is no server, no database, no analytics, and no cookies. Close or refresh the tab and everything is gone.
 - **Your Gemini key** is only saved on your phone if you tick "Remember my key," and it is sent only to Google, in a request header.
 - **With a key, your words go to Google** to build the prompt, and nowhere else. On Google's free tier, Google may use what you send to improve its products.
+- **Deep mode lets Gemini run Google searches** about your request to look up current facts.
 - **Run stats (optional, for testing):** a "Show run stats and daily usage" toggle under **More options** saves timings, token counts, and today's requests per model on your device, so you can see what's left of each free limit. It never saves your words or prompts, and turning it off deletes everything it saved.
 - **usage.json** holds daily Gemini request and token counts read from AI Studio screenshots (no prompts, no words, no key). Run stats shows it next to the runs counted on your device.
 - **Lock your key to this site** (optional): in Google Cloud Credentials, restrict it to the website `https://kmagno94.github.io/*` and to the Generative Language API, so a leaked key is useless anywhere else.
@@ -64,7 +75,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 
 ## Tests
 
-`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, and usage.json.
+`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, Deep mode (research, review, rewrite, stopping rules), repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, and usage.json.
 
 ## Status
 

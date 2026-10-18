@@ -35,6 +35,7 @@ async function page(opts = {}) {
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
+  let reviewN = 0, rewriteN = 0;
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -44,15 +45,25 @@ async function page(opts = {}) {
     if (u.includes('/models?')) return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ models: models.map(n => ({ name: 'models/' + n, supportedGenerationMethods: ['generateContent'] })) }) });
     const model = (u.match(/models\/([^:]+):/) || [])[1];
     const body = JSON.parse(r.request().postData());
-    const intake = /intake step/.test(body.contents[0].parts[0].text);
-    p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: body.contents[0].parts[0].text });
+    const ask = body.contents[0].parts[0].text;
+    const intake = /intake step/.test(ask), research = !!body.tools, review = /strict quality reviewer/.test(ask), rewrite = /REVIEWER'S FIXES/.test(ask);
+    p.calls.push({ model, intake, research, review, rewrite, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
-    const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] }) : (opts.write || 'THE PROMPT');
+    const reviews = opts.review || [grade(10)];
+    const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
+      : research ? (opts.research || '- iOS 27 is the current iPhone software (apple.com)')
+      : review ? JSON.stringify(reviews[Math.min(reviewN++, reviews.length - 1)])
+      : rewrite ? 'BETTER PROMPT ' + (++rewriteN)
+      : (opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
   await p.goto(BASE);
   return p;
+}
+/* A review where the first n of 10 checks pass; claim is what the reviewer says its total is. */
+function grade(n, claim) {
+  return { score: claim, checks: Array.from({ length: 10 }, (_, i) => ({ id: i + 1, pass: i < n, fix: i < n ? '' : 'Fix check ' + (i + 1) })) };
 }
 async function withKey(p) { await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
 async function done(p) { await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 }); }
@@ -100,6 +111,48 @@ await check('cut-off answer (finishReason MAX_TOKENS) is not shown', async () =>
   const p = await page({ finish: { 'gemini-3.8-flash': 'MAX_TOKENS' }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'incomplete answer was accepted');
+});
+
+const SIMPLE = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+await check('Deep mode: looks things up, drafts at high thinking, reviews, rewrites to 10/10', async () => {
+  const p = await page({ intake: SIMPLE, review: [grade(7), grade(10)] });
+  await withKey(p); await p.check('#deepMode');
+  expect(/strict review/.test(await p.textContent('#modeHint')), 'Deep hint missing');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForFunction(() => /10\/10/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  const research = p.calls.find(c => c.research), draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite);
+  expect(research && /lite/.test(research.model), 'research should run on Flash-Lite with Google Search');
+  expect(draft.model === 'gemini-3.8-flash' && draft.level === 'high', `draft should be 3.8 Flash at high, got ${draft.model} ${draft.level}`);
+  expect(/iOS 27 is the current/.test(draft.text), 'looked-up facts not passed to the writer');
+  const reviews = p.calls.filter(c => c.review), rewrites = p.calls.filter(c => c.rewrite);
+  expect(reviews.length === 2 && reviews.every(c => /lite/.test(c.model)), 'expected 2 reviews on Flash-Lite');
+  expect(rewrites.length === 1 && /Fix check 8/.test(rewrites[0].text), 'rewrite did not get the reviewer fixes');
+  expect(await p.inputValue('#output') === 'BETTER PROMPT 1', 'did not show the 10/10 rewrite');
+  expect(await p.isVisible('#refineLog'), 'refine log hidden');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('Deep mode: stops after 3 rewrites, keeps the best, counts checks instead of trusting the claim', async () => {
+  const p = await page({ intake: SIMPLE, review: [grade(6), grade(7), grade(8), grade(9, 10)] });
+  await withKey(p); await p.check('#deepMode');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForFunction(() => /scored/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.rewrite).length === 3, 'expected exactly 3 rewrites');
+  expect(/9\/10/.test(await p.textContent('#madeBy')), 'claimed 10/10 was trusted: ' + await p.textContent('#madeBy'));
+  expect(await p.inputValue('#output') === 'BETTER PROMPT 3', 'did not keep the best version');
+});
+
+await check('Deep mode: a rewrite that scores worse stops the loop and the better one is shown', async () => {
+  const p = await page({ review: [grade(8), grade(6)] });
+  await withKey(p); await p.check('#deepMode');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(/Deep prompt/.test(await p.textContent('#qaPlan')), 'questions card should say Deep prompt');
+  expect(p.calls.some(c => c.research), 'research should start while the questions are showing');
+  await p.click('#qaList .chips button'); await p.click('#qaGo');
+  await p.waitForFunction(() => /scored/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.rewrite).length === 1, 'should stop after the worse rewrite');
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'should show the 8/10 draft, not the worse rewrite');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {

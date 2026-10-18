@@ -199,17 +199,23 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .buildrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
 .buildrow #build { padding: 12px 14px; }
 .buildrow #example { grid-column: 1 / -1; justify-self: start; }
-@media (max-width: 359px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
-.qtoggle { min-width: 0; display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 6px 10px 6px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; }
-.qtoggle:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.qtoggle:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
-.qtoggle input { appearance: none; -webkit-appearance: none; flex: none; width: 32px; height: 20px; margin: 0; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background 0.15s ease; }
-.qtoggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease; }
-.qtoggle input:checked { background: var(--accent); }
-.qtoggle input:checked::after { transform: translateX(12px); }
-.qtext { display: grid; line-height: 1.15; }
-.qtext b { font-size: 15px; }
-.qtext small { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
+/* Mode picker beside Build: Quick, Normal, Deep. Each radio fills its segment so a tap anywhere picks it. */
+.modes { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: 38px; line-height: 1.1; }
+.mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
+.mode b, .mode small { position: relative; pointer-events: none; }
+.mode b { font-size: 13px; }
+.mode small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.mode:has(input:checked) { background: var(--surface); box-shadow: 0 1px 0 var(--line), 0 2px 6px -3px rgba(20, 40, 70, 0.35); }
+.mode:has(input:checked) b { color: var(--accent); }
+.mode:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 1px; }
+.modehint { grid-column: 1 / -1; margin: 0; font-size: 14px; color: var(--muted); }
+.refine { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); font-size: 14px; }
+.refine summary { font-weight: 700; cursor: pointer; }
+.refine p { margin: 8px 0 2px; }
+.refine ul, .refine ol { margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; }
+.refine .score { font-weight: 700; color: var(--accent); }
 .plan { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .qalist { display: flex; flex-direction: column; gap: 18px; }
 .q { display: flex; flex-direction: column; gap: 8px; }
@@ -305,7 +311,12 @@ details.key[open] summary { margin-bottom: 10px; }
     <p id="err" class="error" hidden>Type or paste something first.</p>
     <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
-      <label class="qtoggle" for="quickMode"><input type="checkbox" id="quickMode" role="switch"><span class="qtext"><b>Quick mode</b><small id="quickLabel">No questions, ~15s</small></span></label>
+      <div class="modes" role="radiogroup" aria-label="How much thinking">
+        <label class="mode"><input type="radio" name="mode" id="quickMode" value="quick"><b>Quick</b><small id="quickLabel">~15s</small></label>
+        <label class="mode"><input type="radio" name="mode" id="normalMode" value="normal" checked><b>Normal</b><small>~1 min</small></label>
+        <label class="mode"><input type="radio" name="mode" id="deepMode" value="deep"><b>Deep</b><small>~3 min</small></label>
+      </div>
+      <p class="modehint" id="modeHint"></p>
       <button type="button" class="link" id="example">Try an example</button>
     </div>
     <div class="tracker" id="buildTrack" hidden>
@@ -340,6 +351,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <details class="refine" id="refineLog" hidden><summary>How Deep mode refined it</summary><div id="refineBody"></div></details>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
@@ -692,6 +704,7 @@ details.key[open] summary { margin-bottom: 10px; }
     output.value = "";
     status.textContent = "";
     document.getElementById("madeBy").textContent = "";
+    document.getElementById("refineLog").hidden = true;
     setChatName(title);
     setReady(false);
     qa.hidden = true;
@@ -712,6 +725,7 @@ details.key[open] summary { margin-bottom: 10px; }
     status.className = "status";
     status.textContent = "";
     document.getElementById("madeBy").textContent = madeBy;
+    document.getElementById("refineLog").hidden = true;
     setChatName(title);
     qa.hidden = true;
     result.hidden = false;
@@ -785,6 +799,7 @@ details.key[open] summary { margin-bottom: 10px; }
     setReady(true);
     resetKeep();
     setBuild("");
+    document.getElementById("refineLog").hidden = true;
     ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
@@ -1261,7 +1276,8 @@ details.key[open] summary { margin-bottom: 10px; }
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
     standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
-    quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
+    quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" },
+    deep:     { level: "high",   words: "deep thinking, reviewed until 10/10", secs: 180, range: "usually 2 to 5 minutes", label: "Deep prompt" }
   };
   /* Quick prompts: Flash-Lite is fast enough to think a bit more, which keeps
      it from dropping details. A Flash backup stays light so it stays quick. */
@@ -1278,8 +1294,8 @@ details.key[open] summary { margin-bottom: 10px; }
   /* Model names and thinking levels only show with run stats on; everyone else
      sees plain words and times. */
   function techOn() { return testLog.on(); }
-  function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
-  function askGemini(text, asJson, models, level, onModel, limit) {
+  function planText(c, model) { if (session && session.deep) c = "deep"; var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
+  function askGemini(text, asJson, models, level, onModel, limit, extra) {
     var started = Date.now();
     var history = [];
     function payload(withThinking, model) {
@@ -1289,6 +1305,7 @@ details.key[open] summary { margin-bottom: 10px; }
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
       var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
+      if (extra && extra.tools) p.tools = extra.tools;
       return JSON.stringify(p);
     }
     function attempt(i, lastErr, withThinking) {
@@ -1363,8 +1380,25 @@ details.key[open] summary { margin-bottom: 10px; }
   function intakeEstimate() { var l = learned("intake_s", null); return l ? l.secs : INTAKE_SECS; }
   function updateQuickLabel() {
     var q = writeEstimate("quick"), total = intakeEstimate() + q.secs;
-    document.getElementById("quickLabel").textContent = "No questions, ~" + (q.learned ? total : 15) + "s";
+    document.getElementById("quickLabel").textContent = "~" + (q.learned ? total : 15) + "s";
   }
+
+  /* Mode picker. Quick skips the questions; Normal asks, then writes; Deep asks,
+     looks up current facts, then rewrites until a strict review scores it 10/10. */
+  var MODE_HINTS = {
+    quick: "Quick: skips the questions and writes right away.",
+    normal: "Normal: asks a few quick questions, then writes.",
+    deep: "Deep: asks, looks up current facts, then rewrites until a strict review scores it 10/10."
+  };
+  function currentMode() { var el = document.querySelector('input[name="mode"]:checked'); return el ? el.value : "normal"; }
+  function updateModeHint() {
+    var m = currentMode(), t = MODE_HINTS[m];
+    if (m !== "quick" && !(gemini.key || gkey.value.trim())) t += " Needs a free Gemini key (below).";
+    document.getElementById("modeHint").textContent = t;
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="mode"]'), function (r) { r.addEventListener("change", updateModeHint); });
+  gkey.addEventListener("input", updateModeHint);
+  updateModeHint();
 
   /* Step tracker with time-based progress: elapsed and an honest estimate of
      what's left. The bar never claims done early (it stops at 95%). */
@@ -1396,7 +1430,11 @@ details.key[open] summary { margin-bottom: 10px; }
     stopTicker();
     draw();
     ticker = setInterval(draw, 1000);
-    return function (m) { model = m; tModel = Date.now(); draw(); };
+    var api = function (m) { model = m; tModel = Date.now(); draw(); };
+    /* Deep mode runs several steps under one clock: these update the words without restarting it. */
+    api.label = function (l) { label = l; draw(); };
+    api.model = function (m) { model = m; draw(); };
+    return api;
   }
   function finishTrack(bar, secs, skipAsk) {
     var track = bar.closest(".tracker");
@@ -1475,8 +1513,13 @@ details.key[open] summary { margin-bottom: 10px; }
       session.note = intake.note;
       session.complexity = intake.complexity;
       session.category = intake.category;
+      session.need = intake.need;
       setBusy(false);
-      if (document.getElementById("quickMode").checked) { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
+      var mode = currentMode();
+      if (mode === "quick") { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
+      session.deep = mode === "deep";
+      /* Deep mode looks things up while the person answers the questions, so the wait overlaps. */
+      if (session.deep) startResearch();
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
       setBuild("");
       renderQuestions(intake);
@@ -1531,6 +1574,7 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   function writeFinal(answers, quick) {
+    if (!quick && session.deep) return writeDeep(answers);
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
@@ -1572,6 +1616,188 @@ details.key[open] summary { margin-bottom: 10px; }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       logRun({ depth: depthKey, est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
+  }
+
+  /* ---------- Deep mode ----------
+     1. Research: one Google Search grounded call on Flash-Lite, started while the person
+        answers the questions. If search isn't available, Deep carries on without it.
+     2. Draft: the strongest Flash model at its highest thinking level.
+     3. Review: a different model (Flash-Lite, high thinking) runs 10 pass/fail checks.
+        The page counts the passes itself, so a reviewer can't just claim 10/10.
+     4. Rewrite with the reviewer's fixes, then review again. Stops at 10/10, when a
+        rewrite doesn't beat the best score so far, after 3 rewrites, or after 8 minutes.
+        The best-scoring version is the one shown. */
+  var MAX_REWRITES = 3, DEEP_BUDGET = 8 * 60 * 1000;
+  var RESEARCH = [
+    "You are the research step of a prompt-building tool. Use Google Search to look up current, verifiable facts that would make an AI prompt for the request below more accurate.",
+    "Look for: the latest versions and details of any devices, apps, or services they mention; current rules, prices, or limits that apply; and well-established best practices and common pitfalls.",
+    "Return 3 to 8 short bullets. Start each with \"- \" and end it with the source site's name in parentheses. Only include facts you found in search results, never guesses.",
+    "If nothing in this request depends on current facts, return only the word NONE."
+  ].join("\n");
+  var CHECKS = [
+    ["Keeps every detail", "Keeps every relevant detail from the thoughts and answers: names, numbers, dates, limits, and preferences."],
+    ["Invents nothing", "Adds no devices, people, facts, or requirements the person did not give. Looked-up facts are allowed when their source is named."],
+    ["Right expert", "Gives the AI an expert role that fits the task."],
+    ["Full context", "Gives enough background that the AI will not need to ask basic questions."],
+    ["Clear task", "States the exact task and what a finished result looks like."],
+    ["Format set", "Says what format and length the answer should take."],
+    ["Fitting tone", "Sets a tone that fits the person and the situation."],
+    ["Handles gaps", "Tells the AI how to handle anything unclear: state assumptions, ask at most one short question, or lay out numbered options when the person raised several separate goals."],
+    ["Tight", "No filler, repetition, or contradictions."],
+    ["Ready to paste", "Written in first person as the person, with no placeholders, meta commentary, or code fences."]
+  ];
+  var REVIEW = [
+    "You are a strict quality reviewer for AI prompts. Score the PROMPT below against the person's RAW THOUGHTS, their ANSWERS, and any LOOKED-UP FACTS.",
+    "Run these 10 checks. A check passes only if it fully passes. If you are unsure, it fails.",
+    CHECKS.map(function (c, i) { return (i + 1) + ". " + c[1]; }).join("\n"),
+    "For every failed check, write one specific fix that says exactly what to add, cut, or change in the prompt. Never suggest adding details the person did not give, unless they come from the looked-up facts.",
+    "Respond with JSON only, in exactly this shape, with all 10 checks:",
+    '{"checks": [{"id": 1, "pass": true, "fix": ""}]}'
+  ].join("\n");
+  var DEEP_NOTE = "\nLooked-up facts below are current and come from Google Search. Use the ones that help, and keep each one's source in parentheses.";
+  var REWRITE_NOTE = "\nYou are improving an existing prompt. Apply every one of the reviewer's fixes, keep everything that already works, and keep the same voice. Do not add details the person never gave, except looked-up facts with their source.";
+
+  function startResearch() {
+    var ask = RESEARCH + "\n\nREQUEST:\n\"\"\"\n" + session.raw + "\n\"\"\"\nWHAT THEY NEED: " + (session.need || "");
+    session.research = askGemini(ask, false, gemini.plan.intake, "medium", null, 120000, { tools: [{ google_search: {} }] }).then(function (r) {
+      session.researchModel = r.model;
+      return parseResearch(r.text);
+    }, function () { session.researchFailed = true; return []; });
+  }
+  function parseResearch(text) {
+    if (/^\s*NONE\b/i.test(text || "")) return [];
+    return String(text || "").split(/\n+/).map(function (l) { return l.trim(); })
+      .filter(function (l) { return /^[-*\u2022]\s+/.test(l); })
+      .map(function (l) { return l.replace(/^[-*\u2022]\s+/, "").slice(0, 300); })
+      .filter(Boolean).slice(0, 8);
+  }
+  function parseReview(text) {
+    var data = JSON.parse(String(text).replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, ""));
+    var list = Array.isArray(data.checks) ? data.checks : [];
+    var fails = [], score = 0;
+    CHECKS.forEach(function (c, i) {
+      var hit = list.filter(function (x) { return x && Number(x.id) === i + 1; })[0];
+      /* A check the reviewer skipped counts as a fail. */
+      if (hit && hit.pass === true) { score++; return; }
+      fails.push({ name: c[0], fix: String((hit && hit.fix) || "").trim() || ("Improve: " + c[1]) });
+    });
+    return { score: score, fails: fails };
+  }
+  function deepContext(facts) {
+    var lines = (session.answers || []).map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
+    return "RAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.") +
+      "\n\nLOOKED-UP FACTS:\n" + (facts.length ? facts.map(function (f) { return "- " + f; }).join("\n") : "None needed.");
+  }
+  function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
+
+  function writeDeep(answers) {
+    session.mode = "Deep";
+    session.answers = answers.filter(function (a) { return a.answer; });
+    setBusy(true, "Writing your prompt...");
+    setBuild("");
+    qaStatus.textContent = "";
+    var run = ++writeRun;
+    var resultProg = document.getElementById("resultProg");
+    showWriting(session.title);
+    var est = writeEstimate("deep");
+    var skipAsk = !(session.questions && session.questions.length);
+    var eta = startEstimate(resultProg, "Looking up current facts", est.secs, "write", skipAsk);
+    var t0 = Date.now(), rounds = [], best = null, facts = [], writers = [], reviewer = "";
+    var STALE = { stale: true };
+    function live() { return run === writeRun; }
+    function onModel(m) { if (live()) eta.model(m); }
+    function keep(list, m) { if (m && list.indexOf(m) === -1) list.push(m); }
+
+    function finish(reason) {
+      if (!live()) return;
+      var secs = (Date.now() - t0) / 1000;
+      finishTrack(resultProg, secs, skipAsk);
+      setBusy(false);
+      setBuild("");
+      qaStatus.textContent = "";
+      var rewrites = rounds.length ? rounds[rounds.length - 1].round : 0;
+      var verdict = best.score == null ? "The review wasn't available, so this is the first draft"
+        : best.score === 10 ? "A strict review scored it 10/10"
+        : "The best version scored " + best.score + "/10";
+      var how = best.score == null ? "" : rewrites ? " after " + rewrites + (rewrites === 1 ? " rewrite" : " rewrites") : " on the first try";
+      var tech = techOn() ? " Writer: " + writers.join(", ") + (reviewer ? ". Reviewer: " + reviewer : "") + "." : "";
+      logRun({ depth: "deep", est_s: est.secs, write_model: writers.join(", "), thinking: "high", write_s: Math.round(secs * 10) / 10,
+        words_out: words(best.text), scores: rounds.map(function (r) { return r.score == null ? "?" : r.score; }).join(" > "),
+        facts: facts.length, stop: reason, outcome: "ok" });
+      showResult(best.text, "Ready in " + clock(secs) + ". " + verdict + how + "." + tech, session.title);
+      renderRefine(rounds, facts, best);
+    }
+    function fail(e) {
+      if (e === STALE || !live()) return;
+      if (best) { finish("stopped early: " + (e && e.message ? e.message : "error")); return; }
+      stopTicker();
+      setProgress(resultProg, "off");
+      setBusy(false);
+      setBuild("");
+      qaStatus.textContent = "";
+      showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+      logRun({ depth: "deep", est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
+    }
+    function review(v) {
+      if (!live()) throw STALE;
+      eta.label(v.round ? "Reviewing rewrite " + v.round : "Reviewing the draft against 10 checks");
+      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, gemini.plan.intake, "high", onModel, WRITE_LIMIT).then(function (g) {
+        reviewer = g.model;
+        var res = parseReview(g.text);
+        v.score = res.score; v.fails = res.fails;
+        return true;
+      }, function () { return false; }).then(function (ok) {
+        if (!live()) throw STALE;
+        if (!ok) {
+          if (!best) { v.score = null; v.fails = []; rounds.push(v); best = v; }
+          return finish("review unavailable");
+        }
+        rounds.push(v);
+        var improved = !best || best.score == null || v.score > best.score;
+        if (improved) best = v;
+        if (v.score >= 10) return finish("scored 10/10");
+        if (!improved) return finish("a rewrite didn't beat the best score");
+        if (v.round >= MAX_REWRITES) return finish("reached " + MAX_REWRITES + " rewrites");
+        if (Date.now() - t0 > DEEP_BUDGET) return finish("time limit");
+        eta.label("Polishing: scored " + v.score + "/10, rewrite " + (v.round + 1) + " of " + MAX_REWRITES);
+        var fixes = v.fails.map(function (f) { return "- " + f.name + ": " + f.fix; }).join("\n");
+        return askGemini(WRITE + REWRITE_NOTE + "\n\n" + deepContext(facts) + "\n\nCURRENT PROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"\n\nREVIEWER'S FIXES:\n" + fixes,
+          false, gemini.plan.write, "high", onModel, WRITE_LIMIT).then(function (r) {
+          keep(writers, r.model);
+          return review({ text: cleanPrompt(r.text), round: v.round + 1 });
+        });
+      });
+    }
+
+    Promise.resolve(session.research || []).then(function (f) {
+      if (!live()) throw STALE;
+      facts = f || [];
+      eta.label("Writing a first draft with deep thinking");
+      return askGemini(WRITE + DEEP_NOTE + "\n\n" + deepContext(facts), false, gemini.plan.write, "high", onModel, WRITE_LIMIT);
+    }).then(function (r) {
+      keep(writers, r.model);
+      return review({ text: cleanPrompt(r.text), round: 0 });
+    }).catch(fail);
+  }
+
+  function renderRefine(rounds, facts, best) {
+    var box = document.getElementById("refineBody");
+    box.textContent = "";
+    function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
+    box.appendChild(el("p", facts.length ? "Looked up:" : session.researchFailed ? "Couldn't look anything up this time." : "No lookups were needed."));
+    if (facts.length) { var ul = el("ul"); facts.forEach(function (f) { ul.appendChild(el("li", f)); }); box.appendChild(ul); }
+    box.appendChild(el("p", "Reviews:"));
+    var ol = el("ol");
+    rounds.forEach(function (r) {
+      var li = el("li");
+      li.appendChild(el("span", (r.round ? "Rewrite " + r.round : "First draft") + ": "));
+      li.appendChild(el("span", r.score == null ? "not scored" : r.score + "/10", "score"));
+      if (r === best && rounds.length > 1) li.appendChild(el("span", " (shown)"));
+      if (r.fails && r.fails.length) li.appendChild(el("span", ". Fixed next: " + r.fails.map(function (f) { return f.name; }).join(", ") + "."));
+      ol.appendChild(li);
+    });
+    box.appendChild(ol);
+    document.getElementById("refineLog").hidden = false;
   }
 
   /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */
