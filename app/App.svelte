@@ -37,7 +37,6 @@
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
-    <StartHelper />
     <div id="pasteWrap" class="pastewrap" hidden>
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
@@ -59,7 +58,7 @@
     <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
-      <button type="button" class="link" id="example">Try an example</button>
+      <div class="starterwrap"><StartHelper /></div>
     </div>
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>

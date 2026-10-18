@@ -1,12 +1,18 @@
 <script>
   import { fly, slide } from 'svelte/transition';
   import { starter } from './lib/starter.svelte.js';
-  import { CATEGORIES } from './lib/starters.js';
+  import { CATEGORIES, SLIDERS } from './lib/starters.js';
   import { ms } from './lib/motion.js';
 
   let draft = $state('');
   let thread = $state();
   let card = $state();
+
+  /* What a slider will add, shown under it. The middle adds nothing. */
+  function said(sl) {
+    const t = sl.steps[starter.tune[sl.key] - 1];
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'No preference';
+  }
 
   function send() { starter.reply(draft); draft = ''; }
   /* The helper sits inside the main form, so Return must not submit it. */
@@ -80,6 +86,18 @@
         <button type="button" disabled={!draft.trim() || starter.typing} onclick={send}>Send</button>
       </div>
     {:else}
+      <div class="tune" in:fly={{ y: 8, duration: ms(220) }}>
+        <p>Fine-tune it</p>
+        {#each SLIDERS as sl (sl.key)}
+          <div class="slider">
+            <label for="tune-{sl.key}">{sl.label}</label>
+            <input type="range" id="tune-{sl.key}" min="1" max="5" step="1" bind:value={starter.tune[sl.key]}
+                   aria-valuetext={said(sl)}>
+            <div class="ends"><span>{sl.low}</span><span>{sl.high}</span></div>
+            <b class:off={starter.tune[sl.key] === 3}>{said(sl)}</b>
+          </div>
+        {/each}
+      </div>
       <div class="out" in:fly={{ y: 8, duration: ms(220) }}>
         <p>Your starting point</p>
         <div class="text">{starter.text}</div>
@@ -117,6 +135,15 @@
   .cats button span { font-size: 20px; }
   .cats button.general { grid-column: 1 / -1; background: var(--accent-soft); color: var(--accent); }
   .cats button:active, .chips :global(button:active) { transform: scale(0.97); }
+  .tune { display: grid; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); }
+  .tune > p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
+  .slider { display: grid; grid-template-columns: 76px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; }
+  .slider label { font-weight: 700; font-size: 15px; }
+  .slider input { width: 100%; margin: 0; height: 32px; accent-color: var(--accent); cursor: pointer; }
+  .slider .ends, .slider b { grid-column: 2; }
+  .slider .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .slider b { font-size: 13px; color: var(--accent); }
+  .slider b.off { color: var(--muted); font-weight: 400; }
   .out { display: grid; gap: 6px; }
   .out p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
   .out .text { white-space: pre-wrap; padding: 12px 14px; border-radius: 12px; background: var(--bg); line-height: 1.5; }

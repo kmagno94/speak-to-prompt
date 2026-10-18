@@ -11,7 +11,7 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 ## How to use it
 
 1. **Get your thoughts in.** Type them, or talk in Voice Memos and paste the transcript.
-   Blank page? Tap **Not sure where to start?** Pick a category (or "Not sure yet"), tap or type a couple of quick answers, and it writes a starting point you can build from right away or put in the box to add more.
+   Blank page? Tap **Not sure where to start?** (under Build my prompt). Pick a category (or "Not sure yet"), tap or type a couple of quick answers, then use the sliders to dial **Detail**, **Tone**, **My level**, and **Ideas** up or down. It writes a starting point you can build from right away or put in the box to add more.
    Stuck? The empty box rotates silly but real ideas (swipe through them, or tap **Try this one**). They clear the moment you tap in to type.
 2. **Tap Build my prompt.**
 3. **Copy the prompt** and paste it into any AI, or tap **ChatGPT**, **Claude**, or **Gemini** under **Copy and open in** to copy it and open that app in one tap.
@@ -74,7 +74,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   |---|---|
   | `app/App.svelte` | The page markup |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
-  | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions that write a starting point |
+  | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
   | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |

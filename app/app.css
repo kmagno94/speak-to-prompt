@@ -189,7 +189,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
 .buildrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
 .buildrow #build { padding: 12px 14px; }
-.buildrow #example { grid-column: 1 / -1; justify-self: start; }
+.buildrow .starterwrap { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
 .modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }

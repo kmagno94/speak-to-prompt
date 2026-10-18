@@ -1,7 +1,5 @@
 /* The words Speak to Prompt sends to Gemini, and the no-key quick version. */
 
-export const EXAMPLE = "ok so I want to start running but I always quit after like a week, I work mornings at a coffee shop, I have a bad knee sometimes, and I kind of want to do a 5k with my cousins in the spring but no pressure";
-
 export function buildPrompt(raw) {
   return [
     "I want help with something, but I'm not sure how to ask for it well. My raw thoughts are below, exactly as they came out. Please be my guide.",

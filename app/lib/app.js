@@ -1,4 +1,4 @@
-import { EXAMPLE, buildPrompt, ANALYZE, WRITE } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE } from './prompts.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
@@ -268,12 +268,6 @@ export function startApp() {
       "");
   }
 
-  document.getElementById("example").addEventListener("click", function () {
-    thoughts.value = EXAMPLE;
-    err.hidden = true;
-    thoughts.focus();
-    ideasSync();
-  });
 
   function selectFallback() {
     output.focus();

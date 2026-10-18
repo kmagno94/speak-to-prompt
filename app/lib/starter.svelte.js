@@ -1,6 +1,6 @@
 /* "Not sure where to start?" as a short chat: pick a category, answer a couple
    of tap-or-type questions, and get starting text for the main box. */
-import { CATEGORIES, EXTRA } from './starters.js';
+import { CATEGORIES, EXTRA, SLIDERS } from './starters.js';
 import { ms } from './motion.js';
 
 let nextId = 1;
@@ -12,6 +12,7 @@ class StarterSession {
   messages = $state([]);     // [{ id, from: 'ai' | 'me', text }]
   current = $state(-1);      // -1 = choosing a category; then the question index
   typing = $state(false);
+  tune = $state(Object.fromEntries(SLIDERS.map((s) => [s.key, 3])));   // fine-tune sliders, 1 to 5
 
   questions = $derived(this.cat ? [...this.cat.questions, EXTRA] : []);
   done = $derived(this.cat !== null && this.current >= this.questions.length);
@@ -23,6 +24,10 @@ class StarterSession {
       const a = this.answers[i];
       if (a) lines.push(q.say + ': ' + a.replace(/[.\s]+$/, '') + '.');
     });
+    SLIDERS.forEach((s) => {
+      const said = s.steps[this.tune[s.key] - 1];
+      if (said) lines.push(s.say + ': ' + said + '.');
+    });
     return lines.join('\n');
   });
   #timer = 0;
@@ -31,6 +36,7 @@ class StarterSession {
     clearTimeout(this.#timer);
     this.open = true; this.cat = null; this.answers = []; this.messages = [];
     this.current = -1; this.typing = false;
+    SLIDERS.forEach((s) => { this.tune[s.key] = 3; });
     this.#say('ai', 'No problem. What do you want help with? Pick one, or describe it in your own words.');
   }
 
@@ -80,7 +86,7 @@ class StarterSession {
     this.typing = true;
     this.#timer = setTimeout(() => {
       this.typing = false;
-      this.#say('ai', i >= this.questions.length ? 'Here\'s your starting point. Build your prompt from it, or put it in the box to add more.' : this.questions[i].q);
+      this.#say('ai', i >= this.questions.length ? 'Here\'s your starting point. Slide to dial anything up or down, then build your prompt or put it in the box to add more.' : this.questions[i].q);
     }, ms(400));
   }
 

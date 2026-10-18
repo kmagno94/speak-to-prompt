@@ -118,6 +118,8 @@ await check('number check flags a changed version, and stays quiet when numbers 
   await q.fill('#thoughts', 'every night at 10:15 on my iPhone, I am on iOS 27'); await q.click('#build'); await done(q);
   expect(!(await q.isVisible('#numWarn')), 'number warning showed on a clean prompt');
   expect(!(await q.$('#deepMode')), 'Deep mode should be gone');
+  expect(!(await q.$('#example')), 'Try an example should be gone');
+  expect(await q.evaluate(() => document.getElementById('starterBtn').closest('.buildrow') !== null), 'Not sure where to start should sit in the Build row');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {
@@ -268,15 +270,19 @@ await check('not sure where to start: pick a category, tap and type answers, get
   await p.click('#starter .chips button >> text=Save for something');
   await p.waitForSelector('#starter .msg.ai >> text=What makes it hard?');
   await p.fill('#starterOwn', 'late night delivery'); await p.press('#starterOwn', 'Enter');
-  await p.waitForSelector('#starter .msg.ai >> text=What would make the answer great?');
-  await p.click('#starter .chips .skip');
   await p.waitForSelector('#starter .msg.ai >> text=Anything else');
   await p.fill('#starterOwn', 'Japan trip next fall, about $1,500'); await p.press('#starterOwn', 'Enter');
   await p.waitForSelector('#starterUse');
   expect(!(await p.isVisible('#result')), 'Return in the helper must not submit the main form');
+  expect(await p.$$eval('#starter input[type=range]', l => l.length) === 4, 'expected 4 fine-tune sliders');
+  const slide = (id, v) => p.$eval(id, (el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  await slide('#tune-detail', 5); await slide('#tune-tone', 1); await slide('#tune-level', 2);
+  await slide('#tune-creative', 4); await slide('#tune-creative', 3);
+  expect(/Go deep and cover everything/.test(await p.textContent('#starter .slider:has(#tune-detail) b')), 'slider label did not follow the value');
   await p.click('#starterUse');
   const box = await p.inputValue('#thoughts');
-  expect(/money and budgeting/.test(box) && /My goal: Save for something\./.test(box) && /What makes it hard: late night delivery\./.test(box) && /Also: Japan trip next fall, about \$1,500\./.test(box) && !/answer great/.test(box), 'starting text wrong: ' + box);
+  expect(/money and budgeting/.test(box) && /My goal: Save for something\./.test(box) && /What makes it hard: late night delivery\./.test(box) && /Also: Japan trip next fall, about \$1,500\./.test(box) && /Detail: go deep and cover everything\./.test(box)
+    && /Tone: very casual, like a friend\./.test(box) && /My level: I'm fairly new, keep jargon light\./.test(box) && !/Ideas:/.test(box), 'starting text wrong: ' + box);
   await p.waitForSelector('#starter', { state: 'detached', timeout: 2000 }).catch(() => { throw new Error('helper should close after use'); });
   expect(!(await p.isVisible('#ideas .ideas-track')), 'idea strip should clear once the box has text');
   // Typing instead of picking, then Build my prompt straight away
@@ -284,13 +290,11 @@ await check('not sure where to start: pick a category, tap and type answers, get
   await p.fill('#starterOwn', 'my car makes a weird noise'); await p.press('#starterOwn', 'Enter');
   await p.waitForSelector('#starter .msg.ai >> text=What kind of help');
   await p.click('#starter .chips button >> text=Fix a problem');
-  await p.waitForSelector('#starter .msg.ai >> text=What would make the answer great?');
-  await p.click('#starter .chips button >> text=Step by step');
   await p.waitForSelector('#starter .msg.ai >> text=Anything else');
   await p.click("#starter .chips button >> text=That's it");
   await p.click('#starterBuild'); await done(p);
   const out = await p.inputValue('#output');
-  expect(/What it's about: my car makes a weird noise\./.test(out) && /What I want: Fix a problem\./.test(out) && !/Also:/.test(out), 'build did not use the starting text');
+  expect(/What it's about: my car makes a weird noise\./.test(out) && /What I want: Fix a problem\./.test(out) && !/Also:/.test(out) && !/Detail:/.test(out), 'build did not use the starting text (sliders should reset to the middle)');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
