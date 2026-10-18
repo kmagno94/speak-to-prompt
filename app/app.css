@@ -284,3 +284,6 @@ details.key[open] summary { margin-bottom: 10px; }
   .typing span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes blink { 50% { opacity: 1; transform: translateY(-3px); } }
 }
+
+/* Quiet text button next to Save to Notes */
+.keep button.linkish { background: none; border: none; padding: 8px 4px; color: var(--muted, inherit); text-decoration: underline; text-underline-offset: 3px; min-height: 0; box-shadow: none; }

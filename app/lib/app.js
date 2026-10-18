@@ -227,6 +227,7 @@ export function startApp() {
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
     document.getElementById("copy").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
+    document.getElementById("saveShare").disabled = !ready;
     output.placeholder = ready ? "" : "Your prompt will appear here when it's ready.";
   }
   /* Opens the result card in "writing" mode so the prompt can appear as it streams in. */
@@ -1118,19 +1119,29 @@ export function startApp() {
   }
 
 
-  document.getElementById("saveNote").addEventListener("click", function () {
+  /* Save to Notes. On iPhone and iPad it runs the "Save Voice Note" shortcut,
+     which creates the note straight in the 💪Process Voice Note💪 folder (no share
+     sheet, no folder picking). The note is also copied first as a backup, in case
+     the shortcut isn't installed. "Share instead" keeps the old share sheet.
+     Computers keep the share sheet or copy. */
+  var SAVE_SHORTCUT = "Save Voice Note";
+  var shareBtn = document.getElementById("saveShare");
+  var uaKeep = navigator.userAgent || "";
+  var appleKeep = /iPhone|iPad|iPod/.test(uaKeep) || (/Macintosh/.test(uaKeep) && navigator.maxTouchPoints > 1);
+  shareBtn.hidden = !appleKeep;
+  function keepDone(msg) { noteSaved = true; saveBtn.classList.remove("primary"); keepStatus.textContent = msg; }
+  function shareNote() {
     var note = buildNote("notes", true);
     var title = (session && session.title) || "Speak to Prompt note";
-    function done(msg) { noteSaved = true; saveBtn.classList.remove("primary"); keepStatus.textContent = msg; }
     function copyNote() {
       if (!navigator.clipboard || !navigator.clipboard.writeText) { keepStatus.textContent = "This browser can't save notes from here."; return; }
       navigator.clipboard.writeText(note).then(function () {
-        done("Copied the note. Paste it into a new note, then tap Copy prompt again before pasting into your AI.");
+        keepDone("Copied the note. Paste it into a new note, then tap Copy prompt again before pasting into your AI.");
       }, function () { keepStatus.textContent = "This browser can't save notes from here."; });
     }
     if (navigator.share) {
       navigator.share({ title: title, text: note }).then(function () {
-        done(promptCopied ? "Saved. Your prompt is still copied, so paste it into your AI." : "Saved. Now tap Copy prompt and paste it into your AI.");
+        keepDone(promptCopied ? "Saved. Your prompt is still copied, so paste it into your AI." : "Saved. Now tap Copy prompt and paste it into your AI.");
       }, function (e) {
         if (e && e.name === "AbortError") return;
         copyNote();
@@ -1138,7 +1149,18 @@ export function startApp() {
     } else {
       copyNote();
     }
-  });
+  }
+  function runSaveShortcut() {
+    var note = buildNote("notes", true);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(note).catch(function () {});
+    var link = document.getElementById("shortcutLink");
+    link.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(SAVE_SHORTCUT) + "&input=text&text=" + encodeURIComponent(note);
+    link.click();
+    promptCopied = false;
+    keepDone("Sent to your " + SAVE_SHORTCUT + " shortcut. It lands in \ud83d\udcaaProcess Voice Note\ud83d\udcaa. Tap Copy prompt again before pasting into your AI. Nothing happened? Tap Share instead.");
+  }
+  saveBtn.addEventListener("click", function () { if (appleKeep) runSaveShortcut(); else shareNote(); });
+  shareBtn.addEventListener("click", shareNote);
 
   /* AI app links. claude.ai/new and chatgpt.com are https links the apps claim
      (universal links), so on iPhone they open the app when it's installed and the

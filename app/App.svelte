@@ -104,6 +104,8 @@
       <p class="keephead">Want a record of this?</p>
       <div class="row">
         <button type="button" id="saveNote">Save to Notes</button>
+        <button type="button" id="saveShare" class="linkish" hidden>Share instead</button>
+        <a id="shortcutLink" href="shortcuts://" hidden aria-hidden="true" tabindex="-1">Run shortcut</a>
       </div>
       <p id="keepStatus" class="status"></p>
     </div>

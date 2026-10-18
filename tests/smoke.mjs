@@ -32,7 +32,7 @@ function expect(cond, msg) { if (!cond) throw new Error(msg); }
 
 /* Gemini mock. opts: models, intake (object), write (string), fail (model -> status), finish (model -> reason) */
 async function page(opts = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}) });
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
@@ -435,6 +435,29 @@ await check('Save to Notes: title on the first line, then the original voice-not
   expect(note.includes('\n### \u{1F4DD} Summary\nA nightly wind-down.') && note.includes('\n### \u{1F4A1} Key Ideas\n- Night Shift at 10:15') && note.includes('\n### \u2705 Action Items\n\u2610 Build the shortcut'), 'section layout wrong:\n' + note);
   expect(!/SUMMARY|KEY IDEAS/.test(note), 'old all-caps headings still there');
   expect(note.includes('### \u{1F680} Prompt Built\nTHE PROMPT'), 'prompt missing from the note');
+});
+
+await check('Save to Notes on iPhone runs the Save Voice Note shortcut, Share instead keeps the share sheet', async () => {
+  const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+    intake: { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [], note: { headline: 'H', tags: [], summary: 'S', key_ideas: [], action_items: [], unknowns: [], clean_transcript: 'every night' } } });
+  await p.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; });
+  await withKey(p); await p.fill('#thoughts', 'every night'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#saveShare'), 'Share instead should show on iPhone');
+  await p.click('#saveNote');
+  const href = await p.getAttribute('#shortcutLink', 'href');
+  expect(href.startsWith('shortcuts://run-shortcut?name=Save%20Voice%20Note&input=text&text='), 'wrong shortcut link: ' + href.slice(0, 80));
+  const text = decodeURIComponent(href.split('&text=')[1]);
+  expect(text.split('\n')[0] === 'Pre-Sleep Focus Setup' && text.includes('### \u{1F680} Prompt Built'), 'shortcut text should be the full note');
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === text, 'note should also be copied as a backup');
+  expect(/Process Voice Note/.test(await p.textContent('#keepStatus')), 'status should say where it went');
+  expect(!(await p.evaluate(() => window.__shared)), 'share sheet should not open on the main button');
+  await p.click('#saveShare');
+  expect(await p.evaluate(() => window.__shared && window.__shared.text.startsWith('Pre-Sleep Focus Setup')), 'Share instead should open the share sheet with the note');
+});
+
+await check('Share instead stays hidden on computers', async () => {
+  const p = await page();
+  expect(!(await p.isVisible('#saveShare')), 'Share instead should be hidden off iPhone');
 });
 
 await check('usage.json is valid', async () => {
