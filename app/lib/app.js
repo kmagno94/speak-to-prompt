@@ -1212,7 +1212,9 @@ export function startApp() {
     var dev = /iPhone/.test(ua) ? "iPhone" : (/iPad/.test(ua) || touchMac) ? "iPad" : /Android/.test(ua) ? "Android" : /Macintosh/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Other";
     var os = (ua.match(/OS (\d+)[_.]\d+.* like Mac OS X/) || [])[1];
     var br = /EdgiOS|Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "other browser";
-    return dev + (os ? " (iOS " + os + ")" : "") + ", " + br + ", " + window.innerWidth + " x " + window.innerHeight;
+    /* Safari has reported iOS 18 on every newer iOS since iOS 26, so 18 really means "18 or later". */
+    var osLabel = os ? (Number(os) === 18 ? "iOS 18 or later" : "iOS " + os) : "";
+    return dev + (osLabel ? " (" + osLabel + ")" : "") + ", " + br + ", " + window.innerWidth + " x " + window.innerHeight;
   }
   report.collect = function (place) {
     if (place === "front") {

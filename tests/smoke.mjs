@@ -612,6 +612,10 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
   const box = await p.inputValue('#thoughts');
   expect(/^I need help with improving my Speak to Prompt web app\./.test(box) && /Svelte 5 \+ Vite/.test(box) && /My idea, in my own words:\nadd a dark mode toggle to the idea strip/.test(box) && /What I want back:/.test(box.split('\n').pop()), 'wrapped text wrong: ' + box);
   expect(await p.isHidden('#pasteWrap'), 'banner should close after pasting');
+  // Safari freezes its iOS version at 18, so the report says 18 or later
+  const q = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1' });
+  await q.click('#frontReportBtn');
+  expect(/- Device: iPhone \(iOS 18 or later\), Safari/.test(await q.$eval('#frontReportPreview', el => el.textContent)), 'iOS version should read 18 or later');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
