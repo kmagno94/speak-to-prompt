@@ -578,6 +578,28 @@ await check('something went wrong: quick report with run facts only, never your 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('front page report: its own link and choices, page facts only, sent through the relay', async () => {
+  const p = await page();
+  const relayed = [];
+  await p.route('https://relay.test/report', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    relayed.push(JSON.parse(r.request().postData()));
+    return r.fulfill({ status: 201, headers: h, body: JSON.stringify({ ok: true, number: 3 }) });
+  });
+  await p.fill('#thoughts', 'my private secretword thoughts');
+  expect(await p.isVisible('#frontReportBtn') && !(await p.$('#reportBtn:visible')), 'front page should have its own report link');
+  await p.click('#frontReportBtn');
+  await p.click('#frontReportBox .chips button >> text=A button did nothing');
+  const text = await p.$eval('#frontReportPreview', el => el.textContent);
+  expect(/Where: front page/.test(text) && /- Prompt built in this tab: not yet/.test(text) && /- Mode picked: (quick|normal)/.test(text) && /- Device: /.test(text), 'front facts missing: ' + text);
+  expect(!/Words in|secretword/.test(text), 'front report should hold page facts only: ' + text);
+  await p.click('#frontReportSend');
+  await p.waitForFunction(() => /report #3/.test(document.getElementById('frontReportStatus').textContent));
+  expect(relayed.length === 1 && relayed[0].title === 'Report: front page, A button did nothing' && relayed[0].body === text, 'relay should get the front report');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
   const { default: relay } = await import('../worker/report-relay.js');
   const sent = [];

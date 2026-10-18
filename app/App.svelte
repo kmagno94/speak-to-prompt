@@ -72,6 +72,7 @@
       <p class="detail"></p>
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
+    <ReportIssue place="front" />
   </form>
 
   <section class="card" id="qa" hidden>

@@ -1207,7 +1207,20 @@ export function startApp() {
     var br = /EdgiOS|Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "other browser";
     return dev + (os ? " (iOS " + os + ")" : "") + ", " + br + ", " + window.innerWidth + " x " + window.innerHeight;
   }
-  report.collect = function () {
+  report.collect = function (place) {
+    if (place === "front") {
+      var fr = [
+        ["App version", typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev"],
+        ["When", new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) + " (" + (Intl.DateTimeFormat().resolvedOptions().timeZone || "local") + ")"],
+        ["Device", deviceLine()],
+        ["Gemini key", (gemini.key || gkey.value.trim()) ? "yes" : "no"],
+        ["Mode picked", ui.mode],
+        ["Prompt built in this tab", session ? "yes" : "not yet"],
+        ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
+      ];
+      if (core.dev) fr.push(["Core", core.active ? "on" : "off"]);
+      return fr;
+    }
     var s = session || {}, qs = s.questions || [], ans = s.answers || [];
     var tapped = ans.filter(function (a) { return a.tapped; }).length;
     var w = s.write, rows = [

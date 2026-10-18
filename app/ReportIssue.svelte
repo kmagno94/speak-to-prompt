@@ -1,21 +1,28 @@
 <script>
   import { slide } from 'svelte/transition';
-  import { report, REASONS, RELAY } from './lib/report.svelte.js';
+  import { report, REASONS, FRONT_REASONS, RELAY } from './lib/report.svelte.js';
   import { core } from './lib/core.svelte.js';
   import { ms } from './lib/motion.js';
 
+  /* place: 'result' (under the finished prompt) or 'front' (the first screen). */
+  let { place = 'result' } = $props();
+  const front = place === 'front';
+  const reasons = front ? FRONT_REASONS : REASONS;
+  const id = (s) => (front ? 'frontReport' : 'report') + s;
+
+  let open = $state(false);
   let picked = $state([]);
   let note = $state('');
   let status = $state('');
   let sent = $state(false);
   let sending = $state(false);
 
-  /* A new prompt means a new report. */
-  $effect(() => { report.run; picked = []; note = ''; status = ''; sent = false; });
+  /* A new prompt means a fresh, closed report under it. */
+  $effect(() => { report.run; if (front) return; open = false; picked = []; note = ''; status = ''; sent = false; });
 
   const ready = $derived(picked.length > 0 || note.trim().length > 0);
-  const preview = $derived(report.open ? report.text(picked, note) : '');
-  const issue = $derived(report.open && core.dev && !RELAY ? report.issueUrl(picked, note) : '');
+  const preview = $derived(open ? report.text(picked, note, place) : '');
+  const issue = $derived(open && core.dev && !RELAY ? report.issueUrl(picked, note, place) : '');
 
   function pick(r) { picked = picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r]; }
 
@@ -24,7 +31,7 @@
   function send() {
     if (RELAY) {
       sending = true; status = 'Sending...';
-      report.relay(picked, note).then(
+      report.relay(picked, note, place).then(
         (n) => { sending = false; done('Sent! It\'s report #' + n + ' on the bug list. Thanks, this helps fix it.'); },
         () => { sending = false; shareOrCopy('Couldn\'t reach the bug list, so '); });
       return;
@@ -33,7 +40,7 @@
   }
 
   function shareOrCopy(lead) {
-    const text = report.text(picked, note);
+    const text = report.text(picked, note, place);
     const copy = () => {
       if (!navigator.clipboard?.writeText) { status = "This browser can't send it from here. Open \"See exactly what's sent\" and copy it."; return; }
       navigator.clipboard.writeText(text).then(
@@ -48,38 +55,39 @@
   }
 </script>
 
-<div class="report">
-  <button type="button" id="reportBtn" class="reportbtn" aria-expanded={report.open} aria-controls="reportBox"
-          onclick={() => (report.open = !report.open)}>{report.open ? 'Close report' : 'Something went wrong?'}</button>
-  {#if report.open}
-    <div class="reportbox" id="reportBox" transition:slide={{ duration: ms(200) }}>
+<div class="report" class:front>
+  <button type="button" id={id('Btn')} class="reportbtn" aria-expanded={open} aria-controls={id('Box')}
+          onclick={() => (open = !open)}>{open ? 'Close report' : 'Something went wrong?'}</button>
+  {#if open}
+    <div class="reportbox" id={id('Box')} transition:slide={{ duration: ms(200) }}>
       <p class="rhead">What went wrong? Tap any that fit.</p>
       <div class="chips" role="group" aria-label="What went wrong">
-        {#each REASONS as r}
+        {#each reasons as r}
           <button type="button" aria-pressed={picked.includes(r)} onclick={() => pick(r)}>{r}</button>
         {/each}
       </div>
-      <label for="reportNote">Anything else? <span>(optional)</span></label>
-      <textarea id="reportNote" rows="2" bind:value={note} placeholder="What did you expect instead?"></textarea>
+      <label for={id('Note')}>Anything else? <span>(optional)</span></label>
+      <textarea id={id('Note')} rows="2" bind:value={note} placeholder="What did you expect instead?"></textarea>
       <p class="hint">{RELAY ? 'Goes to the app\'s public bug list. ' : ''}Your thoughts, answers, and prompt are never included. Only how the run went: timing, lengths, models, and settings.</p>
       <details class="what">
         <summary>See exactly what's sent</summary>
-        <pre id="reportPreview">{preview}</pre>
+        <pre id={id('Preview')}>{preview}</pre>
       </details>
       <div class="row">
-        <button type="button" class="primary" id="reportSend" disabled={!ready || sending} onclick={send}>{sending ? 'Sending...' : sent ? 'Send again' : 'Send report'}</button>
+        <button type="button" class="primary" id={id('Send')} disabled={!ready || sending} onclick={send}>{sending ? 'Sending...' : sent ? 'Send again' : 'Send report'}</button>
         {#if issue}
-          <a class="ghlink" id="reportIssue" href={issue} target="_blank" rel="noopener"
+          <a class="ghlink" id={id('Issue')} href={issue} target="_blank" rel="noopener"
              aria-disabled={!ready} onclick={(e) => { if (!ready) e.preventDefault(); else done('Opened GitHub. Tap Submit there, and the next review picks it up.'); }}>File a GitHub issue</a>
         {/if}
       </div>
-      <p id="reportStatus" class="status" role="status">{status}</p>
+      <p id={id('Status')} class="status" role="status">{status}</p>
     </div>
   {/if}
 </div>
 
 <style>
   .report { display: grid; gap: 10px; }
+  .report.front { margin-top: 2px; }
   .reportbtn { justify-self: end; background: none; border: none; min-height: 0; padding: 4px 2px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
   .reportbox { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
   .rhead { margin: 0; font-weight: 700; }
