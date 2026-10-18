@@ -19,7 +19,7 @@ class StarterSession {
   /* The starting text, rebuilt as answers change. */
   text = $derived.by(() => {
     if (!this.cat) return '';
-    const lines = ['I need help with ' + this.cat.phrase + '.'];
+    const lines = ['I need help with ' + this.cat.phrase + '.'].concat(this.cat.context || []);
     this.questions.forEach((q, i) => {
       const a = this.answers[i];
       if (a) lines.push(q.say + ': ' + a.replace(/[.\s]+$/, '') + '.');
@@ -28,6 +28,7 @@ class StarterSession {
       const said = s.steps[this.tune[s.key] - 1];
       if (said) lines.push(s.say + ': ' + said + '.');
     });
+    if (this.cat.ask) lines.push(this.cat.ask);
     return lines.join('\n');
   });
   #timer = 0;
@@ -55,7 +56,7 @@ class StarterSession {
     if (!t || this.typing || this.done) return;
     if (!this.cat) {
       /* Typed instead of picking: treat it as "Not sure yet" with that as the topic. */
-      this.cat = CATEGORIES[0];
+      this.cat = CATEGORIES.find((c) => c.id === 'general');
       this.answers = this.questions.map(() => null);
       this.answers[1] = t;
       this.#say('me', t);

@@ -364,6 +364,22 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('starter: Improve this app writes a starting point with the app background built in', async () => {
+  const p = await page();
+  await p.click('#starterBtn'); await p.click('#starter .cats button >> text=Improve this app');
+  await p.waitForSelector('#starter .msg.ai >> text=What do you want to change?');
+  await p.click('#starter .chips button >> text=Add a feature');
+  await p.waitForSelector('#starter .msg.ai >> text=Which part of the app?');
+  await p.click('#starter .chips button >> text=Idea strip');
+  await p.waitForSelector('#starter .msg.ai >> text=Anything else');
+  await p.fill('#starterOwn', 'let me save favorite ideas'); await p.press('#starterOwn', 'Enter');
+  await p.waitForSelector('#starterUse'); await p.click('#starterUse');
+  const box = await p.inputValue('#thoughts');
+  expect(/improving my Speak to Prompt web app/.test(box) && /Svelte 5 \+ Vite/.test(box) && /tests\/smoke\.mjs/.test(box)
+    && /Change: Add a feature\./.test(box) && /Part of the app: Idea strip\./.test(box) && /Also: let me save favorite ideas\./.test(box)
+    && /What I want back:/.test(box.split('\n').pop()), 'app starting text wrong: ' + box);
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

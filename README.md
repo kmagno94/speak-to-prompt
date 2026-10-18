@@ -32,6 +32,8 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 - **SOUL (How the AI should act):** voice and rules, like "Be direct" or "Challenge me, with care".
 - **IDENTITY (The AI's role):** Coach, Chief of staff, Accountability partner, Tutor, Thinking partner, or Expert advisor, plus what that means to you.
 
+**Improve this app (testing):** the last option in Not sure where to start? asks what you want to change and which part of the app, then writes a starting point with the app's background built in (what it is, the stack, how changes ship), ready to build into a prompt for a build chat.
+
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
 
 ### Two modes (next to Build my prompt)
@@ -86,7 +88,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/App.svelte` | The page markup |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
-  | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY). Testing only; remove these files and the lines marked "core" in app.js before shipping |
+  | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY). Testing only; remove these files, the lines marked "core" in app.js, and the "Improve this app" category in starters.js before shipping |
   | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |

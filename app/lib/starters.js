@@ -37,7 +37,19 @@ export const CATEGORIES = [
     { q: 'Which devices?', say: 'Devices', choices: ['iPhone', 'iPad', 'Mac', 'Windows PC', 'Android'] } ] },
   { id: 'creative', emoji: '\u{1F3A8}', label: 'Creative and ideas', phrase: 'a creative idea', questions: [
     { q: 'What are you working on?', say: 'What I want', choices: ['Name something', 'Content ideas', 'Start a project', 'Get unstuck', 'A gift idea'] },
-    { q: 'Who\'s it for?', say: 'Who it\'s for', choices: ['Me', 'My business', 'A friend', 'School'] } ] }
+    { q: 'Who\'s it for?', say: 'Who it\'s for', choices: ['Me', 'My business', 'A friend', 'School'] } ] },
+  /* DEVELOPMENT ONLY: prompts for improving Speak to Prompt itself, with the app's
+     background built in. Remove before shipping, along with "Your core". */
+  { id: 'app', emoji: '\u{1F6E0}\uFE0F', label: 'Improve this app', phrase: 'improving my Speak to Prompt web app', dev: true,
+    context: [
+      'About the app: Speak to Prompt turns messy typed or spoken thoughts into one ready-to-paste AI prompt. It is a Svelte 5 + Vite site on GitHub Pages (repo kmagno94/speak-to-prompt) that uses my own free Gemini key and saves nothing.',
+      'How changes ship: the smoke tests in tests/smoke.mjs must pass, then GitHub Actions publishes it. Every change gets a Building Log row in Notion. No em dashes in anything user-facing.'
+    ],
+    ask: 'What I want back: the change and why it helps, the exact steps to build it, and how we will know it worked.',
+    questions: [
+      { q: 'What do you want to change?', say: 'Change', choices: ['Add a feature', 'Fix something broken', 'Change how it looks', 'Make it faster', 'Change the wording', 'Remove something'] },
+      { q: 'Which part of the app?', say: 'Part of the app', choices: ['Idea strip', 'Not sure where to start', 'Follow-up questions', 'Your prompt and copy buttons', 'Quick and Normal modes', 'Talk it out and the shortcut', 'Your core', 'Run stats', 'The whole page'] }
+    ] }
 ];
 
 /* Fine-tune sliders on the starting point. 3 is the middle and adds nothing;

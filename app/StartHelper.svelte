@@ -75,7 +75,7 @@
       {:else if !starter.cat}
         <div class="cats" role="group" aria-label="What do you want help with?" in:fly={{ y: 6, duration: ms(180) }}>
           {#each CATEGORIES as c (c.id)}
-            <button type="button" class:general={c.id === 'general'} onclick={() => starter.pick(c)}><span aria-hidden="true">{c.emoji}</span>{c.label}</button>
+            <button type="button" class:general={c.id === 'general'} class:dev={c.dev} onclick={() => starter.pick(c)}><span aria-hidden="true">{c.emoji}</span>{c.label}</button>
           {/each}
         </div>
       {:else if !starter.done}
@@ -149,6 +149,7 @@
   }
   .cats button span { font-size: 20px; }
   .cats button.general { grid-column: 1 / -1; background: var(--accent-soft); color: var(--accent); }
+  .cats button.dev { grid-column: 1 / -1; background: var(--surface); border: 1.5px dashed var(--line); color: var(--ink); }
   .cats button:active, .chips :global(button:active) { transform: scale(0.97); }
   .tune { display: grid; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); }
   .tune > p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
