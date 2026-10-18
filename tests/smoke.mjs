@@ -606,7 +606,7 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
   expect(!(await p.$('#pasteImprove')), 'Improve this app paste is a dev tool');
   await p.evaluate(() => localStorage.setItem('stp-dev', '1'));
   await p.evaluate(() => navigator.clipboard.writeText('add a dark mode toggle to the idea strip'));
-  await p.goto(BASE + '#paste'); await p.reload(); await p.waitForSelector('#pasteWrap.banner');
+  await p.goto('about:blank'); await p.goto(BASE + '#paste'); await p.waitForSelector('#pasteImprove');
   await p.click('#pasteImprove');
   await p.waitForFunction(() => document.getElementById('thoughts').value.length > 0);
   const box = await p.inputValue('#thoughts');
