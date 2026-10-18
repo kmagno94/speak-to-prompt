@@ -211,6 +211,9 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 .mode:has(input:checked) b { color: var(--accent); }
 .mode:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 1px; }
 .modehint { grid-column: 1 / -1; margin: 0; font-size: 14px; color: var(--muted); }
+.polish { margin: 0; font-size: 14px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+.polish::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+@media (prefers-reduced-motion: no-preference) { .polish::before { animation: pulse 1.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } } }
 .refine { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg); font-size: 14px; }
 .refine summary { font-weight: 700; cursor: pointer; }
 .refine p { margin: 8px 0 2px; }
@@ -314,7 +317,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <div class="modes" role="radiogroup" aria-label="How much thinking">
         <label class="mode"><input type="radio" name="mode" id="quickMode" value="quick"><b>Quick</b><small id="quickLabel">~15s</small></label>
         <label class="mode"><input type="radio" name="mode" id="normalMode" value="normal" checked><b>Normal</b><small>~1 min</small></label>
-        <label class="mode"><input type="radio" name="mode" id="deepMode" value="deep"><b>Deep</b><small>~3 min</small></label>
+        <label class="mode"><input type="radio" name="mode" id="deepMode" value="deep"><b>Deep</b><small>~1 min +</small></label>
       </div>
       <p class="modehint" id="modeHint"></p>
       <button type="button" class="link" id="example">Try an example</button>
@@ -351,6 +354,7 @@ details.key[open] summary { margin-bottom: 10px; }
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <p id="polishStatus" class="polish" role="status" hidden></p>
     <details class="refine" id="refineLog" hidden><summary>How Deep mode refined it</summary><div id="refineBody"></div></details>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
@@ -705,6 +709,7 @@ details.key[open] summary { margin-bottom: 10px; }
     status.textContent = "";
     document.getElementById("madeBy").textContent = "";
     document.getElementById("refineLog").hidden = true;
+    document.getElementById("polishStatus").hidden = true;
     setChatName(title);
     setReady(false);
     qa.hidden = true;
@@ -800,6 +805,7 @@ details.key[open] summary { margin-bottom: 10px; }
     resetKeep();
     setBuild("");
     document.getElementById("refineLog").hidden = true;
+    document.getElementById("polishStatus").hidden = true;
     ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
@@ -1277,7 +1283,7 @@ details.key[open] summary { margin-bottom: 10px; }
     standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
     quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" },
-    deep:     { level: "high",   words: "deep thinking, reviewed until 10/10", secs: 180, range: "usually 2 to 5 minutes", label: "Deep prompt" }
+    deep:     { level: "high",   words: "deep thinking, then polished in the background", secs: 90, range: "first draft in 1 to 2 minutes, then polishes in the background", label: "Deep prompt" }
   };
   /* Quick prompts: Flash-Lite is fast enough to think a bit more, which keeps
      it from dropping details. A Flash backup stays light so it stays quick. */
@@ -1388,7 +1394,7 @@ details.key[open] summary { margin-bottom: 10px; }
   var MODE_HINTS = {
     quick: "Quick: skips the questions and writes right away.",
     normal: "Normal: asks a few quick questions, then writes.",
-    deep: "Deep: asks, looks up current facts, then rewrites until a strict review scores it 10/10."
+    deep: "Deep: looks up current facts and shows a first draft, then keeps polishing in the background. A better version swaps in only if it wins a blind comparison."
   };
   function currentMode() { var el = document.querySelector('input[name="mode"]:checked'); return el ? el.value : "normal"; }
   function updateModeHint() {
@@ -1619,15 +1625,19 @@ details.key[open] summary { margin-bottom: 10px; }
   }
 
   /* ---------- Deep mode ----------
-     1. Research: one Google Search grounded call on Flash-Lite, started while the person
-        answers the questions. If search isn't available, Deep carries on without it.
-     2. Draft: the strongest Flash model at its highest thinking level.
-     3. Review: a different model (Flash-Lite, high thinking) runs 10 pass/fail checks.
-        The page counts the passes itself, so a reviewer can't just claim 10/10.
-     4. Rewrite with the reviewer's fixes, then review again. Stops at 10/10, when a
-        rewrite doesn't beat the best score so far, after 3 rewrites, or after 8 minutes.
-        The best-scoring version is the one shown. */
-  var MAX_REWRITES = 3, DEEP_BUDGET = 8 * 60 * 1000;
+     Tests showed a grader-chasing loop makes prompts worse (a weak reviewer kept
+     cutting useful sections and inventing word limits while the score climbed).
+     So Deep now works like this:
+     1. Research: Google Search grounded call, Flash-Lite first, then the top Flash.
+        Runs while the person answers the questions. Skipped quietly if search fails.
+     2. Draft: the strongest Flash at high thinking. Shown right away, so the wait
+        is about the same as Normal. Polishing carries on in the background.
+     3. Review: the strongest Flash runs 10 pass/fail checks; the page counts passes.
+     4. Rewrite with the fixes (up to 2), reviewing after the first.
+     5. Blind head-to-head: the strongest Flash ranks the draft and the rewrites in
+        shuffled order. A rewrite replaces the draft only if it wins, so Deep can
+        never end up worse than its own first draft. */
+  var MAX_REWRITES = 2, DEEP_BUDGET = 8 * 60 * 1000;
   var RESEARCH = [
     "You are the research step of a prompt-building tool. Use Google Search to look up current, verifiable facts that would make an AI prompt for the request below more accurate.",
     "Look for: the latest versions and details of any devices, apps, or services they mention; current rules, prices, or limits that apply; and well-established best practices and common pitfalls.",
@@ -1635,44 +1645,59 @@ details.key[open] summary { margin-bottom: 10px; }
     "If nothing in this request depends on current facts, return only the word NONE."
   ].join("\n");
   var CHECKS = [
-    ["Keeps every detail", "Keeps every relevant detail from the thoughts and answers: names, numbers, dates, limits, and preferences."],
-    ["Invents nothing", "Adds no devices, people, facts, or requirements the person did not give. Looked-up facts are allowed when their source is named."],
+    ["Keeps every detail", "Keeps every relevant detail from the thoughts and answers: names, numbers, dates, limits, and preferences, in the person's own terms."],
+    ["Invents nothing", "Adds no facts, people, devices, dates, numbers, or requirements the person did not give. Turning something vague into something specific counts as invented (for example \"next fall\" becoming \"November\"). A word or length limit the person did not ask for counts as invented. NOT invented, and fine: asking the AI to explain how it works, give steps, cover limits or troubleshooting, recommend the best approach, state assumptions, or start right away. Looked-up facts are fine when their source is named."],
+    ["Keeps full scope", "Covers everything the person wants, without narrowing it. Keeps sections that help them succeed, such as how it works, steps, and limits or troubleshooting. A rewrite that drops a requirement or section fails this."],
     ["Right expert", "Gives the AI an expert role that fits the task."],
     ["Full context", "Gives enough background that the AI will not need to ask basic questions."],
     ["Clear task", "States the exact task and what a finished result looks like."],
-    ["Format set", "Says what format and length the answer should take."],
+    ["Format set", "Asks for a clear structure that suits the task, such as headings, numbered steps, or bullets. It does not need a length limit."],
     ["Fitting tone", "Sets a tone that fits the person and the situation."],
-    ["Handles gaps", "Tells the AI how to handle anything unclear: state assumptions, ask at most one short question, or lay out numbered options when the person raised several separate goals."],
-    ["Tight", "No filler, repetition, or contradictions."],
-    ["Ready to paste", "Written in first person as the person, with no placeholders, meta commentary, or code fences."]
+    ["Handles gaps", "Tells the AI how to handle anything unclear: start right away and ask at most one short question if essential, or lay out numbered options when the person raised several separate goals."],
+    ["Ready to paste", "Written in first person as the person, with no placeholders, filler, repetition, meta commentary, or code fences."]
   ];
   var REVIEW = [
     "You are a strict quality reviewer for AI prompts. Score the PROMPT below against the person's RAW THOUGHTS, their ANSWERS, and any LOOKED-UP FACTS.",
     "Run these 10 checks. A check passes only if it fully passes. If you are unsure, it fails.",
-    CHECKS.map(function (c, i) { return (i + 1) + ". " + c[1]; }).join("\n"),
-    "For every failed check, write one specific fix that says exactly what to add, cut, or change in the prompt. Never suggest adding details the person did not give, unless they come from the looked-up facts.",
+    CHECKS.map(function (c, i) { return (i + 1) + ". " + c[0] + ": " + c[1]; }).join("\n"),
+    "For every failed check, write one specific fix that says exactly what to add, cut, or change. Never suggest a word or length limit the person did not ask for, never suggest removing a section that helps them succeed, and never suggest details the person did not give unless they come from the looked-up facts.",
     "Respond with JSON only, in exactly this shape, with all 10 checks:",
     '{"checks": [{"id": 1, "pass": true, "fix": ""}]}'
   ].join("\n");
+  var RANK = [
+    "You are judging which version of an AI prompt will get the person the most useful answer. Compare them blind against the person's RAW THOUGHTS, ANSWERS, and LOOKED-UP FACTS.",
+    "Prefer the version that keeps every detail the person gave, invents nothing (no new dates, numbers, or length limits they did not ask for), covers everything they want, and is clearest for the AI to act on. Longer is not better by itself, and shorter is not better by itself.",
+    "Respond with JSON only: {\"best\": \"A\", \"why\": \"one short plain sentence\"}"
+  ].join("\n");
   var DEEP_NOTE = "\nLooked-up facts below are current and come from Google Search. Use the ones that help, and keep each one's source in parentheses.";
-  var REWRITE_NOTE = "\nYou are improving an existing prompt. Apply every one of the reviewer's fixes, keep everything that already works, and keep the same voice. Do not add details the person never gave, except looked-up facts with their source.";
+  var REWRITE_NOTE = "\nYou are improving an existing prompt. Apply every one of the reviewer's fixes and keep everything that already works. Never remove a requirement, detail, or helpful section, never add a word or length limit the person did not ask for, and never make vague details specific (keep \"next fall\" as next fall). Do not add details the person never gave, except looked-up facts with their source.";
 
   function startResearch() {
     var ask = RESEARCH + "\n\nREQUEST:\n\"\"\"\n" + session.raw + "\n\"\"\"\nWHAT THEY NEED: " + (session.need || "");
-    session.research = askGemini(ask, false, gemini.plan.intake, "medium", null, 120000, { tools: [{ google_search: {} }] }).then(function (r) {
-      session.researchModel = r.model;
-      return parseResearch(r.text);
-    }, function () { session.researchFailed = true; return []; });
+    var models = gemini.plan.intake.filter(function (m) { return /lite/.test(m); }).concat(gemini.plan.write.filter(function (m) { return !/lite/.test(m); }).slice(0, 1));
+    var errors = [];
+    function tryAt(i) {
+      if (i >= models.length) { session.researchFailed = true; session.researchError = errors.join("; "); return []; }
+      return askGemini(ask, false, [models[i]], "medium", null, 120000, { tools: [{ google_search: {} }] }).then(function (r) {
+        session.researchModel = r.model;
+        return parseResearch(r.text);
+      }, function (e) {
+        errors.push(models[i] + ": " + (e && e.message ? e.message : "failed"));
+        return tryAt(i + 1);
+      });
+    }
+    session.research = tryAt(0);
   }
   function parseResearch(text) {
     if (/^\s*NONE\b/i.test(text || "")) return [];
     return String(text || "").split(/\n+/).map(function (l) { return l.trim(); })
-      .filter(function (l) { return /^[-*\u2022]\s+/.test(l); })
-      .map(function (l) { return l.replace(/^[-*\u2022]\s+/, "").slice(0, 300); })
+      .filter(function (l) { return /^([-*•]|\d+[.)])\s+/.test(l); })
+      .map(function (l) { return l.replace(/^([-*•]|\d+[.)])\s+/, "").replace(/\*\*/g, "").slice(0, 300); })
       .filter(Boolean).slice(0, 8);
   }
+  function parseJson(text) { return JSON.parse(String(text).replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); }
   function parseReview(text) {
-    var data = JSON.parse(String(text).replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, ""));
+    var data = parseJson(text);
     var list = Array.isArray(data.checks) ? data.checks : [];
     var fails = [], score = 0;
     CHECKS.forEach(function (c, i) {
@@ -1689,6 +1714,8 @@ details.key[open] summary { margin-bottom: 10px; }
       "\n\nLOOKED-UP FACTS:\n" + (facts.length ? facts.map(function (f) { return "- " + f; }).join("\n") : "None needed.");
   }
   function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
+  var polishEl = document.getElementById("polishStatus");
+  function setPolish(text) { polishEl.hidden = !text; polishEl.textContent = text || ""; }
 
   function writeDeep(answers) {
     session.mode = "Deep";
@@ -1702,34 +1729,38 @@ details.key[open] summary { margin-bottom: 10px; }
     var est = writeEstimate("deep");
     var skipAsk = !(session.questions && session.questions.length);
     var eta = startEstimate(resultProg, "Looking up current facts", est.secs, "write", skipAsk);
-    var t0 = Date.now(), rounds = [], best = null, facts = [], writers = [], reviewer = "";
+    var t0 = Date.now(), draftSecs = 0, facts = [], writers = [], judges = [], versions = [];
     var STALE = { stale: true };
     function live() { return run === writeRun; }
     function onModel(m) { if (live()) eta.model(m); }
     function keep(list, m) { if (m && list.indexOf(m) === -1) list.push(m); }
+    function name(v) { return v.round ? "Rewrite " + v.round : "First draft"; }
 
-    function finish(reason) {
+    /* Background polishing is over: keep the draft or swap in the winner. */
+    function settle(winner, reason, why) {
       if (!live()) return;
-      var secs = (Date.now() - t0) / 1000;
-      finishTrack(resultProg, secs, skipAsk);
-      setBusy(false);
-      setBuild("");
-      qaStatus.textContent = "";
-      var rewrites = rounds.length ? rounds[rounds.length - 1].round : 0;
-      var verdict = best.score == null ? "The review wasn't available, so this is the first draft"
-        : best.score === 10 ? "A strict review scored it 10/10"
-        : "The best version scored " + best.score + "/10";
-      var how = best.score == null ? "" : rewrites ? " after " + rewrites + (rewrites === 1 ? " rewrite" : " rewrites") : " on the first try";
-      var tech = techOn() ? " Writer: " + writers.join(", ") + (reviewer ? ". Reviewer: " + reviewer : "") + "." : "";
-      logRun({ depth: "deep", est_s: est.secs, write_model: writers.join(", "), thinking: "high", write_s: Math.round(secs * 10) / 10,
-        words_out: words(best.text), scores: rounds.map(function (r) { return r.score == null ? "?" : r.score; }).join(" > "),
-        facts: facts.length, stop: reason, outcome: "ok" });
-      showResult(best.text, "Ready in " + clock(secs) + ". " + verdict + how + "." + tech, session.title);
-      renderRefine(rounds, facts, best);
+      setPolish("");
+      var draft = versions[0], total = (Date.now() - t0) / 1000;
+      var swapped = winner && winner !== draft;
+      var tech = techOn() ? " Writer: " + writers.join(", ") + (judges.length ? ". Reviewer: " + judges.join(", ") : "") + "." : "";
+      var msg = "First draft ready in " + clock(draftSecs) + ". ";
+      if (swapped) {
+        output.value = winner.text;
+        msg += "Polished version swapped in at " + clock(total) + (winner.score != null ? " (scored " + winner.score + "/10)" : "") + ": it beat the draft in a blind comparison.";
+        status.textContent = "Updated with the polished version. If you already copied the draft, copy again.";
+      } else {
+        msg += draft.score != null ? "Deep mode checked it and the first draft held up best (scored " + draft.score + "/10), so it stays." : "Deep mode couldn't finish polishing, so the first draft stays.";
+      }
+      if (why) msg += " " + why;
+      document.getElementById("madeBy").textContent = msg + tech;
+      logRun({ depth: "deep", est_s: est.secs, write_model: writers.join(", "), thinking: "high", write_s: Math.round(draftSecs * 10) / 10, total_s: Math.round(total * 10) / 10,
+        words_out: words(output.value), scores: versions.map(function (v) { return v.score == null ? "?" : v.score; }).join(" > "),
+        kept: swapped ? name(winner) : "First draft", facts: facts.length, stop: reason, outcome: "ok" });
+      renderRefine(versions, facts, swapped ? winner : draft, why);
     }
     function fail(e) {
       if (e === STALE || !live()) return;
-      if (best) { finish("stopped early: " + (e && e.message ? e.message : "error")); return; }
+      if (versions.length) { settle(null, "stopped early: " + (e && e.message ? e.message : "error")); return; }
       stopTicker();
       setProgress(resultProg, "off");
       setBusy(false);
@@ -1740,32 +1771,44 @@ details.key[open] summary { margin-bottom: 10px; }
     }
     function review(v) {
       if (!live()) throw STALE;
-      eta.label(v.round ? "Reviewing rewrite " + v.round : "Reviewing the draft against 10 checks");
-      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, gemini.plan.intake, "high", onModel, WRITE_LIMIT).then(function (g) {
-        reviewer = g.model;
+      setPolish("Polishing in the background: reviewing " + name(v).toLowerCase() + " against 10 checks...");
+      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (g) {
+        keep(judges, g.model);
         var res = parseReview(g.text);
         v.score = res.score; v.fails = res.fails;
         return true;
-      }, function () { return false; }).then(function (ok) {
-        if (!live()) throw STALE;
-        if (!ok) {
-          if (!best) { v.score = null; v.fails = []; rounds.push(v); best = v; }
-          return finish("review unavailable");
-        }
-        rounds.push(v);
-        var improved = !best || best.score == null || v.score > best.score;
-        if (improved) best = v;
-        if (v.score >= 10) return finish("scored 10/10");
-        if (!improved) return finish("a rewrite didn't beat the best score");
-        if (v.round >= MAX_REWRITES) return finish("reached " + MAX_REWRITES + " rewrites");
-        if (Date.now() - t0 > DEEP_BUDGET) return finish("time limit");
-        eta.label("Polishing: scored " + v.score + "/10, rewrite " + (v.round + 1) + " of " + MAX_REWRITES);
-        var fixes = v.fails.map(function (f) { return "- " + f.name + ": " + f.fix; }).join("\n");
-        return askGemini(WRITE + REWRITE_NOTE + "\n\n" + deepContext(facts) + "\n\nCURRENT PROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"\n\nREVIEWER'S FIXES:\n" + fixes,
-          false, gemini.plan.write, "high", onModel, WRITE_LIMIT).then(function (r) {
-          keep(writers, r.model);
-          return review({ text: cleanPrompt(r.text), round: v.round + 1 });
-        });
+      }, function () { return false; });
+    }
+    function rewrite(from) {
+      if (!live()) throw STALE;
+      var n = versions.length;
+      setPolish("Polishing in the background: rewrite " + n + " of " + MAX_REWRITES + (from.score != null ? " (" + name(from).toLowerCase() + " scored " + from.score + "/10)" : "") + "...");
+      var fixes = from.fails.map(function (f) { return "- " + f.name + ": " + f.fix; }).join("\n");
+      return askGemini(WRITE + REWRITE_NOTE + "\n\n" + deepContext(facts) + "\n\nCURRENT PROMPT:\n\"\"\"\n" + from.text + "\n\"\"\"\n\nREVIEWER'S FIXES:\n" + fixes,
+        false, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (r) {
+        keep(writers, r.model);
+        var v = { text: cleanPrompt(r.text), round: n, score: null, fails: [] };
+        versions.push(v);
+        return v;
+      });
+    }
+    /* Blind ranking: versions are shown as A, B, C in shuffled order. */
+    function rank(list, reason) {
+      if (!live()) throw STALE;
+      setPolish("Polishing in the background: comparing versions blind...");
+      var order = shuffled(list), labels = ["A", "B", "C"];
+      var body = order.map(function (v, i) { return "VERSION " + labels[i] + ":\n\"\"\"\n" + v.text + "\n\"\"\""; }).join("\n\n");
+      return askGemini(RANK + "\n\n" + deepContext(facts) + "\n\n" + body, true, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (r) {
+        keep(judges, r.model);
+        var data = parseJson(r.text), at = labels.indexOf(String(data.best || "").trim().toUpperCase().charAt(0));
+        if (at < 0 || at >= order.length) throw new Error("no pick");
+        var why = String(data.why || "").trim();
+        settle(order[at], reason, why ? "Why: " + why.replace(/\s*$/, "").replace(/([^.!?])$/, "$1.") : "");
+      }, function () {
+        /* No ranking: fall back to the best review score, with the draft winning ties. */
+        var best = versions[0];
+        list.forEach(function (v) { if (v.score != null && best.score != null && v.score > best.score) best = v; });
+        settle(best, reason + " (comparison unavailable)");
       });
     }
 
@@ -1775,28 +1818,53 @@ details.key[open] summary { margin-bottom: 10px; }
       eta.label("Writing a first draft with deep thinking");
       return askGemini(WRITE + DEEP_NOTE + "\n\n" + deepContext(facts), false, gemini.plan.write, "high", onModel, WRITE_LIMIT);
     }).then(function (r) {
+      if (!live()) throw STALE;
       keep(writers, r.model);
-      return review({ text: cleanPrompt(r.text), round: 0 });
+      draftSecs = (Date.now() - t0) / 1000;
+      var draft = { text: cleanPrompt(r.text), round: 0, score: null, fails: [] };
+      versions.push(draft);
+      /* Show the draft now. Polishing carries on in the background. */
+      finishTrack(resultProg, draftSecs, skipAsk);
+      setBusy(false);
+      setBuild("");
+      qaStatus.textContent = "";
+      showResult(draft.text, "First draft ready in " + clock(draftSecs) + ". You can copy it now. Deep mode is polishing it and will swap in a better version only if it wins a blind comparison.", session.title);
+      return review(draft).then(function (ok) {
+        if (!live()) throw STALE;
+        if (!ok) return settle(null, "review unavailable");
+        if (draft.score >= 10) return settle(draft, "draft scored 10/10");
+        return rewrite(draft).then(function (r1) {
+          return review(r1).then(function (ok1) {
+            if (!live()) throw STALE;
+            if (!ok1) return rank([draft, r1], "second review unavailable");
+            if (r1.score <= draft.score) return settle(draft, "rewrite 1 didn't score higher");
+            if (r1.score >= 10 || Date.now() - t0 > DEEP_BUDGET) return rank([draft, r1], r1.score >= 10 ? "rewrite 1 scored 10/10" : "time limit");
+            return rewrite(r1).then(function (r2) { return rank([draft, r1, r2], "reached " + MAX_REWRITES + " rewrites"); });
+          });
+        });
+      });
     }).catch(fail);
   }
 
-  function renderRefine(rounds, facts, best) {
+  function renderRefine(versions, facts, shown, why) {
     var box = document.getElementById("refineBody");
     box.textContent = "";
     function el(tag, text, cls) { var e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
     box.appendChild(el("p", facts.length ? "Looked up:" : session.researchFailed ? "Couldn't look anything up this time." : "No lookups were needed."));
     if (facts.length) { var ul = el("ul"); facts.forEach(function (f) { ul.appendChild(el("li", f)); }); box.appendChild(ul); }
-    box.appendChild(el("p", "Reviews:"));
+    if (session.researchFailed && techOn() && session.researchError) box.appendChild(el("p", "Search errors: " + session.researchError));
+    box.appendChild(el("p", "Versions:"));
     var ol = el("ol");
-    rounds.forEach(function (r) {
+    versions.forEach(function (v) {
       var li = el("li");
-      li.appendChild(el("span", (r.round ? "Rewrite " + r.round : "First draft") + ": "));
-      li.appendChild(el("span", r.score == null ? "not scored" : r.score + "/10", "score"));
-      if (r === best && rounds.length > 1) li.appendChild(el("span", " (shown)"));
-      if (r.fails && r.fails.length) li.appendChild(el("span", ". Fixed next: " + r.fails.map(function (f) { return f.name; }).join(", ") + "."));
+      li.appendChild(el("span", (v.round ? "Rewrite " + v.round : "First draft") + ": "));
+      li.appendChild(el("span", v.score == null ? "not reviewed" : v.score + "/10", "score"));
+      if (v === shown) li.appendChild(el("span", " (shown)"));
+      if (v.fails && v.fails.length && v.score != null) li.appendChild(el("span", ". Flagged: " + v.fails.map(function (f) { return f.name; }).join(", ") + "."));
       ol.appendChild(li);
     });
     box.appendChild(ol);
+    if (why) box.appendChild(el("p", why));
     document.getElementById("refineLog").hidden = false;
   }
 

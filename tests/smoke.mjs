@@ -46,14 +46,24 @@ async function page(opts = {}) {
     const model = (u.match(/models\/([^:]+):/) || [])[1];
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
-    const intake = /intake step/.test(ask), research = !!body.tools, review = /strict quality reviewer/.test(ask), rewrite = /REVIEWER'S FIXES/.test(ask);
-    p.calls.push({ model, intake, research, review, rewrite, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+    const intake = /intake step/.test(ask), research = !!body.tools, review = /strict quality reviewer/.test(ask), rewrite = /REVIEWER'S FIXES/.test(ask), rank = /judging which version/.test(ask);
+    p.calls.push({ model, intake, research, review, rewrite, rank, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
+    if (research && opts.researchFail && opts.researchFail[model]) return r.fulfill({ status: 400, headers: h, body: JSON.stringify({ error: { code: 400, message: 'Search not supported' } }) });
+    if (review && opts.reviewDelay) await new Promise(res => setTimeout(res, opts.reviewDelay));
+    let pick = null;
+    if (rank) {
+      const blocks = [...ask.matchAll(/VERSION ([A-C]):\n"""\n([\s\S]*?)\n"""/g)].map(m => ({ label: m[1], text: m[2] }));
+      const want = opts.pick === 'draft' ? blocks.find(b => b.text === (opts.write || 'THE PROMPT')) : (blocks.filter(b => /^BETTER PROMPT/.test(b.text)).sort((a, b) => b.text.localeCompare(a.text))[0] || blocks[0]);
+      pick = { best: want.label, why: 'Mock judge picked it.', seen: blocks.length };
+      p.rankSeen = blocks.length;
+    }
     const reviews = opts.review || [grade(10)];
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : research ? (opts.research || '- iOS 27 is the current iPhone software (apple.com)')
       : review ? JSON.stringify(reviews[Math.min(reviewN++, reviews.length - 1)])
       : rewrite ? 'BETTER PROMPT ' + (++rewriteN)
+      : rank ? JSON.stringify(pick)
       : (opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
@@ -114,35 +124,42 @@ await check('cut-off answer (finishReason MAX_TOKENS) is not shown', async () =>
 });
 
 const SIMPLE = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-await check('Deep mode: looks things up, drafts at high thinking, reviews, rewrites to 10/10', async () => {
-  const p = await page({ intake: SIMPLE, review: [grade(7), grade(10)] });
+await check('Deep mode: shows the draft at once, polishes in the background, swaps in a rewrite that wins blind', async () => {
+  const p = await page({ intake: SIMPLE, review: [grade(7), grade(10)], researchFail: { 'gemini-3.5-flash-lite': 400 }, reviewDelay: 900 });
   await withKey(p); await p.check('#deepMode');
-  expect(/strict review/.test(await p.textContent('#modeHint')), 'Deep hint missing');
+  expect(/blind comparison/.test(await p.textContent('#modeHint')), 'Deep hint missing');
   await p.fill('#thoughts', 'memo'); await p.click('#build');
-  await p.waitForFunction(() => /10\/10/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  const research = p.calls.find(c => c.research), draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite);
-  expect(research && /lite/.test(research.model), 'research should run on Flash-Lite with Google Search');
+  await p.waitForFunction(() => document.getElementById('output').value === 'THE PROMPT', null, { timeout: 15000 });
+  expect(await p.isVisible('#polishStatus'), 'polishing status should show while the draft is up');
+  expect(!(await p.isDisabled('#copy')), 'draft should be copyable right away');
+  await p.waitForFunction(() => /swapped in/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  const research = p.calls.filter(c => c.research), draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite && !c.rank);
+  expect(research.some(c => /lite/.test(c.model)) && research.some(c => c.model === 'gemini-3.8-flash'), 'research should fall back from Flash-Lite to Flash');
   expect(draft.model === 'gemini-3.8-flash' && draft.level === 'high', `draft should be 3.8 Flash at high, got ${draft.model} ${draft.level}`);
   expect(/iOS 27 is the current/.test(draft.text), 'looked-up facts not passed to the writer');
   const reviews = p.calls.filter(c => c.review), rewrites = p.calls.filter(c => c.rewrite);
-  expect(reviews.length === 2 && reviews.every(c => /lite/.test(c.model)), 'expected 2 reviews on Flash-Lite');
+  expect(reviews.length === 2 && reviews.every(c => !/lite/.test(c.model)), 'reviews should run on Flash, not Flash-Lite');
+  expect(/length limit the person did not ask for counts as invented/.test(reviews[0].text), 'rubric missing the no-invented-length rule');
   expect(rewrites.length === 1 && /Fix check 8/.test(rewrites[0].text), 'rewrite did not get the reviewer fixes');
-  expect(await p.inputValue('#output') === 'BETTER PROMPT 1', 'did not show the 10/10 rewrite');
+  expect(p.calls.filter(c => c.rank).length === 1, 'expected one blind comparison');
+  expect(await p.inputValue('#output') === 'BETTER PROMPT 1', 'winning rewrite not swapped in');
+  expect(!(await p.isVisible('#polishStatus')), 'polishing status should clear when done');
   expect(await p.isVisible('#refineLog'), 'refine log hidden');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('Deep mode: stops after 3 rewrites, keeps the best, counts checks instead of trusting the claim', async () => {
-  const p = await page({ intake: SIMPLE, review: [grade(6), grade(7), grade(8), grade(9, 10)] });
+await check('Deep mode: 2 rewrites max, scores counted not claimed, draft kept when it wins blind', async () => {
+  const p = await page({ intake: SIMPLE, review: [grade(6), grade(7, 10)], pick: 'draft' });
   await withKey(p); await p.check('#deepMode');
   await p.fill('#thoughts', 'memo'); await p.click('#build');
-  await p.waitForFunction(() => /scored/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  expect(p.calls.filter(c => c.rewrite).length === 3, 'expected exactly 3 rewrites');
-  expect(/9\/10/.test(await p.textContent('#madeBy')), 'claimed 10/10 was trusted: ' + await p.textContent('#madeBy'));
-  expect(await p.inputValue('#output') === 'BETTER PROMPT 3', 'did not keep the best version');
+  await p.waitForFunction(() => /held up best/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.rewrite).length === 2, 'a claimed 10/10 was trusted, or the cap is wrong');
+  expect(p.rankSeen === 3, 'blind comparison should see the draft and both rewrites');
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'draft should stay when it wins');
+  expect(/6\/10/.test(await p.textContent('#madeBy')), 'draft score missing: ' + await p.textContent('#madeBy'));
 });
 
-await check('Deep mode: a rewrite that scores worse stops the loop and the better one is shown', async () => {
+await check('Deep mode: a rewrite that scores lower keeps the draft (questions path)', async () => {
   const p = await page({ review: [grade(8), grade(6)] });
   await withKey(p); await p.check('#deepMode');
   await p.fill('#thoughts', 'memo'); await p.click('#build');
@@ -150,9 +167,10 @@ await check('Deep mode: a rewrite that scores worse stops the loop and the bette
   expect(/Deep prompt/.test(await p.textContent('#qaPlan')), 'questions card should say Deep prompt');
   expect(p.calls.some(c => c.research), 'research should start while the questions are showing');
   await p.click('#qaList .chips button'); await p.click('#qaGo');
-  await p.waitForFunction(() => /scored/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-  expect(p.calls.filter(c => c.rewrite).length === 1, 'should stop after the worse rewrite');
-  expect(await p.inputValue('#output') === 'THE PROMPT', 'should show the 8/10 draft, not the worse rewrite');
+  await p.waitForFunction(() => /held up best/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.rewrite).length === 1, 'should stop after the lower-scoring rewrite');
+  expect(!p.calls.some(c => c.rank), 'no comparison needed when the rewrite scored lower');
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'should keep the 8/10 draft');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {

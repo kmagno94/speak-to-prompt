@@ -29,11 +29,11 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 |---|---|---|
 | **Quick** | Skips the questions and writes right away on Flash-Lite (500 free requests a day), so it doesn't touch the smaller Flash allowance. | about 15 seconds |
 | **Normal** | Asks a few questions, then writes on the newest Flash. | usually 1 to 2 minutes |
-| **Deep** | Asks, looks up current facts with Google Search while you answer, drafts at the highest thinking level, then has a different model review it against 10 pass/fail checks and rewrites until it scores 10/10. | usually 2 to 5 minutes |
+| **Deep** | Asks, looks up current facts with Google Search while you answer, and shows a first draft written at the highest thinking level. Then it keeps polishing in the background and swaps in a better version only if it wins a blind comparison. | first draft in 1 to 2 minutes |
 
 You can also tap **Quick prompt** on the questions card to write right away with whatever you've answered.
 
-**How Deep mode decides it's done.** The reviewer marks each of 10 checks pass or fail (keeps every detail, invents nothing, right expert, full context, clear task, format set, fitting tone, handles gaps, tight, ready to paste) and writes a specific fix for each fail. The page counts the passes itself, so a reviewer can't just claim 10/10. It stops at 10/10, when a rewrite doesn't beat the best score so far, after 3 rewrites, or after 8 minutes, and always shows the best-scoring version. "How Deep mode refined it" under the prompt shows what was looked up and each round's score. A Deep run uses up to 4 Flash requests and about 6 Flash-Lite requests.
+**How Deep mode polishes.** The strongest Flash reviews the draft against 10 pass/fail checks (keeps every detail, invents nothing, keeps full scope, right expert, full context, clear task, format set, fitting tone, handles gaps, ready to paste) and writes a fix for each fail. The page counts the passes itself, so a reviewer can't just claim 10/10. Made-up word limits and vague details turned specific ("next fall" becoming "November") count as invented. It rewrites up to twice, then the strongest Flash compares the draft and the rewrites blind, in shuffled order. A rewrite replaces the draft only if it wins, so Deep can't end up worse than its own first draft. "How Deep mode refined it" under the prompt shows what was looked up, each version's score, and why the winner won. A Deep run uses up to 6 Flash requests and about 3 Flash-Lite requests.
 
 If Gemini is unavailable, the page falls back to the quick version and says why.
 
