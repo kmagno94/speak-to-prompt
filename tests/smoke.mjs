@@ -151,10 +151,29 @@ await check('repeat shortcut run replaces the old transcript', async () => {
 
 await check('run stats: logs numbers only, never words; 4 models listed', async () => {
   const p = await page();
-  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  const sentRuns = [];
+  await p.route('https://relay.test/report/run', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    sentRuns.push(r.request().postData());
+    return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+  });
+  // Run stats off: nothing is sent anywhere
   await withKey(p); await p.fill('#thoughts', 'my secret memo'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
   await p.waitForTimeout(300);
+  expect(sentRuns.length === 0, 'runs must not be sent while run stats is off');
+  await p.click('#reset');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', 'my secret memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
+  await p.waitForFunction(() => /Ready|Built/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  await p.waitForTimeout(400);
+  // Run stats on: one numbers-only record goes to the relay's run log
+  expect(sentRuns.length === 1, 'one run should be sent with run stats on, got ' + sentRuns.length);
+  const sent = JSON.parse(sentRuns[0]).run;
+  expect(sent.mode && sent.app && sent.device && sent.words_in === 3 && sent.outcome === 'ok' && !('when' in sent), 'run record wrong: ' + sentRuns[0]);
+  expect(!/secret|memo|THE PROMPT/.test(sentRuns[0]), 'words leaked into the run log: ' + sentRuns[0]);
   const stored = await p.evaluate(() => (localStorage.getItem('stp-test-log') || '') + (localStorage.getItem('stp-test-usage') || ''));
   expect(stored.length > 0, 'nothing logged');
   expect(!/secret/.test(stored), 'words leaked into storage');
@@ -669,6 +688,19 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     expect(JSON.stringify(gh.labels) === '["report"]' && gh.title === 'Report: Too long', 'label should be fixed to report');
     expect(!/@kmagno94/.test(gh.body) && /@​kmagno94/.test(gh.body) && !/<b>/.test(gh.body), 'mentions and HTML should be defused: ' + gh.body);
     expect(!JSON.stringify(out).includes('tok'), 'the key must never come back to the page');
+    // /run: one comment on the Run log issue, known fields only
+    const postRun = (run, ip) => relay.fetch(new Request('https://relay.example/run', { method: 'POST',
+      headers: { Origin: APP, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ run }) }), env);
+    sent.length = 0;
+    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
+    expect(r1.status === 201 && sent.length === 1 && sent[0].url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues/2/comments', 'run should become a comment on issue #2');
+    const c = JSON.parse(sent[0].init.body).body;
+    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c), 'run comment missing fields: ' + c);
+    expect(!/secret|my words|nested/.test(c) && !/@kmagno94/.test(c) && c.length < 1000, 'unknown fields, pings, and long text must be dropped: ' + c);
+    expect((await postRun({ words_in: 3 }, '6.6.6.6')).status === 400 && (await postRun('nope', '6.6.6.6')).status === 400, 'non-run data should be refused');
+    let lastRun;
+    for (let i = 0; i < 60; i++) lastRun = await postRun({ mode: 'Quick' }, '7.7.7.7');
+    expect(lastRun.status === 201 && (await postRun({ mode: 'Quick' }, '7.7.7.7')).status === 429, 'the 61st run in an hour should be refused');
     let last;
     for (let i = 0; i < 5; i++) last = await post(good, APP, '5.5.5.5');
     expect(last.status === 201 && (await post(good, APP, '5.5.5.5')).status === 429, 'a 6th report in an hour should be refused');

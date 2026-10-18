@@ -3,7 +3,7 @@ import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
-import { report } from './report.svelte.js';
+import { report, RELAY } from './report.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
@@ -197,6 +197,7 @@ export function startApp() {
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
+    sendRun(r);
   }
 
 
@@ -1033,7 +1034,7 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
-        detours: (r.history || []).join("; "), words_out: words(prompt), core: core.on && core.has, outcome: "ok" });
+        detours: (r.history || []).join("; "), words_out: words(prompt), core: core.active, outcome: "ok" });
       var secs = Math.max(1, Math.round(r.ms / 1000)) + "s";
       showResult(core.apply(prompt), techOn()   /* core */
         ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
@@ -1211,6 +1212,21 @@ export function startApp() {
     /* Talk it out needs the iPhone shortcut, so computers just get the text box. */
     else document.getElementById("voiceRow").hidden = true;
   })();
+  /* Automatic run log: only while "Show run stats" is on (testing phones), each
+     run's numbers go to the relay, which posts them to the Run log issue (#2) for
+     the twice-daily review. Fire and forget; a failure never touches the page. */
+  function sendRun(r) {
+    if (!RELAY || !testLog.on()) return;
+    var ans = (session && session.answers) || [];
+    var run = { app: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev", device: deviceLine(),
+      tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null };
+    for (var k in r) if (k !== "when") run[k] = r[k];
+    try {
+      fetch(RELAY.replace(/\/+$/, "") + "/run", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run: run }), keepalive: true }).catch(function () {});
+    } catch (e) {}
+  }
+
   /* "Something went wrong?" (ReportIssue.svelte): the facts about this run, never its words. */
   function deviceLine() {
     var ua = navigator.userAgent || "", touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
