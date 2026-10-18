@@ -514,6 +514,55 @@ await check('my Notes shortcuts: kept on reload; never offered on computers', as
   expect(!(await c.isVisible('#myShortcutsRow')) && !(await c.isVisible('#saveShare')) && !(await c.isVisible('#fileLink')), 'computers should not see the switch or shortcut buttons');
 });
 
+await check('something went wrong: quick report with run facts only, never your words; share, copy, GitHub issue', async () => {
+  const p = await page({ intake: { title: 'Trip Plan', need: 'N', category: 'Travel', complexity: 'standard', questions: [
+    { question: 'Where to?', choices: ['Tokyo', 'Paris'] },
+    { question: 'How long?', choices: ['3 days'] }] } });
+  await p.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; });
+  await withKey(p); await p.fill('#thoughts', 'plan a secretword trip'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  await p.click('#qaList .chips button >> text=Tokyo');
+  await p.waitForSelector('#qaList .msg.ai >> text=How long?');
+  await p.fill('#qaOwn', 'five lazy days'); await p.press('#qaOwn', 'Enter');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  // Sits right under the prompt, closed until tapped
+  expect(await p.evaluate(() => document.getElementById('output').nextElementSibling.classList.contains('report')), 'report should sit right below the prompt');
+  expect(!(await p.$('#reportBox')), 'report form should start closed');
+  await p.click('#reportBtn');
+  expect(await p.isDisabled('#reportSend'), 'Send should wait for a pick or a note');
+  expect(!(await p.$('#reportIssue')), 'GitHub issue link is a dev tool');
+  await p.click('#reportBox .chips button >> text=Missed my point');
+  await p.click('#reportBox .chips button >> text=Too long');
+  await p.fill('#reportNote', 'expected a packing list');
+  const text = await p.$eval('#reportPreview', el => el.textContent);
+  expect(/What went wrong: Missed my point; Too long/.test(text) && /Note: expected a packing list/.test(text), 'picks or note missing: ' + text);
+  expect(/- App version: \S+/.test(text) && /- Mode: Full/.test(text) && /- Words in: 4/.test(text) && /- Questions: 2 asked, 2 answered \(1 tapped, 1 typed\), 0 skipped/.test(text) && /- Write step: \S+/.test(text) && /- Sliders: Detail 3/.test(text), 'run facts missing: ' + text);
+  expect(!/secretword|Tokyo|five lazy|THE PROMPT/.test(text), 'report must never include thoughts, answers, or the prompt: ' + text);
+  await p.click('#reportSend');
+  expect(await p.evaluate(() => window.__shared && window.__shared.text) === text, 'share sheet should get exactly the preview');
+  expect(/Sent/.test(await p.textContent('#reportStatus')), 'should confirm it was sent');
+  // Computers without a share sheet: copy instead
+  await p.evaluate(() => { navigator.share = undefined; });
+  await p.click('#reportSend');
+  await p.waitForFunction(() => /Copied/.test(document.getElementById('reportStatus').textContent));
+  expect((await p.evaluate(() => navigator.clipboard.readText())) === text, 'copy fallback should copy the report');
+  // Dev tools: a prefilled GitHub issue labeled report
+  await p.click('#moreOpts summary'); await p.check('#devTools');
+  const href = await p.getAttribute('#reportIssue', 'href');
+  const devText = await p.$eval('#reportPreview', el => el.textContent);
+  expect(/- Core: (on|off)/.test(devText), 'dev reports should say whether the core was on');
+  expect(href.startsWith('https://github.com/kmagno94/speak-to-prompt/issues/new?labels=report&title=Report%3A%20Missed%20my%20point%2C%20Too%20long&body=') && decodeURIComponent(href.split('&body=')[1]) === devText, 'GitHub issue link wrong: ' + href.slice(0, 140));
+  // A new prompt starts a fresh, closed report
+  await p.click('#reset'); await p.fill('#thoughts', 'another one'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
+  await p.waitForSelector('#reportBox', { state: 'detached', timeout: 15000 }).catch(() => { throw new Error('a new prompt should close the report'); });
+  await done(p);
+  await p.click('#reportBtn');
+  expect(await p.$$eval('#reportBox .chips button[aria-pressed="true"]', l => l.length) === 0 && (await p.inputValue('#reportNote')) === '', 'a new prompt should clear the old picks');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

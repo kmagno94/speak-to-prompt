@@ -3,6 +3,9 @@ import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
+import { report } from './report.svelte.js';
+import { starter } from './starter.svelte.js';
+import { SLIDERS } from './starters.js';
 
 export function startApp() {
   /* The deck shuffles in place, so each start works on its own copy. */
@@ -252,6 +255,7 @@ export function startApp() {
   }
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
+    report.reset();
     setCategoryLine();
     setReady(true);
     output.value = text;
@@ -973,6 +977,7 @@ export function startApp() {
       setBuild("");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       session.mode = "Intake";
+      session.intakeError = e && e.message ? e.message : "unknown";
       logRun({ outcome: "intake failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
@@ -1021,7 +1026,9 @@ export function startApp() {
       showResult(core.apply(prompt), techOn()   /* core */
         ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
         : "Ready in " + secs + ". Your AI can start working right away.", session.title);
-      showNumberCheck(prompt);
+      session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
+      var nc = showNumberCheck(prompt);
+      session.numFlags = nc.extra.length + nc.missing.length;
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
@@ -1030,6 +1037,7 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+      session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
@@ -1191,5 +1199,36 @@ export function startApp() {
     /* Talk it out needs the iPhone shortcut, so computers just get the text box. */
     else document.getElementById("voiceRow").hidden = true;
   })();
+  /* "Something went wrong?" (ReportIssue.svelte): the facts about this run, never its words. */
+  function deviceLine() {
+    var ua = navigator.userAgent || "", touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+    var dev = /iPhone/.test(ua) ? "iPhone" : (/iPad/.test(ua) || touchMac) ? "iPad" : /Android/.test(ua) ? "Android" : /Macintosh/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Other";
+    var os = (ua.match(/OS (\d+)[_.]\d+.* like Mac OS X/) || [])[1];
+    var br = /EdgiOS|Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "other browser";
+    return dev + (os ? " (iOS " + os + ")" : "") + ", " + br + ", " + window.innerWidth + " x " + window.innerHeight;
+  }
+  report.collect = function () {
+    var s = session || {}, qs = s.questions || [], ans = s.answers || [];
+    var tapped = ans.filter(function (a) { return a.tapped; }).length;
+    var w = s.write, rows = [
+      ["App version", typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev"],
+      ["When", new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) + " (" + (Intl.DateTimeFormat().resolvedOptions().timeZone || "local") + ")"],
+      ["Device", deviceLine()],
+      ["Mode", s.mode || (s.quick ? "Quick version (no key)" : "")],
+      ["Gemini key", gemini.key ? "yes" : "no"],
+      ["Words in", words(s.raw)],
+      ["Words out", words(output.value)],
+      ["Request size", s.complexity || ""],
+      ["Questions", qs.length ? qs.length + " asked, " + ans.length + " answered (" + tapped + " tapped, " + (ans.length - tapped) + " typed), " + (qs.length - ans.length) + " skipped" : "none"],
+      ["Read step", s.intakeModel ? s.intakeModel + ", " + (Math.round((s.intakeMs || 0) / 100) / 10) + "s" : ""],
+      ["Write step", w ? w.model + ", " + w.thinking + ", " + w.secs + "s (" + w.depth + ")" : ""],
+      ["Model detours", w && w.detours ? w.detours : ""],
+      ["Errors", [s.intakeError && "read: " + s.intakeError, s.writeError && "write: " + s.writeError].filter(Boolean).join("; ")],
+      ["Number check", w ? (s.numFlags ? s.numFlags + " number(s) flagged" : "nothing flagged") : ""],
+      ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
+    ];
+    if (core.dev) rows.push(["Core", core.active ? "on" : "off"]);
+    return rows;
+  };
   testLog.init();
 }
