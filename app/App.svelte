@@ -3,6 +3,7 @@
   import { startApp } from './lib/app.js';
   import ModePicker from './ModePicker.svelte';
   import ChatBuilder from './ChatBuilder.svelte';
+  import StartHelper from './StartHelper.svelte';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -36,6 +37,7 @@
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
     </div>
+    <StartHelper />
     <div id="pasteWrap" class="pastewrap" hidden>
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>

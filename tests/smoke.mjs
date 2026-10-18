@@ -258,6 +258,42 @@ await check('chat questions: tap, type, skip, edit an answer, live summary, all 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
+  const p = await page();
+  await p.click('#starterBtn');
+  await p.waitForSelector('#starter .cats button');
+  expect(await p.$$eval('#starter .cats button', l => l.length) >= 8, 'expected a general option plus specific categories');
+  await p.click('#starter .cats button >> text=Money and budgeting');
+  await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
+  await p.click('#starter .chips button >> text=Save for something');
+  await p.waitForSelector('#starter .msg.ai >> text=What makes it hard?');
+  await p.fill('#starterOwn', 'late night delivery'); await p.press('#starterOwn', 'Enter');
+  await p.waitForSelector('#starter .msg.ai >> text=What would make the answer great?');
+  await p.click('#starter .chips .skip');
+  await p.waitForSelector('#starter .msg.ai >> text=Anything else');
+  await p.fill('#starterOwn', 'Japan trip next fall, about $1,500'); await p.press('#starterOwn', 'Enter');
+  await p.waitForSelector('#starterUse');
+  expect(!(await p.isVisible('#result')), 'Return in the helper must not submit the main form');
+  await p.click('#starterUse');
+  const box = await p.inputValue('#thoughts');
+  expect(/money and budgeting/.test(box) && /My goal: Save for something\./.test(box) && /What makes it hard: late night delivery\./.test(box) && /Also: Japan trip next fall, about \$1,500\./.test(box) && !/answer great/.test(box), 'starting text wrong: ' + box);
+  await p.waitForSelector('#starter', { state: 'detached', timeout: 2000 }).catch(() => { throw new Error('helper should close after use'); });
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'idea strip should clear once the box has text');
+  // Typing instead of picking, then Build my prompt straight away
+  await p.click('#starterBtn'); await p.waitForSelector('#starter .cats button');
+  await p.fill('#starterOwn', 'my car makes a weird noise'); await p.press('#starterOwn', 'Enter');
+  await p.waitForSelector('#starter .msg.ai >> text=What kind of help');
+  await p.click('#starter .chips button >> text=Fix a problem');
+  await p.waitForSelector('#starter .msg.ai >> text=What would make the answer great?');
+  await p.click('#starter .chips button >> text=Step by step');
+  await p.waitForSelector('#starter .msg.ai >> text=Anything else');
+  await p.click("#starter .chips button >> text=That's it");
+  await p.click('#starterBuild'); await done(p);
+  const out = await p.inputValue('#output');
+  expect(/What it's about: my car makes a weird noise\./.test(out) && /What I want: Fix a problem\./.test(out) && !/Also:/.test(out), 'build did not use the starting text');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

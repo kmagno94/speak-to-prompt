@@ -1,0 +1,90 @@
+/* "Not sure where to start?" as a short chat: pick a category, answer a couple
+   of tap-or-type questions, and get starting text for the main box. */
+import { CATEGORIES, EXTRA } from './starters.js';
+import { ms } from './motion.js';
+
+let nextId = 1;
+
+class StarterSession {
+  open = $state(false);
+  cat = $state(null);        // the chosen category
+  answers = $state([]);      // per question: null = not asked, '' = skipped, text
+  messages = $state([]);     // [{ id, from: 'ai' | 'me', text }]
+  current = $state(-1);      // -1 = choosing a category; then the question index
+  typing = $state(false);
+
+  questions = $derived(this.cat ? [...this.cat.questions, EXTRA] : []);
+  done = $derived(this.cat !== null && this.current >= this.questions.length);
+  /* The starting text, rebuilt as answers change. */
+  text = $derived.by(() => {
+    if (!this.cat) return '';
+    const lines = ['I need help with ' + this.cat.phrase + '.'];
+    this.questions.forEach((q, i) => {
+      const a = this.answers[i];
+      if (a) lines.push(q.say + ': ' + a.replace(/[.\s]+$/, '') + '.');
+    });
+    return lines.join('\n');
+  });
+  #timer = 0;
+
+  begin() {
+    clearTimeout(this.#timer);
+    this.open = true; this.cat = null; this.answers = []; this.messages = [];
+    this.current = -1; this.typing = false;
+    this.#say('ai', 'No problem. What do you want help with? Pick one, or describe it in your own words.');
+  }
+
+  close() { clearTimeout(this.#timer); this.open = false; }
+
+  pick(cat) {
+    if (this.typing || this.cat) return;
+    this.cat = cat;
+    this.answers = this.questions.map(() => null);
+    this.#say('me', cat.emoji + ' ' + cat.label);
+    this.#ask(0);
+  }
+
+  reply(text) {
+    const t = String(text || '').trim();
+    if (!t || this.typing || this.done) return;
+    if (!this.cat) {
+      /* Typed instead of picking: treat it as "Not sure yet" with that as the topic. */
+      this.cat = CATEGORIES[0];
+      this.answers = this.questions.map(() => null);
+      this.answers[1] = t;
+      this.#say('me', t);
+      this.#ask(0);
+      return;
+    }
+    const q = this.questions[this.current];
+    this.answers[this.current] = q.end && t === "That's it" ? '' : t;
+    this.#say('me', t);
+    this.#ask(this.#nextOpen());
+  }
+
+  skip() {
+    if (this.typing || !this.cat || this.done) return;
+    this.answers[this.current] = '';
+    this.#say('me', 'Skip');
+    this.#ask(this.#nextOpen());
+  }
+
+  #nextOpen() {
+    const i = this.answers.findIndex((a) => a === null);
+    return i === -1 ? this.questions.length : i;
+  }
+
+  #ask(i) {
+    clearTimeout(this.#timer);
+    this.current = i;
+    this.typing = true;
+    this.#timer = setTimeout(() => {
+      this.typing = false;
+      this.#say('ai', i >= this.questions.length ? 'Here\'s your starting point. Build your prompt from it, or put it in the box to add more.' : this.questions[i].q);
+    }, ms(400));
+  }
+
+  #say(from, text) { this.messages.push({ id: nextId++, from, text }); }
+}
+
+export const starter = new StarterSession();
