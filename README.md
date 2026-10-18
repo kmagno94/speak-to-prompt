@@ -65,8 +65,24 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 
 ## How it's built
 
-- One `index.html` file: HTML, CSS, and plain JavaScript. No build step and no dependencies.
-- Hosted free on GitHub Pages.
+- **Svelte 5 + Vite.** It builds to plain static files (about 30 KB of script, gzipped) and is tuned for Safari on iPhone, iPad, and Mac.
+- **Hosted free on GitHub Pages**, published by GitHub Actions. Every push to `main` runs the smoke tests first, so the live site only gets builds that passed.
+- **Where things live:**
+
+  | Path | What it is |
+  |---|---|
+  | `app/App.svelte` | The page markup |
+  | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
+  | `app/lib/ui.svelte.js` | Shared app state that components react to |
+  | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |
+  | `app/lib/prompts.js` | What gets sent to Gemini, and the no-key quick version |
+  | `app/lib/ideas.js` | The idea strip's ideas |
+  | `app/app.css` | Styles and color tokens (light and dark) |
+  | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
+  | `.github/workflows/deploy.yml` | Test, build, and publish |
+
+- **Run it locally:** `npm install`, then `npm run dev` and open the Network address on your iPhone (same Wi-Fi). Changes show up as you save.
+- New features are built as Svelte components. Older parts move into components when they're next changed.
 - Gemini is called directly from the browser. The page lists the models your key can use and builds a plan, so it keeps working when Google renames models:
   - **Questions** go to Flash-Lite first, which has the largest free daily allowance (500 requests on the free tier).
   - **The final prompt** goes to the newest Flash model first, for the best writing. Gemini rates each request as quick, standard, or complex, and the writing step thinks lightly, in a balanced way, or deeply to match. The plan and its usual time are shown before you start, and there's no rush: it only switches models if one errors out or hits its daily limit.
@@ -75,7 +91,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 
 ## Tests
 
-`cd tests && npm install && npm test` runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, and usage.json.
+`npm install && npm test` (from the repo root) builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, and usage.json.
 
 ## Status
 

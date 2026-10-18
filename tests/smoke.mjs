@@ -1,12 +1,13 @@
 // Speak to Prompt smoke tests. Mocks Gemini, drives the page at phone size,
-// and fails (exit 1) on any broken check. Run: npm test (from this folder).
+// and fails (exit 1) on any broken check. Run: npm install && npm test (from the repo root).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Tests run against the built app (npm test builds first), the same files GitHub Pages serves.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const PORT = 8765 + Math.floor(Math.random() * 1000);
 const BASE = `http://localhost:${PORT}/`;
 
@@ -219,6 +220,16 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   await p.click('#thoughts', { position: { x: 20, y: 12 } }); await p.waitForTimeout(250);
   await p.click('h1'); await p.waitForTimeout(1900);
   expect(await p.isVisible('#ideas .ideas-track'), 'tapping outside an empty box did not bring the ideas back');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('mode picker (Svelte component): hint follows the mode and the key', async () => {
+  const p = await page();
+  expect(/Normal: .*Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'Normal without a key should say it needs one');
+  await p.check('#quickMode');
+  expect(/^Quick: skips/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
+  await p.check('#normalMode'); await withKey(p);
+  expect(!/Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'hint still asks for a key after one was typed');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
