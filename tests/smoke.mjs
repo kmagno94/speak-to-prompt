@@ -176,6 +176,11 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   expect(fit.n === 48, 'expected 48 different ideas, got ' + fit.n);
   expect(fit.len % 3 === 0 && fit.fullRounds, 'every round should show each category once');
   expect(!fit.backToBack, 'same category played twice in a row');
+  const before = await p.evaluate(() => [document.getElementById('ideasTrack').scrollLeft, document.querySelector('#ideasTry').getAttribute('aria-label')]);
+  await p.waitForTimeout(4500);
+  const after = await p.evaluate(() => [document.getElementById('ideasTrack').scrollLeft, document.querySelector('#ideasTry').getAttribute('aria-label')]);
+  expect(after[0] > before[0] && after[1] !== before[1], `ideas did not rotate on their own (scroll ${before[0]} to ${after[0]})`);
+  expect(after[0] % (await p.$eval('#ideasTrack', t => t.clientWidth)) === 0, 'rotation stopped between two ideas');
   expect(fit.tallest <= fit.track, `longest idea (${fit.tallest}px) taller than the strip (${fit.track}px)`);
   expect(fit.panelBottom <= fit.boxBottom + 1, 'idea panel spills past the box');
   await p.click('#thoughts', { position: { x: 20, y: 12 } });

@@ -101,6 +101,10 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 .ideas .ideas-try { background: var(--accent-soft); color: var(--accent); }
 .ideas-track { pointer-events: auto; display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; cursor: text; }
 .ideas-track::-webkit-scrollbar { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .ideas-track { transition: opacity 0.16s ease, transform 0.16s ease; }
+  .ideas-track.swap { opacity: 0; transform: translateY(6px); }
+}
 .idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
 .idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
 .ideabox .ideas-show {
@@ -959,19 +963,29 @@ details.key[open] summary { margin-bottom: 10px; }
     ideasCat.textContent = it[3] ? "\u{1F3A9} " + it[3] : (it[0] === "home" ? "\u{1F3E0} Home life" : "\u23F0 Money and time");
     ideasTry.setAttribute("aria-label", "Try this idea: " + it[2]);
   }
-  function ideasGo(i, smooth) {
+  /* Auto-advance jumps straight to the next idea behind a quick fade. iPhone Safari
+     can ignore a smooth programmatic scroll inside a snapping strip, which left the
+     ideas frozen, so snapping is paused for the jump and the motion comes from the fade. */
+  function ideasJump(i) {
     ideasIdx = (i + DECK.length) % DECK.length;
-    ideasTrack.scrollTo({ left: ideasIdx * ideasTrack.clientWidth, behavior: smooth && !ideasCalm ? "smooth" : "auto" });
+    ideasTrack.style.scrollSnapType = "none";
+    ideasTrack.scrollLeft = ideasIdx * ideasTrack.clientWidth;
+    void ideasTrack.offsetWidth;
+    ideasTrack.style.scrollSnapType = "";
     ideasLabel();
+  }
+  function ideasGo(i, animate, before) {
+    if (!animate || ideasCalm) { if (before) before(); ideasJump(i); return; }
+    ideasTrack.classList.add("swap");
+    setTimeout(function () { if (before) before(); ideasJump(i); ideasTrack.classList.remove("swap"); }, 160);
   }
   function ideasStop() { clearInterval(ideasTimer); ideasTimer = null; }
   function ideasStart() {
     ideasStop();
     if (ideasCalm || ideasPaused || ideasEl.classList.contains("gone")) return;
     ideasTimer = setInterval(function () {
-      if (ideasIdx + 1 < DECK.length) { ideasGo(ideasIdx + 1, true); return; }
-      ideasDeal();
-      ideasGo(0, false);
+      if (ideasIdx + 1 < DECK.length) ideasGo(ideasIdx + 1, true);
+      else ideasGo(0, true, ideasDeal);
     }, 2000);
   }
   var ideasShowBtn = document.getElementById("ideasShow");
