@@ -294,3 +294,6 @@ details.key[open] summary { margin-bottom: 10px; }
 .filelink:active { transform: translateY(1px); }
 
 .brief li em.tapped { font-style: normal; font-weight: 500; }
+
+/* Auto-Repair note under "Ready in ..." */
+.repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }

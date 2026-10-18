@@ -93,6 +93,7 @@
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>

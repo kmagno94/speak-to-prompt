@@ -55,3 +55,28 @@ export const WRITE = [
   "Before you finish, check once that every key fact is kept, the task is unmistakable, and the format is stated. Do not show this check.",
   "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
 ].join("\n");
+
+/* Auto-Repair: one small, targeted fix when the phone's checks (X-ray and the
+   number check) find details that were left out or numbers nobody said. It never
+   rewrites the whole prompt; the page rechecks the result and keeps the original
+   if the fix isn't better. */
+export function repairPrompt(prompt, raw, answers, problems) {
+  const out = ["You are fixing a prompt that was written from a person's raw thoughts. Make only the fixes listed below. Keep everything else exactly as written, word for word, in the same order and format."];
+  let n = 1;
+  if (problems.dropped.length) {
+    out.push("", n++ + ". These things the person said are missing. Add each one where it fits naturally, in the person's meaning. If one is clearly small talk or doesn't matter to the request, skip it:");
+    problems.dropped.forEach((d) => out.push('- "' + d + '"'));
+  }
+  if (problems.stray.length) {
+    out.push("", n++ + ". These numbers are in the prompt but the person never said them: " + problems.stray.join(", ") + ". Remove them. If the idea still matters, say it without a made-up number (for example \"a daily budget that fits the total\").");
+  }
+  if (problems.missingNums.length) {
+    out.push("", n++ + ". These numbers the person said are missing. Put each one back exactly as written: " + problems.missingNums.join(", ") + ".");
+  }
+  out.push("", "Keep every number, version, and product name exactly as the person said it. Do not add anything else. Output only the fixed prompt: no title, no commentary, and no code fences.");
+  out.push("", "RAW THOUGHTS:", '"""', raw, '"""');
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT TO FIX:", '"""', prompt, '"""');
+  return out.join("\n");
+}

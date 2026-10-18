@@ -38,6 +38,7 @@ async function page(opts = {}) {
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
+  p.repairs = [];   // Auto-Repair requests, kept apart so older tests see only intake and write calls
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -49,6 +50,12 @@ async function page(opts = {}) {
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
     const intake = /intake step/.test(ask);
+    if (/PROMPT TO FIX:/.test(ask)) {
+      p.repairs.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+      if (opts.repairFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
+    }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
@@ -698,6 +705,48 @@ await check('prompt x-ray: your words colored, added parts dashed, dropped sente
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('auto-repair: clean prompts go straight through; real problems get one small fix, rechecked, kept only if better', async () => {
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $400.\nStart right away.';
+  const GOOD = BAD.replace('with a rough daily budget of $400.', 'with a daily budget that fits the total. I get motion sick on long bus rides, so keep long bus trips out.');
+  const intake = { title: 'Tokyo Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [] };
+  const relayRoute = async (p, sent) => p.route('https://relay.test/report/run', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+  });
+  async function run(opts) {
+    const p = await page({ intake, ...opts }); const sent = [];
+    await relayRoute(p, sent);
+    await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+    await p.waitForTimeout(300);
+    return { p, sent };
+  }
+  // 1. Clean: no extra call, no note
+  let { p, sent } = await run({ write: GOOD });
+  expect(p.repairs.length === 0 && await p.isHidden('#repairNote'), 'a clean prompt should skip the repair');
+  expect(sent[0] && sent[0].repair === 'none' && sent[0].xray_dropped === 0 && sent[0].xray_stray === 0 && typeof sent[0].xray_pct === 'number' && typeof sent[0].coach === 'number', 'run log should carry X-ray and coach results: ' + JSON.stringify(sent[0]));
+  // 2. Problems found, fix is better: use it, say what changed
+  ({ p, sent } = await run({ write: BAD, repair: GOOD }));
+  expect(p.repairs.length === 1, 'one repair call, got ' + p.repairs.length);
+  const ask = p.repairs[0].text;
+  expect(/Also I get motion sick on long bus rides\./.test(ask) && /\$400/.test(ask) && /PROMPT TO FIX:/.test(ask) && /word for word/.test(ask), 'repair request should list exactly what to fix: ' + ask.slice(0, 300));
+  expect(/lite/.test(p.repairs[0].model) && p.repairs[0].level === 'low', 'repair should use the fast model at low thinking: ' + p.repairs[0].model + ' ' + p.repairs[0].level);
+  expect(await p.inputValue('#output') === GOOD, 'the fixed prompt should be shown');
+  const note = await p.textContent('#repairNote');
+  expect(/Auto-fixed: added 1 detail you said and removed 1 made-up number/.test(note), 'note wrong: ' + note);
+  expect(sent[0].repair === 'fixed' && typeof sent[0].repair_s === 'number' && sent[0].xray_dropped === 0, 'run log should record the fix: ' + JSON.stringify(sent[0]));
+  expect(!(await p.isVisible('#numWarn')), 'no number warning once the made-up number is gone');
+  // 3. Fix isn't better: keep the original and say so
+  ({ p, sent } = await run({ write: BAD, repair: BAD + '\nAlso budget $999 a day.' }));
+  expect(await p.inputValue('#output') === BAD && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away');
+  // 4. Fix fails: original, page still works
+  ({ p, sent } = await run({ write: BAD, repairFail: true }));
+  expect(await p.inputValue('#output') === BAD && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
   const { default: relay } = await import('../worker/report-relay.js');
   const sent = [];
@@ -728,10 +777,10 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     const postRun = (run, ip) => relay.fetch(new Request('https://relay.example/run', { method: 'POST',
       headers: { Origin: APP, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ run }) }), env);
     sent.length = 0;
-    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
+    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
     expect(r1.status === 201 && sent.length === 1 && sent[0].url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues/2/comments', 'run should become a comment on issue #2');
     const c = JSON.parse(sent[0].init.body).body;
-    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c), 'run comment missing fields: ' + c);
+    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c), 'run comment missing fields: ' + c);
     expect(!/secret|my words|nested/.test(c) && !/@kmagno94/.test(c) && c.length < 1000, 'unknown fields, pings, and long text must be dropped: ' + c);
     expect((await postRun({ words_in: 3 }, '6.6.6.6')).status === 400 && (await postRun('nope', '6.6.6.6')).status === 400, 'non-run data should be refused');
     let lastRun;

@@ -1,4 +1,6 @@
-import { buildPrompt, ANALYZE, WRITE } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt } from './prompts.js';
+import { analyze } from './xray.js';
+import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
@@ -244,6 +246,7 @@ export function startApp() {
     status.textContent = "";
     document.getElementById("madeBy").textContent = "";
     document.getElementById("numWarn").hidden = true;
+    document.getElementById("repairNote").hidden = true;
     setChatName(title);
     setReady(false);
     qa.hidden = true;
@@ -1031,20 +1034,43 @@ export function startApp() {
     }, WRITE_LIMIT).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
       finishTrack(resultProg, r.ms / 1000, skipAsk);
-      var detour = r.history && r.history.length ? " (" + r.history.join("; ") + ")" : "";
-      var prompt = r.text.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
-      setBusy(false);
-      setBuild("");
-      qaStatus.textContent = "";
-      logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
-        detours: (r.history || []).join("; "), words_out: words(prompt), core: core.active, outcome: "ok" });
-      var secs = Math.max(1, Math.round(r.ms / 1000)) + "s";
-      showResult(core.apply(prompt), techOn()   /* core */
-        ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
-        : "Ready in " + secs + ". Your AI can start working right away.", session.title);
-      session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
-      var nc = showNumberCheck(prompt);
-      session.numFlags = nc.extra.length + nc.missing.length;
+      var draft = cleanPrompt(r.text);
+      /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
+      var before = qualityCheck(draft);
+      if (!before.score) return showWritten(draft, r, { status: "none" }, before);
+      setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
+      document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
+      var t0 = Date.now();
+      return askGemini(repairPrompt(draft, session.raw, session.answers, before), false, writeModels(true), "low", null, 60000).then(function (r2) {
+        if (run !== writeRun) { setBusy(false); return; }
+        var fixed = cleanPrompt(r2.text), after = qualityCheck(fixed);
+        var secs = Math.round((Date.now() - t0) / 100) / 10;
+        if (isBetter(after, before, fixed, draft)) return showWritten(fixed, r, { status: "fixed", secs: secs, model: r2.model, before: before, after: after }, after);
+        showWritten(draft, r, { status: "kept original", secs: secs, model: r2.model, before: before }, before);
+      }, function (e) {
+        if (run !== writeRun) { setBusy(false); return; }
+        showWritten(draft, r, { status: "failed", secs: Math.round((Date.now() - t0) / 100) / 10, before: before }, before);
+      });
+
+      function showWritten(prompt, r, rep, check) {
+        var detour = r.history && r.history.length ? " (" + r.history.join("; ") + ")" : "";
+        setBusy(false);
+        setBuild("");
+        qaStatus.textContent = "";
+        var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
+        session.repair = rep;
+        session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
+        showResult(core.apply(prompt), techOn()   /* core */
+          ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
+          : "Ready in " + secs + ". Your AI can start working right away.", session.title);
+        showRepairNote(rep);
+        var nc = showNumberCheck(prompt);
+        session.numFlags = nc.extra.length + nc.missing.length;
+        logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
+          detours: (r.history || []).join("; "), words_out: words(prompt), core: core.active, outcome: "ok",
+          coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
+          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null });
+      }
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
@@ -1056,6 +1082,40 @@ export function startApp() {
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
+  }
+
+  function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
+
+  /* What Auto-Repair looks for: sentences of yours that didn't make it in (X-ray,
+     skipping short filler), numbers nobody said, and numbers you said that went
+     missing (the number check). score = how many things a fix would address. */
+  function qualityCheck(prompt) {
+    var x = analyze(prompt, session.raw, session.answers || []);
+    var dropped = x.sources.filter(function (s) { return !s.used && words(s.text) >= 4; }).map(function (s) { return s.text; });
+    var n = numberIssues(prompt);
+    return { pct: x.pct, dropped: dropped, stray: n.extra, missingNums: n.missing, score: dropped.length + n.extra.length + n.missing.length };
+  }
+  /* Keep a fix only if it solved something, added no new made-up numbers, didn't
+     lose numbers, and didn't shrink or balloon the prompt. */
+  function isBetter(after, before, fixed, draft) {
+    var len = words(fixed) / Math.max(1, words(draft));
+    return after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && len >= 0.7 && len <= 1.8;
+  }
+  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
+  function showRepairNote(rep) {
+    var el = document.getElementById("repairNote");
+    if (!rep || rep.status === "none") { el.hidden = true; el.textContent = ""; return; }
+    var parts = [];
+    if (rep.status === "fixed") {
+      var added = rep.before.dropped.length - rep.after.dropped.length + rep.before.missingNums.length - rep.after.missingNums.length;
+      var removed = rep.before.stray.length - rep.after.stray.length;
+      if (added > 0) parts.push("added " + plural(added, "detail you said", "details you said"));
+      if (removed > 0) parts.push("removed " + plural(removed, "made-up number", "made-up numbers"));
+      el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Tap X-ray to see.";
+    } else {
+      el.textContent = "\ud83d\udd27 The check found " + plural(rep.before.score, "thing", "things") + " to fix, but " + (rep.status === "failed" ? "the fix didn't come through" : "the fix wasn't better") + ", so this is the original. Tap X-ray to see what to check.";
+    }
+    el.hidden = false;
   }
 
   /* Number check (free, no Gemini request). The page compares the numbers in the
@@ -1271,6 +1331,7 @@ export function startApp() {
       ["Model detours", w && w.detours ? w.detours : ""],
       ["Errors", [s.intakeError && "read: " + s.intakeError, s.writeError && "write: " + s.writeError].filter(Boolean).join("; ")],
       ["Number check", w ? (s.numFlags ? s.numFlags + " number(s) flagged" : "nothing flagged") : ""],
+      ["Auto-Repair", s.repair ? s.repair.status + (s.repair.secs != null ? ", " + s.repair.secs + "s" : "") : ""],
       ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
     ];
     if (core.dev) rows.push(["Core", core.active ? "on" : "off"]);
