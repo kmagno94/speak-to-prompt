@@ -24,6 +24,16 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | Follow-up questions | Asked by the AI you paste into | Asked as a short chat on the page: tap an answer, type your own, or skip. Usually 1 to 3, up to 5 for complex requests |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
+### Your core (testing)
+
+Set up once in **Not sure where to start? > Set up your core**, then every prompt ends with it, so the AI already knows you:
+
+- **USER (About you):** your role, how you like answers, what you value.
+- **SOUL (How the AI should act):** voice and rules, like "Be direct" or "Challenge me, with care".
+- **IDENTITY (The AI's role):** Coach, Chief of staff, Accountability partner, Tutor, Thinking partner, or Expert advisor, plus what that means to you.
+
+Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
+
 ### Two modes (next to Build my prompt)
 
 | Mode | What it does | Time |
@@ -61,6 +71,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - **Your Gemini key** is only saved on your phone if you tick "Remember my key," and it is sent only to Google, in a request header.
 - **With a key, your words go to Google** to build the prompt, and nowhere else. On Google's free tier, Google may use what you send to improve its products.
 - **Run stats (optional, for testing):** a "Show run stats and daily usage" toggle under **More options** saves timings, token counts, and today's requests per model on your device, so you can see what's left of each free limit. It never saves your words or prompts, and turning it off deletes everything it saved.
+- **Your core (testing only):** saved in Safari on your phone while the app is being built, and only ever sent inside prompts you build. Delete it any time from the core screen. It will be taken out before the app ships.
 - **usage.json** holds daily Gemini request and token counts read from AI Studio screenshots (no prompts, no words, no key). Run stats shows it next to the runs counted on your device.
 - **Lock your key to this site** (optional): in Google Cloud Credentials, restrict it to the website `https://kmagno94.github.io/*` and to the Generative Language API, so a leaked key is useless anywhere else.
 
@@ -75,6 +86,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/App.svelte` | The page markup |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
+  | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY). Testing only; remove these files and the lines marked "core" in app.js before shipping |
   | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |

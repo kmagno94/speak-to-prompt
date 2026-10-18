@@ -4,6 +4,7 @@
   import ModePicker from './ModePicker.svelte';
   import ChatBuilder from './ChatBuilder.svelte';
   import StartHelper from './StartHelper.svelte';
+  import CoreToggle from './CoreToggle.svelte';
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -58,6 +59,7 @@
     <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
+      <CoreToggle />
       <div class="starterwrap"><StartHelper /></div>
     </div>
     <div class="tracker" id="buildTrack" hidden>

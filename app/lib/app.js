@@ -2,6 +2,7 @@ import { buildPrompt, ANALYZE, WRITE } from './prompts.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
+import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
 
 export function startApp() {
   /* The deck shuffles in place, so each start works on its own copy. */
@@ -263,7 +264,7 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(buildPrompt(raw),
+    showResult(core.apply(buildPrompt(raw)),   /* core */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
@@ -989,6 +990,9 @@ export function startApp() {
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    /* core: the person's standing profile is attached to the finished prompt by the page.
+       The writer sees it so it doesn't repeat or contradict it. */
+    if (core.on && core.has) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
     setBusy(true, "Writing your prompt...");
     setBuild("");
     qaStatus.textContent = "";
@@ -1011,9 +1015,9 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
-        detours: (r.history || []).join("; "), words_out: words(prompt), outcome: "ok" });
+        detours: (r.history || []).join("; "), words_out: words(prompt), core: core.on && core.has, outcome: "ok" });
       var secs = Math.max(1, Math.round(r.ms / 1000)) + "s";
-      showResult(prompt, techOn()
+      showResult(core.apply(prompt), techOn()   /* core */
         ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
         : "Ready in " + secs + ". Your AI can start working right away.", session.title);
       showNumberCheck(prompt);

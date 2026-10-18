@@ -3,8 +3,11 @@
   import { starter } from './lib/starter.svelte.js';
   import { CATEGORIES, SLIDERS } from './lib/starters.js';
   import { ms } from './lib/motion.js';
+  import { core } from './lib/core.svelte.js';
+  import CoreEditor from './CoreEditor.svelte';
 
   let draft = $state('');
+  let showCore = $state(false);
   let thread = $state();
   let card = $state();
 
@@ -50,9 +53,18 @@
 {#if starter.open}
   <div class="starter" id="starter" bind:this={card} transition:slide={{ duration: ms(220) }}>
     <div class="head">
-      <b>Let's find a starting point</b>
-      <button type="button" class="x" id="starterClose" aria-label="Close" onclick={() => starter.close()}>✕</button>
+      <b>{showCore ? 'Your core' : "Let's find a starting point"}</b>
+      <div class="headbtns">
+        <button type="button" class="corebtn" id="coreBtn" aria-pressed={showCore} onclick={() => (showCore = !showCore)}>
+          {showCore ? 'Back' : core.has ? '🧬 Your core' : '🧬 Set up your core'}
+        </button>
+        <button type="button" class="x" id="starterClose" aria-label="Close" onclick={() => starter.close()}>✕</button>
+      </div>
     </div>
+
+    {#if showCore}
+      <CoreEditor onclose={() => (showCore = false)} />
+    {:else}
 
     <div class="thread" bind:this={thread} role="log" aria-live="polite">
       {#each starter.messages as m (m.id)}
@@ -107,6 +119,7 @@
         <button type="button" id="starterUse" onclick={() => useText(false)}>Put it in the box</button>
       </div>
     {/if}
+    {/if}
   </div>
 {/if}
 
@@ -124,6 +137,8 @@
   }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .head b { font-family: var(--display); font-size: 19px; }
+  .headbtns { display: flex; gap: 6px; align-items: center; }
+  .corebtn { min-height: 40px; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-color: transparent; }
   .x { min-height: 40px; padding: 6px 12px; border-radius: 999px; background: var(--bg); border-color: transparent; color: var(--muted); }
   .msg.me p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
   .cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }

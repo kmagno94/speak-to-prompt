@@ -318,6 +318,52 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
 });
 
+await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, switch, kept on reload, delete', async () => {
+  const p = await page();
+  expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
+  await p.click('#starterBtn'); await p.click('#coreBtn');
+  await p.waitForSelector('#coreEditor');
+  await p.click('#coreEditor .chips button >> text=Student');
+  await p.click('#coreEditor .chips button >> text=Visual: tables and lists');
+  await p.fill('#coreUser', (await p.inputValue('#coreUser')) + '\nI work at a coffee shop.');
+  await p.click('#coreEditor .chips button >> text=Be direct');
+  await p.click('#coreEditor .chips button >> text=No hedging or filler');
+  await p.click('#coreEditor .chips button >> text=No hedging or filler');   // second tap removes it
+  expect(await p.getAttribute('#coreEditor .chips button >> text=Be direct', 'aria-pressed') === 'true', 'tapped option should show as picked');
+  expect(!/No hedging/.test(await p.inputValue('#coreSoul')), 'second tap should remove the line');
+  await p.click('#coreEditor .chips button >> text=Coach');
+  await p.fill('#coreIdentity', 'Keep me on track with school.');
+  expect((await p.inputValue('#coreSoul')).match(/Be direct/g).length === 1, 'premade line added twice');
+  await p.click('#coreDone'); await p.click('#starterClose');
+  expect(await p.isChecked('#coreToggle'), 'core should be on once set up');
+  // No-key quick version gets the core block
+  await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
+  let out = await p.inputValue('#output');
+  expect(/MY CORE/.test(out) && /About me:\n- Student\n- Visual: tables and lists\nI work at a coffee shop\./.test(out) && /How to work with me:\n- Be direct/.test(out) && /Your role with me: Coach\.\nKeep me on track with school\./.test(out), 'core block wrong: ' + out.slice(-300));
+  // Kept after reload, and the switch turns it off
+  await p.reload(); await p.waitForTimeout(300);
+  expect(await p.isChecked('#coreToggle'), 'core not kept after reload');
+  await p.click('.coretoggle');
+  expect(!(await p.isChecked('#coreToggle')), 'switch did not turn off');
+  await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
+  out = await p.inputValue('#output');
+  expect(!/MY CORE/.test(out), 'core added while switched off');
+  // With a key: the writer sees the core, and the finished prompt ends with it
+  await p.click('.coretoggle');
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
+  const write = p.calls.filter(c => !c.intake).pop().text;
+  expect(/THE PERSON'S CORE/.test(write) && /Be direct/.test(write), 'writer did not see the core');
+  out = await p.inputValue('#output');
+  expect(/^THE PROMPT\n\n---\nMY CORE/.test(out), 'finished prompt should end with the core: ' + out.slice(0, 80));
+  expect(!(await p.isVisible('#numWarn')), 'numbers in the core should not trigger the number check');
+  // Delete
+  await p.click('#starterBtn'); await p.click('#coreBtn'); await p.click('#coreClear'); await p.click('#coreClearYes');
+  expect(await p.evaluate(() => localStorage.getItem('stp-core')) === null, 'core not deleted from the phone');
+  expect(!(await p.$('#coreToggle')), 'switch should disappear after delete');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));
