@@ -656,6 +656,8 @@ await check('usage.json is valid', async () => {
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
+/* On GitHub Actions, each failure also becomes an annotation on the run page. */
+if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
 console.log(`\n${results.length - failed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
