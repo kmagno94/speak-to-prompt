@@ -1165,7 +1165,7 @@ details.key[open] summary { margin-bottom: 10px; }
     var headers = Object.assign({}, options.headers || {}, { "x-goog-api-key": key });
     function handle(r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
-        if (!r.ok) { var e = new Error(googleError(r.status, body)); e.status = r.status; throw e; }
+        if (!r.ok) { var e = new Error(googleError(r.status, body)); e.status = r.status; e.google = (body && body.error && body.error.message) || ""; throw e; }
         return body;
       });
     }
@@ -1263,6 +1263,7 @@ details.key[open] summary { margin-bottom: 10px; }
     "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
     "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
     "Never add devices, people, facts, or requirements they did not mention or confirm.",
+    "Keep every number, version, and product name exactly as they said it, even if you don't recognize it. Newer versions may exist that you don't know about, so never swap in a different version or round a number.",
     "Keep the full scope of what they want. Do not narrow it. When it helps them succeed, ask the AI to also cover how it works, the steps, and known limits or troubleshooting.",
     "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
     "Only if the person raised several separate goals or ideas and it is unclear which to pursue first, end the prompt by asking the AI to lay those goals out as numbered options, each with 2 to 4 sentences on what it would produce, then wait for the person to choose. Different ways to reach one goal are not separate goals: in that case, ask the AI to recommend the best approach, briefly say why, and carry it out. Otherwise, end the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
@@ -1319,6 +1320,7 @@ details.key[open] summary { margin-bottom: 10px; }
         if (lastErr && lastErr.status === 429) {
           var all = new Error("Every free Gemini model on your key has hit today's limit. It resets overnight, around 3 AM Eastern.");
           all.status = 429;
+          all.google = lastErr.google || "";
           throw all;
         }
         throw lastErr || new Error("No Gemini model was available.");
@@ -1348,7 +1350,7 @@ details.key[open] summary { margin-bottom: 10px; }
         clearTimeout(timer);
         var secs = Math.round((Date.now() - tAttempt) / 1000);
         if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
-        else if (e.status === 429) { history.push(model + " was at its daily limit"); testLog.request(model, 0, true); }
+        else if (e.status === 429) { history.push(model + " was at its daily limit"); if (!(extra && extra.tools)) testLog.request(model, 0, true); }
         else if (e.status === "empty") history.push(model + " sent an incomplete answer");
         else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable");
         /* A model that rejects the thinking setting gets one more try without it. */
@@ -1659,6 +1661,7 @@ details.key[open] summary { margin-bottom: 10px; }
   var REVIEW = [
     "You are a strict quality reviewer for AI prompts. Score the PROMPT below against the person's RAW THOUGHTS, their ANSWERS, and any LOOKED-UP FACTS.",
     "Run these 10 checks. A check passes only if it fully passes. If you are unsure, it fails.",
+    "Before scoring, compare every number, version, time, and name in the prompt with the raw thoughts and answers. Any that was changed, dropped, or added fails checks 1 or 2, even if you think the person's version is wrong.",
     CHECKS.map(function (c, i) { return (i + 1) + ". " + c[0] + ": " + c[1]; }).join("\n"),
     "For every failed check, write one specific fix that says exactly what to add, cut, or change. Never suggest a word or length limit the person did not ask for, never suggest removing a section that helps them succeed, and never suggest details the person did not give unless they come from the looked-up facts.",
     "Respond with JSON only, in exactly this shape, with all 10 checks:",
@@ -1682,7 +1685,7 @@ details.key[open] summary { margin-bottom: 10px; }
         session.researchModel = r.model;
         return parseResearch(r.text);
       }, function (e) {
-        errors.push(models[i] + ": " + (e && e.message ? e.message : "failed"));
+        errors.push(models[i] + ": " + (e && (e.google || e.message) ? (e.google || e.message) : "failed"));
         return tryAt(i + 1);
       });
     }
@@ -1708,6 +1711,49 @@ details.key[open] summary { margin-bottom: 10px; }
     });
     return { score: score, fails: fails };
   }
+  /* Number guard. The page itself checks that every number the person gave (times,
+     money, versions like iOS 27) is still in the prompt, and that the prompt adds no
+     new ones (like iOS 18 or a 400-word limit). Small counts like "3 tips" are fine
+     unless they follow a version word. This doesn't depend on any model noticing. */
+  var VERSION_WORD = /(ios|ipados|macos|watchos|tvos|visionos|android|windows|version|v)\s*$/i;
+  function numberTokens(text, keepSmall) {
+    var out = {}, t = String(text || "");
+    var re = /(\d{1,2}:\d{2})|\$?(\d[\d,]*(?:\.\d+)?)/g, m;
+    while ((m = re.exec(t))) {
+      var before = t.slice(Math.max(0, m.index - 12), m.index);
+      var lineStart = /(^|\n)\s*$/.test(t.slice(Math.max(0, m.index - 4), m.index)) && /^[.)]/.test(t.slice(re.lastIndex, re.lastIndex + 1));
+      if (lineStart) continue; /* list numbering like "1." */
+      var tok = m[1] || m[2].replace(/,/g, "").replace(/\.0+$/, "");
+      if (!tok) continue;
+      var small = !m[1] && Number(tok) <= 10 && !VERSION_WORD.test(before);
+      if (small && !keepSmall) continue;
+      out[tok] = true;
+    }
+    return out;
+  }
+  function numberIssues(promptText, facts) {
+    var src = session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n") + "\n" + (facts || []).join("\n");
+    var have = numberTokens(src, true), got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false);
+    var given = numberTokens(session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n"), false);
+    return {
+      missing: Object.keys(given).filter(function (n) { return !got[n]; }),
+      extra: Object.keys(gotBig).filter(function (n) { return !have[n]; })
+    };
+  }
+  function applyGuard(v, facts) {
+    var g = numberIssues(v.text, facts);
+    v.guard = g;
+    function force(name, fix) {
+      var hit = v.fails.filter(function (f) { return f.name === name; })[0];
+      if (hit) hit.fix = fix + " " + hit.fix;
+      else { v.fails.push({ name: name, fix: fix }); v.score = Math.max(0, v.score - 1); }
+    }
+    if (g.missing.length) force(CHECKS[0][0], "Keep these exactly as I gave them: " + g.missing.join(", ") + ".");
+    if (g.extra.length) force(CHECKS[1][0], "Remove or correct numbers I never gave: " + g.extra.join(", ") + ".");
+  }
+  function applyGuardOnly(v) { v.guard = numberIssues(v.text, lastFacts); }
+  var lastFacts = [];
+  function clean(v) { return !v.guard || (!v.guard.missing.length && !v.guard.extra.length); }
   function deepContext(facts) {
     var lines = (session.answers || []).map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
     return "RAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.") +
@@ -1772,10 +1818,13 @@ details.key[open] summary { margin-bottom: 10px; }
     function review(v) {
       if (!live()) throw STALE;
       setPolish("Polishing in the background: reviewing " + name(v).toLowerCase() + " against 10 checks...");
-      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, gemini.plan.write, "high", null, WRITE_LIMIT).then(function (g) {
+      /* A different model reviews when one is free, so the writer doesn't grade itself. */
+      var reviewers = gemini.plan.write.filter(function (m) { return writers.indexOf(m) === -1; }).concat(writers);
+      return askGemini(REVIEW + "\n\n" + deepContext(facts) + "\n\nPROMPT:\n\"\"\"\n" + v.text + "\n\"\"\"", true, reviewers, "high", null, WRITE_LIMIT).then(function (g) {
         keep(judges, g.model);
         var res = parseReview(g.text);
         v.score = res.score; v.fails = res.fails;
+        applyGuard(v, facts);
         return true;
       }, function () { return false; });
     }
@@ -1795,6 +1844,11 @@ details.key[open] summary { margin-bottom: 10px; }
     /* Blind ranking: versions are shown as A, B, C in shuffled order. */
     function rank(list, reason) {
       if (!live()) throw STALE;
+      var ok = list.filter(function (v) { if (!v.guard) applyGuardOnly(v); return clean(v); });
+      if (ok.length && ok.length < list.length) {
+        if (ok.length === 1) return settle(ok[0], reason, "Why: it's the only version that kept every number you gave and added none.");
+        list = ok;
+      }
       setPolish("Polishing in the background: comparing versions blind...");
       var order = shuffled(list), labels = ["A", "B", "C"];
       var body = order.map(function (v, i) { return "VERSION " + labels[i] + ":\n\"\"\"\n" + v.text + "\n\"\"\""; }).join("\n\n");
@@ -1815,6 +1869,7 @@ details.key[open] summary { margin-bottom: 10px; }
     Promise.resolve(session.research || []).then(function (f) {
       if (!live()) throw STALE;
       facts = f || [];
+      lastFacts = facts;
       eta.label("Writing a first draft with deep thinking");
       return askGemini(WRITE + DEEP_NOTE + "\n\n" + deepContext(facts), false, gemini.plan.write, "high", onModel, WRITE_LIMIT);
     }).then(function (r) {
@@ -1861,6 +1916,8 @@ details.key[open] summary { margin-bottom: 10px; }
       li.appendChild(el("span", v.score == null ? "not reviewed" : v.score + "/10", "score"));
       if (v === shown) li.appendChild(el("span", " (shown)"));
       if (v.fails && v.fails.length && v.score != null) li.appendChild(el("span", ". Flagged: " + v.fails.map(function (f) { return f.name; }).join(", ") + "."));
+      if (v.guard && v.guard.extra.length) li.appendChild(el("span", " Numbers you never gave: " + v.guard.extra.join(", ") + "."));
+      if (v.guard && v.guard.missing.length) li.appendChild(el("span", " Numbers it dropped: " + v.guard.missing.join(", ") + "."));
       ol.appendChild(li);
     });
     box.appendChild(ol);

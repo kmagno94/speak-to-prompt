@@ -54,7 +54,8 @@ async function page(opts = {}) {
     let pick = null;
     if (rank) {
       const blocks = [...ask.matchAll(/VERSION ([A-C]):\n"""\n([\s\S]*?)\n"""/g)].map(m => ({ label: m[1], text: m[2] }));
-      const want = opts.pick === 'draft' ? blocks.find(b => b.text === (opts.write || 'THE PROMPT')) : (blocks.filter(b => /^BETTER PROMPT/.test(b.text)).sort((a, b) => b.text.localeCompare(a.text))[0] || blocks[0]);
+      const draftText = opts.write || 'THE PROMPT';
+      const want = opts.pick === 'draft' ? blocks.find(b => b.text === draftText) : (blocks.filter(b => b.text !== draftText).pop() || blocks[0]);
       pick = { best: want.label, why: 'Mock judge picked it.', seen: blocks.length };
       p.rankSeen = blocks.length;
     }
@@ -62,7 +63,7 @@ async function page(opts = {}) {
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : research ? (opts.research || '- iOS 27 is the current iPhone software (apple.com)')
       : review ? JSON.stringify(reviews[Math.min(reviewN++, reviews.length - 1)])
-      : rewrite ? 'BETTER PROMPT ' + (++rewriteN)
+      : rewrite ? (opts.rewriteText || 'BETTER PROMPT ' + (++rewriteN))
       : rank ? JSON.stringify(pick)
       : (opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
@@ -171,6 +172,19 @@ await check('Deep mode: a rewrite that scores lower keeps the draft (questions p
   expect(p.calls.filter(c => c.rewrite).length === 1, 'should stop after the lower-scoring rewrite');
   expect(!p.calls.some(c => c.rank), 'no comparison needed when the rewrite scored lower');
   expect(await p.inputValue('#output') === 'THE PROMPT', 'should keep the 8/10 draft');
+});
+
+await check('Deep mode: the page catches a changed version number even when the reviewer gives 10/10', async () => {
+  const p = await page({ intake: SIMPLE, review: [grade(10), grade(10)], write: 'Set it up on iOS 18 at 10:15 PM.', rewriteText: 'Set it up on iOS 27 at 10:15 PM.' });
+  await withKey(p); await p.check('#deepMode');
+  await p.fill('#thoughts', 'every night at 10:15 on my iPhone, I am on iOS 27'); await p.click('#build');
+  await p.waitForFunction(() => /swapped in/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+  const draft = p.calls.find(c => !c.intake && !c.research && !c.review && !c.rewrite && !c.rank);
+  expect(/even if you don't recognize it/.test(draft.text), 'writer missing the keep-versions rule');
+  const rw = p.calls.find(c => c.rewrite);
+  expect(rw && /Keep these exactly as I gave them: 27/.test(rw.text) && /never gave: 18/.test(rw.text), 'rewrite did not get the number fixes');
+  expect(await p.inputValue('#output') === 'Set it up on iOS 27 at 10:15 PM.', 'corrected version not shown');
+  expect(/Numbers you never gave: 18/.test(await p.textContent('#refineBody')), 'refine log should show the bad number');
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {
