@@ -902,22 +902,51 @@ details.key[open] summary { margin-bottom: 10px; }
   var ideasPause = document.getElementById("ideasPause");
   var ideasCalm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var ideasIdx = 0, ideasTimer = null, ideasIdle = null, ideasBack = null, ideasPaused = false, ideasScrollT = null;
-  /* Shuffle once per visit, so every idea shows before any repeats. */
-  for (var ii = IDEAS.length - 1; ii > 0; ii--) { var jj = Math.floor(Math.random() * (ii + 1)); var tmp = IDEAS[ii]; IDEAS[ii] = IDEAS[jj]; IDEAS[jj] = tmp; }
-  IDEAS.forEach(function (it) {
-    var d = document.createElement("div"); d.className = "idea";
-    var b = document.createElement("b"); b.textContent = it[1];
-    var t = document.createElement("span"); t.textContent = it[2];
-    d.appendChild(b); d.appendChild(t); ideasTrack.appendChild(d);
-  });
+  /* The deck plays in rounds: every round shows one Home life, one Money and time,
+     and one classic line, in a fresh order, and never the same category twice in a
+     row. Each pass through the deck is reshuffled, so it's different every time. */
+  function ideaGroup(it) { return it[3] ? "classic" : it[0]; }
+  function shuffled(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  var DECK = [];
+  function ideasDeal() {
+    var names = ["home", "money", "classic"], pools = {}, rounds = 0, last = DECK.length ? ideaGroup(DECK[DECK.length - 1]) : null;
+    names.forEach(function (n) {
+      pools[n] = { all: IDEAS.filter(function (it) { return ideaGroup(it) === n; }), left: [] };
+      rounds = Math.max(rounds, pools[n].all.length);
+    });
+    function draw(n) {
+      var p = pools[n];
+      if (!p.left.length) p.left = shuffled(p.all);
+      return p.left.pop();
+    }
+    DECK = [];
+    for (var r = 0; r < rounds; r++) {
+      var order = shuffled(names);
+      if (order[0] === last) order.push(order.shift());
+      order.forEach(function (n) { DECK.push(draw(n)); });
+      last = order[order.length - 1];
+    }
+    ideasTrack.textContent = "";
+    DECK.forEach(function (it) {
+      var d = document.createElement("div"); d.className = "idea"; d.dataset.group = ideaGroup(it);
+      var b = document.createElement("b"); b.textContent = it[1];
+      var t = document.createElement("span"); t.textContent = it[2];
+      d.appendChild(b); d.appendChild(t); ideasTrack.appendChild(d);
+    });
+  }
+  ideasDeal();
   if (ideasCalm) { ideasPause.textContent = "Next"; ideasPause.removeAttribute("aria-pressed"); ideasPause.setAttribute("aria-label", "Next idea"); }
   function ideasLabel() {
-    var it = IDEAS[ideasIdx];
+    var it = DECK[ideasIdx];
     ideasCat.textContent = it[3] ? "\u{1F3A9} " + it[3] : (it[0] === "home" ? "\u{1F3E0} Home life" : "\u23F0 Money and time");
     ideasTry.setAttribute("aria-label", "Try this idea: " + it[2]);
   }
   function ideasGo(i, smooth) {
-    ideasIdx = (i + IDEAS.length) % IDEAS.length;
+    ideasIdx = (i + DECK.length) % DECK.length;
     ideasTrack.scrollTo({ left: ideasIdx * ideasTrack.clientWidth, behavior: smooth && !ideasCalm ? "smooth" : "auto" });
     ideasLabel();
   }
@@ -925,7 +954,11 @@ details.key[open] summary { margin-bottom: 10px; }
   function ideasStart() {
     ideasStop();
     if (ideasCalm || ideasPaused || ideasEl.classList.contains("gone")) return;
-    ideasTimer = setInterval(function () { ideasGo(ideasIdx + 1, ideasIdx + 1 < IDEAS.length); }, 4500);
+    ideasTimer = setInterval(function () {
+      if (ideasIdx + 1 < DECK.length) { ideasGo(ideasIdx + 1, true); return; }
+      ideasDeal();
+      ideasGo(0, false);
+    }, 4500);
   }
   var ideasShowBtn = document.getElementById("ideasShow");
   /* The Show ideas button appears whenever the box is empty and the ideas are tucked away. */
@@ -982,7 +1015,7 @@ details.key[open] summary { margin-bottom: 10px; }
     clearTimeout(ideasScrollT);
     ideasScrollT = setTimeout(function () {
       var w = ideasTrack.clientWidth || 1;
-      ideasIdx = Math.round(ideasTrack.scrollLeft / w) % IDEAS.length;
+      ideasIdx = Math.round(ideasTrack.scrollLeft / w) % DECK.length;
       ideasLabel();
     }, 120);
   });
@@ -1001,7 +1034,7 @@ details.key[open] summary { margin-bottom: 10px; }
     if (ideasPaused) { ideasStop(); clearTimeout(ideasIdle); } else ideasStart();
   });
   ideasTry.addEventListener("click", function () {
-    thoughts.value = IDEAS[ideasIdx][2];
+    thoughts.value = DECK[ideasIdx][2];
     err.hidden = true;
     handoff.hidden = true;
     ideasHide();

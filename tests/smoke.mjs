@@ -164,9 +164,15 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   const fit = await p.evaluate(() => {
     const t = document.getElementById('ideasTrack'), box = document.getElementById('thoughts'), panel = document.getElementById('ideasPanel');
     const tallest = Math.max(...[...t.children].map(d => d.scrollHeight));
-    return { tallest, track: t.clientHeight, panelBottom: panel.getBoundingClientRect().bottom, boxBottom: box.getBoundingClientRect().bottom, n: t.children.length };
+    const kids = [...t.children], groups = kids.map(d => d.dataset.group);
+    const rounds = []; for (let i = 0; i + 3 <= groups.length; i += 3) rounds.push(new Set(groups.slice(i, i + 3)).size);
+    return { tallest, track: t.clientHeight, panelBottom: panel.getBoundingClientRect().bottom, boxBottom: box.getBoundingClientRect().bottom,
+      n: new Set(kids.map(d => d.textContent)).size, len: kids.length,
+      backToBack: groups.some((g, i) => i && g === groups[i - 1]), fullRounds: rounds.every(x => x === 3) };
   });
-  expect(fit.n === 48, 'expected 48 ideas, got ' + fit.n);
+  expect(fit.n === 48, 'expected 48 different ideas, got ' + fit.n);
+  expect(fit.len % 3 === 0 && fit.fullRounds, 'every round should show each category once');
+  expect(!fit.backToBack, 'same category played twice in a row');
   expect(fit.tallest <= fit.track, `longest idea (${fit.tallest}px) taller than the strip (${fit.track}px)`);
   expect(fit.panelBottom <= fit.boxBottom + 1, 'idea panel spills past the box');
   await p.click('#thoughts', { position: { x: 20, y: 12 } });
