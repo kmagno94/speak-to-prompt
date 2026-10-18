@@ -6,6 +6,19 @@ import { rotating, SHOW } from './rotate.js';
 
 let nextId = 1;
 
+/* Slider settings are remembered on this device, so they open where you left
+   them. Only the four numbers are kept, nothing you typed. */
+const TUNE_KEY = 'stp-tune';
+function middle() { return Object.fromEntries(SLIDERS.map((s) => [s.key, 3])); }
+function savedTune() {
+  const t = middle();
+  try {
+    const got = JSON.parse(localStorage.getItem(TUNE_KEY) || '{}');
+    SLIDERS.forEach((s) => { const v = Number(got[s.key]); if (v >= 1 && v <= 5) t[s.key] = Math.round(v); });
+  } catch (e) {}
+  return t;
+}
+
 class StarterSession {
   open = $state(false);
   cat = $state(null);        // the chosen category
@@ -14,7 +27,7 @@ class StarterSession {
   current = $state(-1);      // -1 = choosing a category; then the question index
   typing = $state(false);
   page = $state(0);          // taps on "More options" for the current question
-  tune = $state(Object.fromEntries(SLIDERS.map((s) => [s.key, 3])));   // fine-tune sliders, 1 to 5
+  tune = $state(savedTune());   // fine-tune sliders, 1 to 5, remembered on this device
 
   questions = $derived(this.cat ? [...this.cat.questions, EXTRA] : []);
   done = $derived(this.cat !== null && this.current >= this.questions.length);
@@ -25,6 +38,7 @@ class StarterSession {
     if (!q) return [];
     return this.cat.dev ? q.choices.slice() : rotating(q.choices, this.cat.id + ':' + this.current, this.page);
   });
+  tuned = $derived(SLIDERS.some((s) => Number(this.tune[s.key]) !== 3));
   canRotate = $derived(!!this.cat && !this.cat.dev && (this.questions[this.current]?.choices.length || 0) > SHOW);
   /* The starting text, rebuilt as answers change. */
   text = $derived.by(() => {
@@ -47,9 +61,20 @@ class StarterSession {
     clearTimeout(this.#timer);
     this.open = true; this.cat = null; this.answers = []; this.messages = [];
     this.current = -1; this.typing = false;
-    SLIDERS.forEach((s) => { this.tune[s.key] = 3; });
+    const t = savedTune();
+    SLIDERS.forEach((s) => { this.tune[s.key] = t[s.key]; });
     this.#say('ai', 'No problem. What do you want help with? Pick one, or describe it in your own words.');
   }
+
+  saveTune() {
+    const t = Object.fromEntries(SLIDERS.map((s) => [s.key, Number(this.tune[s.key])]));
+    try {
+      if (SLIDERS.every((s) => t[s.key] === 3)) localStorage.removeItem(TUNE_KEY);
+      else localStorage.setItem(TUNE_KEY, JSON.stringify(t));
+    } catch (e) {}
+  }
+
+  resetTune() { SLIDERS.forEach((s) => { this.tune[s.key] = 3; }); }
 
   close() { clearTimeout(this.#timer); this.open = false; }
 

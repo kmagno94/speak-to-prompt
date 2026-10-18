@@ -17,6 +17,9 @@
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : 'No preference';
   }
 
+  /* Remember the sliders whenever one moves. */
+  $effect(() => { starter.saveTune(); });
+
   function send() { starter.reply(draft); draft = ''; }
   /* The helper sits inside the main form, so Return must not submit it. */
   function onKey(e) { if (e.key === 'Enter') { e.preventDefault(); send(); } }
@@ -102,7 +105,10 @@
       </div>
     {:else}
       <div class="tune" in:fly={{ y: 8, duration: ms(220) }}>
-        <p>Fine-tune it</p>
+        <div class="tunehead">
+          <p>Fine-tune it</p>
+          {#if starter.tuned}<button type="button" id="tuneReset" class="reset" onclick={() => starter.resetTune()}>Reset to middle</button>{/if}
+        </div>
         {#each SLIDERS as sl (sl.key)}
           <div class="slider">
             <label for="tune-{sl.key}">{sl.label}</label>
@@ -155,7 +161,9 @@
   .cats button.dev { grid-column: 1 / -1; background: var(--surface); border: 1.5px dashed var(--line); color: var(--ink); }
   .cats button:active, .chips :global(button:active) { transform: scale(0.97); }
   .tune { display: grid; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); }
-  .tune > p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
+  .tunehead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+  .tunehead .reset { background: none; border: none; padding: 4px 2px; min-height: 0; box-shadow: none; color: var(--muted); font: inherit; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .tunehead p, .tune > p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
   .slider { display: grid; grid-template-columns: 76px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; }
   .slider label { font-weight: 700; font-size: 15px; }
   .slider input { width: 100%; margin: 0; height: 32px; accent-color: var(--accent); cursor: pointer; }

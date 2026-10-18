@@ -304,9 +304,22 @@ await check('not sure where to start: pick a category, tap and type answers, get
   await pickChip(p, 'Fix a problem');
   await p.waitForSelector('#starter .msg.ai >> text=Anything else');
   await p.click("#starter .chips button >> text=That's it");
+  expect(await p.inputValue('#tune-detail') === '5' && await p.inputValue('#tune-tone') === '1' && await p.inputValue('#tune-level') === '2', 'sliders should open where they were left');
   await p.click('#starterBuild'); await done(p);
   const out = await p.inputValue('#output');
-  expect(/What it's about: my car makes a weird noise\./.test(out) && /What I want: Fix a problem\./.test(out) && !/Also:/.test(out) && !/Detail:/.test(out), 'build did not use the starting text (sliders should reset to the middle)');
+  expect(/What it's about: my car makes a weird noise\./.test(out) && /What I want: Fix a problem\./.test(out) && !/Also:/.test(out) && /Detail: go deep and cover everything\./.test(out), 'build did not use the starting text with the remembered sliders');
+  // Remembered after a reload; Reset puts them back in the middle and forgets them
+  await p.reload();
+  await p.click('#starterBtn'); await p.waitForSelector('#starter .cats button');
+  await p.click('#starter .cats button >> text=Money and budgeting');
+  await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
+  await p.click('#starter button.skip'); await p.waitForSelector('#starter .msg.ai >> text=What makes it hard?');
+  await p.click('#starter button.skip'); await p.waitForSelector('#starter .msg.ai >> text=Anything else');
+  await p.click("#starter .chips button >> text=That's it");
+  await p.waitForSelector('#tuneReset');
+  expect(await p.inputValue('#tune-detail') === '5', 'sliders should survive a reload');
+  await p.click('#tuneReset');
+  expect(await p.inputValue('#tune-detail') === '3' && await p.evaluate(() => localStorage.getItem('stp-tune')) === null, 'Reset should center the sliders and forget them');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
