@@ -421,6 +421,22 @@ await check('starter answers: 5 at a time, same all window, new set every 3 hour
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('Save to Notes: title on the first line, then the original voice-note layout', async () => {
+  const p = await page({ intake: { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'simple', questions: [],
+    note: { headline: 'Wind-Down Automation Plan', tags: ['sleep', 'shortcuts'], summary: 'A nightly wind-down.', key_ideas: ['Night Shift at 10:15'], action_items: ['Build the shortcut'], unknowns: [], clean_transcript: 'every night at 10:15' } } });
+  await p.evaluate(() => { window.__shared = null; navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; });
+  await withKey(p); await p.fill('#thoughts', 'every night at 10:15'); await p.click('#build'); await done(p);
+  await p.click('#saveNote');
+  const note = await p.evaluate(() => window.__shared && window.__shared.text);
+  const lines = note.split('\n');
+  expect(lines[0] === 'Pre-Sleep Focus Setup', 'first line should be the title, got: ' + lines[0]);
+  expect(/^\u{1F4C5} /u.test(lines[1]) && lines[2] === '\u26a1 Pre-Sleep Focus Setup' && lines[3] === '\u{1F4C1} Category: Shortcuts', 'date, title, category lines wrong: ' + lines.slice(1, 4).join(' | '));
+  expect(note.includes('\u{1F3F7}\uFE0F TAGS: #sleep #shortcuts') && note.includes('\n## Wind-Down Automation Plan\n'), 'tags or ## headline missing');
+  expect(note.includes('\n### \u{1F4DD} Summary\nA nightly wind-down.') && note.includes('\n### \u{1F4A1} Key Ideas\n- Night Shift at 10:15') && note.includes('\n### \u2705 Action Items\n\u2610 Build the shortcut'), 'section layout wrong:\n' + note);
+  expect(!/SUMMARY|KEY IDEAS/.test(note), 'old all-caps headings still there');
+  expect(note.includes('### \u{1F680} Prompt Built\nTHE PROMPT'), 'prompt missing from the note');
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

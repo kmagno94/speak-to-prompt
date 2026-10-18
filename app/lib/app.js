@@ -1085,31 +1085,38 @@ export function startApp() {
       d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   /* style "notes": plain text that reads well in Apple Notes. style "md": Markdown for Claude. */
+  /* Saved notes match Kevin's original voice-note format: the title alone on the
+     first line (Apple Notes turns it into the note's big title), then the date,
+     title, category and tags, a "## " headline, and "### " section headings.
+     style "md" is the same layout with Markdown checkboxes and bold, for Claude. */
   function buildNote(style, withPrompt) {
     var s0 = session || { raw: thoughts.value.trim() };
     var n = s0.note || {};
     var md = style === "md";
+    var title = s0.title || "Captured thought";
     var out = [];
-    function head(t) { out.push(""); out.push(md ? "### " + t : t.toUpperCase()); }
-    function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : (md ? "- " : "\u2022 ") + x); }); }
+    function head(t) { out.push(""); out.push("### " + t); }
+    function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : "- " + x); }); }
+    if (!md) out.push(title);
     out.push("\ud83d\udcc5 " + stamp());
-    out.push("\u26a1 " + (s0.title || "Captured thought"));
+    out.push("\u26a1 " + title);
     if (s0.category) out.push("\ud83d\udcc1 Category: " + s0.category);
     if (n.tags && n.tags.length) { out.push(""); out.push("\ud83c\udff7\ufe0f TAGS: " + n.tags.map(function (t) { return "#" + t; }).join(" ")); }
-    if (n.headline) { out.push(""); out.push(md ? "## " + n.headline : n.headline); }
+    if (n.headline) { out.push(""); out.push("## " + n.headline); }
     if (n.summary) { head("\ud83d\udcdd Summary"); out.push(n.summary); }
     if (n.keyIdeas && n.keyIdeas.length) { head("\ud83d\udca1 Key Ideas"); bullets(n.keyIdeas); }
     if (n.actionItems && n.actionItems.length) { head("\u2705 Action Items"); bullets(n.actionItems, true); }
     if (n.unknowns && n.unknowns.length) { head("\u2753 Questions / Unknowns"); bullets(n.unknowns); }
     if (s0.answers && s0.answers.length) {
       head("\ud83e\udde9 Follow-up Answers");
-      s0.answers.forEach(function (a) { out.push((md ? "- **" + a.question + "** " : "\u2022 " + a.question + " ") + a.answer); });
+      s0.answers.forEach(function (a) { out.push(md ? "- **" + a.question + "** " + a.answer : "- " + a.question + " " + a.answer); });
     }
     head("\ud83d\udde3\ufe0f " + (n.transcript ? "Clean Transcript" : "Raw Thoughts"));
     out.push(n.transcript || s0.raw || "");
     if (withPrompt && output.value) { head("\ud83d\ude80 Prompt Built"); out.push(output.value); }
     return out.join("\n").trim();
   }
+
 
   document.getElementById("saveNote").addEventListener("click", function () {
     var note = buildNote("notes", true);
