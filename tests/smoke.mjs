@@ -195,7 +195,7 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   expect(fit.len % 3 === 0 && fit.fullRounds, 'every round should show each category once');
   expect(!fit.backToBack, 'same category played twice in a row');
   const before = await p.evaluate(() => [document.getElementById('ideasTrack').scrollLeft, document.querySelector('#ideasTry').getAttribute('aria-label')]);
-  await p.waitForTimeout(4500);
+  await p.waitForTimeout(6200); /* one 5-second rotation plus the fade */
   const after = await p.evaluate(() => [document.getElementById('ideasTrack').scrollLeft, document.querySelector('#ideasTry').getAttribute('aria-label')]);
   expect(after[0] > before[0] && after[1] !== before[1], `ideas did not rotate on their own (scroll ${before[0]} to ${after[0]})`);
   expect(after[0] % (await p.$eval('#ideasTrack', t => t.clientWidth)) === 0, 'rotation stopped between two ideas');
