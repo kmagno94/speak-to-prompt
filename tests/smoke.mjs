@@ -166,7 +166,7 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
     const tallest = Math.max(...[...t.children].map(d => d.scrollHeight));
     return { tallest, track: t.clientHeight, panelBottom: panel.getBoundingClientRect().bottom, boxBottom: box.getBoundingClientRect().bottom, n: t.children.length };
   });
-  expect(fit.n === 32, 'expected 32 ideas, got ' + fit.n);
+  expect(fit.n === 48, 'expected 48 ideas, got ' + fit.n);
   expect(fit.tallest <= fit.track, `longest idea (${fit.tallest}px) taller than the strip (${fit.track}px)`);
   expect(fit.panelBottom <= fit.boxBottom + 1, 'idea panel spills past the box');
   await p.click('#thoughts', { position: { x: 20, y: 12 } });
