@@ -1043,6 +1043,21 @@ await check('self-tuning estimates: shared times first, your own once learned, b
   expect(tf.depth.standard.secs === 12 && tf.depth.standard.runs === 6 && !tf.depth.complex && tf.intake.secs === 2, 'tuning math wrong: ' + JSON.stringify(tf));
 });
 
+await check('built-in complex estimate matches the Scorecard-calibrated default', async () => {
+  const p = await page({ tuning: { updated: 'x', depth: {} }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'complex', questions: [] } });
+  const sent = [];
+  await p.route('https://relay.test/report/run', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    sent.push(JSON.parse(r.request().postData()).run);
+    return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+  });
+  await withKey(p); await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset'); await p.waitForTimeout(300);
+  expect(sent[0] && sent[0].depth === 'complex' && sent[0].est_from === 'built-in' && sent[0].est_s === 70, 'complex built-in estimate: ' + JSON.stringify(sent[0]));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));
