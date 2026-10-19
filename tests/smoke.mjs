@@ -870,6 +870,41 @@ await check('busy models: a resting model is skipped next time, and a slow write
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('Glow-Up: before and after slider, short by default, no core, saves a PNG on the phone', async () => {
+  const RAW = Array.from({ length: 70 }, (_, i) => 'word' + i).join(' ') + ' plan my week please';
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'You are a planner. Plan my week with three focus blocks.' });
+  await p.evaluate(() => localStorage.setItem('stp-core', JSON.stringify({ user: '- Student', soul: '- Be direct', role: 'Thinking partner', identity: '', on: true })));
+  await p.reload();
+  const sent = [];
+  await p.route('https://relay.test/report/run', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+  });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  expect(/MY CORE/.test(await p.inputValue('#output')), 'setup: the core should be on this prompt');
+  await p.click('#glowBtn'); await p.waitForSelector('#glowup[open]');
+  const after = await p.textContent('#glowAfter');
+  expect(/Plan my week/.test(after) && !/MY CORE|Student|Thinking partner/.test(after), 'the card must never show the core: ' + after);
+  const before = await p.textContent('#glowBefore');
+  expect(/word0/.test(before) && !/word60/.test(before) && /\.\.\./.test(before), 'short preview by default');
+  await p.check('#glowFull');
+  expect(/word60/.test(await p.textContent('#glowBefore')), 'Show more should show the rest');
+  expect((await p.getAttribute('#glowRange', 'type')) === 'range' && /74 messy words/.test(await p.textContent('#glowStats')), 'slider and stats should show');
+  await p.evaluate(() => { window.__png = null; navigator.canShare = () => true; navigator.share = async (d) => { window.__png = { type: d.files[0].type, size: d.files[0].size, name: d.files[0].name }; }; });
+  await p.click('#glowSave'); await p.waitForFunction(() => window.__png, null, { timeout: 10000 });
+  const png = await p.evaluate(() => window.__png);
+  expect(png.type === 'image/png' && png.size > 20000 && png.name === 'glow-up.png', 'should share a real PNG: ' + JSON.stringify(png));
+  await p.waitForTimeout(300);
+  expect(sent[0] && sent[0].action === 'saved glow-up', 'run log should record the glow-up: ' + JSON.stringify(sent[0]));
+  expect(await p.evaluate(() => getComputedStyle(document.getElementById('glowTitle')).borderBottomStyle) === 'none', 'title should not get the result card underline');
+  const txt = await p.textContent('#glowup');
+  expect(!/\u2014/.test(txt), 'no em dashes');
+  await p.click('#glowDone'); await p.waitForSelector('#glowup', { state: 'hidden' });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
   const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
   const row = (o) => ({ created_at: o.when || '2026-10-19T01:00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).filter(([k]) => k !== 'when').map(([k, v]) => '| ' + k + ' | ' + (v === true ? 'yes' : v === false ? 'no' : v) + ' |').join('\n') });

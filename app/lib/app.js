@@ -1424,7 +1424,7 @@ export function startApp() {
     var t = e.target;
     if (t.closest("#xrayBtn")) { pendingRun.xray_opened = true; return; }
     var ai = t.closest(".openai");
-    var a = t.closest("#copy") ? "copied" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note"
+    var a = t.closest("#copy") ? "copied" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note" : t.closest("#glowSave") ? "saved glow-up"
       : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build") ? "rebuilt" : "";
     if (a) flushRun(a);
   }, true);

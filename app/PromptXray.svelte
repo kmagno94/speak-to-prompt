@@ -6,6 +6,7 @@
   import { xray } from './lib/xray.svelte.js';
   import { analyze, pieces, whyText } from './lib/xray.js';
   import { ms } from './lib/motion.js';
+  import GlowUp from './GlowUp.svelte';
 
   let on = $state(false);
   let picked = $state(-1);      // tapped part of the prompt
@@ -41,6 +42,7 @@
 
 {#if xray.prompt && !on}
   <div class="xbar" id="xrayBar">
+    <GlowUp />
     <button type="button" id="xrayBtn" class="xbtn" aria-pressed="false" onclick={() => (on = true)}>🩻 X-ray</button>
   </div>
 {/if}
