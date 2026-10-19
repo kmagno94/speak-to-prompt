@@ -1006,10 +1006,10 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     const postRun = (run, ip) => relay.fetch(new Request('https://relay.example/run', { method: 'POST',
       headers: { Origin: APP, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ run }) }), env);
     sent.length = 0;
-    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, action: 'copied', xray_opened: true, est_intake_s: 3, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
+    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, action: 'copied', xray_opened: true, est_intake_s: 3, hidden_s: 41.2, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
     expect(r1.status === 201 && sent.length === 1 && sent[0].url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues/2/comments', 'run should become a comment on issue #2');
     const c = JSON.parse(sent[0].init.body).body;
-    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c) && /\| action \| copied \|/.test(c) && /\| xray_opened \| yes \|/.test(c) && /\| est_intake_s \| 3 \|/.test(c), 'run comment missing fields: ' + c);
+    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c) && /\| action \| copied \|/.test(c) && /\| xray_opened \| yes \|/.test(c) && /\| est_intake_s \| 3 \|/.test(c) && /\| hidden_s \| 41.2 \|/.test(c), 'run comment missing fields: ' + c);
     expect(!/secret|my words|nested/.test(c) && !/@kmagno94/.test(c) && c.length < 1000, 'unknown fields, pings, and long text must be dropped: ' + c);
     expect((await postRun({ words_in: 3 }, '6.6.6.6')).status === 400 && (await postRun('nope', '6.6.6.6')).status === 400, 'non-run data should be refused');
     let lastRun;
@@ -1066,6 +1066,26 @@ await check('built-in complex estimate matches the Scorecard-calibrated default'
   await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset'); await p.waitForTimeout(300);
   expect(sent[0] && sent[0].depth === 'complex' && sent[0].est_from === 'built-in' && sent[0].est_s === 70, 'complex built-in estimate: ' + JSON.stringify(sent[0]));
+});
+
+await check('time away from the app is left out of the logged write time', async () => {
+  const p = await page({ hold: 'gemini-3.8-flash', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  const sent = [];
+  await p.route('https://relay.test/report/run', async r => {
+    const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+    sent.push(JSON.parse(r.request().postData()).run);
+    return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+  });
+  await withKey(p); await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForTimeout(500);
+  const vis = (v) => p.evaluate((v) => { Object.defineProperty(document, 'visibilityState', { get: () => v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, v);
+  await vis('hidden'); await p.waitForTimeout(2500); await vis('visible');
+  p.release(); await done(p);
+  await p.click('#copy'); await p.waitForTimeout(300);
+  const r = sent[0] || {};
+  expect(r.outcome === 'ok' && r.hidden_s >= 2 && r.write_s < 2, 'write_s should leave out time away, hidden_s should show it: ' + JSON.stringify(r));
 });
 
 await check('usage.json is valid', async () => {

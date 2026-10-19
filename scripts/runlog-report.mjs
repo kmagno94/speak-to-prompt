@@ -95,6 +95,7 @@ export function scorecard(runs) {
         const t = timed.filter((r) => (r.est_from ?? '(not logged)') === src);
         return { src, n, within: share(t.filter((r) => Math.abs(waitOf(r) - estOf(r)) / Math.max(1, waitOf(r)) <= CLOSE).length, t.length) };
       }),
+      away: { n: ok.filter((r) => num(r.hidden_s) && r.hidden_s > 0).length, secs_p50: round(median(ok.map((r) => r.hidden_s).filter((x) => num(x) && x > 0))) },
       size_link: { words_in: corr(ok.map((r) => [r.words_in, r.write_s])), words_out: corr(ok.map((r) => [r.words_out, r.write_s])) }
     },
     models: {
@@ -149,7 +150,8 @@ export function markdown(s, since) {
     `| Estimate within 30% of real wait | ${fmt(s.speed.est_within_pct, '%')}${few(s.speed.est_n)} |`,
     `| Typical estimate miss | ${fmt(s.speed.est_median_error_pct, '%')} |`,
     `| Longer request means longer write? (words in, -1 to 1) | ${fmt(s.speed.size_link.words_in)} |`,
-    `| Longer prompt means longer write? (words out) | ${fmt(s.speed.size_link.words_out)} |`, '');
+    `| Longer prompt means longer write? (words out) | ${fmt(s.speed.size_link.words_out)} |`,
+    `| Runs where you left the app mid-run (that time is left out of the wait) | ${s.speed.away.n}${s.speed.away.n ? ', typical ' + s.speed.away.secs_p50 + 's away' : ''} |`, '');
   if (s.speed.by_depth.length) {
     L.push('| Depth | Runs | Write typical | Write slow | Estimate | Within 30% | Real / estimate | Suggested default |', '|---|---|---|---|---|---|---|---|');
     for (const d of s.speed.by_depth) L.push(`| ${d.depth} | ${d.n} | ${fmt(d.write_p50, 's')} | ${fmt(d.write_p90, 's')} | ${fmt(d.est_p50, 's')} | ${fmt(d.within, '%')} | ${fmt(d.bias, 'x')} | ${d.suggest_s ? d.suggest_s + 's' : 'need ' + MIN_N + ' runs'} |`);

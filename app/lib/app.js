@@ -858,6 +858,18 @@ export function startApp() {
        stopped). One busy model can't hold you hostage for minutes.
      level sets how much the model thinks first. onModel(name) reports which
      model is working. */
+  /* Time away: iPhone pauses the page while you're in another app, so a run's
+     seconds would include that time. Waits are logged without it (hidden_s shows it). */
+  var awaySpans = [], awayAt = document.visibilityState === "hidden" ? Date.now() : 0;
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") { if (!awayAt) awayAt = Date.now(); }
+    else if (awayAt) { awaySpans.push([awayAt, Date.now()]); awayAt = 0; if (awaySpans.length > 50) awaySpans.shift(); }
+  });
+  function awayMs(t0) {
+    var now = Date.now(), ms = awayAt ? now - Math.max(awayAt, t0) : 0;
+    awaySpans.forEach(function (s) { if (s[1] > t0) ms += s[1] - Math.max(s[0], t0); });
+    return Math.max(0, ms);
+  }
   function askGemini(text, asJson, models, level, onModel, limit, hedgeAfter) {
     var started = Date.now();
     var history = [];
@@ -933,7 +945,8 @@ export function startApp() {
           /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
           if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
           clearRest(model);
-          finish(true, { text: out, model: model, ms: Date.now() - started, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 });
+          var away = awayMs(started);
+          finish(true, { text: out, model: model, ms: Math.max(0, Date.now() - started - away), away: away, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 });
         }).catch(function (e) {
           settle();
           if (done) return;   // another model already won; this one was stopped on purpose
@@ -1125,7 +1138,7 @@ export function startApp() {
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
-      session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeTokens = r.tokens;
+      session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeAway = r.away || 0; session.intakeTokens = r.tokens;
       try { return parseIntake(r.text); } catch (e) {
         var others = gemini.plan.write.filter(function (m) { return m !== r.model; });
         return askGemini(intakeText, true, others, "auto", onIntakeModel).then(function (r2) {
@@ -1225,6 +1238,7 @@ export function startApp() {
         var nc = showNumberCheck(prompt);
         session.numFlags = nc.extra.length + nc.missing.length;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
+          hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null });
