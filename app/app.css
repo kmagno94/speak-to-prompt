@@ -186,7 +186,7 @@ button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
 /* Voice Memos' red record dot: the voice way in. */
 .btnlink::before { content: ""; width: 24px; height: 24px; border-radius: 50%; background: var(--record); box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 18%, transparent); }
 .btnlink:focus-visible, .getlink:focus-visible, .filelink:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.getlink { color: var(--accent); font-weight: 700; text-underline-offset: 3px; }
+button.getlink { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 6px 2px; min-height: 44px; border-radius: 6px; }
 .voicehint { margin: 0; font-size: 13px; color: var(--muted); }
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
 .buildrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: stretch; }

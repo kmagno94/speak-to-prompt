@@ -527,12 +527,54 @@ await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save 
   const href = await p.getAttribute('#shortcutLink', 'href');
   expect(href.startsWith('shortcuts://run-shortcut?name=Save%20Voice%20Note&input=text&text='), 'wrong shortcut link: ' + href.slice(0, 80));
   const text = decodeURIComponent(href.split('&text=')[1]);
-  expect(text.split('\n')[0] === 'Pre-Sleep Focus Setup' && text.includes('### \u{1F680} Prompt Built'), 'shortcut text should be the full note');
+  // Markdown for the shortcut: "# " title, every line its own paragraph, real headings
+  expect(text.split('\n')[0] === '# Pre-Sleep Focus Setup' && text.includes('\n\n## H\n\n### \u{1F4DD} Summary\n\nS') && text.includes('\n\n### \u{1F680} Prompt Built\n\nTHE PROMPT'), 'shortcut text should be the full note in Markdown:\n' + text);
   expect(await p.evaluate(() => navigator.clipboard.readText()) === text, 'note should also be copied as a backup');
   expect(/Process Voice Note/.test(await p.textContent('#keepStatus')), 'status should say where it went');
   expect(!(await p.evaluate(() => window.__shared)), 'share sheet should not open on the main button');
   await p.click('#saveShare');
   expect(await p.evaluate(() => window.__shared && window.__shared.text.startsWith('Pre-Sleep Focus Setup')), 'Share instead should open the share sheet with the note');
+});
+
+await check('first-time tutorial: opens from First time?, example fills the box, key and shortcut links work', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  let p = await page({ ua: IPHONE });
+  expect(await p.isVisible('#firstTime') && await p.isVisible('#talkLink'), 'iPhone: Talk it out and First time? should both show');
+  expect(!(await p.isVisible('#tutorial')), 'tutorial should not open by itself');
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  expect((await p.getAttribute('#tutShortcut', 'href')).startsWith('https://www.icloud.com/shortcuts/'), 'shortcut link should be at the top of the tutorial');
+  const txt = await p.textContent('#tutorial');
+  expect(!/\u2014/.test(txt) && (await p.$$eval('#tutorial .flow > li', l => l.length)) === 4, 'tutorial should have 4 steps and no em dashes');
+  await p.click('#tutTry'); await p.waitForSelector('#tutorial', { state: 'hidden' }); await p.waitForSelector('#coach', { timeout: 3000 }).catch(() => {});
+  expect(/mom's birthday/.test(await p.inputValue('#thoughts')) && await p.isVisible('#coach'), 'Try it should fill the box and wake the strength meter');
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  await p.click('#tutKey'); await p.waitForSelector('#tutorial', { state: 'hidden' });
+  expect(await p.evaluate(() => document.getElementById('keyPanel').open), 'Set up my key should open the key panel');
+  // Computers: no shortcut, but First time? still shows and the tutorial has no shortcut card
+  p = await page();
+  expect(await p.isVisible('#firstTime') && !(await p.isVisible('#talkLink')), 'computer: First time? shows, Talk it out does not');
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  expect(!(await p.$('#tutShortcut')), 'computer: no shortcut card');
+  await p.click('#tutDone'); await p.waitForSelector('#tutorial', { state: 'hidden' });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('dev tools on: a "which stack" question offers the Speak to Prompt stack first, with live versions', async () => {
+  const { readFileSync } = await import('node:fs');
+  const major = (pkg) => JSON.parse(readFileSync(new URL('../node_modules/' + pkg + '/package.json', import.meta.url), 'utf8')).version.split('.')[0];
+  const want = 'Speak to Prompt stack (Svelte ' + major('svelte') + ' + Vite ' + major('vite') + ')';
+  const intake = { title: 'Habit App', need: 'N', category: 'Development', complexity: 'standard', questions: [{ question: 'Which tech stack should the app use?', choices: ['React + Vite', 'Plain HTML', 'Not sure', 'Vue'] }, { question: 'Who is it for?', choices: ['Just me', 'Friends'] }] };
+  let p = await page({ intake });
+  await devOn(p);
+  await withKey(p); await p.fill('#thoughts', 'build me a habit tracker web app'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  const chips = await p.$$eval('#qaList .chips button', l => l.map(b => b.textContent.trim()));
+  expect(chips[0] === want && chips.length >= 4 && !chips.includes('Vue'), 'stack choice should be first (4 max): ' + chips.join(' | '));
+  expect(p.calls[0].intake && p.calls[0].text.includes(want), 'intake request should mention the stack choice');
+  // Dev tools off: untouched
+  p = await page({ intake });
+  await withKey(p); await p.fill('#thoughts', 'build me a habit tracker web app'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  const plain = await p.$$eval('#qaList .chips button', l => l.map(b => b.textContent.trim()));
+  expect(!plain.some(c => /Speak to Prompt stack/.test(c)) && !p.calls[0].text.includes('Speak to Prompt stack'), 'dev off: no stack choice');
 });
 
 await check('my Notes shortcuts: kept on reload; never offered on computers', async () => {

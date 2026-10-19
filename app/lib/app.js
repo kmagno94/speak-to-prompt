@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint } from './prompts.js';
 import { analyze } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
@@ -970,6 +970,21 @@ export function startApp() {
     };
   }
 
+  /* Dev tools on: any question about what to build a web app with gets the
+     "Speak to Prompt stack" choice first, even if Gemini forgot it. */
+  var STACK = typeof __STACK__ !== "undefined" ? __STACK__ : "Svelte 5 + Vite 8";
+  var STACK_Q = /\b(tech(nology)? stack|stack|framework|technolog(y|ies)|programming language|build (it|this|the (app|site|page)) (with|in|on)|built (with|in|on)|what should (i|we) use to build)\b/i;
+  function addStackChoice(qs) {
+    if (!core.dev) return qs;
+    var mine = stackChoice(STACK);
+    qs.forEach(function (q) {
+      if (!STACK_Q.test(q.question)) return;
+      var rest = q.choices.filter(function (c) { return !/speak to prompt stack/i.test(c); });
+      q.choices = [mine].concat(rest).slice(0, 4);
+    });
+    return qs;
+  }
+
   function ensureModel(key) {
     if (gemini.plan && gemini.key === key) return Promise.resolve(gemini.model);
     return verifyKey(key);
@@ -982,7 +997,7 @@ export function startApp() {
     buildStatus.textContent = "";
     session.estIntake = intakeEstimate();
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
-    var intakeText = ANALYZE + "\n" + raw + '\n"""';
+    var intakeText = (core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE) + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
@@ -996,7 +1011,7 @@ export function startApp() {
       }
     }).then(function (intake) {
       session.title = intake.title;
-      session.questions = intake.questions;
+      session.questions = addStackChoice(intake.questions);
       session.note = intake.note;
       session.complexity = intake.complexity;
       session.category = intake.category;
@@ -1195,11 +1210,14 @@ export function startApp() {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " at " +
       d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
-  /* style "notes": plain text that reads well in Apple Notes. style "md": Markdown for Claude. */
   /* Saved notes match Kevin's original voice-note format: the title alone on the
      first line (Apple Notes turns it into the note's big title), then the date,
      title, category and tags, a "## " headline, and "### " section headings.
-     style "md" is the same layout with Markdown checkboxes and bold, for Claude. */
+     style "notes": plain text for the share sheet (the # marks would show as-is).
+     style "md": real Markdown for the Save Voice Note shortcut, which turns it
+     into rich text (Make Rich Text from Markdown), so Notes shows true headings,
+     checklists, and bold. Every line is its own paragraph, because Markdown
+     joins lines that touch into one. */
   function buildNote(style, withPrompt) {
     var s0 = session || { raw: thoughts.value.trim() };
     var n = s0.note || {};
@@ -1208,13 +1226,14 @@ export function startApp() {
     var out = [];
     function head(t) { out.push(""); out.push("### " + t); }
     function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : "- " + x); }); }
-    if (!md) out.push(title);
+    function block(t) { out.push(md ? String(t || "").split(/\n+/).join("\n\n") : (t || "")); }
+    out.push(md ? "# " + title : title);
     out.push("\ud83d\udcc5 " + stamp());
     out.push("\u26a1 " + title);
     if (s0.category) out.push("\ud83d\udcc1 Category: " + s0.category);
     if (n.tags && n.tags.length) { out.push(""); out.push("\ud83c\udff7\ufe0f TAGS: " + n.tags.map(function (t) { return "#" + t; }).join(" ")); }
     if (n.headline) { out.push(""); out.push("## " + n.headline); }
-    if (n.summary) { head("\ud83d\udcdd Summary"); out.push(n.summary); }
+    if (n.summary) { head("\ud83d\udcdd Summary"); block(n.summary); }
     if (n.keyIdeas && n.keyIdeas.length) { head("\ud83d\udca1 Key Ideas"); bullets(n.keyIdeas); }
     if (n.actionItems && n.actionItems.length) { head("\u2705 Action Items"); bullets(n.actionItems, true); }
     if (n.unknowns && n.unknowns.length) { head("\u2753 Questions / Unknowns"); bullets(n.unknowns); }
@@ -1223,9 +1242,10 @@ export function startApp() {
       s0.answers.forEach(function (a) { out.push(md ? "- **" + a.question + "** " + a.answer : "- " + a.question + " " + a.answer); });
     }
     head("\ud83d\udde3\ufe0f " + (n.transcript ? "Clean Transcript" : "Raw Thoughts"));
-    out.push(n.transcript || s0.raw || "");
-    if (withPrompt && output.value) { head("\ud83d\ude80 Prompt Built"); out.push(output.value); }
-    return out.join("\n").trim();
+    block(n.transcript || s0.raw || "");
+    if (withPrompt && output.value) { head("\ud83d\ude80 Prompt Built"); block(output.value); }
+    /* In Markdown, a blank line between lines keeps each one on its own line (lists stay lists). */
+    return (md ? out.filter(function (x) { return x !== ""; }).join("\n\n") : out.join("\n")).trim();
   }
 
 
@@ -1279,7 +1299,7 @@ export function startApp() {
     }
   }
   function runSaveShortcut() {
-    var note = buildNote("notes", true);
+    var note = buildNote("md", true);   // real Markdown; the shortcut turns it into headings
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(note).catch(function () {});
     var link = document.getElementById("shortcutLink");
     link.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(SAVE_SHORTCUT) + "&input=text&text=" + encodeURIComponent(note);
@@ -1298,8 +1318,9 @@ export function startApp() {
     var ua = navigator.userAgent || "";
     var appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
     if (appleTouch) document.getElementById("geminiLink").href = "https://gemini.google.com/app/download/mobile";
-    /* Talk it out needs the iPhone shortcut, so computers just get the text box. */
-    else document.getElementById("voiceRow").hidden = true;
+    /* Talk it out needs the iPhone shortcut, so computers just get the text box
+       (and First time? Start here, which everyone gets). */
+    else document.getElementById("talkLink").hidden = true;
   })();
   /* Automatic run log: only while "Show run stats" is on (testing phones), each
      run's numbers go to the relay, which posts them to the Run log issue (#2) for

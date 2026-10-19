@@ -25,6 +25,13 @@ export function buildPrompt(raw) {
   ].join("\n");
 }
 
+/* Dev tools on: when a question asks what to build a web app with, offer Kevin's
+   own stack as a choice. stack is the live label from the build ("Svelte 5 + Vite 8"). */
+export function stackChoice(stack) { return 'Speak to Prompt stack (' + stack + ')'; }
+export function withStackHint(analyze, stack) {
+  return analyze.replace('RAW THOUGHTS:', 'If you ask which tech stack, framework, or tools to build a web app or site with, include "' + stackChoice(stack) + '" as the first choice.\n\nRAW THOUGHTS:');
+}
+
 export const ANALYZE = [
   "You are the intake step of a prompt-building tool for people who are new to AI.",
   "Read the person's raw thoughts below. They may be a messy voice transcript.",

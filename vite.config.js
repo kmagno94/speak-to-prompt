@@ -13,6 +13,21 @@ function appVersion() {
   try { return execSync('git rev-parse --short HEAD', { cwd: here }).toString().trim(); } catch (e) { return 'dev'; }
 }
 
+/* "Speak to Prompt stack": the framework and build tool this repo is built with,
+   read from the installed packages, so the suggested answer stays right if the
+   stack ever changes (for example "Svelte 5 + Vite 8"). */
+const STACK_NAMES = [['svelte', 'Svelte'], ['react', 'React'], ['vue', 'Vue'], ['solid-js', 'Solid'], ['astro', 'Astro'], ['next', 'Next.js'], ['vite', 'Vite']];
+function stackLabel() {
+  const parts = [];
+  for (const [pkg, name] of STACK_NAMES) {
+    try {
+      const v = JSON.parse(readFileSync(path.join(here, 'node_modules', pkg, 'package.json'), 'utf8')).version;
+      parts.push(name + ' ' + String(v).split('.')[0]);
+    } catch (e) { /* not part of this stack */ }
+  }
+  return parts.join(' + ') || 'Svelte 5 + Vite 8';
+}
+
 /* usage.json and tuning.json stay at the repo root, where the Usage Check and
    the review task update them. This serves them in dev and copies them next to
    the built page. */
@@ -39,6 +54,6 @@ export default defineConfig({
   envDir: here,
   base: process.env.BASE_PATH || '/',
   plugins: [svelte(), rootJson()],
-  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
+  define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()) },
   build: { outDir: path.join(here, 'dist'), emptyOutDir: true, target: 'safari16' }
 });

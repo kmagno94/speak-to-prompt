@@ -8,7 +8,9 @@
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
   import PromptXray from './PromptXray.svelte';
+  import Tutorial from './Tutorial.svelte';
   import { core } from './lib/core.svelte.js';
+  let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -41,7 +43,7 @@
     <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
-      <a class="getlink" href="https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b" target="_blank" rel="noopener">First time? Get the shortcut</a>
+      <button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button>
     </div>
     <div id="pasteWrap" class="pastewrap" hidden>
       <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
@@ -199,6 +201,8 @@
     <p id="testStatus" class="status" role="status"></p>
     </div>
   </details>
+
+  <Tutorial bind:this={tutorial} />
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
 </div>
