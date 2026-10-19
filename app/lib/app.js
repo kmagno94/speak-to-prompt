@@ -847,6 +847,18 @@ export function startApp() {
      page how long that kind of run really takes (median of the last 8, once
      there are at least 2). With stats off, the built-in defaults are used. */
   var INTAKE_SECS = 6;
+  /* tuning.json: typical times from everyone's logged runs (the run log on
+     GitHub), refreshed by the twice-daily review. A phone that hasn't learned
+     its own times yet uses these instead of the built-in guesses. */
+  var tuning = null;
+  function loadTuning() {
+    fetch("tuning.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.depth) { tuning = j; updateQuickLabel(); } }, function () {});
+  }
+  function tuned(key) {
+    var t = tuning && (key == null ? tuning.intake : tuning.depth[key]);
+    return t && typeof t.secs === "number" && t.secs >= 1 && t.secs <= 600 && t.runs >= 5 ? t : null;
+  }
   function depthKeyOf(r) { return r.depth || (/Quick/.test(r.mode || "") ? "quick" : (r.complexity || "standard")); }
   function learned(field, key) {
     if (!testLog.on()) return null;
@@ -860,13 +872,15 @@ export function startApp() {
   }
   function clock(n) { n = Math.max(0, Math.round(n)); return Math.floor(n / 60) + ":" + (n % 60 < 10 ? "0" : "") + (n % 60); }
   function writeEstimate(key) {
-    var l = learned("write_s", key), d = DEPTH[key] || DEPTH.standard;
-    return l ? { secs: l.secs, range: "usually about " + clock(l.secs) + " (from your last " + l.n + " runs)", learned: true } : { secs: d.secs, range: d.range, learned: false };
+    var l = learned("write_s", key), d = DEPTH[key] || DEPTH.standard, t = tuned(key);
+    if (l) return { secs: l.secs, range: "usually about " + clock(l.secs) + " (from your last " + l.n + " runs)", learned: true, from: "phone" };
+    if (t) return { secs: t.secs, range: "usually about " + clock(t.secs) + " (from " + t.runs + " recent runs)", tuned: true, from: "shared" };
+    return { secs: d.secs, range: d.range, learned: false, from: "built-in" };
   }
-  function intakeEstimate() { var l = learned("intake_s", null); return l ? l.secs : INTAKE_SECS; }
+  function intakeEstimate() { var l = learned("intake_s", null), t = tuned(null); return l ? l.secs : t ? t.secs : INTAKE_SECS; }
   function updateQuickLabel() {
     var q = writeEstimate("quick"), total = intakeEstimate() + q.secs;
-    ui.quickSecs = q.learned ? total : 15;
+    ui.quickSecs = q.learned || q.tuned ? total : 15;
   }
 
   /* Mode picker lives in ModePicker.svelte; it reads the shared ui state. */
@@ -1029,7 +1043,7 @@ export function startApp() {
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
     var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
-    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : "") : ""), est.secs, "write", skipAsk);
+    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") : ""), est.secs, "write", skipAsk);
     return askGemini(text, false, writeModels(quick), depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT).then(function (r) {
@@ -1067,7 +1081,7 @@ export function startApp() {
         showRepairNote(rep);
         var nc = showNumberCheck(prompt);
         session.numFlags = nc.extra.length + nc.missing.length;
-        logRun({ depth: depthKey, est_s: est.secs, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
+        logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
           detours: (r.history || []).join("; "), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null });
@@ -1081,7 +1095,7 @@ export function startApp() {
       qaStatus.textContent = "";
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       session.writeError = e && e.message ? e.message : "unknown";
-      logRun({ depth: depthKey, est_s: est.secs, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
+      logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
   }
 
@@ -1365,4 +1379,5 @@ export function startApp() {
     return rows;
   };
   testLog.init();
+  loadTuning();
 }

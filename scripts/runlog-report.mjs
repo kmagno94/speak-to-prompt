@@ -12,7 +12,7 @@
    Needs the gh CLI (already logged in on the review's machine). Read-only. */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const REPO = 'kmagno94/speak-to-prompt';
@@ -23,6 +23,9 @@ const CLOSE = 0.3;            // an estimate within 30% of the real wait counts 
 /* One comment -> one run: { when, ...fields }. Numbers become numbers, yes/no become booleans. */
 export function parseComment(c) {
   const run = { when: c.created_at };
+  // Backfilled runs were posted later, so their real time is the one in the heading.
+  const head = String(c.body || '').match(/^\*\*Run (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC\*\*/);
+  if (head) run.when = head[1] + 'T' + head[2] + ':00Z';
   for (const line of String(c.body || '').split('\n')) {
     const m = line.match(/^\|\s*([a-z_]+)\s*\|\s*(.*?)\s*\|$/);
     if (!m || m[1] === 'field') continue;
@@ -52,15 +55,17 @@ function count(list, key) { const o = {}; for (const r of list) { const k = r[ke
 
 /* The time you actually sat waiting: reading + writing + any fix (your own answering time not included). */
 export function waitOf(r) { return num(r.write_s) ? (r.intake_s || 0) + r.write_s + (num(r.repair_s) ? r.repair_s : 0) : null; }
+/* Same depth names the app uses: depth, else Quick mode, else complexity. */
+export function depthKey(r) { return r.depth || (/Quick/.test(r.mode || '') ? 'quick' : (r.complexity || 'standard')); }
 export function estOf(r) { return num(r.est_s) ? (num(r.est_intake_s) ? r.est_intake_s : 0) + r.est_s : null; }
 
 export function scorecard(runs) {
   const ok = runs.filter((r) => r.outcome === 'ok');
   const timed = ok.filter((r) => num(waitOf(r)) && num(estOf(r)));
   const errs = timed.map((r) => Math.abs(waitOf(r) - estOf(r)) / Math.max(1, waitOf(r)));
-  const depthKeys = [...new Set(ok.map((r) => r.depth).filter(Boolean))];
+  const depthKeys = [...new Set(ok.map(depthKey))];
   const byDepth = depthKeys.map((d) => {
-    const rs = ok.filter((r) => r.depth === d);
+    const rs = ok.filter((r) => depthKey(r) === d);
     const t = rs.filter((r) => num(waitOf(r)) && num(estOf(r)));
     return {
       depth: d, n: rs.length,
@@ -86,6 +91,10 @@ export function scorecard(runs) {
       est_within_pct: share(errs.filter((e) => e <= CLOSE).length, errs.length), est_n: errs.length,
       est_median_error_pct: errs.length ? Math.round(median(errs) * 100) : null,
       by_depth: byDepth,
+      by_source: Object.entries(count(timed, 'est_from')).map(([src, n]) => {
+        const t = timed.filter((r) => (r.est_from ?? '(not logged)') === src);
+        return { src, n, within: share(t.filter((r) => Math.abs(waitOf(r) - estOf(r)) / Math.max(1, waitOf(r)) <= CLOSE).length, t.length) };
+      }),
       size_link: { words_in: corr(ok.map((r) => [r.words_in, r.write_s])), words_out: corr(ok.map((r) => [r.words_out, r.write_s])) }
     },
     models: {
@@ -146,6 +155,7 @@ export function markdown(s, since) {
     for (const d of s.speed.by_depth) L.push(`| ${d.depth} | ${d.n} | ${fmt(d.write_p50, 's')} | ${fmt(d.write_p90, 's')} | ${fmt(d.est_p50, 's')} | ${fmt(d.within, '%')} | ${fmt(d.bias, 'x')} | ${d.suggest_s ? d.suggest_s + 's' : 'need ' + MIN_N + ' runs'} |`);
     L.push('');
   }
+  if (s.speed.by_source.length) L.push('Where estimates came from: ' + s.speed.by_source.map((x) => `${x.src} ${x.n} (${fmt(x.within, '%')} within 30%)`).join(', ') + '.', '');
   L.push('**Quality**' + few(s.quality.n), '', '| Measure | Value |', '|---|---|',
     `| Your words in the final prompt, typical | ${fmt(s.quality.xray_pct_p50, '%')} |`,
     `| Prompts still missing a detail | ${fmt(s.quality.dropped_pct, '%')} |`,
@@ -164,6 +174,20 @@ export function markdown(s, since) {
   return L.join('\n');
 }
 
+/* tuning.json: typical seconds per depth from the most recent ok runs, for
+   phones that haven't learned their own times yet. Only depths with enough runs. */
+const RECENT = 20;
+export function tuningFrom(runs, now = new Date().toISOString()) {
+  const ok = runs.filter((r) => r.outcome === 'ok').sort((a, b) => String(a.when).localeCompare(String(b.when)));
+  const pick = (rs, field) => {
+    const v = rs.map((r) => r[field]).filter(num).slice(-RECENT);
+    return v.length >= MIN_N ? { secs: Math.max(1, Math.round(median(v))), runs: v.length } : null;
+  };
+  const depth = {};
+  for (const d of [...new Set(ok.map(depthKey))].sort()) { const t = pick(ok.filter((r) => depthKey(r) === d), 'write_s'); if (t) depth[d] = t; }
+  return { note: 'Typical wait times from the run log (issue #2), written by the review. The app uses these until a phone has learned its own.', updated: now.slice(0, 16).replace('T', ' ') + ' UTC', intake: pick(ok, 'intake_s'), depth };
+}
+
 function fetchComments(since) {
   const q = `repos/${REPO}/issues/${RUN_LOG_ISSUE}/comments?per_page=100` + (since ? '&since=' + encodeURIComponent(since) : '');
   const out = execFileSync('gh', ['api', '--paginate', '--slurp', q], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -176,6 +200,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const file = arg('--file');
   let comments = file ? JSON.parse(readFileSync(file, 'utf8')) : fetchComments(since);
   if (since) comments = comments.filter((c) => c.created_at >= new Date(since).toISOString().slice(0, 19));
+  if (process.argv.includes('--tuning')) {
+    const out = arg('--tuning') && !arg('--tuning').startsWith('--') ? arg('--tuning') : 'tuning.json';
+    const t = tuningFrom(parseRuns(comments));
+    writeFileSync(out, JSON.stringify(t, null, 2) + '\n');
+    console.log(JSON.stringify(t, null, 2));
+    process.exit(0);
+  }
   const s = scorecard(parseRuns(comments));
   console.log(process.argv.includes('--json') ? JSON.stringify(s, null, 2) : markdown(s, since));
 }

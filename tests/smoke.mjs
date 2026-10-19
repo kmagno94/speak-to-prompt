@@ -63,6 +63,7 @@ async function page(opts = {}) {
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
+  if (opts.tuning) await p.route(/\/tuning\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.tuning) }));
   await p.goto(BASE);
   return p;
 }
@@ -766,6 +767,9 @@ await check('run log scorecard: parses Worker comments and does the math exactly
   ];
   const runs = parseRuns(comments);
   expect(runs.length === 6 && runs[0].write_s === 10 && runs[0].xray_opened === true && runs[0].action === 'copied', 'parsing wrong: ' + JSON.stringify(runs[0]));
+  expect(runs[0].when === '2026-10-19T01:00:00Z', 'plain run should keep its posted time');
+  const late = parseRuns([{ created_at: '2026-10-19T03:00:00Z', body: '**Run 2026-10-17 20:30 UTC**\n\n| field | value |\n|---|---|\n| mode | Full |' }])[0];
+  expect(late.when === '2026-10-17T20:30:00Z', 'backfilled run should use the time in its heading: ' + late.when);
   const s = scorecard(runs);
   expect(s.runs === 6 && s.ok === 5 && s.failed === 1, 'counts wrong');
   // waits: 12, 13, 11, 34, 12 vs estimate 12 -> within 30%: 4 of 5
@@ -821,6 +825,38 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     for (let i = 0; i < 5; i++) last = await post(good, APP, '5.5.5.5');
     expect(last.status === 201 && (await post(good, APP, '5.5.5.5')).status === 429, 'a 6th report in an hour should be refused');
   } finally { globalThis.fetch = realFetch; }
+});
+
+await check('self-tuning estimates: shared times first, your own once learned, built-in if too few', async () => {
+  async function firstRun(tuning) {
+    const p = await page({ tuning });
+    const sent = [];
+    await p.route('https://relay.test/report/run', async r => {
+      const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+      sent.push(JSON.parse(r.request().postData()).run);
+      return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+    });
+    await withKey(p); await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    for (let i = 0; i < 3; i++) {
+      await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+      await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
+      await p.waitForFunction(() => /Ready|Built/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
+      await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset');
+    }
+    return sent;
+  }
+  const t = await firstRun({ updated: 'x', intake: { secs: 4, runs: 9 }, depth: { standard: { secs: 33, runs: 9 } } });
+  expect(t[0].est_from === 'shared' && t[0].est_s === 33 && t[0].est_intake_s === 4, 'fresh phone should use tuning.json: ' + JSON.stringify(t[0]));
+  expect(t[2].est_from === 'phone' && t[2].est_s !== 33, 'after 2 runs the phone should use its own times: ' + JSON.stringify(t[2]));
+  const few = await firstRun({ updated: 'x', depth: { standard: { secs: 33, runs: 3 } } });
+  expect(few[0].est_from === 'built-in' && few[0].est_s !== 33, 'too few shared runs should be ignored: ' + JSON.stringify(few[0]));
+  const { tuningFrom, parseRuns } = await import('../scripts/runlog-report.mjs');
+  const row = (o, i) => ({ created_at: '2026-10-19T0' + i + ':00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).map(([k, v]) => '| ' + k + ' | ' + v + ' |').join('\n') });
+  const runs = parseRuns([10, 12, 11, 50, 13, 9].map((w, i) => row({ mode: 'Full', depth: 'standard', write_s: w, intake_s: 2, outcome: 'ok' }, i))
+    .concat([row({ mode: 'Full', depth: 'complex', write_s: 20, outcome: 'ok' }, 7), row({ mode: 'Full', depth: 'standard', outcome: 'write failed: x' }, 8)]));
+  const tf = tuningFrom(runs, '2026-10-19T09:00:00Z');
+  expect(tf.depth.standard.secs === 12 && tf.depth.standard.runs === 6 && !tf.depth.complex && tf.intake.secs === 2, 'tuning math wrong: ' + JSON.stringify(tf));
 });
 
 await check('usage.json is valid', async () => {
