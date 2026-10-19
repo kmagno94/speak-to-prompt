@@ -751,8 +751,20 @@ await check('prompt x-ray: your words colored, added parts dashed, dropped sente
   // Answers count as your words
   expect(await p.$$eval('#xraySources li small', l => l.some(x => /Answer/.test(x.textContent))), 'your answers should be listed as sources');
   // Done brings the prompt back; copy still copies the real prompt
+  // Sticky frame: Done rides along at the top, the color key docks at the bottom
+  const pos = await p.evaluate(() => [getComputedStyle(document.querySelector('#xray .xhead')).position, getComputedStyle(document.getElementById('xrayDock')).position]);
+  expect(pos[0] === 'sticky' && pos[1] === 'sticky', 'header and dock should be sticky: ' + pos.join());
+  const nSrc = await p.$$eval('#xraySources li', l => l.length);
+  expect(nSrc > 0 && (await p.$$eval('#xrayKey .kchip', l => l.length)) === nSrc, 'one key chip per sentence of yours');
+  expect(await p.$$eval('#xrayKey .kchip.dropped', l => l.length) >= 1, 'a dropped sentence should show as a red chip in the key');
+  const badge = await p.textContent('#xrayText .seg[data-kind="from"] .num');
+  expect(/^\d+$/.test(badge.trim()), 'parts from your words should carry their sentence number');
+  await p.click('#xrayKey .kchip >> nth=0'); await p.waitForSelector('#xraySourceWhy', { state: 'visible' });
+  expect( /Your sentence 1/.test(await p.textContent('#xraySourceWhy')), 'tapping a key chip should show that sentence in the dock');
+  expect(!(await p.isVisible('#xrayBar')), 'only one X-ray button while open (Done is in the sticky bar)');
   await p.click('#xrayBtn');
   await p.waitForSelector('#xray', { state: 'detached' });
+  expect(await p.isVisible('#xrayBar') && await p.isVisible('#output'), 'closing should bring back the prompt and the X-ray button');
   expect(await p.isVisible('#output'), 'Done should bring the prompt back');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
