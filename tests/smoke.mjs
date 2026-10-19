@@ -1034,7 +1034,7 @@ await check('self-tuning estimates: shared times first, your own once learned, b
   expect(t[0].est_from === 'shared' && t[0].est_s === 33 && t[0].est_intake_s === 4, 'fresh phone should use tuning.json: ' + JSON.stringify(t[0]));
   expect(t[2].est_from === 'phone' && t[2].est_s !== 33, 'after 2 runs the phone should use its own times: ' + JSON.stringify(t[2]));
   const few = await firstRun({ updated: 'x', depth: { standard: { secs: 33, runs: 3 } } });
-  expect(few[0].est_from === 'built-in' && few[0].est_s !== 33, 'too few shared runs should be ignored: ' + JSON.stringify(few[0]));
+  expect(few[0].est_from === 'built-in' && few[0].est_s === 58, 'too few shared runs should be ignored: ' + JSON.stringify(few[0]));
   const { tuningFrom, parseRuns } = await import('../scripts/runlog-report.mjs');
   const row = (o, i) => ({ created_at: '2026-10-19T0' + i + ':00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).map(([k, v]) => '| ' + k + ' | ' + v + ' |').join('\n') });
   const runs = parseRuns([10, 12, 11, 50, 13, 9].map((w, i) => row({ mode: 'Full', depth: 'standard', write_s: w, intake_s: 2, outcome: 'ok' }, i))

@@ -779,7 +779,7 @@ export function startApp() {
   function levelFor(model) { return /lite/.test(model) ? "minimal" : "low"; }
   var DEPTH = {
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
-    standard: { level: "medium", words: "balanced thinking", secs: 90,  range: "usually 1 to 2 minutes",   label: "Standard request" },
+    standard: { level: "medium", words: "balanced thinking", secs: 58,  range: "usually about a minute",    label: "Standard request" },
     complex:  { level: "high",   words: "deep thinking",     secs: 120, range: "usually 1 to 3 minutes",   label: "Complex request" },
     quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
   };
