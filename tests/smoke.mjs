@@ -1088,6 +1088,16 @@ await check('time away from the app is left out of the logged write time', async
   expect(r.outcome === 'ok' && r.hidden_s >= 2 && r.write_s < 2, 'write_s should leave out time away, hidden_s should show it: ' + JSON.stringify(r));
 });
 
+await check('Scorecard: busy by time of day, in Eastern time', async () => {
+  const { busyByTime } = await import('../scripts/runlog-report.mjs');
+  const t = busyByTime([
+    { when: '2026-10-19T14:00:00Z', outcome: 'ok', write_s: 10, detours: '3.8-flash was unavailable after 1s' },
+    { when: '2026-10-19T14:30:00Z', outcome: 'ok', write_s: 20, detours: '' },
+    { when: '2026-10-19T02:00:00Z', outcome: 'ok', write_s: 5, detours: '3.8-flash was at its daily limit' }]);
+  const am = t.find((x) => x.block === '9 AM to 12 PM'), pm = t.find((x) => x.block === '9 PM to 12 AM');
+  expect(am && am.n === 2 && am.busy_pct === 50 && am.wait_p50 === 15 && pm && pm.limit_pct === 100 && pm.busy_pct === 0, 'busy by time wrong: ' + JSON.stringify(t));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));

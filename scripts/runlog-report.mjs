@@ -59,6 +59,24 @@ export function waitOf(r) { return num(r.write_s) ? (r.intake_s || 0) + r.write_
 export function depthKey(r) { return r.depth || (/Quick/.test(r.mode || '') ? 'quick' : (r.complexity || 'standard')); }
 export function estOf(r) { return num(r.est_s) ? (num(r.est_intake_s) ? r.est_intake_s : 0) + r.est_s : null; }
 
+/* Busy by time of day (Eastern, 3-hour blocks): how often Google's models were busy
+   (unavailable, slow, timed out, skipped while resting, or a 503 / no answer) vs at a daily limit. */
+const BUSY = /unavailable|was slow|timed out|resting|couldn't be reached/;
+export function busyByTime(runs) {
+  const blocks = {};
+  for (const r of runs) {
+    const d = new Date(r.when); if (isNaN(d)) continue;
+    const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(d)) % 24;
+    const b = Math.floor(h / 3) * 3, x = (blocks[b] ||= { n: 0, busy: 0, limit: 0, waits: [] });
+    x.n++;
+    if (BUSY.test(r.detours || '') || /\(503\)|reach Google/.test(r.outcome || '')) x.busy++;
+    if (/daily limit/.test(r.detours || '')) x.limit++;
+    if (r.outcome === 'ok' && num(waitOf(r))) x.waits.push(waitOf(r));
+  }
+  const label = (h) => { const f = (x) => (x % 12 || 12) + (x < 12 ? ' AM' : ' PM'); return f(h) + ' to ' + f((h + 3) % 24); };
+  return Object.keys(blocks).map(Number).sort((a, b) => a - b).map((b) => ({ block: label(b), n: blocks[b].n, busy_pct: share(blocks[b].busy, blocks[b].n), limit_pct: share(blocks[b].limit, blocks[b].n), wait_p50: round(median(blocks[b].waits)) }));
+}
+
 export function scorecard(runs) {
   const ok = runs.filter((r) => r.outcome === 'ok');
   const timed = ok.filter((r) => num(waitOf(r)) && num(estOf(r)));
@@ -101,7 +119,8 @@ export function scorecard(runs) {
     models: {
       write: models,
       fallback_pct: share(ok.filter((r) => r.detours).length, ok.length),
-      detours: ok.filter((r) => r.detours).map((r) => r.detours)
+      detours: ok.filter((r) => r.detours).map((r) => r.detours),
+      by_time: busyByTime(runs)
     },
     quality: {
       n: withX.length,
@@ -172,6 +191,8 @@ export function markdown(s, since) {
     `| Opened X-ray | ${fmt(s.use.xray_opened_pct, '%')} |`,
     `| All actions | ${Object.entries(s.use.actions).map(([k, v]) => k + ' ' + v).join(', ') || 'none yet'} |`, '');
   L.push('**Models**', '', `Write models: ${Object.entries(s.models.write).map(([k, v]) => k + ' ' + v).join(', ') || 'n/a'}. Fallbacks in ${fmt(s.models.fallback_pct, '%')} of runs.`, '');
+  L.push('Busy by time of day (Eastern):', '', '| Time | Runs | Models busy | Hit a daily limit | Typical wait |', '|---|---|---|---|---|',
+    ...s.models.by_time.map((t) => `| ${t.block} | ${t.n}${t.n < MIN_N ? ' (too few to trust)' : ''} | ${fmt(t.busy_pct, '%')} | ${fmt(t.limit_pct, '%')} | ${fmt(t.wait_p50, 's')} |`), '');
   L.push('**Flags**', '', ...(s.flags.length ? s.flags.map((x) => '- ' + x) : ['- None']));
   return L.join('\n');
 }
