@@ -350,13 +350,18 @@ export function startApp() {
   var pasteWrap = document.getElementById("pasteWrap");
   var pasteBtn = document.getElementById("bannerPaste");
   var pasteHelp = document.getElementById("pasteHelp");
+  /* The paste button always sits on top of the box (Kevin likes a dedicated
+     button). Coming back from the shortcut it grows into the big banner. Hidden
+     only where the browser can't read the clipboard. */
+  var canPaste = !!(navigator.clipboard && navigator.clipboard.readText);
   function setShortcutMode(on) {
-    pasteWrap.hidden = !on;
+    pasteWrap.hidden = !(on || canPaste);
     pasteWrap.classList.toggle("banner", on);
     pasteHelp.hidden = !on;
-    pasteBtn.textContent = on ? "Tap to paste your transcript" : "Paste my transcript";
+    pasteBtn.textContent = on ? "Tap to paste your transcript" : "\ud83d\udccb Paste";
     ideasSync();
   }
+  function shortcutMode() { return pasteWrap.classList.contains("banner"); }
   var handoff = document.getElementById("handoff");
   function pasteFailed() {
     thoughts.focus();
@@ -404,6 +409,7 @@ export function startApp() {
     setShortcutMode(true);
     setTimeout(function () { pasteWrap.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
   }
+  setShortcutMode(false);
   window.addEventListener("hashchange", function () { if (location.hash === "#paste") enterPasteMode(); });
   window.addEventListener("pageshow", function (e) { if (e.persisted && location.hash === "#paste") enterPasteMode(); });
   (function () {
@@ -506,12 +512,12 @@ export function startApp() {
   function ideasBtnSync() {
     /* The box's own hint would peek through the glass, so it waits until the ideas clear. */
     thoughts.placeholder = ideasEl.classList.contains("gone") ? thoughtsHint : "";
-    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && pasteWrap.hidden);
+    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && !shortcutMode());
   }
   function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); ideasBtnSync(); }
   function ideasSync() {
     if (!ideasEl) return;
-    if (thoughts.value.trim() || document.activeElement === thoughts || !pasteWrap.hidden) { ideasHide(); return; }
+    if (thoughts.value.trim() || document.activeElement === thoughts || shortcutMode()) { ideasHide(); return; }
     var wasGone = ideasEl.classList.contains("gone");
     ideasEl.classList.remove("gone");
     ideasBtnSync();
@@ -781,9 +787,40 @@ export function startApp() {
      sees plain words and times. */
   function techOn() { return testLog.on(); }
   function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
-  function askGemini(text, asJson, models, level, onModel, limit) {
+  /* Model rest list: a model that just said it was busy (or timed out) sits out
+     for 10 minutes, and one at its limit sits out for an hour, so the next run
+     goes straight to a model that's working instead of waiting on the same one.
+     Google has no way to ask "how much is left" with a key, so the page learns
+     from what each model just did. Stored on this device: model names and times only. */
+  var REST_KEY = "stp-model-rest";
+  var REST_BUSY = 10 * 60000, REST_LIMIT = 60 * 60000;
+  function restList() { try { return JSON.parse(localStorage.getItem(REST_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function restModel(model, ms) {
+    var r = restList(); r[model] = Date.now() + ms;
+    try { localStorage.setItem(REST_KEY, JSON.stringify(r)); } catch (e) {}
+  }
+  function clearRest(model) {
+    var r = restList(); if (!(model in r)) return; delete r[model];
+    try { localStorage.setItem(REST_KEY, JSON.stringify(r)); } catch (e) {}
+  }
+  function resting(model) { var until = restList()[model]; return until && until > Date.now() ? Math.ceil((until - Date.now()) / 60000) : 0; }
+
+  /* Tries each model in order and resolves to { text, model, ms, history, ... }.
+     - Models resting from a recent problem go to the back of the line.
+     - Moves on when a model is out of its limit, busy, slower than its limit,
+       or sends back nothing.
+     - hedgeAfter (writes only): if the model hasn't answered after that many ms,
+       the next model starts too and the first good answer wins (the other is
+       stopped). One busy model can't hold you hostage for minutes.
+     level sets how much the model thinks first. onModel(name) reports which
+     model is working. */
+  function askGemini(text, asJson, models, level, onModel, limit, hedgeAfter) {
     var started = Date.now();
     var history = [];
+    var fresh = models.filter(function (m) { return !resting(m); });
+    var tired = models.filter(function (m) { return resting(m); });
+    tired.forEach(function (m) { history.push(m + " skipped (resting " + resting(m) + " more min)"); });
+    var list = fresh.concat(tired);
     function payload(withThinking, model) {
       var cfg = {};
       if (asJson) cfg.responseMimeType = "application/json";
@@ -793,52 +830,78 @@ export function startApp() {
       if (Object.keys(cfg).length) p.generationConfig = cfg;
       return JSON.stringify(p);
     }
-    function attempt(i, lastErr, withThinking) {
-      if (i >= models.length) {
+    return new Promise(function (resolve, reject) {
+      var next = 0, running = 0, done = false, lastErr = null, live = [];
+      function finish(ok, value) {
+        if (done) return;
+        done = true;
+        live.forEach(function (c) { try { c.abort(); } catch (e) {} });
+        if (ok) resolve(value); else reject(value);
+      }
+      function giveUp() {
         if (lastErr && lastErr.status === 429) {
           var all = new Error("Every free Gemini model on your key has hit today's limit. It resets overnight, around 3 AM Eastern.");
           all.status = 429;
           all.google = lastErr.google || "";
-          throw all;
+          return finish(false, all);
         }
-        throw lastErr || new Error("No Gemini model was available.");
+        finish(false, lastErr || new Error("No Gemini model was available."));
       }
-      var model = models[i];
-      if (onModel) onModel(model);
-      var ctrl = window.AbortController ? new AbortController() : null;
-      var tAttempt = Date.now();
-      var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, limit || TIME_LIMIT) : null;
-      return callGoogle("models/" + model + ":generateContent", gemini.key, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload(withThinking, model),
-        signal: ctrl ? ctrl.signal : undefined
-      }).then(function (res) {
-        clearTimeout(timer);
-        var um = res.usageMetadata || {};
-        testLog.request(model, um.totalTokenCount || 0, false);
-        var c = res.candidates && res.candidates[0];
-        var parts = (c && c.content && c.content.parts) || [];
-        var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
-        if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
-        /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
-        if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
-        return { text: out, model: model, ms: Date.now() - started, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 };
-      }).catch(function (e) {
-        clearTimeout(timer);
-        var secs = Math.round((Date.now() - tAttempt) / 1000);
-        if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
-        /* "after Ns" shows how long a model made you wait before the next one took over */
-        else if (e.status === 429) { history.push(model + " was at its daily limit after " + secs + "s"); testLog.request(model, 0, true); }
-        else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
-        else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable after " + secs + "s");
-        /* A model that rejects the thinking setting gets one more try without it. */
-        if (e.status === 400 && withThinking) return attempt(i, e, false);
-        if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
-        throw e;
-      });
-    }
-    return attempt(0, null, true);
+      function startNext() {
+        if (done) return;
+        if (next >= list.length) { if (!running) giveUp(); return; }
+        run(next++, true);
+      }
+      function run(i, withThinking) {
+        var model = list[i];
+        running++;
+        if (onModel) onModel(model);
+        var ctrl = window.AbortController ? new AbortController() : null;
+        if (ctrl) live.push(ctrl);
+        var tAttempt = Date.now();
+        var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, limit || TIME_LIMIT) : null;
+        var hedge = hedgeAfter && i < list.length - 1 ? setTimeout(function () {
+          if (done || next !== i + 1) return;
+          history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt) / 1000) + "s");
+          startNext();
+        }, hedgeAfter) : null;
+        var settled = false;
+        function settle() { if (settled) return; settled = true; running--; clearTimeout(timer); clearTimeout(hedge); }
+        callGoogle("models/" + model + ":generateContent", gemini.key, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload(withThinking, model),
+          signal: ctrl ? ctrl.signal : undefined
+        }).then(function (res) {
+          settle();
+          if (done) return;
+          var um = res.usageMetadata || {};
+          testLog.request(model, um.totalTokenCount || 0, false);
+          var c = res.candidates && res.candidates[0];
+          var parts = (c && c.content && c.content.parts) || [];
+          var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
+          if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
+          /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
+          if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
+          clearRest(model);
+          finish(true, { text: out, model: model, ms: Date.now() - started, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 });
+        }).catch(function (e) {
+          settle();
+          if (done) return;   // another model already won; this one was stopped on purpose
+          var secs = Math.round((Date.now() - tAttempt) / 1000);
+          /* "after Ns" shows how long a model made you wait before the next one took over */
+          if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY); }
+          else if (e.status === 429) { history.push(model + " was at its daily limit after " + secs + "s"); testLog.request(model, 0, true); restModel(model, REST_LIMIT); }
+          else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
+          else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY); }
+          /* A model that rejects the thinking setting gets one more try without it. */
+          if (e.status === 400 && withThinking) return run(i, false);
+          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) startNext(); return; }
+          finish(false, e);
+        });
+      }
+      startNext();
+    });
   }
 
   var WRITE_LIMIT = 300000;
@@ -1060,9 +1123,12 @@ export function startApp() {
     var est = writeEstimate(depthKey);
     var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
     var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") : ""), est.secs, "write", skipAsk);
+    /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
+       a backup starts too and the first good prompt wins. */
+    var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
     return askGemini(text, false, writeModels(quick), depth.level, function (m) {
       if (run === writeRun) eta(m);
-    }, WRITE_LIMIT).then(function (r) {
+    }, WRITE_LIMIT, hedgeAfter).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
       finishTrack(resultProg, r.ms / 1000, skipAsk);
       var draft = cleanPrompt(r.text);
@@ -1225,7 +1291,8 @@ export function startApp() {
     var title = s0.title || "Captured thought";
     var out = [];
     function head(t) { out.push(""); out.push("### " + t); }
-    function bullets(list, check) { list.forEach(function (x) { out.push(check ? (md ? "- [ ] " : "\u2610 ") + x : "- " + x); }); }
+    /* Notes doesn't turn "- [ ]" into a checkbox (it shows the brackets), so both styles use a ☐ box. */
+    function bullets(list, check) { list.forEach(function (x) { out.push(check ? "\u2610 " + x : "- " + x); }); }
     function block(t) { out.push(md ? String(t || "").split(/\n+/).join("\n\n") : (t || "")); }
     out.push(md ? "# " + title : title);
     out.push("\ud83d\udcc5 " + stamp());

@@ -46,7 +46,7 @@
       <button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button>
     </div>
     <div id="pasteWrap" class="pastewrap" hidden>
-      <button type="button" class="pastebtn" id="bannerPaste">Paste my transcript</button>
+      <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
       {#if core.dev}<button type="button" class="pastebtn devpaste" id="pasteImprove">🛠️ Paste for Improve this app</button>{/if}
       <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
     </div>

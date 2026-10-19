@@ -143,9 +143,12 @@ details.memo summary { cursor: pointer; font-weight: 700; color: var(--accent); 
 details.memo ol { margin: 10px 0 6px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
 details.memo p { margin: 0; font-size: 13px; color: var(--muted); }
 .handoff { margin: 0; font-size: 14px; color: var(--ok); }
-.pastewrap { display: flex; flex-direction: column; gap: 8px; }
+.pastewrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.pastewrap.banner { flex-direction: column; flex-wrap: nowrap; }
 .pastewrap p { margin: 0; font-size: 14px; color: var(--ink); }
-button.pastebtn { width: 100%; font-weight: 700; color: var(--accent); }
+button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
+.pastewrap:not(.banner) button.pastebtn { min-height: 44px; padding: 9px 14px; border-radius: 999px; font-size: 15px; }
+.pastewrap.banner button.pastebtn { width: 100%; }
 .pastewrap.banner { padding: 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--accent-soft); }
 .pastewrap.banner button.pastebtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 19px; padding: 16px 18px; }
 .pastewrap.banner button.pastebtn.devpaste { background: var(--surface); color: var(--ink); border: 1.5px dashed var(--line); font-size: 17px; padding: 12px 18px; }

@@ -57,6 +57,7 @@ async function page(opts = {}) {
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
     }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+    if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : (opts.write || 'THE PROMPT');
@@ -216,7 +217,9 @@ await check('first screen is simple; plain words; copy and open', async () => {
   expect(await p.isVisible('#quickMode'), 'Quick mode should sit next to Build my prompt');
   const qRow = await p.evaluate(() => document.getElementById('quickMode').closest('.row') === document.getElementById('build').closest('.row'));
   expect(qRow, 'Quick mode is not in the Build row');
-  expect(!(await p.isVisible('#bannerPaste')), 'paste button should only show from the shortcut');
+  expect(await p.isVisible('#bannerPaste') && (await p.textContent('#bannerPaste')).includes('Paste') && !(await p.$('#pasteWrap.banner')), 'a small Paste button should sit on top of the box');
+  const above = await p.evaluate(() => document.getElementById('pasteWrap').getBoundingClientRect().bottom <= document.getElementById('thoughts').getBoundingClientRect().top);
+  expect(above, 'Paste should be above the text box');
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   const made = await p.textContent('#madeBy');
   expect(/^Ready in \d+s/.test(made) && !/gemini/i.test(made), 'technical words showing: ' + made);
@@ -528,6 +531,7 @@ await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save 
   expect(href.startsWith('shortcuts://run-shortcut?name=Save%20Voice%20Note&input=text&text='), 'wrong shortcut link: ' + href.slice(0, 80));
   const text = decodeURIComponent(href.split('&text=')[1]);
   // Markdown for the shortcut: "# " title, every line its own paragraph, real headings
+  expect(!text.includes('[ ]'), 'no raw Markdown checkboxes (Notes shows the brackets)');
   expect(text.split('\n')[0] === '# Pre-Sleep Focus Setup' && text.includes('\n\n## H\n\n### \u{1F4DD} Summary\n\nS') && text.includes('\n\n### \u{1F680} Prompt Built\n\nTHE PROMPT'), 'shortcut text should be the full note in Markdown:\n' + text);
   expect(await p.evaluate(() => navigator.clipboard.readText()) === text, 'note should also be copied as a backup');
   expect(/Process Voice Note/.test(await p.textContent('#keepStatus')), 'status should say where it went');
@@ -685,7 +689,7 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
   await p.waitForFunction(() => document.getElementById('thoughts').value.length > 0);
   const box = await p.inputValue('#thoughts');
   expect(/^I need help with improving my Speak to Prompt web app\./.test(box) && /Svelte 5 \+ Vite/.test(box) && /My idea, in my own words:\nadd a dark mode toggle to the idea strip/.test(box) && /What I want back:/.test(box.split('\n').pop()), 'wrapped text wrong: ' + box);
-  expect(await p.isHidden('#pasteWrap'), 'banner should close after pasting');
+  expect(!(await p.$('#pasteWrap.banner')) && await p.isVisible('#bannerPaste'), 'banner should shrink back to the small Paste button after pasting');
   // Safari freezes its iOS version at 18, so the report says 18 or later
   const q = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1' });
   await q.click('#frontReportBtn');
@@ -822,6 +826,36 @@ await check('X-ray keeps "vs." and "e.g." inside one sentence, but never joins l
   const x = analyze('Flag the Saturday work shift vs. exam conflict, e.g. a swap. Then plan it.\nNext line vs.\nLast line.', 'work shift exam conflict swap');
   const texts = x.segments.map((s) => s.text);
   expect(texts.length === 4 && texts[0] === 'Flag the Saturday work shift vs. exam conflict, e.g. a swap.' && texts[2] === 'Next line vs.', 'sentences split wrong: ' + JSON.stringify(texts));
+});
+
+await check('busy models: a resting model is skipped next time, and a slow writer gets a backup racing it', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] };
+  // 1. 3.8 says it's busy: 3.7 writes, and 3.8 rests, so the next run skips it
+  let p = await page({ intake, fail: { 'gemini-3.8-flash': 503 } });
+  await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build'); await done(p);
+  const first = p.calls.filter(c => !c.intake).map(c => c.model);
+  expect(first[0] === 'gemini-3.8-flash' && first[1] === 'gemini-3.7-flash', 'first run order wrong: ' + first.join(', '));
+  const rest = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-model-rest') || '{}'));
+  expect(rest['gemini-3.8-flash'] > Date.now(), 'busy model should be resting');
+  expect(!/plan my week/.test(JSON.stringify(rest)), 'rest list must hold model names only');
+  p.calls.length = 0;
+  await p.click('#reset'); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  for (let i = 0; i < 100 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
+  const second = p.calls.filter(c => !c.intake).map(c => c.model);
+  expect(second[0] === 'gemini-3.7-flash', 'resting model should go to the back of the line: ' + second.join(', '));
+  // 2. Hedge: 3.8 hangs; after the hedge time 3.7 starts too and wins; 3.8 is stopped
+  p = await page({ intake, hold: 'gemini-3.8-flash' });
+  await p.clock.install();
+  await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  await p.waitForFunction(() => true); await p.waitForTimeout(300);
+  for (let i = 0; i < 20 && !p.calls.some(c => !c.intake); i++) { await p.clock.runFor(1000); }
+  expect(p.calls.filter(c => !c.intake).map(c => c.model).join() === 'gemini-3.8-flash', 'only the first writer should start at first');
+  await p.clock.runFor(95000);
+  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
+  const writers = p.calls.filter(c => !c.intake).map(c => c.model);
+  expect(writers.join() === 'gemini-3.8-flash,gemini-3.7-flash' && await p.inputValue('#output') === 'THE PROMPT', 'backup should race and win: ' + writers.join(', '));
+  if (p.release) p.release();
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
