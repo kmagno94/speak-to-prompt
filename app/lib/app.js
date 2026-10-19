@@ -1,5 +1,5 @@
 import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint } from './prompts.js';
-import { analyze } from './xray.js';
+import { analyze, mathOf } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
@@ -1360,10 +1360,11 @@ export function startApp() {
     var said = saidText();
     var have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
     IMPLIED.forEach(function (x) { if (x[0].test(said)) x[1].forEach(function (n) { have[n] = true; }); });
-    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false);
+    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have));
+    var money = {}; (String(promptText).match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach(function (m) { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
     return {
       missing: Object.keys(given).filter(function (n) { return !got[n]; }),
-      extra: Object.keys(gotBig).filter(function (n) { return !have[n]; })
+      extra: Object.keys(gotBig).filter(function (n) { return !have[n] && !(money[n] && math(n)); })   /* correct money math isn't made up */
     };
   }
   function listWords(a) { return a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]; }

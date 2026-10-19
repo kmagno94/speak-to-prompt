@@ -75,7 +75,20 @@ export function whyText(label) { return WHY_TEXT[label] || WHY_TEXT.Guidance; }
 /* Numbers in the prompt that you never said (times, money, versions). */
 function strayNumbers(text, said) {
   const have = new Set(wordsOf(said).filter((w) => /\d/.test(w)).map(stem));
-  return wordsOf(text).filter((w) => /\d/.test(w)).map(stem).filter((n) => !have.has(n) && !(Number(n) <= 10 && !n.includes('$')));
+  const math = mathOf([...have]);
+  return wordsOf(text).filter((w) => /\d/.test(w)).map(stem).filter((n) => !have.has(n) && !(n.includes('$') && math(n)) && !(Number(n) <= 10 && !n.includes('$')));
+}
+
+/* Simple math on numbers you said is yours too (money only, so a made-up count still shows): $200 minus $35.50 is $164.50
+   left, and 60% of that is $98.70 (the other 40% is $65.80). Returns a check. */
+export function mathOf(said) {
+  const key = (x) => String(Math.round(x * 100) / 100);
+  const v = [...new Set(said.map((n) => Number(String(n).replace(/[$,]/g, ''))).filter((x) => x > 0))].slice(0, 20);
+  const step = new Set(v);
+  for (const a of v) for (const b of v) if (a !== b) { step.add(a + b); if (a > b) step.add(a - b); }
+  const out = new Set([...step].map(key));
+  for (const x of step) for (const p of v) if (p < 100) { out.add(key(x * p / 100)); out.add(key(x * (100 - p) / 100)); }
+  return (n) => { const x = Number(String(n).replace(/[$,]/g, '')); return x > 0 && out.has(key(x)); };
 }
 
 /* prompt: the finished prompt. raw: your thoughts. answers: [{question, answer}].

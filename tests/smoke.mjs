@@ -1127,6 +1127,26 @@ await check('Copy full result: shows only with run stats on and copies note, ans
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('number check: correct math on your numbers is not "made up" (stress test 2)', async () => {
+  const note = "alright so I want to throw a surprise party for my friend Marco, he turns 25 on November 14th, no wait that's a Saturday and he works Saturdays, let's do Friday the 13th instead, at 8pm, actually make it 7:30 so people can leave by 11. it's at my place, I can fit maybe 15 people max but I'm inviting 12. budget is $200, and I already spent $35.50 on decorations so really it's whatever is left. two people are vegan and one can't eat shellfish, so no shrimp at all. I want to send the invite with the Invitations app on iOS 27 but I've never used it, so walk me through that too. don't tell me to rent a venue, I don't want that. food should be like 60% of the budget and the rest goes to drinks and a cake. I need a timeline for the day of, starting from when I get off work at 3, a shopping list with rough prices, and a text I can send everyone saying keep it a secret. oh and Marco's girlfriend Ana is helping so split the tasks between us, she's free after 5. keep it simple, I've never hosted anything before, honestly kind of nervous lol";
+  const write = 'You are an expert event planner. Marco turns 25. Friday, November 13th at 7:30 PM, wrapping up by 11:00 PM. Max 15 people, 12 invited. Budget: total $200, $35.50 already spent on decorations, leaving $164.50. Put about 60% ($98.70) toward food and the remaining $65.80 toward drinks and a cake. 2 guests are vegan, 1 cannot eat shellfish. Walk me through the Invitations app on iOS 27. I get off work at 3:00 PM; Ana is free after 5:00 PM.';
+  const p = await page({ write, intake: { title: 'T', need: 'N', category: 'Events', complexity: 'standard', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', note); await p.click('#build'); await done(p);
+  expect(!p.repairs.some((r) => /never said them/.test(r.text)), 'Auto-Repair should not be told to remove correct math: ' + (p.repairs[0] || {}).text);
+  expect(await p.isHidden('#numWarn'), 'no number warning for correct math: ' + await p.textContent('#numWarn'));
+  expect((await p.inputValue('#output')).includes('$164.50'), 'the $164.50 left should stay');
+  await p.click('#xrayBtn');
+  expect(!/never said/.test(await p.textContent('#xraySummary')), 'X-ray should not call correct math a number you never said');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('number check: a number that is not math on yours is still flagged', async () => {
+  const p = await page({ write: 'Budget $200, $35.50 spent, $164.50 left. Keep it under 400 words and spend $57.25 on cake.', intake: { title: 'T', need: 'N', category: 'Events', complexity: 'standard', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'budget is $200 and I spent $35.50 on decorations'); await p.click('#build'); await done(p);
+  const w = await p.textContent('#numWarn');
+  expect(/400/.test(w) && /57\.25/.test(w) && !/164/.test(w), 'should flag 400 and 57.25 but not 164.50: ' + w);
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));
