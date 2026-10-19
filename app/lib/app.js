@@ -1114,7 +1114,10 @@ export function startApp() {
      lose numbers, and didn't shrink or balloon the prompt. */
   function isBetter(after, before, fixed, draft) {
     var len = words(fixed) / Math.max(1, words(draft));
-    return after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && len >= 0.7 && len <= 1.8;
+    /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
+    var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
+    var lost = Object.keys(had).some(function (n) { return said[n] && !kept[n]; });
+    return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && len >= 0.7 && len <= 1.8;
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
   function showRepairNote(rep) {
@@ -1146,7 +1149,8 @@ export function startApp() {
       var before = t.slice(Math.max(0, m.index - 12), m.index);
       var lineStart = /(^|\n)\s*$/.test(t.slice(Math.max(0, m.index - 4), m.index)) && /^[.)]/.test(t.slice(re.lastIndex, re.lastIndex + 1));
       if (lineStart) continue; /* list numbering like "1." */
-      var tok = m[1] || m[2].replace(/,/g, "").replace(/\.0+$/, "");
+      /* "10:00 AM" is the same number as "10am", so on-the-hour times count as the hour */
+      var tok = m[1] ? m[1].replace(/^0?(\d{1,2}):00$/, "$1") : m[2].replace(/,/g, "").replace(/\.0+$/, "");
       if (!tok) continue;
       var small = !m[1] && Number(tok) <= 10 && !VERSION_WORD.test(before);
       if (small && !keepSmall) continue;
@@ -1154,9 +1158,15 @@ export function startApp() {
     }
     return out;
   }
+  /* Numbers that plain words already say: "two weeks" is 14 days, "half an hour" is 30 minutes. */
+  var IMPLIED = [[/\btwo weeks?\b/i, ["14"]], [/\bthree weeks?\b/i, ["21"]], [/\b(a|one) week\b/i, ["7"]], [/\bhalf (an )?hour\b/i, ["30"]], [/\b(an|one) hour\b/i, ["60"]], [/\b(a|one) year\b/i, ["12", "365"]]];
+  /* "October 30th, wait no, the 31st": the part before the correction isn't something to keep. */
+  var CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|correction|or rather|actually it'?s|actually make it)\b/gi;
+  function saidText() { return session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n"); }
   function numberIssues(promptText) {
-    var said = session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n");
-    var have = numberTokens(said, true), given = numberTokens(said, false);
+    var said = saidText();
+    var have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
+    IMPLIED.forEach(function (x) { if (x[0].test(said)) x[1].forEach(function (n) { have[n] = true; }); });
     var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false);
     return {
       missing: Object.keys(given).filter(function (n) { return !got[n]; }),

@@ -752,6 +752,28 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('auto-repair never strips real times; corrected numbers and "two weeks" are not flagged (Kevin\'s stress test)', async () => {
+  const RAW = 'ok so um I need help planning the next two weeks because it\'s getting kind of chaotic. My exam is Friday October 30th, wait no, I just checked, it\'s actually Saturday the 31st at 10am. I work Tuesday 6am to 2pm and Saturday 7 to 3. I focus best at the library after 7pm. Budget is $120 for the two weeks.';
+  const DRAFT = 'You are an expert study planner.\nI need a realistic two-week plan.\nContext: Exam on Saturday, October 31st at 10:00 AM. I work Tuesdays 6:00 AM to 2:00 PM and Saturdays 7:00 AM to 3:00 PM. I focus best at the library after 7:00 PM. Budget: $120 total for the 14 days.\nTask: Build a day-by-day plan.\nStart right away.';
+  const intake = { title: 'Exam Plan', need: 'N', category: 'School', complexity: 'standard', questions: [] };
+  async function run(opts) {
+    const p = await page({ intake, ...opts });
+    await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+    return p;
+  }
+  // 1. Times rewritten as 10:00 AM, "two weeks" as 14 days, and the corrected 30th left out: all fine, nothing to fix
+  let p = await run({ write: DRAFT });
+  expect(!(await p.isVisible('#numWarn')), 'no number warning expected: ' + await p.textContent('#numWarn'));
+  expect(p.repairs.length === 0, 'nothing to repair, but a repair ran: ' + (p.repairs[0] && p.repairs[0].text.slice(0, 400)));
+  // 2. A real made-up number, but the "fix" also strips real times: throw the fix away
+  const WITH_STRAY = DRAFT.replace('Task: Build a day-by-day plan.', 'Task: Build a day-by-day plan with 25 practice questions.');
+  const STRIPPED = WITH_STRAY.replace(/\d{1,2}:00 /g, '').replace(' with 25 practice questions', '');
+  p = await run({ write: WITH_STRAY, repair: STRIPPED });
+  expect(p.repairs.length === 1, 'the made-up 25 should trigger one repair');
+  expect(await p.inputValue('#output') === WITH_STRAY && /wasn't better/.test(await p.textContent('#repairNote')), 'a fix that deletes your times must be thrown away');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
   const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
   const row = (o) => ({ created_at: o.when || '2026-10-19T01:00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).filter(([k]) => k !== 'when').map(([k, v]) => '| ' + k + ' | ' + (v === true ? 'yes' : v === false ? 'no' : v) + ' |').join('\n') });

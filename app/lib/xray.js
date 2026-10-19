@@ -9,7 +9,8 @@ const STOP = new Set(('the a an and or but to of in on for with is are was were 
   'also then than them they their there here into up out get got make want need please help let lets ' +
   'very more most much many few one thing things something stuff kind sort way well even still only ' +
   'context task background format output constraints details instructions role tone goal note notes ' +
-  'ai assistant prompt using use used being am going gonna wanna maybe yeah okay ok um uh').split(/\s+/));
+  'ai assistant prompt using use used being am going gonna wanna maybe yeah okay ok um uh ' +
+  'because cause getting gotten kinda sorta honestly basically literally actually pretty guess oh').split(/\s+/));
 
 const COLORS = 6;
 
