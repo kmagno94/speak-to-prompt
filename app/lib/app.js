@@ -193,7 +193,7 @@ export function startApp() {
     var r = {
       mode: session.mode || "Quick version (no key)",
       complexity: session.complexity || "",
-      intake_model: session.intakeModel || "", intake_tokens: session.intakeTokens, intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
+      intake_model: session.intakeModel || "", intake_tokens: session.intakeTokens, est_intake_s: session.estIntake, intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
       words_in: words(session.raw),
       questions: (session.questions || []).length,
       answered: (session.answers || []).length
@@ -965,7 +965,8 @@ export function startApp() {
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
     buildStatus.textContent = "";
-    var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", intakeEstimate(), "read", false);
+    session.estIntake = intakeEstimate();
+    var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     var intakeText = ANALYZE + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
@@ -1278,17 +1279,43 @@ export function startApp() {
   /* Automatic run log: only while "Show run stats" is on (testing phones), each
      run's numbers go to the relay, which posts them to the Run log issue (#2) for
      the twice-daily review. Fire and forget; a failure never touches the page. */
+  /* The run waits until you do something with the prompt, so the log also shows
+     what happened next (copied, opened an AI, saved, started over, rebuilt,
+     reported, or left the page) and whether you opened X-ray. That's the best
+     quality signal there is: a prompt you copy was useful, one you redo wasn't. */
+  var pendingRun = null, pendingTimer = 0;
   function sendRun(r) {
     if (!RELAY || !testLog.on()) return;
+    flushRun("rebuilt");
     var ans = (session && session.answers) || [];
     var run = { app: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev", device: deviceLine(),
-      tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null };
+      tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null, xray_opened: false };
     for (var k in r) if (k !== "when") run[k] = r[k];
+    pendingRun = run;
+    pendingTimer = setTimeout(function () { flushRun("none in 3 min"); }, 180000);
+  }
+  function flushRun(action) {
+    if (!pendingRun) return;
+    clearTimeout(pendingTimer);
+    var run = pendingRun;
+    pendingRun = null;
+    run.action = action;
     try {
       fetch(RELAY.replace(/\/+$/, "") + "/run", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run: run }), keepalive: true }).catch(function () {});
     } catch (e) {}
   }
+  /* Capture phase: noted before the button's own handler runs. */
+  document.addEventListener("click", function (e) {
+    if (!pendingRun || !e.target || !e.target.closest) return;
+    var t = e.target;
+    if (t.closest("#xrayBtn")) { pendingRun.xray_opened = true; return; }
+    var ai = t.closest(".openai");
+    var a = t.closest("#copy") ? "copied" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note"
+      : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build") ? "rebuilt" : "";
+    if (a) flushRun(a);
+  }, true);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushRun("left the page"); });
 
   /* "Something went wrong?" (ReportIssue.svelte): the facts about this run, never its words. */
   function deviceLine() {

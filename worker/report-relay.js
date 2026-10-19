@@ -26,8 +26,8 @@ const RUN_LOG_ISSUE = 2;       // the locked "Run log (automatic)" issue
 const hits = new Map();         // key -> [timestamps], lives only in this Worker's memory
 
 /* The only run fields accepted, in the order they're shown. */
-const RUN_FIELDS = ['app', 'device', 'mode', 'complexity', 'depth', 'est_s', 'intake_model', 'intake_s', 'intake_tokens', 'write_model', 'thinking',
-  'write_s', 'write_tokens', 'thinking_tokens', 'detours', 'words_in', 'questions', 'answered', 'tapped', 'words_out', 'num_flags', 'coach', 'xray_pct', 'xray_dropped', 'xray_stray', 'repair', 'repair_s', 'core', 'outcome'];
+const RUN_FIELDS = ['app', 'device', 'mode', 'complexity', 'depth', 'est_intake_s', 'est_s', 'intake_model', 'intake_s', 'intake_tokens', 'write_model', 'thinking',
+  'write_s', 'write_tokens', 'thinking_tokens', 'detours', 'words_in', 'questions', 'answered', 'tapped', 'words_out', 'num_flags', 'coach', 'xray_pct', 'xray_dropped', 'xray_stray', 'repair', 'repair_s', 'core', 'outcome', 'action', 'xray_opened'];
 
 function cors(origin) {
   return {

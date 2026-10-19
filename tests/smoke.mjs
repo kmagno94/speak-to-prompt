@@ -176,10 +176,14 @@ await check('run stats: logs numbers only, never words; 4 models listed', async 
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
   await p.waitForFunction(() => /Ready|Built/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
   await p.waitForTimeout(400);
-  // Run stats on: one numbers-only record goes to the relay's run log
-  expect(sentRuns.length === 1, 'one run should be sent with run stats on, got ' + sentRuns.length);
+  // Run stats on: the record waits until you do something with the prompt
+  expect(sentRuns.length === 0, 'the run should wait for what happens next');
+  await p.click('#xrayBtn'); await p.click('#copy');
+  await p.waitForTimeout(400);
+  expect(sentRuns.length === 1, 'one run should be sent once you copy, got ' + sentRuns.length);
   const sent = JSON.parse(sentRuns[0]).run;
   expect(sent.mode && sent.app && sent.device && sent.words_in === 3 && sent.outcome === 'ok' && !('when' in sent), 'run record wrong: ' + sentRuns[0]);
+  expect(sent.action === 'copied' && sent.xray_opened === true && typeof sent.est_intake_s === 'number', 'should log what happened next, X-ray, and the reading estimate: ' + sentRuns[0]);
   expect(!/secret|memo|THE PROMPT/.test(sentRuns[0]), 'words leaked into the run log: ' + sentRuns[0]);
   const stored = await p.evaluate(() => (localStorage.getItem('stp-test-log') || '') + (localStorage.getItem('stp-test-usage') || ''));
   expect(stored.length > 0, 'nothing logged');
@@ -720,13 +724,13 @@ await check('auto-repair: clean prompts go straight through; real problems get o
     await relayRoute(p, sent);
     await p.click('#moreOpts summary'); await p.check('#statsToggle');
     await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
-    await p.waitForTimeout(300);
+    await p.click('#copy'); await p.waitForTimeout(300);   // acting on the prompt sends the run
     return { p, sent };
   }
   // 1. Clean: no extra call, no note
   let { p, sent } = await run({ write: GOOD });
   expect(p.repairs.length === 0 && await p.isHidden('#repairNote'), 'a clean prompt should skip the repair');
-  expect(sent[0] && sent[0].repair === 'none' && sent[0].xray_dropped === 0 && sent[0].xray_stray === 0 && typeof sent[0].xray_pct === 'number' && typeof sent[0].coach === 'number', 'run log should carry X-ray and coach results: ' + JSON.stringify(sent[0]));
+  expect(sent[0] && sent[0].action === 'copied' && sent[0].repair === 'none' && sent[0].xray_dropped === 0 && sent[0].xray_stray === 0 && typeof sent[0].xray_pct === 'number' && typeof sent[0].coach === 'number', 'run log should carry X-ray and coach results: ' + JSON.stringify(sent[0]));
   // 2. Problems found, fix is better: use it, say what changed
   ({ p, sent } = await run({ write: BAD, repair: GOOD }));
   expect(p.repairs.length === 1, 'one repair call, got ' + p.repairs.length);
@@ -745,6 +749,33 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   ({ p, sent } = await run({ write: BAD, repairFail: true }));
   expect(await p.inputValue('#output') === BAD && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
+  const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
+  const row = (o) => ({ created_at: o.when || '2026-10-19T01:00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).filter(([k]) => k !== 'when').map(([k, v]) => '| ' + k + ' | ' + (v === true ? 'yes' : v === false ? 'no' : v) + ' |').join('\n') });
+  const base = { mode: 'Full', depth: 'standard', est_intake_s: 2, est_s: 10, intake_s: 2, outcome: 'ok', write_model: 'gemini-3.8-flash', xray_dropped: 0, xray_stray: 0, num_flags: 0, coach: 4, repair: 'none' };
+  const comments = [
+    row({ ...base, write_s: 10, words_in: 20, xray_pct: 80, action: 'copied', xray_opened: true }),
+    row({ ...base, write_s: 11, words_in: 40, xray_pct: 70, action: 'opened Claude' }),
+    row({ ...base, write_s: 9, words_in: 10, xray_pct: 90, action: 'copied' }),
+    row({ ...base, write_s: 30, words_in: 300, xray_pct: 40, xray_dropped: 1, repair: 'fixed', repair_s: 2, action: 'started over', detours: 'gemini-3.8-flash was unavailable', write_model: 'gemini-3.6-flash' }),
+    row({ ...base, write_s: 10, words_in: 30, xray_pct: 75, action: 'rebuilt' }),
+    row({ ...base, outcome: 'write failed: mock' }),
+    { created_at: '2026-10-19T02:00:00Z', body: 'not a run' }
+  ];
+  const runs = parseRuns(comments);
+  expect(runs.length === 6 && runs[0].write_s === 10 && runs[0].xray_opened === true && runs[0].action === 'copied', 'parsing wrong: ' + JSON.stringify(runs[0]));
+  const s = scorecard(runs);
+  expect(s.runs === 6 && s.ok === 5 && s.failed === 1, 'counts wrong');
+  // waits: 12, 13, 11, 34, 12 vs estimate 12 -> within 30%: 4 of 5
+  expect(s.speed.wait_p50 === 12 && s.speed.est_within_pct === 80 && s.speed.by_depth[0].suggest_s === 10, 'speed math wrong: ' + JSON.stringify(s.speed));
+  expect(s.speed.size_link.words_in > 0.9, 'size link should be strong here: ' + s.speed.size_link.words_in);
+  expect(s.quality.dropped_pct === 20 && s.quality.repair.ran === 1 && s.quality.repair.fixed === 1 && s.models.fallback_pct === 20, 'quality math wrong: ' + JSON.stringify(s.quality));
+  expect(s.use.kept_pct === 60 && s.use.redone_pct === 40 && s.use.xray_opened_pct === 20, 'use math wrong: ' + JSON.stringify(s.use));
+  expect(s.flags.some((f) => /1 run\(s\) failed/.test(f)) && s.flags.some((f) => /40% of prompts were redone/.test(f)), 'flags missing: ' + s.flags.join(' | '));
+  const md = markdown(s, '2026-10-19');
+  expect(/### Scorecard since 2026-10-19/.test(md) && /\| standard \| 5 \|/.test(md) && !/—/.test(md), 'markdown wrong or has an em dash');
 });
 
 await check('report relay (Cloudflare Worker): only the app, only reports, no pings, fixed label, rate limit', async () => {
@@ -777,10 +808,10 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     const postRun = (run, ip) => relay.fetch(new Request('https://relay.example/run', { method: 'POST',
       headers: { Origin: APP, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ run }) }), env);
     sent.length = 0;
-    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
+    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, action: 'copied', xray_opened: true, est_intake_s: 3, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
     expect(r1.status === 201 && sent.length === 1 && sent[0].url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues/2/comments', 'run should become a comment on issue #2');
     const c = JSON.parse(sent[0].init.body).body;
-    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c), 'run comment missing fields: ' + c);
+    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c) && /\| action \| copied \|/.test(c) && /\| xray_opened \| yes \|/.test(c) && /\| est_intake_s \| 3 \|/.test(c), 'run comment missing fields: ' + c);
     expect(!/secret|my words|nested/.test(c) && !/@kmagno94/.test(c) && c.length < 1000, 'unknown fields, pings, and long text must be dropped: ' + c);
     expect((await postRun({ words_in: 3 }, '6.6.6.6')).status === 400 && (await postRun('nope', '6.6.6.6')).status === 400, 'non-run data should be refused');
     let lastRun;
