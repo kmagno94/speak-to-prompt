@@ -16,6 +16,10 @@
 </script>
 
 <div class="wrap">
+  <p class="updatebar" id="updateBar" role="status" hidden>
+    <span>A newer version of the app is ready.</span>
+    <button type="button" id="updateBtn">Reload</button>
+  </p>
   <header>
     <span class="chip">Nothing is saved</span>
     <h1>Speak to Prompt</h1>

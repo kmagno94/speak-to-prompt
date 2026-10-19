@@ -58,7 +58,7 @@ async function page(opts = {}) {
     }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
-    if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock' } }) });
+    if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : (opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
@@ -848,7 +848,7 @@ await check('busy models: a resting model is skipped next time, and a slow write
   const first = p.calls.filter(c => !c.intake).map(c => c.model);
   expect(first[0] === 'gemini-3.8-flash' && first[1] === 'gemini-3.7-flash', 'first run order wrong: ' + first.join(', '));
   const rest = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-model-rest') || '{}'));
-  expect(rest['gemini-3.8-flash'] > Date.now(), 'busy model should be resting');
+  expect(rest['gemini-3.8-flash'] && rest['gemini-3.8-flash'].until > Date.now() && rest['gemini-3.8-flash'].why === 'busy', 'busy model should be resting: ' + JSON.stringify(rest));
   expect(!/plan my week/.test(JSON.stringify(rest)), 'rest list must hold model names only');
   p.calls.length = 0;
   await p.click('#reset'); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
@@ -902,6 +902,32 @@ await check('Glow-Up: before and after slider, short by default, no core, saves 
   const txt = await p.textContent('#glowup');
   expect(!/\u2014/.test(txt), 'no em dashes');
   await p.click('#glowDone'); await p.waitForSelector('#glowup', { state: 'hidden' });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('limits: per-minute is a pause, daily is used up (and learned), busy says busy; newer version offers reload', async () => {
+  const minute = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' }] }, { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '30s' }];
+  const daily = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', quotaValue: '25' }] }];
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] },
+    fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 503 }, failDetails: { 'gemini-3.8-flash': minute, 'gemini-3.7-flash': daily } });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'Flash-Lite should still write it');
+  await p.click('#testLog summary').catch(() => {});
+  const rows = await p.$$eval('#usage .m', l => Object.fromEntries(l.map(r => [r.querySelector('b').firstChild.textContent.trim(), r.querySelector(':scope > span').textContent])));
+  expect(/per-minute limit, back in \d+s/.test(rows['gemini-3.8-flash']), 'per-minute should be a pause, not used up: ' + rows['gemini-3.8-flash']);
+  expect(/used up today, back at 3 AM/.test(rows['gemini-3.7-flash']), 'daily limit should say used up: ' + rows['gemini-3.7-flash']);
+  expect(/busy at Google, retry in \d+ min/.test(rows['gemini-3.6-flash']), 'a busy model should say busy: ' + rows['gemini-3.6-flash']);
+  expect(await p.evaluate(() => JSON.parse(localStorage.getItem('stp-learned-limits') || '{}')['gemini-3.7-flash']) === 25, 'the daily limit Google reported should be learned');
+  // Newer version live: a quiet bar offers Reload, and warns it clears the prompt on screen
+  expect(!(await p.isVisible('#updateBar')), 'no update bar when the version matches');
+  await p.route(/version\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"version":"newer123"}' }));
+  await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await p.waitForSelector('#updateBar', { state: 'visible' });
+  expect(/clears this prompt/.test(await p.textContent('#updateBtn')), 'should warn that reloading clears what is on screen');
+  await p.evaluate(() => { window.__before = 1; });
+  await p.click('#updateBtn'); await p.waitForLoadState('load');
+  await p.waitForFunction(() => !window.__before, null, { timeout: 5000 });
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

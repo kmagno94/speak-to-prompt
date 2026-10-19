@@ -29,7 +29,12 @@ export function startApp() {
      listed here show their count without a limit. */
   var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500 };
   var ASSUMED = { "gemini-3.7-flash": true };
-  function dailyLimit(model) { return (studio && studio.limits && studio.limits[model]) || LIMITS[model] || null; }
+  /* Daily limits: from a Usage Check, else what Google itself said in a limit error
+     (learned on this device), else the usual free-tier number. */
+  var LEARNED_KEY = "stp-learned-limits";
+  function learnedLimits() { try { return JSON.parse(localStorage.getItem(LEARNED_KEY) || "{}") || {}; } catch (e) { return {}; } }
+  function learnLimit(model, n) { var l = learnedLimits(); l[model] = n; try { localStorage.setItem(LEARNED_KEY, JSON.stringify(l)); } catch (e) {} }
+  function dailyLimit(model) { return (studio && studio.limits && studio.limits[model]) || learnedLimits()[model] || LIMITS[model] || null; }
   /* usage.json: Kevin's AI Studio numbers, updated by Claude from screenshots
      (the "Usage Check" key phrase). Counts from this device are added on top for
      runs after that snapshot. Only used when it's for today's Pacific day. */
@@ -112,6 +117,9 @@ export function startApp() {
           detail = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
         }
         if (lim && s.calls >= lim) s.out = true;
+        /* What's true right now beats the count: a daily limit, Google being busy, or a per-minute pause. */
+        var rest = restInfo(m);
+        if (rest && rest.why === "day") s.out = true;
         var used = s.out && lim ? lim : s.calls;
         if (lim && !/lite/.test(m)) fullLeft = (fullLeft || 0) + Math.max(0, lim - used);
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
@@ -120,7 +128,11 @@ export function startApp() {
         if (role) { var r = document.createElement("small"); r.className = "role"; r.textContent = role; b.appendChild(r); }
         var t = document.createElement("span");
         var assumed = studio && studio.assumed ? studio.assumed.indexOf(m) !== -1 : ASSUMED[m];
-        t.textContent = s.out ? "used up today" : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (assumed ? " (assumed)" : "") + " left" : "limit unknown";
+        t.textContent = s.out ? "used up today" + (rest && rest.why === "day" ? ", back at 3 AM" : "")
+          : rest && rest.why === "busy" ? "busy at Google, retry in " + rest.mins + " min"
+          : rest && rest.why === "minute" ? "per-minute limit, back in " + rest.secs + "s"
+          : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (assumed ? " (assumed)" : "") + " left" : "limit unknown";
+        if (rest && rest.why !== "day" && !s.out) row.className = "m busy";
         var bar = document.createElement("div"); bar.className = "bar";
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
@@ -681,7 +693,7 @@ export function startApp() {
     var headers = Object.assign({}, options.headers || {}, { "x-goog-api-key": key });
     function handle(r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
-        if (!r.ok) { var e = new Error(googleError(r.status, body)); e.status = r.status; e.google = (body && body.error && body.error.message) || ""; throw e; }
+        if (!r.ok) { var e = new Error(googleError(r.status, body)); e.status = r.status; e.google = (body && body.error && body.error.message) || ""; e.details = (body && body.error && body.error.details) || []; throw e; }
         return body;
       });
     }
@@ -793,17 +805,48 @@ export function startApp() {
      Google has no way to ask "how much is left" with a key, so the page learns
      from what each model just did. Stored on this device: model names and times only. */
   var REST_KEY = "stp-model-rest";
-  var REST_BUSY = 10 * 60000, REST_LIMIT = 60 * 60000;
+  var REST_BUSY = 10 * 60000;
   function restList() { try { return JSON.parse(localStorage.getItem(REST_KEY) || "{}") || {}; } catch (e) { return {}; } }
-  function restModel(model, ms) {
-    var r = restList(); r[model] = Date.now() + ms;
+  /* why: "busy" (Google overloaded), "minute" (per-minute limit), "day" (daily limit, until 3 AM Eastern). */
+  function restModel(model, ms, why) {
+    var r = restList(); r[model] = { until: Date.now() + ms, why: why || "busy" };
     try { localStorage.setItem(REST_KEY, JSON.stringify(r)); } catch (e) {}
+    testLog.refresh();
+  }
+  function restInfo(model) {
+    var x = restList()[model];
+    if (typeof x === "number") x = { until: x, why: "busy" };   // older format
+    return x && x.until > Date.now() ? { mins: Math.ceil((x.until - Date.now()) / 60000), secs: Math.ceil((x.until - Date.now()) / 1000), why: x.why } : null;
+  }
+  /* Milliseconds until daily limits reset (midnight Pacific). */
+  function msToReset() {
+    try {
+      var p = new Date().toLocaleTimeString("en-US", { timeZone: "America/Los_Angeles", hour12: false }).split(":").map(Number);
+      return Math.max(60000, (24 * 3600 - ((p[0] % 24) * 3600 + p[1] * 60 + p[2])) * 1000);
+    } catch (e) { return 3600000; }
+  }
+  /* Google's limit errors say which limit was hit: per minute or per day, how
+     long to wait, and sometimes the limit itself. */
+  function limitKind(e) {
+    var out = { daily: false, minute: false, wait: 0, value: 0 };
+    (e.details || []).forEach(function (d) {
+      if (!d || typeof d !== "object") return;
+      (d.violations || []).forEach(function (v) {
+        var id = String(v.quotaId || "") + " " + String(v.quotaMetric || "");
+        if (/PerDay/i.test(id)) { out.daily = true; if (Number(v.quotaValue) > 0) out.value = Number(v.quotaValue); }
+        else if (/PerMinute/i.test(id)) out.minute = true;
+      });
+      if (d.retryDelay) out.wait = parseFloat(d.retryDelay) || 0;
+    });
+    if (!out.daily && !out.minute) out.daily = /per day|daily|PerDay/i.test(e.google || "") || !/per minute|PerMinute/i.test(e.google || "");
+    if (out.daily) out.minute = false;
+    return out;
   }
   function clearRest(model) {
     var r = restList(); if (!(model in r)) return; delete r[model];
     try { localStorage.setItem(REST_KEY, JSON.stringify(r)); } catch (e) {}
   }
-  function resting(model) { var until = restList()[model]; return until && until > Date.now() ? Math.ceil((until - Date.now()) / 60000) : 0; }
+  function resting(model) { var r = restInfo(model); return r ? r.mins : 0; }
 
   /* Tries each model in order and resolves to { text, model, ms, history, ... }.
      - Models resting from a recent problem go to the back of the line.
@@ -839,6 +882,11 @@ export function startApp() {
         if (ok) resolve(value); else reject(value);
       }
       function giveUp() {
+        if (lastErr && lastErr.status === 429 && lastErr.perMinute) {
+          var slow = new Error("Gemini's free per-minute limit is full right now. Wait about a minute and try again.");
+          slow.status = 429; slow.google = lastErr.google || "";
+          return finish(false, slow);
+        }
         if (lastErr && lastErr.status === 429) {
           var all = new Error("Every free Gemini model on your key has hit today's limit. It resets overnight, around 3 AM Eastern.");
           all.status = 429;
@@ -890,10 +938,21 @@ export function startApp() {
           if (done) return;   // another model already won; this one was stopped on purpose
           var secs = Math.round((Date.now() - tAttempt) / 1000);
           /* "after Ns" shows how long a model made you wait before the next one took over */
-          if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY); }
-          else if (e.status === 429) { history.push(model + " was at its daily limit after " + secs + "s"); testLog.request(model, 0, true); restModel(model, REST_LIMIT); }
+          if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY, "busy"); }
+          else if (e.status === 429) {
+            var k = limitKind(e);
+            if (k.daily) {
+              history.push(model + " was at its daily limit" + (k.value ? " (" + k.value + ")" : ""));
+              if (k.value) learnLimit(model, k.value);
+              testLog.request(model, 0, true); restModel(model, msToReset(), "day");
+            } else {
+              e.perMinute = true;
+              history.push(model + " hit its per-minute limit" + (k.wait ? ", back in " + Math.round(k.wait) + "s" : ""));
+              restModel(model, Math.max(15, k.wait || 60) * 1000, "minute");
+            }
+          }
           else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
-          else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY); }
+          else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY, "busy"); }
           /* A model that rejects the thinking setting gets one more try without it. */
           if (e.status === 400 && withThinking) return run(i, false);
           if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) startNext(); return; }
@@ -1164,7 +1223,7 @@ export function startApp() {
         var nc = showNumberCheck(prompt);
         session.numFlags = nc.extra.length + nc.missing.length;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
-          detours: (r.history || []).join("; "), words_out: words(prompt), core: core.active, outcome: "ok",
+          detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null });
       }
@@ -1429,6 +1488,24 @@ export function startApp() {
     if (a) flushRun(a);
   }, true);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushRun("left the page"); });
+
+  /* Newer version check: Safari keeps old tabs alive for days, so when this tab
+     comes back into view it asks for version.json. If a newer build is live, a
+     quiet bar offers Reload (it says so if that would clear what's on screen). */
+  var MY_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+  var updateBar = document.getElementById("updateBar"), updateBtn = document.getElementById("updateBtn");
+  function checkVersion() {
+    if (MY_VERSION === "dev") return;
+    fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.version || j.version === MY_VERSION) return;
+      var busyHere = thoughts.value.trim() || !document.getElementById("result").hidden;
+      updateBtn.textContent = busyHere ? "Reload (clears this prompt)" : "Reload";
+      updateBar.hidden = false;
+    }, function () {});
+  }
+  updateBtn.addEventListener("click", function () { location.reload(); });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkVersion(); });
+  checkVersion();
 
   /* "Something went wrong?" (ReportIssue.svelte): the facts about this run, never its words. */
   function deviceLine() {

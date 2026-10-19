@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { readFileSync, copyFileSync, existsSync } from 'node:fs';
+import { readFileSync, copyFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -11,6 +11,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 function appVersion() {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
   try { return execSync('git rev-parse --short HEAD', { cwd: here }).toString().trim(); } catch (e) { return 'dev'; }
+}
+
+/* version.json: the commit this build came from, so an open tab can tell when a
+   newer version is live and offer to reload. */
+function versionJson() {
+  return {
+    name: 'version-json',
+    writeBundle(opts) { writeFileSync(path.join(opts.dir, 'version.json'), JSON.stringify({ version: appVersion() }) + '\n'); }
+  };
 }
 
 /* "Speak to Prompt stack": the framework and build tool this repo is built with,
@@ -53,7 +62,7 @@ export default defineConfig({
   root: path.join(here, 'app'),
   envDir: here,
   base: process.env.BASE_PATH || '/',
-  plugins: [svelte(), rootJson()],
+  plugins: [svelte(), rootJson(), versionJson()],
   define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()) },
   build: { outDir: path.join(here, 'dist'), emptyOutDir: true, target: 'safari16' }
 });
