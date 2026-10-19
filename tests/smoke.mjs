@@ -905,7 +905,7 @@ await check('Glow-Up: before and after slider, short by default, no core, saves 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('limits: per-minute is a pause, daily is used up (and learned), busy says busy; newer version offers reload', async () => {
+await check('limits: per-minute is a pause, daily is used up (and learned), busy says busy; version pill shows Latest or Update ready and reloads', async () => {
   const minute = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' }] }, { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '30s' }];
   const daily = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', quotaValue: '25' }] }];
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] },
@@ -919,14 +919,19 @@ await check('limits: per-minute is a pause, daily is used up (and learned), busy
   expect(/used up today, back at 3 AM/.test(rows['gemini-3.7-flash']), 'daily limit should say used up: ' + rows['gemini-3.7-flash']);
   expect(/busy at Google, retry in \d+ min/.test(rows['gemini-3.6-flash']), 'a busy model should say busy: ' + rows['gemini-3.6-flash']);
   expect(await p.evaluate(() => JSON.parse(localStorage.getItem('stp-learned-limits') || '{}')['gemini-3.7-flash']) === 25, 'the daily limit Google reported should be learned');
-  // Newer version live: a quiet bar offers Reload, and warns it clears the prompt on screen
-  expect(!(await p.isVisible('#updateBar')), 'no update bar when the version matches');
+  // Version pill, top right: Latest now; Update ready when a newer build is live; tapping reloads (asks twice if a prompt is on screen)
+  await p.waitForFunction(() => document.getElementById('versionPill').dataset.state === 'latest');
+  expect(/Latest/.test(await p.textContent('#versionPill')), 'pill should say Latest when the version matches');
+  const box = await p.evaluate(() => { const r = document.getElementById('versionPill').getBoundingClientRect(); return [r.right, r.top, innerWidth]; });
+  expect(box[2] - box[0] < 40 && box[1] < 80, 'pill should sit at the top right: ' + box.join());
   await p.route(/version\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"version":"newer123"}' }));
   await p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
-  await p.waitForSelector('#updateBar', { state: 'visible' });
-  expect(/clears this prompt/.test(await p.textContent('#updateBtn')), 'should warn that reloading clears what is on screen');
+  await p.waitForFunction(() => document.getElementById('versionPill').dataset.state === 'update');
+  expect(/Update ready/.test(await p.textContent('#versionPill')), 'pill should say Update ready');
   await p.evaluate(() => { window.__before = 1; });
-  await p.click('#updateBtn'); await p.waitForLoadState('load');
+  await p.click('#versionPill');
+  expect(/Tap again/.test(await p.textContent('#versionPill')) && await p.evaluate(() => window.__before === 1), 'with a prompt on screen, the first tap should ask again, not reload');
+  await p.click('#versionPill'); await p.waitForLoadState('load');
   await p.waitForFunction(() => !window.__before, null, { timeout: 5000 });
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });

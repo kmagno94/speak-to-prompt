@@ -1489,21 +1489,37 @@ export function startApp() {
   }, true);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushRun("left the page"); });
 
-  /* Newer version check: Safari keeps old tabs alive for days, so when this tab
-     comes back into view it asks for version.json. If a newer build is live, a
-     quiet bar offers Reload (it says so if that would clear what's on screen). */
+  /* Version pill (top right): checks version.json when the page opens and whenever
+     it comes back into view. "✓ Latest", "Update ready", or plain "Refresh" if it
+     couldn't check. Tapping always reloads, which is the only refresh a Home Screen
+     web app has. If a prompt is on screen, the first tap asks to tap again. */
   var MY_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
-  var updateBar = document.getElementById("updateBar"), updateBtn = document.getElementById("updateBtn");
-  function checkVersion() {
-    if (MY_VERSION === "dev") return;
-    fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-      if (!j || !j.version || j.version === MY_VERSION) return;
-      var busyHere = thoughts.value.trim() || !document.getElementById("result").hidden;
-      updateBtn.textContent = busyHere ? "Reload (clears this prompt)" : "Reload";
-      updateBar.hidden = false;
-    }, function () {});
+  var pill = document.getElementById("versionPill"), pillText = document.getElementById("versionText");
+  var pillState = "checking", confirmTimer = 0;
+  function setPill(state) {
+    pillState = state;
+    pill.dataset.state = state;
+    pillText.textContent = { checking: "Checking...", latest: "\u2713 Latest", update: "Update ready", refresh: "Refresh", confirm: "Tap again to reload (clears this prompt)" }[state];
+    pill.title = state === "latest" ? "You're on the newest version (" + MY_VERSION + "). Tap to refresh." : state === "update" ? "A newer version is live. Tap to reload." : "Tap to refresh";
   }
-  updateBtn.addEventListener("click", function () { location.reload(); });
+  function checkVersion() {
+    if (MY_VERSION === "dev") { setPill("refresh"); return; }
+    fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (pillState === "confirm") return;
+      setPill(!j || !j.version ? "refresh" : j.version === MY_VERSION ? "latest" : "update");
+    }, function () { if (pillState !== "confirm") setPill("refresh"); });
+  }
+  pill.addEventListener("click", function () {
+    var busyHere = thoughts.value.trim() || !document.getElementById("result").hidden;
+    if (busyHere && pillState !== "confirm") {
+      var back = pillState;
+      setPill("confirm");
+      clearTimeout(confirmTimer);
+      confirmTimer = setTimeout(function () { if (pillState === "confirm") setPill(back); }, 4000);
+      return;
+    }
+    location.reload();
+  });
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkVersion(); });
   checkVersion();
 

@@ -16,12 +16,12 @@
 </script>
 
 <div class="wrap">
-  <p class="updatebar" id="updateBar" role="status" hidden>
-    <span>A newer version of the app is ready.</span>
-    <button type="button" id="updateBtn">Reload</button>
-  </p>
   <header>
-    <span class="chip">Nothing is saved</span>
+    <div class="toprow">
+      <span class="chip">Nothing is saved</span>
+      <!-- Home Screen web apps have no browser bar, so this is the refresh button too. -->
+      <button type="button" class="verpill" id="versionPill" data-state="checking" aria-live="polite"><span class="ic" aria-hidden="true">↻</span><span id="versionText">Checking...</span></button>
+    </div>
     <h1>Speak to Prompt</h1>
     <svg class="wave" viewBox="0 0 340 30" aria-hidden="true" focusable="false">
       <g class="v">
