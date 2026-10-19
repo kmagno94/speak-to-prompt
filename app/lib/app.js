@@ -248,6 +248,7 @@ export function startApp() {
     if (!ready) xray.clear();
     document.getElementById("copy").disabled = !ready;
     document.getElementById("copyAll").disabled = !ready;
+    document.getElementById("copyNote").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
     document.getElementById("saveShare").disabled = !ready;
     output.placeholder = ready ? "" : "Your prompt will appear here when it's ready.";
@@ -334,6 +335,17 @@ export function startApp() {
     out.push("", "PROMPT", output.value);
     return out.join("\n");
   }
+  /* Copy prompt + my note: the prompt first, then the original note under a clear
+     line that says which one to follow, so a corrected detail ("the 14th, no wait,
+     the 13th") can't win over the prompt. */
+  var WHICH = "Use the prompt above. This note is only extra context. If it disagrees with the prompt above, the prompt wins.";
+  function promptWithNote() {
+    return output.value + "\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nMY ORIGINAL NOTE (background only)\n" + WHICH + "\n\n" + ((session && session.raw) || thoughts.value.trim());
+  }
+  document.getElementById("copyNote").addEventListener("click", function () {
+    if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) { selectFallback(); return; }
+    navigator.clipboard.writeText(promptWithNote()).then(function () { promptCopied = true; status.textContent = "Copied your prompt with your note under it. Now paste it into your AI."; }, selectFallback);
+  });
   document.getElementById("copyAll").addEventListener("click", function () {
     if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) return;
     navigator.clipboard.writeText(fullResult()).then(function () { status.textContent = "Copied the full result. Paste it into the stress test chat."; }, function () { status.textContent = "Couldn't copy."; });
@@ -1409,7 +1421,12 @@ export function startApp() {
     }
     head("\ud83d\udde3\ufe0f " + (n.transcript ? "Clean Transcript" : "Raw Thoughts"));
     block(n.transcript || s0.raw || "");
-    if (withPrompt && output.value) { head("\ud83d\ude80 Prompt Built"); block(output.value); }
+    if (withPrompt && output.value) {
+      /* A clear line between the record and the prompt, saying which one to paste. */
+      out.push(""); out.push(md ? "---" : "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
+      out.push("\ud83d\udc49 Which to use: paste only the Prompt Built part below into your AI. Everything above is your record and background. If anything above disagrees with the prompt, the prompt wins.");
+      head("\ud83d\ude80 Prompt Built"); block(output.value);
+    }
     /* In Markdown, a blank line between lines keeps each one on its own line (lists stay lists). */
     return (md ? out.filter(function (x) { return x !== ""; }).join("\n\n") : out.join("\n")).trim();
   }
@@ -1523,7 +1540,7 @@ export function startApp() {
     var t = e.target;
     if (t.closest("#xrayBtn")) { pendingRun.xray_opened = true; return; }
     var ai = t.closest(".openai");
-    var a = t.closest("#copy") ? "copied" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note" : t.closest("#glowSave") ? "saved glow-up"
+    var a = t.closest("#copy") ? "copied" : t.closest("#copyNote") ? "copied with note" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note" : t.closest("#glowSave") ? "saved glow-up"
       : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build") ? "rebuilt" : "";
     if (a) flushRun(a);
   }, true);

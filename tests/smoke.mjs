@@ -522,6 +522,19 @@ await check('Save to Notes: title on the first line, then the original voice-not
   expect(note.includes('\n### \u{1F4DD} Summary\nA nightly wind-down.') && note.includes('\n### \u{1F4A1} Key Ideas\n- Night Shift at 10:15') && note.includes('\n### \u2705 Action Items\n\u2610 Build the shortcut'), 'section layout wrong:\n' + note);
   expect(!/SUMMARY|KEY IDEAS/.test(note), 'old all-caps headings still there');
   expect(note.includes('### \u{1F680} Prompt Built\nTHE PROMPT'), 'prompt missing from the note');
+  const which = note.indexOf('\u{1F449} Which to use: paste only the Prompt Built part'), line = note.indexOf('\u2501\u2501\u2501'), built = note.indexOf('### \u{1F680} Prompt Built');
+  expect(line > 0 && which > line && built > which && /the prompt wins/.test(note), 'note needs a clear line and a which-to-use rule right before the prompt:\n' + note);
+});
+
+await check('Copy prompt + my note: prompt first, then the note under a line that says the prompt wins', async () => {
+  const p = await page({ write: 'Plan the party for Friday the 13th at 7:30 PM.' });
+  await withKey(p); await p.fill('#thoughts', 'party on the 14th, no wait, the 13th, at 7:30'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.click('#copyNote'); await p.waitForTimeout(300);
+  const t = await p.evaluate(() => navigator.clipboard.readText());
+  expect(t.startsWith('Plan the party for Friday the 13th at 7:30 PM.\n\n\u2501'), 'prompt should come first, then the line:\n' + t);
+  expect(/MY ORIGINAL NOTE \(background only\)\nUse the prompt above\..*If it disagrees with the prompt above, the prompt wins\.\n\nparty on the 14th, no wait, the 13th, at 7:30$/.test(t), 'note part wrong:\n' + t);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save Voice Note and shows File voice note', async () => {
@@ -542,7 +555,7 @@ await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save 
   const text = decodeURIComponent(href.split('&text=')[1]);
   // Markdown for the shortcut: "# " title, every line its own paragraph, real headings
   expect(!text.includes('[ ]'), 'no raw Markdown checkboxes (Notes shows the brackets)');
-  expect(text.split('\n')[0] === '# Pre-Sleep Focus Setup' && text.includes('\n\n## H\n\n### \u{1F4DD} Summary\n\nS') && text.includes('\n\n### \u{1F680} Prompt Built\n\nTHE PROMPT'), 'shortcut text should be the full note in Markdown:\n' + text);
+  expect(text.split('\n')[0] === '# Pre-Sleep Focus Setup' && text.includes('\n\n## H\n\n### \u{1F4DD} Summary\n\nS') && text.includes('\n\n---\n\n\u{1F449} Which to use:') && text.includes('\n\n### \u{1F680} Prompt Built\n\nTHE PROMPT'), 'shortcut text should be the full note in Markdown:\n' + text);
   expect(await p.evaluate(() => navigator.clipboard.readText()) === text, 'note should also be copied as a backup');
   expect(/Process Voice Note/.test(await p.textContent('#keepStatus')), 'status should say where it went');
   expect(!(await p.evaluate(() => window.__shared)), 'share sheet should not open on the main button');

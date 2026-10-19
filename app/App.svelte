@@ -108,6 +108,7 @@
     <ReportIssue />
     <div class="row">
       <button type="button" class="primary" id="copy">Copy prompt</button>
+      <button type="button" id="copyNote">Copy prompt + my note</button>
       <button type="button" id="copyAll" hidden>Copy full result</button>
       <button type="button" id="reset">Start over</button>
     </div>
