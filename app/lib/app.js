@@ -828,9 +828,10 @@ export function startApp() {
         clearTimeout(timer);
         var secs = Math.round((Date.now() - tAttempt) / 1000);
         if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
-        else if (e.status === 429) { history.push(model + " was at its daily limit"); testLog.request(model, 0, true); }
-        else if (e.status === "empty") history.push(model + " sent an incomplete answer");
-        else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable");
+        /* "after Ns" shows how long a model made you wait before the next one took over */
+        else if (e.status === 429) { history.push(model + " was at its daily limit after " + secs + "s"); testLog.request(model, 0, true); }
+        else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
+        else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable after " + secs + "s");
         /* A model that rejects the thinking setting gets one more try without it. */
         if (e.status === 400 && withThinking) return attempt(i, e, false);
         if (RETRY.indexOf(e.status) !== -1) return attempt(i + 1, e, true);
@@ -1316,7 +1317,7 @@ export function startApp() {
       tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null, xray_opened: false };
     for (var k in r) if (k !== "when") run[k] = r[k];
     pendingRun = run;
-    pendingTimer = setTimeout(function () { flushRun("none in 3 min"); }, 180000);
+    pendingTimer = setTimeout(function () { flushRun("none in 10 min"); }, 600000);   // long prompts take a while to read
   }
   function flushRun(action) {
     if (!pendingRun) return;

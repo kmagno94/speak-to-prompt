@@ -774,6 +774,13 @@ await check('auto-repair never strips real times; corrected numbers and "two wee
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('X-ray keeps "vs." and "e.g." inside one sentence, but never joins lines', async () => {
+  const { analyze } = await import('../app/lib/xray.js');
+  const x = analyze('Flag the Saturday work shift vs. exam conflict, e.g. a swap. Then plan it.\nNext line vs.\nLast line.', 'work shift exam conflict swap');
+  const texts = x.segments.map((s) => s.text);
+  expect(texts.length === 4 && texts[0] === 'Flag the Saturday work shift vs. exam conflict, e.g. a swap.' && texts[2] === 'Next line vs.', 'sentences split wrong: ' + JSON.stringify(texts));
+});
+
 await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
   const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
   const row = (o) => ({ created_at: o.when || '2026-10-19T01:00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).filter(([k]) => k !== 'when').map(([k, v]) => '| ' + k + ' | ' + (v === true ? 'yes' : v === false ? 'no' : v) + ' |').join('\n') });

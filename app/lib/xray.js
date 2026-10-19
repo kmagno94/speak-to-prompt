@@ -33,8 +33,21 @@ function stems(text) {
   return out;
 }
 
+/* Short forms like "vs." and "e.g." end with a dot but don't end the sentence. */
+const ABBREV = /\b(vs|e\.g|i\.e|etc|approx|dr|mr|mrs|ms|jr|sr|a\.m|p\.m)\.$/i;
 function sentences(text) {
-  return String(text || '').split(/\n+|(?<=[.!?])\s+(?=\S)/).map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  for (const line of String(text || '').split(/\n+/)) {
+    let first = true;
+    for (const piece of line.split(/(?<=[.!?])\s+(?=\S)/)) {
+      const t = piece.trim();
+      if (!t) continue;
+      if (!first && ABBREV.test(out[out.length - 1])) out[out.length - 1] += ' ' + t;   // never joins across lines
+      else out.push(t);
+      first = false;
+    }
+  }
+  return out;
 }
 
 /* What an added part is for, in plain words. */
