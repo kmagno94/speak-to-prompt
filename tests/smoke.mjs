@@ -570,6 +570,7 @@ await check('dev tools on: a "which stack" question offers the Speak to Prompt s
   const chips = await p.$$eval('#qaList .chips button', l => l.map(b => b.textContent.trim()));
   expect(chips[0] === want && chips.length >= 4 && !chips.includes('Vue'), 'stack choice should be first (4 max): ' + chips.join(' | '));
   expect(p.calls[0].intake && p.calls[0].text.includes(want), 'intake request should mention the stack choice');
+  expect(/first person/.test(p.calls[0].text) && /never the user/.test(p.calls[0].text), 'note fields should be asked for in first person');
   // Dev tools off: untouched
   p = await page({ intake });
   await withKey(p); await p.fill('#thoughts', 'build me a habit tracker web app'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
