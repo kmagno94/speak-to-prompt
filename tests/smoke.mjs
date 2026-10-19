@@ -58,6 +58,7 @@ async function page(opts = {}) {
     }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
+    if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : (opts.write || 'THE PROMPT');
@@ -120,6 +121,15 @@ await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   const p = await page({ fail: { 'gemini-3.8-flash': 429 }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not fall back to 3.7 Flash');
+});
+
+await check('Couldn\'t reach Google on one model tries the next model', async () => {
+  const p = await page({ drop: { 'gemini-3.8-flash': true }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not move on to 3.7 Flash after a dropped request');
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'prompt not shown after the backup answered');
+  const rest = await p.evaluate(() => localStorage.getItem('stp-model-rest') || '');
+  expect(!/3\.8/.test(rest), 'a dropped connection should not put the model on the rest list: ' + rest);
 });
 
 await check('cut-off answer (finishReason MAX_TOKENS) is not shown', async () => {

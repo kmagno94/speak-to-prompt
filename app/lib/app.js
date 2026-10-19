@@ -703,7 +703,7 @@ export function startApp() {
       var sep = path.indexOf("?") === -1 ? "?" : "&";
       return fetch(API + path + sep + "key=" + encodeURIComponent(key), options).then(handle, function () {
         if (options.signal && options.signal.aborted) throw timedOut();
-        throw new Error("Couldn't reach Google. Check your connection and try again.");
+        var n = new Error("Couldn't reach Google. Check your connection and try again."); n.status = "network"; throw n;
       });
     });
   }
@@ -769,7 +769,8 @@ export function startApp() {
 
 
 
-  var RETRY = [429, 403, 404, 500, 503, "empty", "timeout"];
+  /* "network": no answer at all (often Safari dropping a request after switching apps). */
+  var RETRY = [429, 403, 404, 500, 503, "empty", "timeout", "network"];
   var TIME_LIMIT = 45000;
   /* Tries each model in order. Moves on when a model is out of its daily limit,
      unavailable, slower than TIME_LIMIT, or sends back nothing.
@@ -952,6 +953,7 @@ export function startApp() {
             }
           }
           else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
+          else if (e.status === "network") history.push(model + " couldn't be reached after " + secs + "s");   // not the model's fault, so no rest
           else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY, "busy"); }
           /* A model that rejects the thinking setting gets one more try without it. */
           if (e.status === 400 && withThinking) return run(i, false);
