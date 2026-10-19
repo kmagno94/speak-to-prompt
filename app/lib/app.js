@@ -144,6 +144,7 @@ export function startApp() {
     }
     function render() {
       document.getElementById("testLog").hidden = !on;
+      document.getElementById("copyAll").hidden = !on;   /* testing only */
       document.getElementById("statsToggle").checked = on;
       if (typeof updateQuickLabel === "function") updateQuickLabel();
       var f = document.getElementById("footerLead");
@@ -246,6 +247,7 @@ export function startApp() {
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
     if (!ready) xray.clear();
     document.getElementById("copy").disabled = !ready;
+    document.getElementById("copyAll").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
     document.getElementById("saveShare").disabled = !ready;
     output.placeholder = ready ? "" : "Your prompt will appear here when it's ready.";
@@ -313,6 +315,28 @@ export function startApp() {
         }, function () {});
       }
     });
+  });
+  /* Copy full result (shows only with run stats on, for stress tests): the note,
+     answers, what's on screen, the X-ray, and the prompt in one paste. It only
+     copies; nothing is sent anywhere. */
+  function fullResult() {
+    var s = session || {}, raw = s.raw || thoughts.value, ans = s.answers || [], out = ["SPEAK TO PROMPT RESULT"];
+    report.collect().forEach(function (r) { if (r[1] !== "" && r[1] != null) out.push(r[0] + ": " + r[1]); });
+    out.push("", "MY NOTE", raw);
+    if (ans.length) { out.push("", "MY ANSWERS"); ans.forEach(function (a) { out.push("Q: " + a.question, "A: " + a.answer + (a.tapped ? " (tapped)" : "")); }); }
+    var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
+    if (shown.length) out.push("", "ON SCREEN", shown.join("\n"));
+    var x = analyze(output.value, raw, ans, core.active ? core.block : "");
+    out.push("", "X-RAY", x.pct + "% your words, " + x.added + " parts added to help");
+    x.sources.filter(function (z) { return !z.used; }).forEach(function (z) { out.push("Not in the prompt: " + z.text); });
+    var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
+    if (stray.length) out.push("Numbers you never said: " + stray.join(", "));
+    out.push("", "PROMPT", output.value);
+    return out.join("\n");
+  }
+  document.getElementById("copyAll").addEventListener("click", function () {
+    if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) return;
+    navigator.clipboard.writeText(fullResult()).then(function () { status.textContent = "Copied the full result. Paste it into the stress test chat."; }, function () { status.textContent = "Couldn't copy."; });
   });
   document.getElementById("copy").addEventListener("click", function () {
     var text = output.value;

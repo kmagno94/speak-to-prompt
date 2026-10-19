@@ -1098,6 +1098,22 @@ await check('Scorecard: busy by time of day, in Eastern time', async () => {
   expect(am && am.n === 2 && am.busy_pct === 50 && am.wait_p50 === 15 && pm && pm.limit_pct === 100 && pm.busy_pct === 0, 'busy by time wrong: ' + JSON.stringify(t));
 });
 
+await check('Copy full result: shows only with run stats on and copies note, answers, X-ray, and prompt', async () => {
+  const p = await page({ write: 'Plan a surprise party for Marco on Friday the 13th at 7:30 PM. Budget is $200 with $35.50 spent. Keep it under 400 words.' });
+  await withKey(p);
+  await p.fill('#thoughts', 'surprise party for Marco on friday the 13th at 7:30. budget is $200 and I spent $35.50. two people are vegan so plan food around that.');
+  await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  expect(!(await p.isVisible('#copyAll')), 'Copy full result should hide with run stats off');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  expect(await p.isVisible('#copyAll'), 'Copy full result should show with run stats on');
+  await p.click('#copyAll'); await p.waitForTimeout(300);
+  const t = await p.evaluate(() => navigator.clipboard.readText());
+  for (const want of ['MY NOTE', 'surprise party for Marco', 'MY ANSWERS', 'A: iPhone', 'X-RAY', '% your words', 'Not in the prompt: two people are vegan', 'Numbers you never said: 400', 'PROMPT', 'Keep it under 400 words', 'App version'])
+    expect(t.includes(want), 'full result missing "' + want + '":\n' + t);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('usage.json is valid', async () => {
   const p = await page();
   const j = await p.evaluate(() => fetch('usage.json', { cache: 'no-store' }).then(r => r.json()));
