@@ -1,6 +1,6 @@
 {
   "note": "Typical wait times from the run log (issue #2), written by the review. The app uses these until a phone has learned its own.",
-  "updated": "2026-10-19 16:56 UTC",
+  "updated": "2026-10-20 16:57 UTC",
   "intake": {
     "secs": 2,
     "runs": 20
@@ -8,10 +8,10 @@
   "depth": {
     "complex": {
       "secs": 19,
-      "runs": 9
+      "runs": 12
     },
     "standard": {
-      "secs": 36,
+      "secs": 83,
       "runs": 20
     }
   }
