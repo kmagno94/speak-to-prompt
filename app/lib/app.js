@@ -1265,6 +1265,8 @@ export function startApp() {
         setBuild("");
         qaStatus.textContent = "";
         var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
+        /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
+        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         showResult(core.apply(prompt), techOn()   /* core */

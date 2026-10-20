@@ -52,6 +52,7 @@ async function page(opts = {}) {
     const intake = /intake step/.test(ask);
     if (/PROMPT TO FIX:/.test(ask)) {
       p.repairs.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+      if (opts.repairDelay) await new Promise(res => setTimeout(res, opts.repairDelay));
       if (opts.repairFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
@@ -829,6 +830,10 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(/Auto-fixed: added 1 detail you said and removed 1 made-up number/.test(note), 'note wrong: ' + note);
   expect(sent[0].repair === 'fixed' && typeof sent[0].repair_s === 'number' && sent[0].xray_dropped === 0, 'run log should record the fix: ' + JSON.stringify(sent[0]));
   expect(!(await p.isVisible('#numWarn')), 'no number warning once the made-up number is gone');
+  // 2b. The fix takes a while: elapsed matches the total and names the finishing touch (report #5)
+  ({ p, sent } = await run({ write: BAD, repair: GOOD, repairDelay: 2200 }));
+  const total = (await p.textContent('#madeBy')).match(/in (\d+)s/), el = await p.textContent('#resultTrack .el');
+  expect(total && el === '0:0' + total[1] && /finishing touch/.test(await p.textContent('#resultTrack .leftlbl')), 'elapsed ' + el + ' should match the total ' + (total && total[1]) + 's and mention the finishing touch');
   // 3. Fix isn't better: keep the original and say so
   ({ p, sent } = await run({ write: BAD, repair: BAD + '\nAlso budget $999 a day.' }));
   expect(await p.inputValue('#output') === BAD && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away');
