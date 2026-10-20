@@ -26,7 +26,8 @@
 
   function pick(r) { picked = picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r]; }
 
-  function done(msg) { sent = true; status = msg; }
+  /* Once a report is sent, the box empties so the next critique starts fresh (report #7). */
+  function done(msg, clear = true) { sent = true; status = msg; if (clear) { picked = []; note = ''; } }
 
   function send() {
     if (RELAY) {
@@ -74,10 +75,10 @@
         <pre id={id('Preview')}>{preview}</pre>
       </details>
       <div class="row">
-        <button type="button" class="primary" id={id('Send')} disabled={!ready || sending} onclick={send}>{sending ? 'Sending...' : sent ? 'Send again' : 'Send report'}</button>
+        <button type="button" class="primary" id={id('Send')} disabled={!ready || sending} onclick={send}>{sending ? 'Sending...' : sent ? 'Send another' : 'Send report'}</button>
         {#if issue}
           <a class="ghlink" id={id('Issue')} href={issue} target="_blank" rel="noopener"
-             aria-disabled={!ready} onclick={(e) => { if (!ready) e.preventDefault(); else done('Opened GitHub. Tap Submit there, and the next review picks it up.'); }}>File a GitHub issue</a>
+             aria-disabled={!ready} onclick={(e) => { if (!ready) e.preventDefault(); else done('Opened GitHub. Tap Submit there, and the next review picks it up.', false); }}>File a GitHub issue</a>
         {/if}
       </div>
       <p id={id('Status')} class="status" role="status">{status}</p>

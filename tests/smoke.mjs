@@ -654,13 +654,17 @@ await check('something went wrong: quick report with run facts only, never your 
   await p.waitForFunction(() => /report #7/.test(document.getElementById('reportStatus').textContent));
   expect(relayed.length === 1 && relayed[0].title === 'Report: Missed my point, Too long' && relayed[0].body === text, 'relay should get exactly the preview: ' + JSON.stringify(relayed[0]).slice(0, 120));
   expect(!(await p.evaluate(() => window.__shared)), 'share sheet should not open when the relay works');
+  // Sent: the box empties so the next critique starts fresh (report #7)
+  expect(await p.$$eval('#reportBox .chips button[aria-pressed="true"]', l => l.length) === 0 && (await p.inputValue('#reportNote')) === '' && await p.isDisabled('#reportSend'), 'after sending, picks and note should clear');
+  expect(/report #7/.test(await p.textContent('#reportStatus')) && /Send another/.test(await p.textContent('#reportSend')), 'after sending, the thanks stays and the button says Send another');
+  const refill = async () => { await p.click('#reportBox .chips button >> text=Missed my point'); await p.click('#reportBox .chips button >> text=Too long'); await p.fill('#reportNote', 'expected a packing list'); };
   // Relay down: falls back to the share sheet
-  relayUp = false;
+  relayUp = false; await refill();
   await p.click('#reportSend');
   await p.waitForFunction(() => /share sheet instead/.test(document.getElementById('reportStatus').textContent));
   expect(await p.evaluate(() => window.__shared && window.__shared.text) === text, 'fallback share sheet should get exactly the preview');
   // Relay down on a computer without a share sheet: copy instead
-  await p.evaluate(() => { navigator.share = undefined; });
+  await p.evaluate(() => { navigator.share = undefined; }); await refill();
   await p.click('#reportSend');
   await p.waitForFunction(() => /copied instead/.test(document.getElementById('reportStatus').textContent));
   expect((await p.evaluate(() => navigator.clipboard.readText())) === text, 'copy fallback should copy the report');
