@@ -339,8 +339,9 @@ export function startApp() {
      line that says which one to follow, so a corrected detail ("the 14th, no wait,
      the 13th") can't win over the prompt. */
   var WHICH = "Use the prompt above. This note is only extra context. If it disagrees with the prompt above, the prompt wins.";
+  /* The note is the same one Save to Notes makes (summary, to-dos, open questions), not just the raw words (report #6). */
   function promptWithNote() {
-    return output.value + "\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nMY ORIGINAL NOTE (background only)\n" + WHICH + "\n\n" + ((session && session.raw) || thoughts.value.trim());
+    return output.value + "\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nMY ORIGINAL NOTE (background only)\n" + WHICH + "\n\n" + buildNote("notes", false);
   }
   document.getElementById("copyNote").addEventListener("click", function () {
     if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) { selectFallback(); return; }

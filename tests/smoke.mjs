@@ -528,13 +528,16 @@ await check('Save to Notes: title on the first line, then the original voice-not
 });
 
 await check('Copy prompt + my note: prompt first, then the note under a line that says the prompt wins', async () => {
-  const p = await page({ write: 'Plan the party for Friday the 13th at 7:30 PM.' });
+  const p = await page({ write: 'Plan the party for Friday the 13th at 7:30 PM.', intake: { title: 'Friday Party', need: 'N', category: 'Life', complexity: 'simple', questions: [{ question: 'Indoors?', choices: ['Yes'] }],
+    note: { headline: 'H', tags: [], summary: 'A party plan.', key_ideas: [], action_items: ['Buy snacks'], unknowns: ['How many guests?'], clean_transcript: '' } } });
   await withKey(p); await p.fill('#thoughts', 'party on the 14th, no wait, the 13th, at 7:30'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
   await p.click('#copyNote'); await p.waitForTimeout(300);
   const t = await p.evaluate(() => navigator.clipboard.readText());
   expect(t.startsWith('Plan the party for Friday the 13th at 7:30 PM.\n\n\u2501'), 'prompt should come first, then the line:\n' + t);
-  expect(/MY ORIGINAL NOTE \(background only\)\nUse the prompt above\..*If it disagrees with the prompt above, the prompt wins\.\n\nparty on the 14th, no wait, the 13th, at 7:30$/.test(t), 'note part wrong:\n' + t);
+  expect(/MY ORIGINAL NOTE \(background only\)\nUse the prompt above\..*If it disagrees with the prompt above, the prompt wins\.\n\nFriday Party\n/.test(t) && /\nparty on the 14th, no wait, the 13th, at 7:30$/.test(t), 'note part wrong:\n' + t);
+  // The whole saved note comes along: summary, to-dos, open questions, answers (report #6)
+  expect(t.includes('### \u{1F4DD} Summary\nA party plan.') && t.includes('\u2610 Buy snacks') && t.includes('- How many guests?') && t.includes('- Indoors? Yes') && !t.includes('Prompt Built'), 'the full note should be attached, without a second copy of the prompt:\n' + t);
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
