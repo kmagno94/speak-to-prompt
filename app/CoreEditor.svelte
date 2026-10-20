@@ -1,5 +1,6 @@
 <script>
   import { core, CORE_OPTIONS } from './lib/core.svelte.js';
+  import MemoryPanel from './MemoryPanel.svelte';
 
   let { onclose } = $props();
   let confirmClear = $state(false);
@@ -44,6 +45,8 @@
     <textarea id="coreIdentity" rows="2" bind:value={core.identity} oninput={() => core.save()} placeholder="For example: Help me plan my week and keep me on track with school."></textarea>
   </section>
 
+  <MemoryPanel />
+
   {#if core.has}
     <details class="peek">
       <summary>See what gets added to your prompts</summary>
@@ -66,7 +69,9 @@
 </div>
 
 <style>
-  .core { display: grid; gap: 16px; }
+  /* minmax(0, 1fr): long chips and text wrap inside the card instead of pushing it wider than the screen. */
+  .core { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  section { min-width: 0; }
   .intro, .hint, .dev { margin: 0; color: var(--muted); font-size: 14px; }
   .dev { font-size: 13px; }
   section { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }

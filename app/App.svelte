@@ -11,6 +11,8 @@
   import Tutorial from './Tutorial.svelte';
   import Guide from './Guide.svelte';
   import { core } from './lib/core.svelte.js';
+  import { memory } from './lib/memory.svelte.js';
+  import MemorySuggest from './MemorySuggest.svelte';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
@@ -19,7 +21,11 @@
 <div class="wrap">
   <header>
     <div class="toprow">
-      <span class="chip">Nothing is saved</span>
+      {#if memory.active}
+        <span class="chip tailored" id="saveChip">🧠 Tailored to you · this phone only</span>
+      {:else}
+        <span class="chip" id="saveChip">Nothing is saved</span>
+      {/if}
       <!-- Home Screen web apps have no browser bar, so this is the refresh button too. -->
       <button type="button" class="verpill" id="versionPill" data-state="checking" aria-live="polite"><span class="ic" aria-hidden="true">↻</span><span id="versionText">Checking...</span></button>
     </div>
@@ -107,6 +113,7 @@
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <ReportIssue />
+    <MemorySuggest />
     <div class="row">
       <button type="button" class="primary" id="copy">Copy prompt</button>
       <button type="button" id="copyNote">Copy prompt + my note</button>
@@ -212,5 +219,5 @@
   <Tutorial bind:this={tutorial} />
   <Guide />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

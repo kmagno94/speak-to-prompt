@@ -32,6 +32,18 @@ export function withStackHint(analyze, stack) {
   return analyze.replace('RAW THOUGHTS:', 'If you ask which tech stack, framework, or tools to build a web app or site with, include "' + stackChoice(stack) + '" as the first choice.\n\nRAW THOUGHTS:');
 }
 
+/* Memory ("Tailored to you", dev tools on): the intake step sees what the person
+   saved, skips questions it already answers, picks which facts matter, and can
+   suggest up to 2 lasting facts to remember. numbered: "1. ...\n2. ..." or ''. */
+export function withMemory(analyze, numbered) {
+  const known = numbered
+    ? 'WHAT I ALREADY KNOW ABOUT THIS PERSON (they saved these on their own phone):\n' + numbered + '\n' +
+      'Never ask a question these already answer. In your JSON, also add "use_memory": the numbers of the facts that truly matter for this request (an empty list if none do).\n'
+    : '';
+  return analyze.replace('RAW THOUGHTS:', known +
+    'Also add "remember": up to 2 short lasting facts about the person, stated in the raw thoughts, that would save them re-explaining next time (their devices, school, job, tools, or ongoing situation). First person, under 15 words each. Never health, money amounts, passwords, IDs, addresses, or facts about other people. Skip anything already known above. Use an empty list if nothing fits.\n\nRAW THOUGHTS:');
+}
+
 export const ANALYZE = [
   "You are the intake step of a prompt-building tool for people who are new to AI.",
   "Read the person's raw thoughts below. They may be a messy voice transcript.",

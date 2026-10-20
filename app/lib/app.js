@@ -1,4 +1,5 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory } from './prompts.js';
+import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
@@ -277,7 +278,7 @@ export function startApp() {
   function showResult(text, madeBy, title) {
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
-    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? session.answers : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
+    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
     setCategoryLine();
     setReady(true);
     output.value = text;
@@ -368,6 +369,7 @@ export function startApp() {
   });
 
   function startOver() {
+    memory.suggestions = [];
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
@@ -1135,6 +1137,8 @@ export function startApp() {
           transcript: String(n.clean_transcript || "").trim()
         };
       })(data.note),
+      memUse: Array.isArray(data.use_memory) ? data.use_memory : [],
+      memRemember: (Array.isArray(data.remember) ? data.remember : []).map(function (x) { return String(x || "").trim(); }).filter(Boolean).slice(0, 2),
       questions: qs.slice(0, 5).map(function (q) {
         return {
           question: String((q && q.question) || "").trim(),
@@ -1171,7 +1175,10 @@ export function startApp() {
     buildStatus.textContent = "";
     session.estIntake = intakeEstimate();
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
-    var intakeText = (core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE) + "\n" + raw + '\n"""';
+    var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
+    if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
+    memory.suggestions = [];
+    var intakeText = base + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
@@ -1187,6 +1194,9 @@ export function startApp() {
       session.title = intake.title;
       session.questions = addStackChoice(intake.questions);
       session.note = intake.note;
+      /* memory: only the facts the intake picked go into writing the prompt. */
+      session.memFacts = memory.active ? memory.pick(intake.memUse) : [];
+      session.memRemember = memory.active ? intake.memRemember : [];
       session.complexity = intake.complexity;
       session.category = intake.category;
       session.need = intake.need;
@@ -1223,6 +1233,7 @@ export function startApp() {
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
+    if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     setBusy(true, "Writing your prompt...");
     setBuild("");
     qaStatus.textContent = "";
@@ -1249,7 +1260,7 @@ export function startApp() {
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
       document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
       var t0 = Date.now();
-      return askGemini(repairPrompt(draft, session.raw, session.answers, before), false, writeModels(true), "low", null, 60000).then(function (r2) {
+      return askGemini(repairPrompt(draft, session.raw, withMem(session.answers), before), false, writeModels(true), "low", null, 60000).then(function (r2) {
         if (run !== writeRun) { setBusy(false); return; }
         var fixed = cleanPrompt(r2.text), after = qualityCheck(fixed);
         var secs = Math.round((Date.now() - t0) / 100) / 10;
@@ -1274,6 +1285,14 @@ export function startApp() {
           ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
           : "Ready in " + secs + ". Your AI can start working right away.", session.title);
         showRepairNote(rep);
+        /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
+        if (memory.active) {
+          var offer = [];
+          (session.memRemember || []).concat(session.answers.map(answerFact)).forEach(function (t) {
+            if (t && !memory.has(t) && offer.every(function (o) { return o.toLowerCase() !== t.toLowerCase(); })) offer.push(t);
+          });
+          memory.suggestions = offer.slice(0, 4);
+        }
         var nc = showNumberCheck(prompt);
         session.numFlags = nc.extra.length + nc.missing.length;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
@@ -1301,7 +1320,7 @@ export function startApp() {
      skipping short filler), numbers nobody said, and numbers you said that went
      missing (the number check). score = how many things a fix would address. */
   function qualityCheck(prompt) {
-    var x = analyze(prompt, session.raw, session.answers || []);
+    var x = analyze(prompt, session.raw, withMem(session.answers));
     var dropped = x.sources.filter(function (s) { return !s.used && words(s.text) >= 4; }).map(function (s) { return s.text; });
     var n = numberIssues(prompt);
     return { pct: x.pct, dropped: dropped, stray: n.extra, missingNums: n.missing, score: dropped.length + n.extra.length + n.missing.length };
@@ -1358,7 +1377,13 @@ export function startApp() {
   var IMPLIED = [[/\btwo weeks?\b/i, ["14"]], [/\bthree weeks?\b/i, ["21"]], [/\b(a|one) week\b/i, ["7"]], [/\bhalf (an )?hour\b/i, ["30"]], [/\b(an|one) hour\b/i, ["60"]], [/\b(a|one) year\b/i, ["12", "365"]]];
   /* "October 30th, wait no, the 31st": the part before the correction isn't something to keep. */
   var CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|correction|or rather|actually it'?s|actually make it)\b/gi;
-  function saidText() { return session.raw + "\n" + (session.answers || []).map(function (a) { return a.answer; }).join("\n"); }
+  /* Your saved memory facts that went into this prompt count as things you said
+     (so "iOS 27" from memory isn't a made-up number). */
+  function withMem(answers) {
+    var mem = (session && session.memFacts) || [];
+    return (answers || []).concat(mem.map(function (f) { return { question: "Your saved memory", answer: f }; }));
+  }
+  function saidText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n"); }
   function numberIssues(promptText) {
     var said = saidText();
     var have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
@@ -1606,6 +1631,7 @@ export function startApp() {
         ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
       ];
       if (core.dev) fr.push(["Core", core.active ? "on" : "off"]);
+      if (core.dev) fr.push(["Memory", memory.active ? "on, " + memory.facts.length + " saved" : "off"]);
       return fr;
     }
     var s = session || {}, qs = s.questions || [], ans = s.answers || [];
@@ -1629,6 +1655,7 @@ export function startApp() {
       ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
     ];
     if (core.dev) rows.push(["Core", core.active ? "on" : "off"]);
+    if (core.dev) rows.push(["Memory", memory.active ? "on, " + memory.facts.length + " saved, " + ((session && session.memFacts) || []).length + " used" : "off"]);   /* counts only, never the facts */
     return rows;
   };
   testLog.init();

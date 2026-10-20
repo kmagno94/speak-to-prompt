@@ -31,6 +31,8 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+/* Nothing (like the ideas strip's soft blobs) may push the page sideways on a phone. */
+html, body { overflow-x: clip; }
 body {
   background: var(--bg); color: var(--ink); font-family: var(--body);
   font-size: 17px; line-height: 1.55;
@@ -54,6 +56,9 @@ h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-heigh
 .lede { margin: 0; color: var(--muted); max-width: 52ch; }
 .chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-radius: 999px; padding: 4px 11px; }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* Memory on: say so up front, in the accent color instead of the "nothing saved" green. */
+.chip.tailored { color: var(--accent); background: var(--accent-soft); }
+.chip.tailored::before { display: none; }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
 .steps b { display: block; font-family: var(--display); color: var(--accent); font-size: 15px; }
@@ -141,8 +146,8 @@ footer { font-size: 13px; color: var(--muted); }
 .usage .m.busy > span:nth-of-type(1) { color: var(--accent); font-weight: 700; }
 /* Version pill, top right: up to date, update ready, or just Refresh. Doubles as the
    refresh button in the Home Screen web app, which has no browser bar. */
-.toprow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.verpill { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+.toprow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px; }
+.verpill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
   border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); }
 .verpill .ic { font-size: 15px; line-height: 1; }
 .verpill[data-state="latest"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }

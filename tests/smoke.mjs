@@ -1002,6 +1002,65 @@ await check('limits: per-minute is a pause, daily is used up (and learned), busy
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('memory (Tailored to you): opt-in, only picked facts go in, nothing saved without a tap, export and import, says so up front', async () => {
+  const intake = { title: 'Shortcut Help', need: 'N', category: 'Shortcuts', complexity: 'standard',
+    questions: [{ question: 'Which Mac do you use?', choices: ['MacBook Air', 'iMac'] }],
+    use_memory: [1, 9], remember: ['I study at WGU for cybersecurity'] };
+  const p = await page({ intake, write: 'Act as a Shortcuts expert. On my iPhone 16 with iOS 27, build a shortcut that silences my phone at work.' });
+  await devOn(p);
+  expect(/Nothing is saved/.test(await p.textContent('#saveChip')), 'memory off: the front still says nothing is saved');
+  // Turn it on and save two facts in Your core
+  await p.click('#starterBtn'); await p.click('#coreBtn'); await p.waitForSelector('#memoryPanel');
+  await p.check('#memoryOn');
+  await p.fill('#memoryAdd', 'I work at a coffee shop'); await p.click('#memoryAddBtn');
+  await p.fill('#memoryAdd', 'I use an iPhone 16 on iOS 27'); await p.click('#memoryAddBtn');
+  expect((await p.$$eval('#memoryFacts li', l => l.length)) === 2, 'two facts saved');
+  expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Your core must not push the page sideways');
+  await p.click('#coreDone');
+  expect(/Tailored to you · this phone only/.test(await p.textContent('#saveChip')) && /saved on this phone only/.test(await p.textContent('#footer')), 'the front and footer should say memory is on');
+  // Build: intake sees the numbered facts (newest first); the writer gets only the picked one (1 = iPhone)
+  await withKey(p); await p.fill('#thoughts', 'make a shortcut to silence my phone at work'); await p.click('#build');
+  await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  const intakeAsk = p.calls.find(c => c.intake).text, writeAsk = p.calls.filter(c => !c.intake).pop().text;
+  expect(/WHAT I ALREADY KNOW ABOUT THIS PERSON/.test(intakeAsk) && /1\. I use an iPhone 16 on iOS 27/.test(intakeAsk) && /2\. I work at a coffee shop/.test(intakeAsk), 'intake should see the numbered facts');
+  const bg = writeAsk.split('BACKGROUND THE PERSON SAVED')[1] || '';
+  expect(/iPhone 16 on iOS 27/.test(bg) && !/coffee shop/.test(bg), 'the writer should get only the picked fact (and ignore an out-of-range pick): ' + bg);
+  expect(!(await p.isVisible('#numWarn')), 'numbers from the prompt that match memory are fine: ' + await p.textContent('#numWarn'));
+  // Remember for next time: suggestions, nothing saved until a tap
+  await p.waitForSelector('#memorySuggest');
+  const offers = await p.$$eval('#memorySuggest .add', l => l.map(b => b.textContent));
+  expect(offers.some(o => /WGU/.test(o)) && offers.some(o => /Which Mac do you use: MacBook Air/.test(o)), 'should offer the spotted fact and the answer: ' + offers.join(' | '));
+  expect((await p.evaluate(() => JSON.parse(localStorage.getItem('stp-memory')).facts.length)) === 2, 'nothing saved without a tap');
+  await p.click('#memorySuggest .add >> nth=0');
+  expect((await p.evaluate(() => JSON.parse(localStorage.getItem('stp-memory')).facts.length)) === 3 && /✓/.test(await p.textContent('#memorySuggest')), 'a tap saves it');
+  // Report facts show counts only, never the facts
+  await p.click('#reportBtn'); await p.click('#reportBox .chips button >> nth=0'); await p.waitForSelector('#reportPreview', { state: 'attached' });
+  const rep = await p.$eval('#reportPreview', el => el.textContent);
+  expect(/Memory: on, 3 saved, 1 used/.test(rep) && !/coffee shop|iPhone 16 on iOS 27|WGU/.test(rep), 'report should show memory counts only: ' + rep.slice(0, 400));
+  await p.click('#reportBtn');
+  // Export and import
+  await p.evaluate(() => { window.__md = null; navigator.canShare = () => true; navigator.share = async (d) => { window.__md = { name: d.files[0].name, text: await d.files[0].text() }; }; });
+  await p.click('#reset');
+  if (!(await p.$('#starter'))) await p.evaluate(() => document.getElementById('starterBtn').click());
+  await p.waitForSelector('#coreBtn');
+  if (!(await p.$('#memoryPanel'))) await p.evaluate(() => document.getElementById('coreBtn').click());
+  await p.waitForSelector('#memoryPanel');
+  await p.click('#memoryExport'); await p.waitForFunction(() => window.__md);
+  const md = await p.evaluate(() => window.__md);
+  expect(md.name === 'memory.md' && /^# Speak to Prompt memory/.test(md.text) && /- I work at a coffee shop/.test(md.text), 'export should be a memory.md file: ' + md.text);
+  await p.setInputFiles('#memoryImport', { name: 'memory.md', mimeType: 'text/markdown', buffer: Buffer.from('# Speak to Prompt memory\n\n- I use an iPhone 16 on iOS 27\n- My Mac is a MacBook Air M4\n') });
+  await p.waitForFunction(() => /Added 1 fact/.test((document.getElementById('memoryStatus') || {}).textContent || ''));
+  // Forget everything, then off: back to "Nothing is saved" and no memory in the intake
+  await p.click('#memoryForget'); await p.click('#memoryForgetYes');
+  await p.uncheck('#memoryOn'); await p.click('#coreDone');
+  expect(/Nothing is saved/.test(await p.textContent('#saveChip')) && (await p.evaluate(() => localStorage.getItem('stp-memory'))) === null, 'forgetting and switching off should leave nothing stored');
+  p.calls.length = 0;
+  await p.fill('#thoughts', 'make a shortcut to silence my phone at work'); await p.click('#build');
+  for (let i = 0; i < 50 && !p.calls.some(c => c.intake); i++) await p.waitForTimeout(100);
+  expect(!/WHAT I ALREADY KNOW|"remember"/.test(p.calls.find(c => c.intake).text), 'memory off: no memory in the intake');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('run log scorecard: parses Worker comments and does the math exactly', async () => {
   const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
   const row = (o) => ({ created_at: o.when || '2026-10-19T01:00:00Z', body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries(o).filter(([k]) => k !== 'when').map(([k, v]) => '| ' + k + ' | ' + (v === true ? 'yes' : v === false ? 'no' : v) + ' |').join('\n') });
