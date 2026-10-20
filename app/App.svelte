@@ -9,6 +9,7 @@
   import GhostCoach from './GhostCoach.svelte';
   import PromptXray from './PromptXray.svelte';
   import Tutorial from './Tutorial.svelte';
+  import Guide from './Guide.svelte';
   import { core } from './lib/core.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
@@ -209,6 +210,7 @@
   </details>
 
   <Tutorial bind:this={tutorial} />
+  <Guide />
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.</footer>
 </div>

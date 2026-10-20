@@ -576,8 +576,22 @@ await check('first-time tutorial: opens from First time?, example fills the box,
   expect((await p.getAttribute('#tutShortcut', 'href')).startsWith('https://www.icloud.com/shortcuts/'), 'shortcut link should be at the top of the tutorial');
   const txt = await p.textContent('#tutorial');
   expect(!/\u2014/.test(txt) && (await p.$$eval('#tutorial .flow > li', l => l.length)) === 4, 'tutorial should have 4 steps and no em dashes');
-  await p.click('#tutTry'); await p.waitForSelector('#tutorial', { state: 'hidden' }); await p.waitForSelector('#coach', { timeout: 3000 }).catch(() => {});
-  expect(/mom's birthday/.test(await p.inputValue('#thoughts')) && await p.isVisible('#coach'), 'Try it should fill the box and wake the strength meter');
+  // A random realistic practice note, with why-messy-is-fine tags and a shuffle
+  const note1 = await p.textContent('#tutNote');
+  expect(note1.length > 40 && (await p.$$eval('#tutorial .whyok span', l => l.length)) === 3, 'practice note with 3 tags');
+  for (let i = 0; i < 5 && (await p.textContent('#tutNote')) === note1; i++) await p.click('#tutShuffle');
+  const note = await p.textContent('#tutNote');
+  expect(note !== note1, 'Another one should change the note');
+  // Copy this note and try it: copies, closes, and the guide walks through paste
+  await p.click('#tutTry'); await p.waitForSelector('#tutorial', { state: 'hidden' });
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === note, 'the note should be on the clipboard');
+  await p.waitForSelector('#guide');
+  expect(/Paste/.test(await p.textContent('#guideText')) && await p.evaluate(() => document.getElementById('bannerPaste').classList.contains('guide-target')), 'guide should point at Paste');
+  await p.click('#bannerPaste');
+  await p.waitForFunction(() => /Build my prompt/.test(document.getElementById('guideText').textContent));
+  expect(await p.inputValue('#thoughts') === note && await p.evaluate(() => document.getElementById('build').classList.contains('guide-target')), 'after pasting, guide should point at Build');
+  await p.click('#guideSkip'); await p.waitForSelector('#guide', { state: 'detached' });
+  expect(!(await p.$('.guide-target')), 'skipping should clear the glow');
   await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
   await p.click('#tutKey'); await p.waitForSelector('#tutorial', { state: 'hidden' });
   expect(await p.evaluate(() => document.getElementById('keyPanel').open), 'Set up my key should open the key panel');
@@ -902,6 +916,23 @@ await check('busy models: a resting model is skipped next time, and a slow write
   const writers = p.calls.filter(c => !c.intake).map(c => c.model);
   expect(writers.join() === 'gemini-3.8-flash,gemini-3.7-flash' && await p.inputValue('#output') === 'THE PROMPT', 'backup should race and win: ' + writers.join(', '));
   if (p.release) p.release();
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('first-run guide: follows a whole run (build, answer, copy) to the finish', async () => {
+  const p = await page();
+  await withKey(p);
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  await p.click('#tutTry'); await p.waitForSelector('#guide');
+  await p.click('#bannerPaste');
+  await p.waitForFunction(() => /Build my prompt/.test(document.getElementById('guideText').textContent));
+  await p.click('#build');
+  await p.waitForFunction(() => /Answer with a tap/.test(document.getElementById('guideText').textContent), null, { timeout: 15000 });
+  await p.click('#qaList .chips button'); await p.click('#qaGo');
+  await p.waitForFunction(() => /Tap Copy prompt/.test(document.getElementById('guideText').textContent), null, { timeout: 15000 });
+  expect(await p.evaluate(() => document.getElementById('copy').classList.contains('guide-target')), 'guide should point at Copy');
+  await p.click('#copy');
+  await p.waitForFunction(() => /That's it/.test(document.getElementById('guideText').textContent));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

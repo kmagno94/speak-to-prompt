@@ -1,12 +1,15 @@
 <script>
-  /* First time? Start here: a short walkthrough for brand new people. One real
-     example travels through every step (messy note, Build, a question, the
-     finished prompt), the way the app itself goes from loose scratchpad to clean
-     index card. "Try it with this example" drops that note into the real box,
-     so the first run is guided instead of a blank page. Nothing is saved. */
+  /* First time? Start here: a short walkthrough for brand new people. One practice
+     note, picked at random from realistic everyday asks (lib/examples.js), travels
+     through every step (messy note, Build, a question, the finished prompt), the
+     way the app itself goes from loose scratchpad to clean index card. "Copy this
+     note and try it" copies it, closes, and the guide bar (Guide.svelte) walks
+     them through pasting it and building their first prompt. Nothing is saved. */
+  import { pick } from './lib/examples.js';
+  import { guide } from './lib/guide.svelte.js';
   const SHORTCUT = 'https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b';
-  const EXAMPLE = "ok so my mom's birthday is saturday, like 6 people, she hates spicy food, budget maybe $80, help me plan dinner at home lol";
-  const PROMPT = 'You are a friendly home cooking planner. Plan a birthday dinner at home this Saturday for my mom and 6 guests. Nothing spicy. Keep the total around $80. Give me a menu, a shopping list with rough prices, and a simple cooking timeline.';
+  let ex = $state(pick());
+  function shuffle() { ex = pick(ex); }
 
   /* The Talk it out shortcut only runs on iPhone and iPad. */
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -18,13 +21,18 @@
   }
   function close() { dialog.close(); }
 
-  function tryExample() {
+  /* Copy the note so they practice the real copy and paste. If this browser
+     won't copy, put it in the box for them and the guide picks up from Build. */
+  async function tryExample() {
+    let copied = false;
+    try { await navigator.clipboard.writeText(ex.note); copied = true; } catch (e) {}
     const box = document.getElementById('thoughts');
-    box.value = EXAMPLE;
-    box.dispatchEvent(new Event('input', { bubbles: true }));
+    if (!copied) {
+      box.value = ex.note;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     close();
-    box.scrollIntoView({ block: 'center' });
-    box.focus();
+    guide.start(ex.note, copied);
   }
   function openKey() {
     close();
@@ -42,7 +50,7 @@
       <h2 id="tutTitle">New here? Here's the whole thing.</h2>
       <button type="button" class="x" id="tutClose" onclick={close} aria-label="Close">✕</button>
     </div>
-    <p class="intro">You say what's on your mind, messy is fine. The app turns it into one clear prompt you paste into ChatGPT, Claude, or Gemini. Here's one example from start to finish.</p>
+    <p class="intro">You say what's on your mind, messy is fine. The app turns it into one clear prompt you paste into ChatGPT, Claude, or Gemini. Here's one example from start to finish, then you'll try it yourself.</p>
 
     {#if appleTouch}
     <a class="talk" id="tutShortcut" href={SHORTCUT} target="_blank" rel="noopener">
@@ -54,8 +62,12 @@
     <ol class="flow">
       <li>
         <h3>Dump it</h3>
-        <p>Type or talk. No need to be clear or polite. Half sentences and "lol" are fine.</p>
-        <div class="scratch" aria-label="Example note">{EXAMPLE}</div>
+        <p>Type or talk the way you'd text a friend. This is the kind of note people really write:</p>
+        <div class="scratch" id="tutNote" aria-label="Example note">{ex.note}</div>
+        <div class="whyok" aria-label="Why messy is fine">
+          {#each ex.tags as t}<span>✓ {t}</span>{/each}
+          <button type="button" class="inline" id="tutShuffle" onclick={shuffle}>↻ Another one</button>
+        </div>
         <p class="aside">The strength meter under the box lights up as you add things like who it's for or a budget. Tap a faint note to add what's missing.</p>
       </li>
       <li>
@@ -70,15 +82,15 @@
         <h3>Answer a quick question or two</h3>
         <p>Tap the answer that fits, or type your own. It only asks what would change the result.</p>
         <div class="mock ask" aria-hidden="true">
-          <span class="bubble">What kind of dinner?</span>
-          <span class="chips"><i class="on">Cozy and simple</i><i>Fancy</i><i>Not sure</i></span>
+          <span class="bubble">{ex.q}</span>
+          <span class="chips">{#each ex.chips as c, i}<i class:on={i === 0}>{c}</i>{/each}</span>
         </div>
         <p class="aside">Questions need a free Gemini key (about a minute). No key? You still get a quick prompt right away. <button type="button" class="inline" id="tutKey" onclick={openKey}>Set up my key</button></p>
       </li>
       <li>
         <h3>Copy it into any AI</h3>
         <p>Your messy note comes back as a clear prompt. Tap Copy, then open your AI and paste.</p>
-        <div class="card" aria-label="Example prompt">{PROMPT}</div>
+        <div class="card" aria-label="Example prompt">{ex.prompt}</div>
         <div class="mock ais" aria-hidden="true"><i>ChatGPT</i><i>Claude</i><i>Gemini</i></div>
       </li>
     </ol>
@@ -95,7 +107,7 @@
 
     <p class="safe">Nothing is saved. Close the tab and it's gone.</p>
     <div class="actions">
-      <button type="button" class="primary" id="tutTry" onclick={tryExample}>Try it with this example</button>
+      <button type="button" class="primary" id="tutTry" onclick={tryExample}>Copy this note and try it</button>
       <button type="button" id="tutDone" onclick={close}>I'm ready</button>
     </div>
   </div>
@@ -124,6 +136,8 @@
   h3 { font-family: var(--display); font-size: 18px; margin: 2px 0 0; }
   .flow p { margin: 0; }
   .aside { font-size: 14px; color: var(--muted); }
+  .whyok { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--ok); font-weight: 700; }
+  .whyok .inline { font-size: 13px; }
 
   /* Loose scratchpad in... */
   .scratch { font-size: 15px; line-height: 1.5; padding: 12px 14px; border-radius: 12px; background: var(--bg); border: 1.5px dashed var(--line); color: var(--ink); transform: rotate(-0.8deg); }
