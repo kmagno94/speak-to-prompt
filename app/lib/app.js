@@ -1,6 +1,6 @@
 import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING, capGrade } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
-import { analyze, mathOf } from './xray.js';
+import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui } from './ui.svelte.js';
@@ -1467,7 +1467,8 @@ export function startApp() {
     var said = saidText();
     var have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
     IMPLIED.forEach(function (x) { if (x[0].test(said)) x[1].forEach(function (n) { have[n] = true; }); });
-    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have));
+    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(said)));
+    conversions(promptText, Object.keys(have)).forEach(function (n) { have[n] = true; });   /* 140 miles is about 225 km */
     var money = {}; (String(promptText).match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach(function (m) { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
     return {
       missing: Object.keys(given).filter(function (n) { return !got[n]; }),

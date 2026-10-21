@@ -778,7 +778,7 @@ await check('ghost coach: meter and notes follow what you write; tap a note to a
 });
 
 await check('prompt x-ray: your words colored, added parts dashed, dropped sentences and stray numbers flagged', async () => {
-  const write = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $400.\nFormat: Use a table for each day with morning, afternoon, and evening.\nStart right away, and ask at most one short question only if something essential is missing.';
+  const write = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nFormat: Use a table for each day with morning, afternoon, and evening.\nStart right away, and ask at most one short question only if something essential is missing.';
   const p = await page({ write, intake: { title: 'Tokyo Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [{ question: 'What should the plan look like?', choices: ['Day by day schedule'] }] } });
   await withKey(p);
   await p.fill('#thoughts', 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.');
@@ -796,7 +796,7 @@ await check('prompt x-ray: your words colored, added parts dashed, dropped sente
   const sum = await p.textContent('#xraySummary');
   expect(/\d+%/.test(sum) && /1 thing you said isn't in it/.test(sum) && /1 number you never said/.test(sum), 'summary wrong: ' + sum);
   expect(/motion sick/.test(await p.textContent('#xraySources li.dropped')), 'motion sick should be flagged as not in the prompt');
-  expect(await p.textContent('#xrayText .stray') === '$400.', 'the $400 should be marked as a number you never said');
+  expect(await p.textContent('#xrayText .stray') === '$450.', 'the $450 should be marked as a number you never said');
   // Tap a part from your words: shows where it came from and dims the rest
   await p.click('#xrayText .seg[data-kind="from"] >> nth=0');
   expect(/From what you said/.test(await p.textContent('#xrayWhy')) && /Tokyo/.test(await p.textContent('#xrayWhy .quote')), 'tapping should show the source sentence');
@@ -827,8 +827,8 @@ await check('prompt x-ray: your words colored, added parts dashed, dropped sente
 
 await check('auto-repair: clean prompts go straight through; real problems get one small fix, rechecked, kept only if better', async () => {
   const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
-  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $400.\nStart right away.';
-  const GOOD = BAD.replace('with a rough daily budget of $400.', 'with a daily budget that fits the total. I get motion sick on long bus rides, so keep long bus trips out.');
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const GOOD = BAD.replace('with a rough daily budget of $450.', 'with a daily budget that fits the total. I get motion sick on long bus rides, so keep long bus trips out.');
   const intake = { title: 'Tokyo Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [] };
   const relayRoute = async (p, sent) => p.route('https://relay.test/report/run', async r => {
     const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
@@ -851,7 +851,7 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   ({ p, sent } = await run({ write: BAD, repair: GOOD }));
   expect(p.repairs.length === 1, 'one repair call, got ' + p.repairs.length);
   const ask = p.repairs[0].text;
-  expect(/Also I get motion sick on long bus rides\./.test(ask) && /\$400/.test(ask) && /PROMPT TO FIX:/.test(ask) && /word for word/.test(ask), 'repair request should list exactly what to fix: ' + ask.slice(0, 300));
+  expect(/Also I get motion sick on long bus rides\./.test(ask) && /\$450/.test(ask) && /PROMPT TO FIX:/.test(ask) && /word for word/.test(ask), 'repair request should list exactly what to fix: ' + ask.slice(0, 300));
   expect(/lite/.test(p.repairs[0].model) && p.repairs[0].level === 'low', 'repair should use the fast model at low thinking: ' + p.repairs[0].model + ' ' + p.repairs[0].level);
   expect(await p.inputValue('#output') === GOOD, 'the fixed prompt should be shown');
   const note = await p.textContent('#repairNote');
@@ -1258,6 +1258,24 @@ await check('number check: a number that is not math on yours is still flagged',
   await withKey(p); await p.fill('#thoughts', 'budget is $200 and I spent $35.50 on decorations'); await p.click('#build'); await done(p);
   const w = await p.textContent('#numWarn');
   expect(/400/.test(w) && /57\.25/.test(w) && !/164/.test(w), 'should flag 400 and 57.25 but not 164.50: ' + w);
+});
+
+await check('number check: splits and unit conversions of your numbers are not "made up" (stress test 3)', async () => {
+  const note = "it's about 140 miles, and ines is from madrid so she's gonna ask how far that is in kilometers. it's $32 a night for two nights and we're splitting it three ways. the forecast says it drops to 38 at night, fahrenheit, and my sleeping bag is rated 20 degrees. dev wants to do the full 9 mile ridge loop.";
+  const write = 'You are a camping trip planner. Distance: about 140 miles (about 225 km for Ines). Cost: $32 a night for 2 nights is $64 total, split 3 ways is about $21.33 each. Nights drop to 38°F (about 3°C); my bag is rated 20°F. Dev hikes the 9-mile ridge loop.';
+  const p = await page({ write, intake: { title: 'T', need: 'N', category: 'Travel', complexity: 'standard', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', note); await p.click('#build'); await done(p);
+  expect(!p.repairs.some((r) => /never said them/.test(r.text)), 'Auto-Repair should not be told to remove correct math or conversions: ' + (p.repairs[0] || {}).text);
+  expect(await p.isHidden('#numWarn'), 'no number warning for a split or a conversion: ' + await p.textContent('#numWarn'));
+  const out = await p.inputValue('#output');
+  for (const n of ['$64', '$21.33', '225 km']) expect(out.includes(n), n + ' should stay');
+  await p.click('#xrayBtn');
+  expect(!/never said/.test(await p.textContent('#xraySummary')), 'X-ray should not call a split or conversion a number you never said');
+  const q = await page({ write: 'Drive 140 miles (about 300 km). Pay $32 a night, $50 each.', intake: { title: 'T', need: 'N', category: 'Travel', complexity: 'standard', questions: [] } });
+  await withKey(q); await q.fill('#thoughts', "it's 140 miles and $32 a night for two nights split three ways"); await q.click('#build'); await done(q);
+  const w = await q.textContent('#numWarn');
+  expect(/300/.test(w) && /50/.test(w), 'a wrong conversion (300 km) and a wrong split ($50) should still be flagged: ' + w);
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 /* Lessons learned (lessons.json) and the quality grade that feeds them. */

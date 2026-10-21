@@ -75,8 +75,26 @@ export function whyText(label) { return WHY_TEXT[label] || WHY_TEXT.Guidance; }
 /* Numbers in the prompt that you never said (times, money, versions). */
 function strayNumbers(text, said) {
   const have = new Set(wordsOf(said).filter((w) => /\d/.test(w)).map(stem));
-  const math = mathOf([...have]);
-  return wordsOf(text).filter((w) => /\d/.test(w)).map(stem).filter((n) => !have.has(n) && !(n.includes('$') && math(n)) && !(Number(n) <= 10 && !n.includes('$')));
+  const math = mathOf([...have, ...wordNums(said)]), conv = conversions(text, [...have]);
+  return wordsOf(text).filter((w) => /\d/.test(w)).map(stem).filter((n) => !have.has(n) && !conv.has(n) && !(n.includes('$') && math(n)) && !(Number(n) <= 10 && !n.includes('$')));
+}
+
+/* Small numbers said as words ("two nights", "split three ways") count for splits. */
+const WORD_NUMS = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, half: 2 };
+export function wordNums(text) { return (String(text || '').toLowerCase().match(/[a-z]+/g) || []).filter((w) => WORD_NUMS[w]).map((w) => String(WORD_NUMS[w])); }
+
+/* Unit conversions of numbers you said are yours too: 140 miles is about 225 km, 38°F is about 3°C.
+   Returns the numbers in text (as stems) that are a correct conversion, give or take 2%. */
+const CONV = [[/^(km|kilomet)/, (x) => x * 1.609344], [/^(mi\b|miles?)/, (x) => x / 1.609344], [/^(°\s*c|degrees? c|celsius|c\b)/, (x) => (x - 32) * 5 / 9],
+  [/^(°\s*f|degrees? f|fahrenheit|f\b)/, (x) => x * 9 / 5 + 32], [/^(kg|kilo)/, (x) => x * 0.453592], [/^(lbs?|pounds?)/, (x) => x / 0.453592]];
+export function conversions(text, said) {
+  const v = said.map((n) => Number(String(n).replace(/[$,]/g, ''))).filter((x) => !isNaN(x)), out = new Set();
+  const re = /(-?\d[\d,]*(?:\.\d+)?)\s*/g; let m;
+  while ((m = re.exec(String(text || '')))) {
+    const n = Number(m[1].replace(/,/g, '')), unit = String(text).slice(re.lastIndex, re.lastIndex + 12).toLowerCase(), c = CONV.find((u) => u[0].test(unit));
+    if (c && v.some((x) => Math.abs(c[1](x) - n) <= Math.max(0.6, Math.abs(c[1](x)) * 0.02))) out.add(stem(m[1].replace(/^-/, '')));
+  }
+  return out;
 }
 
 /* Simple math on numbers you said is yours too (money only, so a made-up count still shows): $200 minus $35.50 is $164.50
@@ -86,7 +104,11 @@ export function mathOf(said) {
   const v = [...new Set(said.map((n) => Number(String(n).replace(/[$,]/g, ''))).filter((x) => x > 0))].slice(0, 20);
   const step = new Set(v);
   for (const a of v) for (const b of v) if (a !== b) { step.add(a + b); if (a > b) step.add(a - b); }
-  const out = new Set([...step].map(key));
+  /* Splits and per-night totals: $32 a night for two nights is $64, split three ways is $21.33 each. */
+  const small = v.filter((p) => p >= 2 && p <= 12 && p === Math.round(p)), times = new Set(step);
+  for (const x of step) for (const p of small) { times.add(x * p); times.add(x / p); }
+  for (const x of [...times]) for (const p of small) times.add(x / p);
+  const out = new Set([...times].map(key));
   for (const x of step) for (const p of v) if (p < 100) { out.add(key(x * p / 100)); out.add(key(x * (100 - p) / 100)); }
   return (n) => { const x = Number(String(n).replace(/[$,]/g, '')); return x > 0 && out.has(key(x)); };
 }
