@@ -1,7 +1,7 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 17:10 UTC",
-  "version": 3,
+  "updated": "2026-10-21 21:06 UTC",
+  "version": 4,
   "lessons": [
     {
       "id": "L1",
@@ -26,9 +26,15 @@
       "text": "Always state how long the answer should be (short or detailed, how many items, or about one screen) and what shape it takes, on its own line near the end. A list of sections to cover is not a length.",
       "why": "Review AM Oct 21: format was missing in 11 of 17 graded runs (65%), and in 6 of 12 (50%) written by a Flash model, not only Flash-Lite. Grader G2 checks length.",
       "added": "2026-10-21"
+    },
+    {
+      "id": "L5",
+      "text": "When the note asks to change or fix an app, site, or tool, say whether the answer should be code changes or written text, and tell the AI to ask for the code if it is not pasted in.",
+      "why": "Regular run (Oct 21): app walkthrough prompt asked for a written guide when the fixes needed code the AI could not see; app 4.65 vs Claude 3.40. Grader G7 checks it.",
+      "added": "2026-10-21"
     }
   ],
-  "grader_version": 11,
+  "grader_version": 12,
   "grader": [
     {
       "id": "G1",
@@ -58,6 +64,12 @@
       "id": "G6",
       "text": "Invented check: list each specific detail in the prompt (a name, a number, an item, a brand, a weekday) that is not in the raw thoughts, the answers, or TODAY'S DATE. Math on their own numbers is fine. Any other item makes invented true.",
       "why": "Draft B (Oct 21 bench): g10 caught 0 of 2 inventions (B4 made-up weekday, B7 made-up ingredients and head count). Merges G4 into one concrete list-then-decide check.",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "G7",
+      "text": "If the person wants an app, site, or code changed or fixed, the prompt must say what to deliver (code changes or written text) and include or ask for the code. Without that, task and context are missing.",
+      "why": "Regular run (Oct 21): app graded 4.65 pass; Claude graded 3.40. App walkthrough redesign plus a bug fix, but the prompt asked for a written guide with no code (task, context), and a garbled heading (G1, steps).",
       "added": "2026-10-21"
     }
   ]
