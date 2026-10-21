@@ -145,7 +145,6 @@ export function startApp() {
     }
     function render() {
       document.getElementById("testLog").hidden = !on;
-      document.getElementById("copyAll").hidden = !on;   /* testing only */
       document.getElementById("statsToggle").checked = on;
       if (typeof updateQuickLabel === "function") updateQuickLabel();
       var f = document.getElementById("footerLead");
@@ -249,6 +248,7 @@ export function startApp() {
     if (!ready) xray.clear();
     document.getElementById("copy").disabled = !ready;
     document.getElementById("copyAll").disabled = !ready;
+    document.getElementById("copyGrader").disabled = !ready;
     document.getElementById("copyNote").disabled = !ready;
     document.getElementById("saveNote").disabled = !ready;
     document.getElementById("saveShare").disabled = !ready;
@@ -318,9 +318,11 @@ export function startApp() {
       }
     });
   });
-  /* Copy full result (shows only with run stats on, for stress tests): the note,
-     answers, what's on screen, the X-ray, and the prompt in one paste. It only
-     copies; nothing is sent anywhere. */
+  /* Dev tools row (Show my dev tools on), kept apart from the everyday buttons.
+     Copy full result (stress tests): the note, answers, what's on screen, the
+     X-ray, the grader's details, and the prompt in one paste. Copy for grader
+     check: the same, starting with "regular run" so Claude does a quick grader
+     comparison. Both only copy; nothing is sent anywhere. */
   function fullResult() {
     var s = session || {}, raw = s.raw || thoughts.value, ans = s.answers || [], out = ["SPEAK TO PROMPT RESULT"];
     report.collect().forEach(function (r) { if (r[1] !== "" && r[1] != null) out.push(r[0] + ": " + r[1]); });
@@ -333,6 +335,11 @@ export function startApp() {
     x.sources.filter(function (z) { return !z.used; }).forEach(function (z) { out.push("Not in the prompt: " + z.text); });
     var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
     if (stray.length) out.push("Numbers you never said: " + stray.join(", "));
+    if (s.grades && s.grades.length) {
+      out.push("", "GRADER DETAILS (" + (lessons.gv ? "g" + lessons.gv : "g1") + ", lessons v" + (lessons.v || 0) + ")");
+      s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no")); });
+    } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
+    if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
     out.push("", "PROMPT", output.value);
     return out.join("\n");
   }
@@ -347,6 +354,10 @@ export function startApp() {
   document.getElementById("copyNote").addEventListener("click", function () {
     if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) { selectFallback(); return; }
     navigator.clipboard.writeText(promptWithNote()).then(function () { promptCopied = true; status.textContent = "Copied your prompt with your note under it. Now paste it into your AI."; }, selectFallback);
+  });
+  document.getElementById("copyGrader").addEventListener("click", function () {
+    if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) return;
+    navigator.clipboard.writeText("regular run\n\n" + fullResult()).then(function () { status.textContent = "Copied for a grader check. Paste it into Claude."; }, function () { status.textContent = "Couldn't copy."; });
   });
   document.getElementById("copyAll").addEventListener("click", function () {
     if (!output.value || !navigator.clipboard || !navigator.clipboard.writeText) return;
@@ -1392,6 +1403,7 @@ export function startApp() {
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv, grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
+      session.grades = [g];
       var el = document.getElementById("gradeNote");
       el.textContent = gradeText(g, fields, "");
       el.hidden = false;
@@ -1435,6 +1447,8 @@ export function startApp() {
         if (!g2 || g2.craft <= g.craft) return end("kept original", "tried adding " + what + ", but it didn't score higher, so this is the original");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
         var before = g.craft;
+        session.grades.push(g2);
+        session.draftBefore = prompt;
         output.value = core.apply(fixed);
         xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: core.active ? core.block : '' });
         var nc = showNumberCheck(fixed);

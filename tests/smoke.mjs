@@ -1259,19 +1259,27 @@ await check('Scorecard: busy by time of day, in Eastern time', async () => {
   expect(am && am.n === 2 && am.busy_pct === 50 && am.wait_p50 === 15 && pm && pm.limit_pct === 100 && pm.busy_pct === 0, 'busy by time wrong: ' + JSON.stringify(t));
 });
 
-await check('Copy full result: shows only with run stats on and copies note, answers, X-ray, and prompt', async () => {
+await check('Dev tools row: Copy full result and Copy for grader check show only with Show my dev tools on, apart from the everyday buttons', async () => {
   const p = await page({ write: 'Plan a surprise party for Marco on Friday the 13th at 7:30 PM. Budget is $200 with $35.50 spent. Keep it under 400 words.' });
   await withKey(p);
   await p.fill('#thoughts', 'surprise party for Marco on friday the 13th at 7:30. budget is $200 and I spent $35.50. two people are vegan so plan food around that.');
   await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
   await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
-  expect(!(await p.isVisible('#copyAll')), 'Copy full result should hide with run stats off');
+  expect(!(await p.isVisible('#copyAll')) && !(await p.isVisible('#copyGrader')), 'dev copy buttons should hide with dev tools off');
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
-  expect(await p.isVisible('#copyAll'), 'Copy full result should show with run stats on');
+  expect(!(await p.isVisible('#copyAll')), 'run stats alone should not show the dev copy buttons');
+  await p.check('#devTools');
+  expect(await p.isVisible('#copyAll') && await p.isVisible('#copyGrader'), 'dev copy buttons should show with dev tools on');
+  expect(await p.$('.row #copyAll') === null || await p.$('#devRow #copyAll') !== null, 'Copy full result lives in the dev tools row');
+  expect(await p.$eval('#copy', (b) => !b.closest('#devRow')) && await p.$eval('#copyGrader', (b) => !!b.closest('#devRow')), 'everyday buttons stay outside the dev row');
   await p.click('#copyAll'); await p.waitForTimeout(300);
   const t = await p.evaluate(() => navigator.clipboard.readText());
   for (const want of ['MY NOTE', 'surprise party for Marco', 'MY ANSWERS', 'A: iPhone', 'X-RAY', '% your words', 'Not in the prompt: two people are vegan', 'Numbers you never said: 400', 'PROMPT', 'Keep it under 400 words', 'App version'])
     expect(t.includes(want), 'full result missing "' + want + '":\n' + t);
+  await p.click('#copyGrader'); await p.waitForTimeout(300);
+  const gt = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^regular run\n\nSPEAK TO PROMPT RESULT/.test(gt) && gt.includes('MY NOTE') && gt.includes('Keep it under 400 words') && gt.includes('GRADER DETAILS'), 'grader copy wrong: ' + JSON.stringify(gt.slice(0, 1500)));
+  expect(/grader check/.test(await p.textContent('#status')), 'status should say what was copied');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -1358,7 +1366,6 @@ await check('quality grade: with run stats on, the fast model grades the prompt 
   const r = sent[0] || {};
   expect(r.grade === 2 && r.grade_pass === false && r.grade_broke === 'none' && r.grade_rearranged === true && r.grade_invented === false && r.grade_missing === 'format+success' && /lite/.test(r.grade_model) && typeof r.grade_s === 'number' && r.action === 'copied', 'run should carry the grade: ' + JSON.stringify(r));
   expect(!JSON.stringify(r).includes('plant') && !('_grade' in r), 'no words and no internals in the run log: ' + JSON.stringify(r));
-  await p.click('#copyAll');
   // Stats off: no grade call, no note
   const q = await page({ intake: noQ });
   await withKey(q); await q.fill('#thoughts', RAW); await q.click('#build'); await done(q); await q.waitForTimeout(300);
@@ -1415,6 +1422,9 @@ await check('label fix: below the bar with only format missing, one small call a
   expect(p.grades.length === 2 && p.grades[1].text.includes('about one screen'), 'the fixed prompt should be graded again');
   expect(await p.inputValue('#output') === FIXED, 'the fixed prompt should replace the draft');
   expect(/4\.7 of 5/.test(note) && /passes the 4\.5 bar/.test(note) && /added format, up from 4\.0 \(.*s fix\)$/.test(note.trim()), 'note wrong: ' + note);
+  await p.check('#devTools'); await p.click('#copyGrader'); await p.waitForTimeout(300);
+  const gt = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/First grade: 4\.00 \u00b7 missing format/.test(gt) && /After the fix: 4\.70 \u00b7 missing none/.test(gt) && /Label fix: added format/.test(gt) && gt.includes('PROMPT BEFORE THE LABEL FIX\n' + DRAFT) && /GRADER DETAILS \(g5, lessons v\d+\)/.test(gt), 'grader copy should show both grades and the draft: ' + JSON.stringify(gt));
   await p.click('#copy'); await p.waitForTimeout(400);
   expect(sent[0] && sent[0].grade === 4.7 && sent[0].grade_before === 4 && sent[0].label_fix === 'added format' && typeof sent[0].label_fix_s === 'number' && sent[0].grade_pass === true, 'run should log the fix: ' + JSON.stringify(sent[0]));
   // 2. Fix doesn't score higher: original stays

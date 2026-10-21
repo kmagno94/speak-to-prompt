@@ -118,7 +118,6 @@
     <div class="row">
       <button type="button" class="primary" id="copy">Copy prompt</button>
       <button type="button" id="copyNote">Copy prompt + my note</button>
-      <button type="button" id="copyAll" hidden>Copy full result</button>
       <button type="button" id="reset">Start over</button>
     </div>
     <div class="openrow">
@@ -126,6 +125,13 @@
       <a class="openai" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
       <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
       <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
+    </div>
+    <div class="devrow" id="devRow" hidden={!core.dev}>
+      <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
+      <div class="row">
+        <button type="button" id="copyGrader">Copy for grader check</button>
+        <button type="button" id="copyAll">Copy full result</button>
+      </div>
     </div>
     <p id="status" class="status"></p>
     <div class="keep">

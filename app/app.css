@@ -258,6 +258,11 @@ details.key[open] summary { margin-bottom: 10px; }
 .morebody .how ol { margin: 6px 0; padding-left: 20px; font-size: 15px; }
 .morebody .how .sub { margin: 0; font-family: var(--display); font-weight: 600; }
 .morebody .how .hint { margin: 0; }
+.devrow { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.devrow[hidden] { display: none; }
+.devhead { margin: 0; font-weight: 700; font-size: 14px; }
+.devhead span { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.devrow button { font-size: 14px; }
 .openrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .openrow span { font-size: 14px; color: var(--muted); flex-basis: 100%; }
 .openrow a { text-decoration: none; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 9px 16px; min-height: 42px; display: inline-flex; align-items: center; }
