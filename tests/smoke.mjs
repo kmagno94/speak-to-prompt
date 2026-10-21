@@ -1502,7 +1502,7 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   const q = await page({ intake: noQ, lessons: LIVE });
   await p.close(); await devOn(q); await q.bringToFront(); await q.click('#moreOpts summary');
   await q.evaluate(() => navigator.clipboard.writeText('nothing here')); await q.click('#draftPaste');
-  await q.waitForFunction(() => /No draft|Using/.test(document.getElementById('srcInfo').textContent));
+  await q.waitForFunction(() => /No draft link/.test(document.getElementById('srcInfo').textContent), null, { timeout: 5000 }).catch(() => {});
   expect(/No draft link on the clipboard/.test(await q.textContent('#srcInfo')) && await q.isDisabled('#srcDraft'), 'a bad paste should say so');
   await q.evaluate((l) => navigator.clipboard.writeText('here you go: ' + l), link); await q.click('#draftPaste');
   await q.waitForFunction(() => /Using Draft/.test(document.getElementById('srcInfo').textContent), null, { timeout: 3000 }).catch(() => {});
