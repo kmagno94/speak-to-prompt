@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING, capGrade } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
@@ -1056,20 +1056,24 @@ export function startApp() {
   /* lessons.json: short rules the twice-daily review learned from graded runs and
      stress tests (general prompt-writing lessons, never anyone's words). Every
      prompt build uses them. At most 6, each kept short, so the writer stays fast. */
-  var lessons = { v: 0, list: [], gv: 1, grader: [] };
+  var lessons = { v: 0, list: [], items: [], gv: 1, grader: [] };
   function loadLessons() {
     fetch("lessons.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { lessons = lessonsFrom(j); }, function () {});
   }
+  /* The grader also gets the writer lessons, with their ids (L1, L2...), as the
+     rubric of what not to do, and says which ones a prompt broke. */
   function lessonsFrom(j) {
     function clean(arr) {
-      return (Array.isArray(arr) ? arr : []).map(function (l) {
-        return String((l && l.text) || "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
-      }).filter(function (t) { return t && t.length <= 240; }).slice(0, 6);
+      return (Array.isArray(arr) ? arr : []).map(function (l, i) {
+        var id = String((l && l.id) || "");
+        return { id: /^[A-Z]\d{1,3}$/.test(id) ? id : "L" + (i + 1), text: String((l && l.text) || "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim() };
+      }).filter(function (t) { return t.text && t.text.length <= 240; }).slice(0, 6);
     }
-    var list = clean(j && j.lessons), grader = clean(j && j.grader);
-    return { v: list.length && typeof j.version === "number" ? j.version : 0, list: list,
-      gv: j && typeof j.grader_version === "number" ? j.grader_version : 1, grader: grader };
+    var items = clean(j && j.lessons), grader = clean(j && j.grader);
+    function texts(a) { return a.map(function (t) { return t.text; }); }
+    return { v: items.length && typeof j.version === "number" ? j.version : 0, list: texts(items), items: items,
+      gv: j && typeof j.grader_version === "number" ? j.grader_version : 1, grader: texts(grader) };
   }
   function depthKeyOf(r) { return r.depth || (/Quick/.test(r.mode || "") ? "quick" : (r.complexity || "standard")); }
   function learned(field, key) {
@@ -1358,36 +1362,43 @@ export function startApp() {
   }
 
   /* Quality grade (run stats on, with a key): after the prompt is on screen, the
-     fast model scores it in the background (1 to 5, rearranged, invented, what's
-     missing). Only the score and fixed labels go into the run, for the review's
-     lessons learned. It never slows the prompt down; if it's late or fails, the run
-     is sent without it. */
+     fast model scores it in the background (1.00 to 5.00, pass at 4.5, rearranged,
+     invented, what's missing, which lessons it broke). Only the score, fixed
+     labels, and lesson ids go into the run, for the review's lessons learned.
+     It never slows the prompt down; if it's late or fails, the run is sent
+     without it. */
   function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; }
-  function gradeFrom(text) {
+  function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
-    var c = Math.round(Number(j && j.craft));
+    var c = Number(j && j.craft);
     if (!(c >= 1 && c <= 5)) return null;
     var miss = (Array.isArray(j.missing) ? j.missing : []).map(function (m) { return String(m).toLowerCase().trim(); })
       .filter(function (m, i, a) { return GRADE_MISSING.indexOf(m) !== -1 && a.indexOf(m) === i; });
-    var re = j.rearranged === true, inv = j.invented === true;
-    return { craft: capGrade(c, miss, re, inv), rearranged: re, invented: inv, missing: miss };
+    var ids = (items || []).map(function (l) { return l.id; });
+    var broke = (Array.isArray(j.broke) ? j.broke : []).map(function (b) { return String(b).toUpperCase().trim(); })
+      .filter(function (b, i, a) { return ids.indexOf(b) !== -1 && a.indexOf(b) === i; });
+    var re = j.rearranged === true, inv = j.invented === true, g = capGrade(c, miss, re, inv, broke);
+    return { craft: g, pass: g >= GRADE_PASS, rearranged: re, invented: inv, missing: miss, broke: broke };
   }
   function gradeRun(prompt, run) {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
-    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
-      var g = gradeFrom(r.text);
+    var items = lessons.items;
+    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader, items), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      var g = gradeFrom(r.text, items);
       if (!g) return;
-      var fields = { grade: g.craft, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
+      var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
+        grade_broke: g.broke.join("+") || "none",
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv, grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
-      var notes = [];
+      var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" : "\u270b below the " + GRADE_PASS + " bar"];
       if (g.rearranged) notes.push("reads like your words rearranged");
       if (g.invented) notes.push("added something you didn't say");
       if (g.missing.length) notes.push("could add: " + g.missing.join(", "));
+      if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
       var el = document.getElementById("gradeNote");
-      el.textContent = "\ud83c\udfaf Quality check: " + g.craft + " of 5" + (notes.length ? " \u00b7 " + notes.join(" \u00b7 ") : "") + " (" + fields.grade_model + ", " + fields.grade_s + "s)";
+      el.textContent = "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (" + fields.grade_model + ", " + fields.grade_s + "s)";
       el.hidden = false;
     }, function () {});
     if (target) target._grade = job;

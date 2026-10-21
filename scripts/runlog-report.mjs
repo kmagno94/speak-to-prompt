@@ -157,6 +157,10 @@ export function gradesOf(ok) {
   const avg = (rs) => (rs.length ? round(rs.reduce((a, r) => a + r.grade, 0) / rs.length, 2) : null);
   const missing = {};
   for (const r of g) for (const m of String(r.grade_missing || '').split('+')) if (m && m !== 'none') missing[m] = (missing[m] || 0) + 1;
+  // Pass rate (4.5 bar, g4+) and which lessons graded prompts broke, within the newest grader.
+  const passed = sameG.filter((r) => typeof r.grade_pass === 'boolean');
+  const broke = {};
+  for (const r of sameG) for (const b of String(r.grade_broke || '').split('+')) if (b && b !== 'none') broke[b] = (broke[b] || 0) + 1;
   // Lessons versions are compared only within the newest grader, so a stricter grader never looks like a worse lesson.
   const versions = [...new Set(sameG.map((r) => (num(r.lessons_v) ? r.lessons_v : 0)))].sort((a, b) => a - b);
   return {
@@ -165,11 +169,16 @@ export function gradesOf(ok) {
     invented_pct: share(g.filter((r) => r.grade_invented === true).length, g.length),
     missing: Object.entries(missing).sort((a, b) => b[1] - a[1]).map(([label, n]) => ({ label, n, pct: share(n, g.length) })),
     by_model: [...new Set(g.map((r) => String(r.write_model || '').replace(/^gemini-/, '')))].filter(Boolean).map((m) => { const rs = g.filter((r) => String(r.write_model || '').replace(/^gemini-/, '') === m); return { model: m, n: rs.length, avg: avg(rs) }; }),
+    pass_n: passed.length, pass_pct: passed.length ? share(passed.filter((r) => r.grade_pass === true).length, passed.length) : null,
+    broke: Object.entries(broke).sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ id, n, pct: share(n, sameG.length) })),
     grader: latestG,
     by_grader: gvs.map((v) => { const rs = g.filter((r) => graderOf(r) === v); return { v, n: rs.length, avg: avg(rs) }; }),
     by_lessons: versions.map((v) => { const rs = sameG.filter((r) => (num(r.lessons_v) ? r.lessons_v : 0) === v); return { v, n: rs.length, avg: avg(rs) }; })
   };
 }
+
+/* Runs graded by the newest grader version. */
+const sameGN = (g) => { const b = (g.by_grader || []).find((x) => x.v === g.grader); return b ? b.n : 0; };
 
 /* Things the review should act on or raise with Kevin. */
 export function flagsFor(s) {
@@ -185,6 +194,7 @@ export function flagsFor(s) {
   if (g && g.n >= MIN_N && g.rearranged_pct >= 30) f.push(`Graded prompts read like rearranged words in ${g.rearranged_pct}% of runs. Consider a lesson (lessons.json rules).`);
   if (g && g.n >= MIN_N && g.invented_pct >= 20) f.push(`Graded prompts added things nobody said in ${g.invented_pct}% of runs. Consider a lesson (lessons.json rules).`);
   if (g && g.n >= MIN_N) for (const m of g.missing) if (m.pct >= 40) f.push(`Graded prompts were missing "${m.label}" in ${m.pct}% of runs. Consider a lesson (lessons.json rules).`);
+  if (g && sameGN(g) >= MIN_N) for (const b of g.broke || []) if (b.pct >= 30) f.push(`Graded prompts broke lesson ${b.id} in ${b.pct}% of runs: the writer isn't following it. Reword or sharpen it (lessons.json rules).`);
   if (g && g.n >= 10 && g.grader != null) { const cur = g.by_grader.find((b) => b.v === g.grader); if (cur && cur.n >= 10 && cur.avg >= 4.7) f.push(`Grader g${cur.v} averages ${cur.avg} over ${cur.n} runs: probably too soft to find patterns. Propose a stricter GRADE prompt (Kevin's call).`); }
   if (g && g.by_lessons.length >= 2) {
     const [prev, cur] = g.by_lessons.slice(-2);
@@ -228,6 +238,8 @@ export function markdown(s, since) {
   L.push('**Prompt grades (fast model, 1 to 5)**' + few(g.n), '', '| Measure | Value |', '|---|---|',
     `| Graded runs | ${g.n} |`,
     `| Grade, average | ${fmt(g.avg, ' of 5')} |`,
+    `| Passed the 4.5 bar (newest grader) | ${g.pass_n ? fmt(g.pass_pct, '%') + ' of ' + g.pass_n : 'n/a'} |`,
+    `| Lessons broken (newest grader) | ${(g.broke || []).length ? g.broke.map((b) => b.id + ' ' + b.pct + '%').join(', ') : 'none yet'} |`,
     `| Reads like rearranged words | ${fmt(g.rearranged_pct, '%')} |`,
     `| Added something nobody said | ${fmt(g.invented_pct, '%')} |`,
     `| Most often missing | ${g.missing.length ? g.missing.map((m) => m.label + ' ' + m.pct + '%').join(', ') : 'nothing yet'} |`,

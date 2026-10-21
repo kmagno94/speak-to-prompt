@@ -1,6 +1,6 @@
 {
-  "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step; bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 04:05 UTC",
+  "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
+  "updated": "2026-10-21 05:09 UTC",
   "version": 1,
   "lessons": [
     {
@@ -16,7 +16,7 @@
       "added": "2026-10-21"
     }
   ],
-  "grader_version": 3,
+  "grader_version": 4,
   "grader": [
     {
       "id": "G1",

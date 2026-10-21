@@ -85,19 +85,24 @@ export function withLessons(write, lessons) {
 
 /* Quality grade (run stats on): a second opinion on the finished prompt from the
    fast model, in the background after the prompt is shown. It answers only with
-   a score and fixed labels, so the run log never holds anyone's words. */
+   a score and fixed labels (and lesson ids), so the run log never holds anyone's words.
+   Scores are 1.00 to 5.00 (two decimals); GRADE_PASS is the bar a prompt must reach. */
 export const GRADE_MISSING = ['role', 'task', 'context', 'format', 'success', 'constraints', 'steps', 'ending'];
-export function gradePrompt(prompt, raw, answers, calibration) {
+export const GRADE_PASS = 4.5;
+export function gradePrompt(prompt, raw, answers, calibration, lessons) {
+  const ls = (lessons || []).filter((l) => l && l.id && l.text);
   const out = [
-    "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is or how polite it sounds. Be hard to impress: most decent prompts are a 3 or a 4.",
+    "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is or how polite it sounds. Be hard to impress: most decent prompts land in the 3s or low 4s.",
     "",
     "missing: go through every label and list each one that is weak or absent: role (who the AI should be, stated up front, not buried inside the task), task (an unmistakable job), context (background the AI needs), format (the shape of the answer, such as a table, list, steps, or sections, AND roughly how long), success (what a great result looks like, or how the person will judge it), constraints (limits and hard noes the person gave), steps (how-to or troubleshooting the person needs), ending (a clear start-now or pick-an-option ending). A prompt that never says how long or what shape the answer should be is missing format. Use an empty list only if every label is clearly covered.",
     "rearranged: true if most of the prompt is the person's own sentences reordered or relabeled, instead of clear instructions written for the AI.",
     "invented: true if it adds facts, people, devices, numbers, or requirements the person never said or confirmed. Correct math on their own numbers (a total, what is left, a split) and unit conversions are fine.",
-    "craft, 1 to 5, decided after the labels above: 1 = their sentences moved around under labels, with no real instructions; 2 = mostly their words reorganized, with a vague task; 3 = clear and usable, but two or more labels are weak or missing; 4 = strong, with exactly one weak or missing label; 5 = rare: nothing in missing, nothing rearranged, nothing invented. Never give 5 if missing has anything in it.",
+    "broke: the id of every lesson below that the prompt breaks (an empty list if it breaks none, or if there are no lessons). A lesson that doesn't apply to this request is not broken.",
+    "craft, 1.00 to 5.00 with two decimals (like 3.77 or 4.62), decided after the labels above. The band comes from the labels; the decimals say how strong it is inside its band: 1.00 to 1.99 = their sentences moved around under labels, with no real instructions; 2.00 to 2.99 = mostly their words reorganized, with a vague task; 3.00 to 3.99 = clear and usable, but two or more labels are weak or missing; 4.00 to 4.49 = strong but held back: one weak or missing label, a broken lesson, or lines that could be sharper; 4.50 to 4.99 = passes: nothing in missing, nothing in broke, nothing rearranged, nothing invented, and every line earns its place; 5.00 = flawless, very rare. Never give 4.50 or more if missing or broke has anything in it.",
     "",
-    'Respond with JSON only, in exactly this shape: {"missing": ["format"], "rearranged": false, "invented": false, "craft": 4}'
+    'Respond with JSON only, in exactly this shape: {"missing": ["format"], "broke": [], "rearranged": false, "invented": false, "craft": 4.12}'
   ];
+  if (ls.length) out.push("", "LESSONS LEARNED (rules from reviews of earlier prompts; each one is a thing a good prompt must not get wrong. List the id of any the prompt breaks in broke):", ...ls.map((l) => "- " + l.id + ": " + l.text));
   const cal = (calibration || []).filter(Boolean);
   if (cal.length) out.push("", "CALIBRATION FROM CLAUDE'S REVIEWS OF YOUR PAST GRADES (you graded these kinds of prompts wrong before; follow these):", ...cal.map((c) => "- " + c));
   out.push("", "PERSON'S RAW THOUGHTS:", '"""', raw, '"""');
@@ -108,13 +113,23 @@ export function gradePrompt(prompt, raw, answers, calibration) {
 }
 
 /* The same caps the page applies after the model answers, so a soft score can't
-   slip through: each missing label costs a point, rearranged caps at 2, invented at 3. */
-export function capGrade(craft, missing, rearranged, invented) {
-  let g = Math.max(1, Math.min(5, Math.round(craft)));
-  g = Math.min(g, Math.max(1, 5 - (missing || []).length));
+   slip through: each missing label costs a point (one missing tops out at 4.00),
+   a broken lesson caps at 4.40 and each more costs half a point, rearranged caps
+   at 2, invented at 3. Kept to the nearest hundredth. */
+export function capGrade(craft, missing, rearranged, invented, broke) {
+  let g = Math.max(1, Math.min(5, Number(craft)));
+  const miss = (missing || []).length, nb = (broke || []).length;
+  if (miss) g = Math.min(g, Math.max(1, 5 - miss));
+  if (nb) g = Math.min(g, Math.max(1, 4.9 - 0.5 * nb));
   if (rearranged) g = Math.min(g, 2);
   if (invented) g = Math.min(g, 3);
-  return g;
+  return Math.round(g * 100) / 100;
+}
+/* How the page shows a grade: the nearest tenth for the scale, plus the exact
+   hundredths when they differ (so a 4.47 that shows as 4.5 can't look like a pass). */
+export function gradeLabel(g) {
+  const tenth = (Math.round(g * 10) / 10).toFixed(1), exact = g.toFixed(2);
+  return tenth + " of 5" + (Number(tenth) === Number(exact) ? "" : " (" + exact + ")");
 }
 
 /* Auto-Repair: one small, targeted fix when the phone's checks (X-ray and the

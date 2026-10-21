@@ -1,5 +1,7 @@
 // Speak to Prompt smoke tests. Mocks Gemini, drives the page at phone size,
 // and fails (exit 1) on any broken check. Run: npm install && npm test (from the repo root).
+// Fast check while working: ONLY=grade npm test runs just the checks whose name
+// matches (any word or regex, case ignored). The full run is still what ships.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -24,7 +26,10 @@ await new Promise(r => setTimeout(r, 800));
 const browser = await chromium.launch({ executablePath: browserPath() });
 
 const results = [];
+const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
+let skipped = 0;
 async function check(name, fn) {
+  if (ONLY && !ONLY.test(name)) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
 }
@@ -1315,13 +1320,13 @@ await check('quality grade: with run stats on, the fast model grades the prompt 
   expect(await p.inputValue('#output') === 'Plant swap prompt', 'the prompt shows without waiting for the grade');
   await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
   const note = await p.textContent('#gradeNote');
-  expect(/Quality check: 2 of 5/.test(note) && /rearranged/.test(note) && /could add: format, success/.test(note) && !/bogus/.test(note), 'grade note wrong: ' + note);
+  expect(/Quality check: 2\.0 of 5 \u00b7 \u270b below the 4\.5 bar/.test(note) && /rearranged/.test(note) && /could add: format, success/.test(note) && !/bogus/.test(note), 'grade note wrong: ' + note);
   expect(p.grades.length === 1 && /lite/.test(p.grades[0].model) && p.grades[0].level === 'low' && p.grades[0].json, 'grade should be one JSON call on Flash-Lite at low thinking: ' + JSON.stringify(p.grades[0] && { m: p.grades[0].model, l: p.grades[0].level }));
   expect(p.grades[0].text.includes(RAW) && p.grades[0].text.includes('PROMPT TO GRADE:') && p.grades[0].text.includes('Plant swap prompt'), 'grader should see the raw thoughts and the prompt');
   expect(p.calls.filter(c => !c.intake).length === 1, 'the grade is not a second write call');
   await p.click('#copy'); await p.waitForTimeout(400);
   const r = sent[0] || {};
-  expect(r.grade === 2 && r.grade_rearranged === true && r.grade_invented === false && r.grade_missing === 'format+success' && /lite/.test(r.grade_model) && typeof r.grade_s === 'number' && r.action === 'copied', 'run should carry the grade: ' + JSON.stringify(r));
+  expect(r.grade === 2 && r.grade_pass === false && r.grade_broke === 'none' && r.grade_rearranged === true && r.grade_invented === false && r.grade_missing === 'format+success' && /lite/.test(r.grade_model) && typeof r.grade_s === 'number' && r.action === 'copied', 'run should carry the grade: ' + JSON.stringify(r));
   expect(!JSON.stringify(r).includes('plant') && !('_grade' in r), 'no words and no internals in the run log: ' + JSON.stringify(r));
   await p.click('#copyAll');
   // Stats off: no grade call, no note
@@ -1345,15 +1350,46 @@ await check('stricter grader: caps soft scores, uses grader calibration from les
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', 'plant swap at the garden, first sunday'); await p.click('#build'); await done(p);
   await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
-  expect(/Quality check: 4 of 5/.test(await p.textContent('#gradeNote')), 'a 5 with a missing label should be capped at 4: ' + await p.textContent('#gradeNote'));
+  expect(/Quality check: 4\.0 of 5 \u00b7/.test(await p.textContent('#gradeNote')), 'a 5 with a missing label should be capped at 4.00: ' + await p.textContent('#gradeNote'));
   const ask = p.grades[0].text;
   expect(/CALIBRATION FROM CLAUDE'S REVIEWS/.test(ask) && ask.includes('- A prompt with no stated length is missing format.') && ask.indexOf('CALIBRATION') < ask.indexOf('PROMPT TO GRADE:'), 'grader calibration should be in the grade request');
-  expect(/Never give 5 if missing has anything in it/.test(ask) && !/LESSONS FROM REVIEWS/.test(ask), 'grade request uses the strict rubric, not the writer lessons');
+  expect(/Never give 4\.50 or more if missing or broke has anything in it/.test(ask) && !/LESSONS FROM REVIEWS/.test(ask), 'grade request uses the strict rubric, not the writer wording');
+  expect(ask.includes('- L1: Writer rule.') && ask.indexOf('LESSONS LEARNED') < ask.indexOf('PROMPT TO GRADE:'), 'grader should check the writer lessons, with ids, as what not to do');
   await p.click('#copy'); await p.waitForTimeout(400);
   expect(sent[0] && sent[0].grade === 4 && / g3$/.test(sent[0].grade_model) && sent[0].lessons_v === 4, 'run should log the capped grade and grader g3: ' + JSON.stringify(sent[0]));
   const { capGrade } = await import('../app/lib/prompts.js');
   expect(capGrade(5, [], true, false) === 2 && capGrade(5, [], false, true) === 3 && capGrade(4, ['a', 'b', 'c'], false, false) === 2 && capGrade(5, [], false, false) === 5, 'caps wrong');
+  expect(capGrade(4.737, [], false, false) === 4.74 && capGrade(4.9, ['format'], false, false) === 4 && capGrade(4.8, [], false, false, ['L1']) === 4.4 && capGrade(4.8, [], false, false, ['L1', 'L2']) === 3.9 && capGrade(3.215, [], false, false) === 3.22, 'hundredths caps wrong');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
+  const L = { version: 2, lessons: [{ id: 'L1', text: 'Write the Task as a clear instruction.' }, { id: 'L2', text: 'State leftover money as exact math.' }], grader_version: 4, grader: [] };
+  async function run(grade) {
+    const p = await page({ intake: noQ, write: 'Garden prompt', grade, lessons: L }); const sent = [];
+    await relayRun(p, sent);
+    await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    await withKey(p); await p.fill('#thoughts', 'garden budget is 200 and i spent 35.50 already'); await p.click('#build'); await done(p);
+    await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+    const note = await p.textContent('#gradeNote');
+    await p.click('#copy'); await p.waitForTimeout(400);
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    return { p, note, r: sent[0] || {} };
+  }
+  // A strong prompt: kept to the hundredth, shown to the tenth, passes
+  const a = await run({ craft: 4.737, broke: [], rearranged: false, invented: false, missing: [] });
+  expect(/Quality check: 4\.7 of 5 \(4\.74\) \u00b7 \u2705 passes the 4\.5 bar/.test(a.note), 'pass note wrong: ' + a.note);
+  expect(a.r.grade === 4.74 && a.r.grade_pass === true && a.r.grade_broke === 'none' && / g4$/.test(a.r.grade_model), 'run should log 4.74, pass, g4: ' + JSON.stringify(a.r));
+  // Breaks a lesson: capped at 4.40, fails, unknown ids dropped
+  const b = await run({ craft: 4.8, broke: ['l2', 'L9', 'L2'], rearranged: false, invented: false, missing: [] });
+  expect(/Quality check: 4\.4 of 5 \u00b7 \u270b below the 4\.5 bar/.test(b.note) && /broke lesson L2/.test(b.note) && !/L9/.test(b.note), 'broken lesson note wrong: ' + b.note);
+  expect(b.r.grade === 4.4 && b.r.grade_pass === false && b.r.grade_broke === 'L2', 'run should log the broken lesson: ' + JSON.stringify(b.r));
+  // Edge: 4.47 rounds to 4.5 on the scale but is below the bar, so the exact score shows
+  const c = await run({ craft: 4.47, broke: [], rearranged: false, invented: false, missing: [] });
+  expect(/Quality check: 4\.5 of 5 \(4\.47\) \u00b7 \u270b below the 4\.5 bar/.test(c.note) && c.r.grade_pass === false, 'a 4.47 must not look like a pass: ' + c.note);
+  // An old-style whole number still works
+  const d = await run({ craft: 5, rearranged: false, invented: false, missing: [] });
+  expect(/Quality check: 5\.0 of 5 \u00b7 \u2705 passes/.test(d.note) && d.r.grade === 5, 'whole numbers should still grade: ' + d.note);
 });
 
 await check('Scorecard: grades by lessons version, with flags to add or revert a lesson', async () => {
@@ -1374,6 +1410,16 @@ await check('Scorecard: grades by lessons version, with flags to add or revert a
   expect(soft.flags.some(f => /Grader g2 averages 5 over 10 runs/.test(f)), 'a grader handing out 5s should be flagged: ' + soft.flags.join(' | '));
   const none = markdown(scorecard(parseRuns([row(1, 0, 4, false, 'none')].map(c => ({ ...c, body: c.body.replace(/\| grade.*\n?/g, '') })))));
   expect(/Graded runs \| 0/.test(none), 'no grades should still print cleanly');
+});
+
+await check('Scorecard: pass rate on the 4.5 bar and which lessons graded prompts broke', async () => {
+  const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
+  const row = (i, grade, pass, broke) => ({ created_at: '2026-10-22T0' + i + ':00:00Z', body: `**Run 2026-10-22 0${i}:00 UTC**\n\n| field | value |\n|---|---|\n| mode | Full |\n| outcome | ok |\n| write_s | 30 |\n| grade | ${grade} |\n| grade_pass | ${pass ? 'yes' : 'no'} |\n| grade_broke | ${broke} |\n| grade_model | 3.5-flash-lite g4 |` });
+  const s = scorecard(parseRuns([row(1, 4.74, true, 'none'), row(2, 4.4, false, 'L2'), row(3, 3.77, false, 'L1+L2'), row(4, 4.62, true, 'none'), row(5, 4.0, false, 'L2')]));
+  expect(s.grades.pass_n === 5 && s.grades.pass_pct === 40 && s.grades.avg === 4.31 && s.grades.broke[0].id === 'L2' && s.grades.broke[0].pct === 60, 'pass or broke math wrong: ' + JSON.stringify(s.grades));
+  expect(s.flags.some(f => /broke lesson L2 in 60%/.test(f)) && !s.flags.some(f => /lesson L1 in/.test(f)), 'should flag the lesson broken most: ' + s.flags.join(' | '));
+  const md = markdown(s);
+  expect(/Passed the 4\.5 bar \(newest grader\) \| 40% of 5/.test(md) && /Lessons broken \(newest grader\) \| L2 60%, L1 20%/.test(md), 'markdown missing pass rate or lessons: ' + md.split('Prompt grades')[1]);
 });
 
 await check('busy hours: tuning.json picks a less busy start model per 3-hour block from the last 14 days', async () => {
@@ -1441,5 +1487,6 @@ for (const r of results) console.log(r.join('  '));
 /* On GitHub Actions, each failure also becomes an annotation on the run page. */
 if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
-console.log(`\n${results.length - failed} passed, ${failed} failed`);
+console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : ''));
+if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
 process.exit(failed ? 1 : 0);
