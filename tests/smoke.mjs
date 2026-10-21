@@ -1188,7 +1188,7 @@ await check('built-in complex estimate matches the Scorecard-calibrated default'
   await withKey(p); await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset'); await p.waitForTimeout(300);
-  expect(sent[0] && sent[0].depth === 'complex' && sent[0].est_from === 'built-in' && sent[0].est_s === 70, 'complex built-in estimate: ' + JSON.stringify(sent[0]));
+  expect(sent[0] && sent[0].depth === 'complex' && sent[0].est_from === 'built-in' && sent[0].est_s === 45, 'complex built-in estimate: ' + JSON.stringify(sent[0]));
 });
 
 await check('time away from the app is left out of the logged write time', async () => {

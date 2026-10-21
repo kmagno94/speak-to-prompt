@@ -821,7 +821,7 @@ export function startApp() {
   var DEPTH = {
     simple:   { level: "low",    words: "light thinking",    secs: 20,  range: "usually about 20 seconds", label: "Quick request" },
     standard: { level: "medium", words: "balanced thinking", secs: 58,  range: "usually about a minute",    label: "Standard request" },
-    complex:  { level: "high",   words: "deep thinking",     secs: 70,  range: "usually about a minute",    label: "Complex request" },
+    complex:  { level: "high",   words: "deep thinking",     secs: 45,  range: "usually about 45 seconds",    label: "Complex request" },
     quick:    { level: "quick",  words: "balanced thinking",   secs: 12,  range: "about 10 seconds",         label: "Quick prompt" }
   };
   /* Quick prompts: Flash-Lite is fast enough to think a bit more, which keeps
