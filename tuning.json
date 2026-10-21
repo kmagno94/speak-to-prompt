@@ -1,39 +1,49 @@
 {
   "note": "Typical wait times from the run log (issue #2), written by the review. The app uses these until a phone has learned its own. busy: 3-hour blocks (Eastern, by start hour) where the usual writer is busy at least half the time; the app starts on the less busy model there and races a backup after race_s seconds.",
-  "updated": "2026-10-21 02:08 UTC",
+  "updated": "2026-10-21 17:01 UTC",
   "intake": {
-    "secs": 2,
+    "secs": 3,
     "runs": 20
   },
   "depth": {
     "complex": {
-      "secs": 20,
-      "runs": 15
+      "secs": 22,
+      "runs": 17
     },
     "simple": {
       "secs": 4,
-      "runs": 5
+      "runs": 8
     },
     "standard": {
-      "secs": 41,
+      "secs": 15,
       "runs": 20
     }
   },
   "busy": {
-    "6": {
+    "0": {
       "start": null,
       "race_s": 30,
-      "why": "3.8-flash busy 6 of 6, no Flash model clearly less busy"
+      "why": "3.8-flash busy 4 of 8, no Flash model clearly less busy"
+    },
+    "6": {
+      "start": "3.7-flash",
+      "race_s": 30,
+      "why": "3.8-flash busy 7 of 7, 3.7-flash busy 2 of 5"
     },
     "9": {
       "start": null,
       "race_s": 30,
-      "why": "3.8-flash busy 7 of 11, no Flash model clearly less busy"
+      "why": "3.8-flash busy 13 of 19, no Flash model clearly less busy"
+    },
+    "12": {
+      "start": null,
+      "race_s": 30,
+      "why": "3.8-flash busy 7 of 8, no Flash model clearly less busy"
     },
     "21": {
       "start": "3.6-flash",
       "race_s": 30,
-      "why": "3.8-flash busy 10 of 14, 3.6-flash busy 1 of 8"
+      "why": "3.8-flash busy 10 of 14, 3.6-flash busy 1 of 9"
     }
   }
 }
