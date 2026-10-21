@@ -336,7 +336,7 @@ export function startApp() {
     var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
     if (stray.length) out.push("Numbers you never said: " + stray.join(", "));
     if (s.grades && s.grades.length) {
-      out.push("", "GRADER DETAILS (" + (lessons.gv ? "g" + lessons.gv : "g1") + ", lessons v" + (lessons.v || 0) + ")");
+      out.push("", "GRADER DETAILS (" + (lessons.gv ? "g" + lessons.gv : "g1") + ", lessons v" + (lessons.v || 0) + (lessons.src === "draft" ? ", draft " + lessons.id : ", live") + ")");
       s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no")); });
     } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
     if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
@@ -1067,11 +1067,69 @@ export function startApp() {
   /* lessons.json: short rules the twice-daily review learned from graded runs and
      stress tests (general prompt-writing lessons, never anyone's words). Every
      prompt build uses them. At most 6, each kept short, so the writer stays fast. */
-  var lessons = { v: 0, list: [], items: [], gv: 1, grader: [] };
-  function loadLessons() {
-    fetch("lessons.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) { lessons = lessonsFrom(j); }, function () {});
+  var lessons = { v: 0, list: [], items: [], gv: 1, grader: [], src: "live" };
+  /* Grading sessions (dev tools only): a draft of lessons.json rides in a link
+     (#draft=<base64url JSON>) made by scripts/draft.mjs. Opening or pasting it
+     saves the draft on this device and switches to it, so grader tweaks can be
+     tried right away with no push. Live is lessons.json from the site, which is
+     what everyone else gets. Draft only applies while Show my dev tools is on. */
+  var DRAFT_KEY = "stp-lessons-draft", SRC_KEY = "stp-lessons-src", liveLessons = lessons;
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function draftFrom(text) {
+    var m = String(text || "").match(/#draft=([A-Za-z0-9_-]+)/);
+    if (!m) return null;
+    try {
+      var b = m[1].replace(/-/g, "+").replace(/_/g, "/"); while (b.length % 4) b += "=";
+      var bin = atob(b), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var j = JSON.parse(new TextDecoder().decode(bytes));
+      if (!j || !(Array.isArray(j.lessons) || Array.isArray(j.grader))) return null;
+      var h = 5381; for (i = 0; i < m[1].length; i++) h = ((h * 33) ^ m[1].charCodeAt(i)) >>> 0;
+      return { j: j, b64: m[1], id: h.toString(36).slice(0, 5), at: new Date().toISOString() };
+    } catch (e) { return null; }
   }
+  function fmtWhen(d) { try { return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+  function savedDraft() { try { var d = JSON.parse(lsGet(DRAFT_KEY) || "null"); return d && d.j && d.b64 ? d : null; } catch (e) { return null; } }
+  function applySrc() {
+    var d = savedDraft(), useDraft = !!(core.dev && d && lsGet(SRC_KEY) === "draft");
+    if (useDraft) { lessons = lessonsFrom(d.j); lessons.src = "draft"; lessons.id = d.id; }
+    else lessons = liveLessons;
+    renderSrc(d, useDraft);
+  }
+  function renderSrc(d, useDraft) {
+    var live = document.getElementById("srcLive"); if (!live) return;
+    var dr = document.getElementById("srcDraft"), info = document.getElementById("srcInfo");
+    live.setAttribute("aria-pressed", useDraft ? "false" : "true");
+    dr.setAttribute("aria-pressed", useDraft ? "true" : "false");
+    dr.disabled = !d; document.getElementById("draftCopy").disabled = !d; document.getElementById("draftClear").disabled = !d;
+    var lv = "Live is g" + liveLessons.gv + ", lessons v" + (liveLessons.v || 0) + ".";
+    if (useDraft) info.textContent = "Using Draft " + d.id + ": g" + lessons.gv + ", lessons v" + (lessons.v || 0) + ", loaded " + fmtWhen(new Date(d.at)) + ". " + lv;
+    else info.textContent = "Using Live. " + lv + (d ? " Draft " + d.id + " is saved." : "");
+  }
+  function takeDraft(d) { if (!d) return false; lsSet(DRAFT_KEY, JSON.stringify(d)); lsSet(SRC_KEY, "draft"); applySrc(); return true; }
+  function loadLessons() {
+    var fromLink = draftFrom(location.hash);
+    if (fromLink) { takeDraft(fromLink); try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
+    applySrc();
+    fetch("lessons.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { liveLessons = lessonsFrom(j); liveLessons.src = "live"; applySrc(); }, function () {});
+  }
+  document.getElementById("srcLive").addEventListener("click", function () { lsSet(SRC_KEY, "live"); applySrc(); });
+  document.getElementById("srcDraft").addEventListener("click", function () { lsSet(SRC_KEY, "draft"); applySrc(); });
+  document.getElementById("draftClear").addEventListener("click", function () { lsSet(DRAFT_KEY, null); lsSet(SRC_KEY, "live"); applySrc(); });
+  document.getElementById("devTools").addEventListener("change", function () { setTimeout(applySrc, 0); });
+  document.getElementById("draftPaste").addEventListener("click", function () {
+    var info = document.getElementById("srcInfo");
+    if (!navigator.clipboard || !navigator.clipboard.readText) { info.textContent = "This browser can't read the clipboard. Open the draft link in this browser instead."; return; }
+    navigator.clipboard.readText().then(function (t) {
+      if (!takeDraft(draftFrom(t))) info.textContent = "No draft link on the clipboard. Copy the whole link from Claude, then tap Paste draft link.";
+    }, function () { info.textContent = "Couldn't read the clipboard."; });
+  });
+  document.getElementById("draftCopy").addEventListener("click", function () {
+    var d = savedDraft(); if (!d || !navigator.clipboard) return;
+    navigator.clipboard.writeText(location.origin + location.pathname + "#draft=" + d.b64).then(function () { document.getElementById("srcInfo").textContent = "Copied draft " + d.id + "'s link."; }, function () {});
+  });
   /* The grader also gets the writer lessons, with their ids (L1, L2...), as the
      rubric of what not to do, and says which ones a prompt broke. */
   function lessonsFrom(j) {
@@ -1401,7 +1459,7 @@ export function startApp() {
       if (!g) return;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none",
-        grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv, grade_s: Math.round((Date.now() - t0) / 100) / 10 };
+        grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
       session.grades = [g];

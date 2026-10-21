@@ -1424,7 +1424,7 @@ await check('label fix: below the bar with only format missing, one small call a
   expect(/4\.7 of 5/.test(note) && /passes the 4\.5 bar/.test(note) && /added format, up from 4\.0 \(.*s fix\)$/.test(note.trim()), 'note wrong: ' + note);
   await p.check('#devTools'); await p.click('#copyGrader'); await p.waitForTimeout(300);
   const gt = await p.evaluate(() => navigator.clipboard.readText());
-  expect(/First grade: 4\.00 \u00b7 missing format/.test(gt) && /After the fix: 4\.70 \u00b7 missing none/.test(gt) && /Label fix: added format/.test(gt) && gt.includes('PROMPT BEFORE THE LABEL FIX\n' + DRAFT) && /GRADER DETAILS \(g5, lessons v\d+\)/.test(gt), 'grader copy should show both grades and the draft: ' + JSON.stringify(gt));
+  expect(/First grade: 4\.00 \u00b7 missing format/.test(gt) && /After the fix: 4\.70 \u00b7 missing none/.test(gt) && /Label fix: added format/.test(gt) && gt.includes('PROMPT BEFORE THE LABEL FIX\n' + DRAFT) && /GRADER DETAILS \(g5, lessons v\d+, live\)/.test(gt), 'grader copy should show both grades and the draft: ' + JSON.stringify(gt));
   await p.click('#copy'); await p.waitForTimeout(400);
   expect(sent[0] && sent[0].grade === 4.7 && sent[0].grade_before === 4 && sent[0].label_fix === 'added format' && typeof sent[0].label_fix_s === 'number' && sent[0].grade_pass === true, 'run should log the fix: ' + JSON.stringify(sent[0]));
   // 2. Fix doesn't score higher: original stays
@@ -1456,6 +1456,55 @@ await check("today's date: the writer and the grader both get the phone's date, 
   expect(w.text.indexOf('TODAY:') < w.text.indexOf('RAW THOUGHTS:'), 'today goes with the instructions, before the raw thoughts');
   expect(p.grades[0] && p.grades[0].text.includes("TODAY'S DATE (from the person's phone") && p.grades[0].text.includes(want), 'grader should know today too');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('grading session: a draft link swaps in draft lessons and grader rules on this device only, with a Live/Draft switch in dev tools', async () => {
+  const { linkFor, problems } = await import('../scripts/draft.mjs');
+  const LIVE = { version: 2, updated: 'x', lessons: [{ id: 'L1', text: 'Live writer rule.', why: 'w' }], grader_version: 8, grader: [{ id: 'G1', text: 'Live grader rule.', why: 'w' }] };
+  const DRAFT = { version: 3, lessons: [{ id: 'L1', text: 'Draft writer rule, with an apostrophe\'s worth.', why: 'w' }], grader_version: 9, grader: [{ id: 'G1', text: 'Draft grader rule.', why: 'w' }] };
+  expect(problems(DRAFT).length === 0 && problems({ ...DRAFT, grader: [DRAFT.grader[0], DRAFT.grader[0]] }).length === 1, 'the script should catch repeated ids');
+  const link = linkFor(DRAFT, BASE.replace(/\/?$/, '/'));
+  const p = await page({ intake: noQ, write: 'Study prompt', lessons: LIVE });
+  await devOn(p);
+  await p.goto('about:blank'); await p.goto(link);
+  expect(!/#draft=/.test(p.url()), 'the draft should leave the address bar once saved: ' + p.url());
+  await p.click('#moreOpts summary');
+  expect(await p.getAttribute('#srcDraft', 'aria-pressed') === 'true' && /Using Draft \w+: g9, lessons v3/.test(await p.textContent('#srcInfo')) && /Live is g8/.test(await p.textContent('#srcInfo')), 'switch should show Draft: ' + await p.textContent('#srcInfo'));
+  await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'study plan'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  const w = p.calls.find((c) => !c.intake);
+  expect(w.text.includes("Draft writer rule, with an apostrophe's worth.") && !w.text.includes('Live writer rule.'), 'writer should use the draft lessons');
+  expect(p.grades[0].text.includes('Draft grader rule.') && / g9 draft \w+, /.test(await p.textContent('#gradeNote')), 'grader should use the draft and say so: ' + await p.textContent('#gradeNote'));
+  await p.click('#copyGrader'); await p.waitForTimeout(200);
+  expect(/GRADER DETAILS \(g9, lessons v3, draft \w+\)/.test(await p.evaluate(() => navigator.clipboard.readText())), 'grader copy should name the draft');
+  // Copy draft link gives back the same draft
+  await p.click('#draftCopy'); await p.waitForTimeout(200);
+  expect((await p.evaluate(() => navigator.clipboard.readText())).split('#draft=')[1] === link.split('#draft=')[1], 'Copy draft link should give the same draft back');
+  // Switch to Live: next build uses lessons.json
+  await p.click('#srcLive');
+  expect(/Using Live\. Live is g8/.test(await p.textContent('#srcInfo')), 'Live should show: ' + await p.textContent('#srcInfo'));
+  p.calls.length = 0; p.grades.length = 0;
+  await p.click('#reset'); await p.fill('#thoughts', 'study plan again'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  expect(p.calls.find((c) => !c.intake).text.includes('Live writer rule.') && / g8, /.test(await p.textContent('#gradeNote')), 'Live should use lessons.json: ' + await p.textContent('#gradeNote'));
+  // Dev tools off: always Live, even with Draft picked
+  await p.click('#srcDraft'); await p.uncheck('#devTools'); await p.waitForTimeout(100);
+  p.calls.length = 0;
+  await p.click('#reset'); await p.fill('#thoughts', 'study plan three'); await p.click('#build'); await done(p);
+  expect(p.calls.find((c) => !c.intake).text.includes('Live writer rule.'), 'with dev tools off, everyone gets Live');
+  // Paste draft link (Home Screen app, where a link opens Safari instead)
+  const q = await page({ intake: noQ, lessons: LIVE });
+  await p.close(); await devOn(q); await q.bringToFront(); await q.click('#moreOpts summary');
+  await q.evaluate(() => navigator.clipboard.writeText('nothing here')); await q.click('#draftPaste');
+  await q.waitForFunction(() => /No draft|Using/.test(document.getElementById('srcInfo').textContent));
+  expect(/No draft link on the clipboard/.test(await q.textContent('#srcInfo')) && await q.isDisabled('#srcDraft'), 'a bad paste should say so');
+  await q.evaluate((l) => navigator.clipboard.writeText('here you go: ' + l), link); await q.click('#draftPaste');
+  await q.waitForFunction(() => /Using Draft/.test(document.getElementById('srcInfo').textContent), null, { timeout: 3000 }).catch(() => {});
+  expect(/Using Draft \w+: g9/.test(await q.textContent('#srcInfo')), 'pasting the link should switch to Draft: ' + await q.textContent('#srcInfo'));
+  await q.click('#draftClear');
+  expect(/Using Live/.test(await q.textContent('#srcInfo')) && await q.isDisabled('#srcDraft'), 'Clear draft should go back to Live');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
@@ -1568,6 +1617,9 @@ await check('lessons.json is valid: versioned, at most 6 short lessons, no em da
   expect(typeof j.version === 'number' && Array.isArray(j.lessons) && j.lessons.length <= 6 && j.updated, 'lessons.json needs version, updated, and up to 6 lessons');
   expect(typeof j.grader_version === 'number' && Array.isArray(j.grader) && j.grader.length <= 6, 'lessons.json needs grader_version and up to 6 grader rules');
   for (const l of j.lessons.concat(j.grader)) expect(l.text && l.text.length <= 240 && !/\u2014|@/.test(l.text) && l.why, 'bad lesson: ' + JSON.stringify(l));
+  for (const k of ['lessons', 'grader']) { const ids = j[k].map((l) => l.id); expect(ids.every((id, i) => id && ids.indexOf(id) === i), k + ' has a missing or repeated id: ' + ids.join(', ')); }
+  const { problems } = await import('../scripts/draft.mjs');
+  expect(problems(j).length === 0, 'scripts/draft.mjs should accept lessons.json: ' + problems(j).join('; '));
 });
 
 await check('usage.json is valid', async () => {

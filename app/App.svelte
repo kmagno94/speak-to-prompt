@@ -196,6 +196,20 @@
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
         <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
       </div>
+      <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
+        <p class="srchead">Grader on this device</p>
+        <div class="seg" role="group" aria-label="Grader source">
+          <button type="button" id="srcLive" aria-pressed="true">Live</button>
+          <button type="button" id="srcDraft" aria-pressed="false" disabled>Draft</button>
+        </div>
+        <p class="hint" id="srcInfo">Using Live.</p>
+        <div class="row">
+          <button type="button" id="draftPaste">Paste draft link</button>
+          <button type="button" id="draftCopy" disabled>Copy draft link</button>
+          <button type="button" id="draftClear" class="linkish" disabled>Clear draft</button>
+        </div>
+        <p class="hint">For grading sessions: a draft link from Claude swaps in new lessons and grader rules here only, with no push. Everyone else keeps Live.</p>
+      </div>
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
         <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>

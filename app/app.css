@@ -133,6 +133,14 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 footer { font-size: 13px; color: var(--muted); }
 #testLog .runs { font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; }
 .stats { display: flex; flex-direction: column; gap: 4px; }
+.gradersrc { gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.gradersrc[hidden] { display: none; }
+.srchead { margin: 0; font-weight: 700; }
+.seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:disabled { opacity: 0.45; }
+.gradersrc .linkish { background: none; border: none; padding: 8px 4px; color: var(--muted, inherit); text-decoration: underline; text-underline-offset: 3px; min-height: 0; box-shadow: none; }
 #testLog .sub { font-family: var(--display); font-size: 16px; margin: 4px 0 0; }
 #testLog .sub .hint { font-family: var(--body); font-weight: 400; }
 .usage { display: flex; flex-direction: column; gap: 10px; }
