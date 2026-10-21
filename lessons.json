@@ -1,6 +1,6 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step; bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 03:20 UTC",
+  "updated": "2026-10-21 04:05 UTC",
   "version": 1,
   "lessons": [
     {
@@ -16,6 +16,13 @@
       "added": "2026-10-21"
     }
   ],
-  "grader_version": 2,
-  "grader": []
+  "grader_version": 3,
+  "grader": [
+    {
+      "id": "G1",
+      "text": "If any line is broken or unfinished (a blank where a number or value belongs, a sentence that no longer makes sense, or note text pasted in with its filler), mark that label weak. A prompt with a broken line is never a 5.",
+      "why": "Stress test 3 (Oct 20): app graded 5 with nothing missing; Claude graded 3. Distance and cost lines had blanks left by Auto-Repair (context), and no length was given (format).",
+      "added": "2026-10-21"
+    }
+  ]
 }
