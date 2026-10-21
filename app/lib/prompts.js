@@ -132,6 +132,20 @@ export function gradeLabel(g) {
   return tenth + " of 5" + (Number(tenth) === Number(exact) ? "" : " (" + exact + ")");
 }
 
+/* Label fix: when the quality grade is under the bar and the only thing missing is
+   a label the app can add on its own (how long the answer should be, or a start-now
+   ending), one small call adds just that line. The page checks nothing else
+   changed, grades it again, and keeps it only if the grade went up. */
+export const LABEL_FIXES = ['format', 'ending'];
+export function labelFixPrompt(prompt, missing) {
+  const out = ["You are finishing a prompt by adding one or two short lines. Keep every existing line exactly as written, word for word, in the same order. Do not reword, merge, or remove anything."];
+  if (missing.includes('format')) out.push("", "- Add one new line, just before the closing line, saying roughly how long the answer should be and what shape it takes, fitted to this request (for example: Keep it to about one screen, with short bullets instead of long paragraphs). Say the length in words, not new numbers.");
+  if (missing.includes('ending')) out.push("", "- Add one closing line at the very end telling the AI to start right away, and to ask at most one short question only if something essential is missing.");
+  out.push("", "Do not add facts, people, numbers, or requirements. Output only the full prompt: no title, no commentary, and no code fences.");
+  out.push("", "PROMPT TO FINISH:", '"""', prompt, '"""');
+  return out.join("\n");
+}
+
 /* Auto-Repair: one small, targeted fix when the phone's checks (X-ray and the
    number check) find details that were left out or numbers nobody said. It never
    rewrites the whole prompt; the page rechecks the result and keeps the original

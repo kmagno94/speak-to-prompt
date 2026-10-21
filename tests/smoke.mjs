@@ -45,6 +45,7 @@ async function page(opts = {}) {
   p.calls = [];
   p.repairs = [];   // Auto-Repair requests, kept apart so older tests see only intake and write calls
   p.grades = [];    // quality grade requests (run stats on), also kept apart
+  p.fixes = [];     // label fix requests (below the bar, only format or ending missing)
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -63,7 +64,14 @@ async function page(opts = {}) {
       const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
     }
+    if (/PROMPT TO FINISH:/.test(ask)) {
+      p.fixes.push({ model, text: ask });
+      if (opts.fixFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const done = opts.labelFix != null ? opts.labelFix : (opts.write || 'THE PROMPT');
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 120 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: done }] } }] }) });
+    }
     if (/PROMPT TO GRADE:/.test(ask)) {
+      if (opts.regrade && p.grades.length) opts = { ...opts, grade: opts.regrade };
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const g = JSON.stringify(opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
@@ -1383,6 +1391,48 @@ await check('stricter grader: caps soft scores, uses grader calibration from les
   expect(capGrade(5, [], true, false) === 2 && capGrade(5, [], false, true) === 3 && capGrade(4, ['a', 'b', 'c'], false, false) === 2 && capGrade(5, [], false, false) === 5, 'caps wrong');
   expect(capGrade(4.737, [], false, false) === 4.74 && capGrade(4.9, ['format'], false, false) === 4 && capGrade(4.8, [], false, false, ['L1']) === 4.4 && capGrade(4.8, [], false, false, ['L1', 'L2']) === 3.9 && capGrade(3.215, [], false, false) === 3.22, 'hundredths caps wrong');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('label fix: below the bar with only format missing, one small call adds a length, regrades, and keeps it only if better', async () => {
+  const DRAFT = 'You are a meal prep coach.\nContext: Two roommates, $80 a week, vegetarian lunches.\nTask: Plan 10 lunches.\nStart right away.';
+  const FIXED = 'You are a meal prep coach.\nContext: Two roommates, $80 a week, vegetarian lunches.\nTask: Plan 10 lunches.\nKeep it to about one screen, with short bullets instead of long paragraphs.\nStart right away.';
+  const L = { version: 2, lessons: [], grader_version: 5, grader: [] };
+  async function run(opts) {
+    const p = await page({ intake: noQ, write: DRAFT, lessons: L, grade: { craft: 4.3, rearranged: false, invented: false, missing: ['format'] }, ...opts }); const sent = [];
+    await p.route('https://relay.test/report/run', async r => {
+      const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+      sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+    });
+    await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    await withKey(p); await p.fill('#thoughts', 'meal prep for me and my roommate'); await p.click('#build'); await done(p);
+    await p.waitForFunction(() => /\u{1F527} (added|tried|couldn|skipped)/u.test(document.getElementById('gradeNote').textContent), null, { timeout: 8000 });
+    return { p, sent, note: await p.textContent('#gradeNote') };
+  }
+  // 1. Fix scores higher: the new prompt shows, the note says what changed, the run logs both grades
+  let { p, sent, note } = await run({ labelFix: FIXED, regrade: { craft: 4.7, rearranged: false, invented: false, missing: [] } });
+  expect(p.fixes.length === 1 && /PROMPT TO FINISH:/.test(p.fixes[0].text) && /how long/.test(p.fixes[0].text) && /lite/.test(p.fixes[0].model), 'one label fix call on the fast model asking for a length: ' + (p.fixes[0] && p.fixes[0].model));
+  expect(p.grades.length === 2 && p.grades[1].text.includes('about one screen'), 'the fixed prompt should be graded again');
+  expect(await p.inputValue('#output') === FIXED, 'the fixed prompt should replace the draft');
+  expect(/4\.7 of 5/.test(note) && /passes the 4\.5 bar/.test(note) && /added format, up from 4\.0 \(.*s fix\)$/.test(note.trim()), 'note wrong: ' + note);
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent[0] && sent[0].grade === 4.7 && sent[0].grade_before === 4 && sent[0].label_fix === 'added format' && typeof sent[0].label_fix_s === 'number' && sent[0].grade_pass === true, 'run should log the fix: ' + JSON.stringify(sent[0]));
+  // 2. Fix doesn't score higher: original stays
+  ({ p, sent, note } = await run({ labelFix: FIXED, regrade: { craft: 4.2, rearranged: false, invented: false, missing: ['format'] } }));
+  expect(await p.inputValue('#output') === DRAFT && /didn't score higher, so this is the original/.test(note) && /4\.0 of 5/.test(note), 'a fix that is not better must be thrown away: ' + note);
+  // 3. Fix rewrites other lines: thrown away without a second grade
+  ({ p, sent, note } = await run({ labelFix: FIXED.replace('Plan 10 lunches.', 'Plan ten tasty lunches.') }));
+  expect(await p.inputValue('#output') === DRAFT && p.grades.length === 1 && /changed other lines/.test(note), 'a fix that rewrites lines must be thrown away: ' + note);
+  // 4. Fix fails: original stays, page still works
+  ({ p, sent, note } = await run({ fixFail: true }));
+  expect(await p.inputValue('#output') === DRAFT && /couldn't add format/.test(note), 'a failed fix should keep the original: ' + note);
+  // 5. Something besides format is missing, or it passes: no fix call
+  const q = await page({ intake: noQ, write: DRAFT, lessons: L, grade: { craft: 3.6, rearranged: false, invented: false, missing: ['format', 'success'] } });
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'meal prep for me and my roommate'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 }); await q.waitForTimeout(500);
+  expect(q.fixes.length === 0 && !/\u{1F527}/u.test(await q.textContent('#gradeNote')), 'no fix when a label the app cannot add is missing');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {

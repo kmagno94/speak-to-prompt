@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, isAside, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, isAside, LABEL_FIXES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
@@ -1392,16 +1392,70 @@ export function startApp() {
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv, grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
-      var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" : "\u270b below the " + GRADE_PASS + " bar"];
-      if (g.rearranged) notes.push("reads like your words rearranged");
-      if (g.invented) notes.push("added something you didn't say");
-      if (g.missing.length) notes.push("could add: " + g.missing.join(", "));
-      if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
       var el = document.getElementById("gradeNote");
-      el.textContent = "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (" + fields.grade_model + ", " + fields.grade_s + "s)";
+      el.textContent = gradeText(g, fields, "");
       el.hidden = false;
+      var fixable = !g.pass && g.missing.length && !g.broke.length && !g.rearranged && !g.invented &&
+        g.missing.every(function (m) { return LABEL_FIXES.indexOf(m) !== -1; });
+      if (fixable) return fixLabel(prompt, run, target, g, fields, items, el);
     }, function () {});
     if (target) target._grade = job;
+  }
+  function gradeText(g, fields, extra) {
+    var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" : "\u270b below the " + GRADE_PASS + " bar"];
+    if (g.rearranged) notes.push("reads like your words rearranged");
+    if (g.invented) notes.push("added something you didn't say");
+    if (g.missing.length) notes.push("could add: " + g.missing.join(", "));
+    if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
+    if (extra) notes.push(extra);
+    return "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (" + fields.grade_model + ", " + fields.grade_s + "s" + (fields.fix_s != null ? " + " + fields.fix_s + "s fix" : "") + ")";
+  }
+  /* Below the bar with only a label the app can add (LABEL_FIXES): one small call
+     adds that line, the phone checks nothing else changed, the grader looks again,
+     and the new version is kept only if it scores higher and you haven't used the
+     prompt yet. Otherwise the original stays and the note says so. */
+  function fixLabel(prompt, run, target, g, fields, items, el) {
+    var t0 = Date.now(), what = g.missing.join(" and ");
+    el.textContent = gradeText(g, fields, "\ud83d\udd27 adding " + what + "...");
+    function secs() { return Math.round((Date.now() - t0) / 100) / 10; }
+    function used() { return run !== writeRun || pendingRun !== target || output.value !== core.apply(prompt); }
+    function end(status, note) {
+      var s = secs();
+      if (target) { target.label_fix = status; target.label_fix_s = s; }
+      if (session) session.labelFix = { status: status, secs: s };
+      fields.fix_s = s;
+      if (run === writeRun) el.textContent = gradeText(g, fields, "\ud83d\udd27 " + note);
+    }
+    return askGemini(labelFixPrompt(prompt, g.missing), false, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      var fixed = cleanPrompt(r.text);
+      if (!onlyAdded(fixed, prompt)) return end("kept original", "tried adding " + what + ", but it changed other lines, so this is the original");
+      if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
+      return askGemini(gradePrompt(fixed, session.raw, session.answers, lessons.grader, items), true, gemini.plan.intake, "low", null, 30000).then(function (r2) {
+        var g2 = gradeFrom(r2.text, items);
+        if (!g2 || g2.craft <= g.craft) return end("kept original", "tried adding " + what + ", but it didn't score higher, so this is the original");
+        if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
+        var before = g.craft;
+        output.value = core.apply(fixed);
+        xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: core.active ? core.block : '' });
+        var nc = showNumberCheck(fixed);
+        session.numFlags = nc.extra.length + nc.missing.length;
+        g = g2;
+        if (target) {
+          target.grade_before = before; target.grade = g2.craft; target.grade_pass = g2.pass; target.grade_missing = g2.missing.join("+") || "none";
+          target.grade_broke = g2.broke.join("+") || "none"; target.grade_rearranged = g2.rearranged; target.grade_invented = g2.invented;
+          target.words_out = words(fixed); target.num_flags = session.numFlags;
+        }
+        end("added " + what.split(" and ").join("+"), "added " + what + ", up from " + (Math.round(before * 10) / 10).toFixed(1));
+      });
+    }).catch(function () { end("failed", "couldn't add " + what + " this time, so this is the original"); });
+  }
+  /* The fix may only add lines: every original line still there, in order, and a
+     few new words at most, with no new made-up numbers. */
+  function onlyAdded(fixed, prompt) {
+    var pos = 0, lines = prompt.split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+    for (var i = 0; i < lines.length; i++) { var at = fixed.indexOf(lines[i], pos); if (at < 0) return false; pos = at + lines[i].length; }
+    var add = words(fixed) - words(prompt);
+    return add >= 3 && add <= 45 && numberIssues(fixed).extra.length <= numberIssues(prompt).extra.length;
   }
 
   function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
@@ -1755,6 +1809,7 @@ export function startApp() {
       ["Errors", [s.intakeError && "read: " + s.intakeError, s.writeError && "write: " + s.writeError].filter(Boolean).join("; ")],
       ["Number check", w ? (s.numFlags ? s.numFlags + " number(s) flagged" : "nothing flagged") : ""],
       ["Auto-Repair", s.repair ? s.repair.status + (s.repair.secs != null ? ", " + s.repair.secs + "s" : "") : ""],
+      ["Label fix", s.labelFix ? s.labelFix.status + ", " + s.labelFix.secs + "s" : ""],
       ["Sliders", SLIDERS.map(function (sl) { return sl.label + " " + starter.tune[sl.key]; }).join(", ")]
     ];
     if (core.dev) rows.push(["Core", core.active ? "on" : "off"]);
