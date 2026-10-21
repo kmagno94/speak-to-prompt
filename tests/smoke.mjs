@@ -1458,6 +1458,10 @@ await check("today's date: the writer and the grader both get the phone's date, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+async function writeCall(p) {
+  for (let i = 0; i < 80; i++) { const c = p.calls.find((x) => !x.intake); if (c) return c; await p.waitForTimeout(100); }
+  throw new Error('no write call arrived');
+}
 await check('grading session: a draft link swaps in draft lessons and grader rules on this device only, with a Live/Draft switch in dev tools', async () => {
   const { linkFor, problems } = await import('../scripts/draft.mjs');
   const LIVE = { version: 2, updated: 'x', lessons: [{ id: 'L1', text: 'Live writer rule.', why: 'w' }], grader_version: 8, grader: [{ id: 'G1', text: 'Live grader rule.', why: 'w' }] };
@@ -1473,7 +1477,7 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', 'study plan'); await p.click('#build'); await done(p);
   await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
-  const w = p.calls.find((c) => !c.intake);
+  const w = await writeCall(p);
   expect(w.text.includes("Draft writer rule, with an apostrophe's worth.") && !w.text.includes('Live writer rule.'), 'writer should use the draft lessons');
   expect(p.grades[0].text.includes('Draft grader rule.') && / g9 draft \w+, /.test(await p.textContent('#gradeNote')), 'grader should use the draft and say so: ' + await p.textContent('#gradeNote'));
   await p.click('#copyGrader'); await p.waitForTimeout(200);
@@ -1486,13 +1490,13 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   expect(/Using Live\. Live is g8/.test(await p.textContent('#srcInfo')), 'Live should show: ' + await p.textContent('#srcInfo'));
   p.calls.length = 0; p.grades.length = 0;
   await p.click('#reset'); await p.fill('#thoughts', 'study plan again'); await p.click('#build'); await done(p);
-  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
-  expect(p.calls.find((c) => !c.intake).text.includes('Live writer rule.') && / g8, /.test(await p.textContent('#gradeNote')), 'Live should use lessons.json: ' + await p.textContent('#gradeNote'));
+  await p.waitForFunction(() => / g8, /.test(document.getElementById('gradeNote').textContent), null, { timeout: 8000 }).catch(() => {});
+  expect((await writeCall(p)).text.includes('Live writer rule.') && / g8, /.test(await p.textContent('#gradeNote')), 'Live should use lessons.json: ' + await p.textContent('#gradeNote'));
   // Dev tools off: always Live, even with Draft picked
   await p.click('#srcDraft'); await p.uncheck('#devTools'); await p.waitForTimeout(100);
   p.calls.length = 0;
   await p.click('#reset'); await p.fill('#thoughts', 'study plan three'); await p.click('#build'); await done(p);
-  expect(p.calls.find((c) => !c.intake).text.includes('Live writer rule.'), 'with dev tools off, everyone gets Live');
+  expect((await writeCall(p)).text.includes('Live writer rule.'), 'with dev tools off, everyone gets Live');
   // Paste draft link (Home Screen app, where a link opens Safari instead)
   const q = await page({ intake: noQ, lessons: LIVE });
   await p.close(); await devOn(q); await q.bringToFront(); await q.click('#moreOpts summary');
