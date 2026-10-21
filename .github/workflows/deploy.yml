@@ -1,6 +1,7 @@
 # Builds Speak to Prompt, runs the smoke tests, and publishes to GitHub Pages
-# on every push to main. A failing test stops the deploy, so the live site
-# only ever gets a build that passed.
+# (and the report Worker to Cloudflare, once its secrets are set) on every push
+# to main. A failing test stops the deploy, so the live site only ever gets a
+# build that passed.
 # One-time setup: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
 name: Test and deploy
 
@@ -39,6 +40,27 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  # The Cloudflare Worker (worker/report-relay.js), only after the tests pass.
+  # Needs two repo secrets: CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers"
+  # template) and CLOUDFLARE_ACCOUNT_ID. Without them it skips with a note, and
+  # the Worker can still be pasted by hand.
+  worker:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "::notice title=Worker not deployed::No CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets yet, so worker/report-relay.js was not deployed. Paste it into Cloudflare by hand, or add the secrets."
+      - if: env.HAS_TOKEN == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy
 
   deploy:
     needs: build

@@ -9,6 +9,10 @@
    GITHUB_TOKEN: a fine-grained GitHub token for kmagno94/speak-to-prompt only,
    with Issues: Read and write and nothing else.
 
+   Updates: GitHub Actions deploys this file after the tests pass (deploy.yml,
+   wrangler.toml) once the repo has CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+   secrets. Until then, paste it by hand. Deploys never touch GITHUB_TOKEN.
+
    Guards: only the app's own web address, only report-shaped text, size caps,
    a few reports per person per hour, no @mentions, and the label is fixed here.
 
@@ -28,7 +32,7 @@ const hits = new Map();         // key -> [timestamps], lives only in this Worke
 /* The only run fields accepted, in the order they're shown. */
 const RUN_FIELDS = ['app', 'device', 'mode', 'complexity', 'depth', 'est_intake_s', 'est_s', 'est_from', 'intake_model', 'intake_s', 'intake_tokens', 'write_model', 'thinking',
   'write_s', 'write_tokens', 'thinking_tokens', 'detours', 'words_in', 'questions', 'answered', 'tapped', 'words_out', 'num_flags', 'coach', 'xray_pct', 'xray_dropped', 'xray_stray', 'repair', 'repair_s', 'core', 'outcome', 'action', 'xray_opened', 'hidden_s',
-  'lessons_v', 'grade', 'grade_rearranged', 'grade_invented', 'grade_missing', 'grade_model', 'grade_s'];
+  'lessons_v', 'busy_plan', 'grade', 'grade_rearranged', 'grade_invented', 'grade_missing', 'grade_model', 'grade_s'];
 
 function cors(origin) {
   return {

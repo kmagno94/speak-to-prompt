@@ -1,0 +1,9 @@
+# Lets GitHub Actions deploy worker/report-relay.js to the existing "stp-report"
+# Worker (stp-report.kmagno94.workers.dev) after the tests pass, so nobody has to
+# paste it into Cloudflare by hand. The GITHUB_TOKEN secret stays in Cloudflare:
+# deploys never touch secrets, and keep_vars leaves dashboard variables alone.
+name = "stp-report"
+main = "report-relay.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+keep_vars = true

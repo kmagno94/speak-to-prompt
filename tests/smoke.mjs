@@ -2,7 +2,7 @@
 // and fails (exit 1) on any broken check. Run: npm install && npm test (from the repo root).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -74,7 +74,10 @@ async function page(opts = {}) {
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
   if (opts.lessons !== undefined) await p.route(/\/lessons\.json/, r => opts.lessons === null ? r.fulfill({ status: 404, body: '' }) : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.lessons) }));
-  if (opts.tuning) await p.route(/\/tuning\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.tuning) }));
+  /* The real tuning.json has busy hours, which would make tests depend on the time
+     of day. Tests get it without "busy" unless they pass their own. */
+  const tuning = opts.tuning || (() => { const t = JSON.parse(readFileSync(path.join(ROOT, 'tuning.json'), 'utf8')); delete t.busy; return t; })();
+  await p.route(/\/tuning\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tuning) }));
   await p.goto(BASE);
   return p;
 }
@@ -1329,6 +1332,51 @@ await check('Scorecard: grades by lessons version, with flags to add or revert a
   expect(/Prompt grades/.test(md) && /v1: 4 \(5 runs\), v2: 3 \(5 runs\)/.test(md), 'markdown missing grades: ' + md.split('Prompt grades')[1]);
   const none = markdown(scorecard(parseRuns([row(1, 0, 4, false, 'none')].map(c => ({ ...c, body: c.body.replace(/\| grade.*\n?/g, '') })))));
   expect(/Graded runs \| 0/.test(none), 'no grades should still print cleanly');
+});
+
+await check('busy hours: tuning.json picks a less busy start model per 3-hour block from the last 14 days', async () => {
+  const { tuningFrom, parseRuns } = await import('../scripts/runlog-report.mjs');
+  const row = (when, o) => ({ created_at: when, body: '**Run x**\n\n| field | value |\n|---|---|\n' + Object.entries({ mode: 'Full', depth: 'standard', outcome: 'ok', write_s: 40, ...o }).map(([k, v]) => '| ' + k + ' | ' + v + ' |').join('\n') });
+  const c = [];
+  // 9 PM to 12 AM Eastern (02:00 UTC in October): 3.8 busy 5 of 6, 3.6 busy 0 of 5
+  for (let i = 0; i < 5; i++) c.push(row(`2026-10-${10 + i}T02:0${i}:00Z`, { write_model: 'gemini-3.6-flash', detours: '3.8-flash was unavailable after 1s; 3.7-flash was slow, so 3.6-flash started too after 30s' }));
+  c.push(row('2026-10-15T02:30:00Z', { write_model: 'gemini-3.8-flash' }));
+  // 9 AM to 12 PM: every Flash busy, so no new start, just the early backup
+  for (let i = 0; i < 5; i++) c.push(row(`2026-10-${10 + i}T14:0${i}:00Z`, { write_model: 'gemini-3.5-flash-lite', detours: '3.8-flash was unavailable after 0s; 3.7-flash was unavailable after 0s; 3.6-flash was unavailable after 4s' }));
+  // 3 PM to 6 PM: 3.8 fine
+  for (let i = 0; i < 6; i++) c.push(row(`2026-10-${10 + i}T20:00:00Z`, { write_model: 'gemini-3.8-flash' }));
+  // Over 14 days old: ignored (would make 6 AM busy)
+  for (let i = 0; i < 6; i++) c.push(row(`2026-09-2${i}T11:00:00Z`, { write_model: 'gemini-3.7-flash', detours: '3.8-flash was unavailable after 0s' }));
+  const b = tuningFrom(parseRuns(c), '2026-10-16T00:00:00Z').busy;
+  expect(b['21'] && b['21'].start === '3.6-flash' && b['21'].race_s === 30 && /busy 5 of 6/.test(b['21'].why), 'evening block should start on 3.6: ' + JSON.stringify(b));
+  expect(b['9'] && b['9'].start === null && b['9'].race_s === 30, 'all-busy block keeps the order but races early: ' + JSON.stringify(b['9']));
+  expect(!b['15'] && !b['6'], 'quiet block and old runs should not get a plan: ' + JSON.stringify(b));
+});
+
+await check('busy hours: the app starts on the less busy model in a busy block and logs the plan', async () => {
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(new Date())) % 24;
+  const block = String(Math.floor(h / 3) * 3);
+  async function run(plan) {
+    const p = await page({ intake: noQ, tuning: { updated: 'x', depth: { standard: { secs: 40, runs: 9 } }, busy: { [block]: plan } } }); const sent = [];
+    await relayRun(p, sent);
+    await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build'); await done(p);
+    const track = await p.textContent('#resultTrack');
+    await p.click('#copy'); await p.waitForTimeout(400);
+    return { p, track, run: sent[0] || {}, write: p.calls.filter(c => !c.intake)[0] };
+  }
+  let r = await run({ start: '3.6-flash', race_s: 30, why: 'x' });
+  expect(r.write.model === 'gemini-3.6-flash', 'busy block should start on 3.6, got ' + r.write.model);
+  expect(r.run.busy_plan === '3.6-flash first, backup at 30s', 'run should log the plan: ' + JSON.stringify(r.run.busy_plan));
+  expect(/busy hours: 3\.6-flash first/.test(r.track), 'tracker should say busy hours with run stats on: ' + r.track);
+  r = await run({ start: null, race_s: 30, why: 'x' });
+  expect(r.write.model === 'gemini-3.8-flash' && r.run.busy_plan === 'backup at 30s', 'no start model keeps the order: ' + r.write.model + ' ' + r.run.busy_plan);
+  r = await run({ start: '3.5-flash-lite', race_s: 30, why: 'x' });
+  expect(r.write.model === 'gemini-3.8-flash', 'Flash-Lite is never the busy-hours start');
+  const q = await page({ intake: noQ });
+  await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
+  expect(q.calls.filter(c => !c.intake)[0].model === 'gemini-3.8-flash', 'no busy plan means the normal order');
+  expect(!r.p.errors.length && !q.errors.length, 'page errors: ' + r.p.errors.concat(q.errors).join('; '));
 });
 
 await check('lessons.json is valid: versioned, at most 6 short lessons, no em dashes or mentions', async () => {

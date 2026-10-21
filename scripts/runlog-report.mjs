@@ -113,6 +113,7 @@ export function scorecard(runs) {
         const t = timed.filter((r) => (r.est_from ?? '(not logged)') === src);
         return { src, n, within: share(t.filter((r) => Math.abs(waitOf(r) - estOf(r)) / Math.max(1, waitOf(r)) <= CLOSE).length, t.length) };
       }),
+      busy_plan: { n: ok.filter((r) => r.busy_plan).length, wait_p50: round(median(ok.filter((r) => r.busy_plan).map(waitOf))), moved: ok.filter((r) => /first/.test(r.busy_plan || '')).length },
       away: { n: ok.filter((r) => num(r.hidden_s) && r.hidden_s > 0).length, secs_p50: round(median(ok.map((r) => r.hidden_s).filter((x) => num(x) && x > 0))) },
       size_link: { words_in: corr(ok.map((r) => [r.words_in, r.write_s])), words_out: corr(ok.map((r) => [r.words_out, r.write_s])) }
     },
@@ -157,6 +158,7 @@ export function gradesOf(ok) {
     rearranged_pct: share(g.filter((r) => r.grade_rearranged === true).length, g.length),
     invented_pct: share(g.filter((r) => r.grade_invented === true).length, g.length),
     missing: Object.entries(missing).sort((a, b) => b[1] - a[1]).map(([label, n]) => ({ label, n, pct: share(n, g.length) })),
+    by_model: [...new Set(g.map((r) => String(r.write_model || '').replace(/^gemini-/, '')))].filter(Boolean).map((m) => { const rs = g.filter((r) => String(r.write_model || '').replace(/^gemini-/, '') === m); return { model: m, n: rs.length, avg: avg(rs) }; }),
     by_lessons: versions.map((v) => { const rs = g.filter((r) => (num(r.lessons_v) ? r.lessons_v : 0) === v); return { v, n: rs.length, avg: avg(rs) }; })
   };
 }
@@ -197,6 +199,7 @@ export function markdown(s, since) {
     `| Typical estimate miss | ${fmt(s.speed.est_median_error_pct, '%')} |`,
     `| Longer request means longer write? (words in, -1 to 1) | ${fmt(s.speed.size_link.words_in)} |`,
     `| Longer prompt means longer write? (words out) | ${fmt(s.speed.size_link.words_out)} |`,
+    `| Busy-hours plan used (less busy model first and/or backup at 30s) | ${s.speed.busy_plan ? s.speed.busy_plan.n + (s.speed.busy_plan.n ? ', typical wait ' + fmt(s.speed.busy_plan.wait_p50, 's') + ', started on another model ' + s.speed.busy_plan.moved + 'x' : '') : 0} |`,
     `| Runs where you left the app mid-run (that time is left out of the wait) | ${s.speed.away.n}${s.speed.away.n ? ', typical ' + s.speed.away.secs_p50 + 's away' : ''} |`, '');
   if (s.speed.by_depth.length) {
     L.push('| Depth | Runs | Write typical | Write slow | Estimate | Within 30% | Real / estimate | Suggested default |', '|---|---|---|---|---|---|---|---|');
@@ -219,6 +222,7 @@ export function markdown(s, since) {
     `| Reads like rearranged words | ${fmt(g.rearranged_pct, '%')} |`,
     `| Added something nobody said | ${fmt(g.invented_pct, '%')} |`,
     `| Most often missing | ${g.missing.length ? g.missing.map((m) => m.label + ' ' + m.pct + '%').join(', ') : 'nothing yet'} |`,
+    `| By write model | ${(g.by_model || []).length ? g.by_model.map((b) => b.model + ': ' + fmt(b.avg) + ' (' + b.n + ')').join(', ') : 'n/a'} |`,
     `| By lessons version | ${g.by_lessons.length ? g.by_lessons.map((b) => 'v' + b.v + ': ' + fmt(b.avg) + ' (' + b.n + ' runs)').join(', ') : 'n/a'} |`, '');
   L.push('**What happened next**' + few(s.use.n), '', '| Measure | Value |', '|---|---|',
     `| Kept (copied, opened an AI, or saved) | ${fmt(s.use.kept_pct, '%')} |`,
@@ -232,6 +236,45 @@ export function markdown(s, since) {
   return L.join('\n');
 }
 
+/* Busy hours: per 3-hour block (Eastern), how often each write model was busy
+   (unavailable, slow, timed out, unreachable, at a limit, or skipped while
+   resting). Where the usual first model was busy at least half the time (5+
+   tries), the app starts on a clearly less busy Flash model there (3+ tries, at
+   least 25 points less busy, and busy under half the time) and starts a backup
+   after 30 seconds instead of waiting up to 90. Flash-Lite is never the start,
+   to keep quality. Only the last 14 days count, so it follows Google's load. */
+const BUSY_MODEL = /(unavailable|was slow|timed out|couldn't be reached|daily limit|skipped)/;
+const RACE_S = 30;
+export function easternHour(when) {
+  const d = new Date(when); if (isNaN(d)) return null;
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(d)) % 24;
+}
+export function busyPlan(runs) {
+  const ok = runs.filter((r) => r.outcome === 'ok' && r.write_model);
+  const newest = Math.max(0, ...ok.map((r) => Date.parse(r.when) || 0));
+  const recent = ok.filter((r) => newest - (Date.parse(r.when) || 0) <= 14 * 864e5);
+  const blocks = {}, total = {};
+  for (const r of recent) {
+    const h = easternHour(r.when); if (h == null) continue;
+    const x = (blocks[Math.floor(h / 3) * 3] ||= {}), seen = new Set();
+    const tally = (k, bad) => { if (seen.has(k)) return; seen.add(k); const y = (x[k] ||= { tries: 0, busy: 0 }); y.tries++; if (bad) y.busy++; total[k] = (total[k] || 0) + 1; };
+    for (const part of String(r.detours || '').split(';')) { const m = part.trim().match(/^(?:gemini-)?(\d[\d.]*-flash(?:-lite)?)\s+(.*)$/); if (m) tally(m[1], BUSY_MODEL.test(m[2])); }
+    for (const w of String(r.write_model).split(',')) tally(w.trim().replace(/^gemini-/, ''), false);
+  }
+  const first = Object.keys(total).filter((k) => !/lite/.test(k)).sort((a, b) => total[b] - total[a])[0];
+  const plan = {};
+  for (const [b, x] of Object.entries(blocks)) {
+    const f = x[first];
+    if (!f || f.tries < MIN_N || f.busy / f.tries < 0.5) continue;
+    const pf = share(f.busy, f.tries);
+    const better = Object.entries(x).filter(([k, y]) => k !== first && !/lite/.test(k) && y.tries >= 3 && share(y.busy, y.tries) <= pf - 25 && y.busy / y.tries < 0.5)
+      .sort((a, b) => a[1].busy / a[1].tries - b[1].busy / b[1].tries)[0];
+    plan[b] = { start: better ? better[0] : null, race_s: RACE_S,
+      why: `${first} busy ${f.busy} of ${f.tries}` + (better ? `, ${better[0]} busy ${better[1].busy} of ${better[1].tries}` : ', no Flash model clearly less busy') };
+  }
+  return plan;
+}
+
 /* tuning.json: typical seconds per depth from the most recent ok runs, for
    phones that haven't learned their own times yet. Only depths with enough runs. */
 const RECENT = 20;
@@ -243,7 +286,7 @@ export function tuningFrom(runs, now = new Date().toISOString()) {
   };
   const depth = {};
   for (const d of [...new Set(ok.map(depthKey))].sort()) { const t = pick(ok.filter((r) => depthKey(r) === d), 'write_s'); if (t) depth[d] = t; }
-  return { note: 'Typical wait times from the run log (issue #2), written by the review. The app uses these until a phone has learned its own.', updated: now.slice(0, 16).replace('T', ' ') + ' UTC', intake: pick(ok, 'intake_s'), depth };
+  return { note: 'Typical wait times from the run log (issue #2), written by the review. The app uses these until a phone has learned its own. busy: 3-hour blocks (Eastern, by start hour) where the usual writer is busy at least half the time; the app starts on the less busy model there and races a backup after race_s seconds.', updated: now.slice(0, 16).replace('T', ' ') + ' UTC', intake: pick(ok, 'intake_s'), depth, busy: busyPlan(runs) };
 }
 
 function fetchComments(since) {

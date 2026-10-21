@@ -124,13 +124,15 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/app.css` | Styles and color tokens (light and dark) |
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
-  | `.github/workflows/deploy.yml` | Test, build, and publish |
+  | `.github/workflows/deploy.yml` | Test, build, and publish (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
 
 - **Run it locally:** `npm install`, then `npm run dev` and open the Network address on your iPhone (same Wi-Fi). Changes show up as you save.
 - New features are built as Svelte components. Older parts move into components when they're next changed.
 - Gemini is called directly from the browser. The page lists the models your key can use and builds a plan, so it keeps working when Google renames models:
   - **Questions** go to Flash-Lite first, which has the largest free daily allowance (500 requests on the free tier).
   - **The final prompt** goes to the newest Flash model first, for the best writing. Gemini rates each request as quick, standard, or complex, and the writing step thinks lightly, in a balanced way, or deeply to match. The plan and its usual time are shown before you start, and there's no rush: it only switches models if one errors out or hits its daily limit.
+  - **Busy hours:** tuning.json also lists 3-hour blocks where the usual writer is busy at least half the time. There the page starts on the less busy Flash model (if the run log shows one) and starts a backup after 30 seconds instead of up to 90.
   - **Backups:** each model has its own daily limit, so when one runs out the page moves to the next. Only when every model is used up does it switch to the quick version.
 - The prompt logic comes from my Prompt Optimization Engine: a short chat title, working out what the person actually needs, clarifying questions, then a prompt built from role, context, task, example, format, and tone.
 

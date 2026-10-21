@@ -1037,6 +1037,22 @@ export function startApp() {
     var t = tuning && (key == null ? tuning.intake : tuning.depth[key]);
     return t && typeof t.secs === "number" && t.secs >= 1 && t.secs <= 600 && t.runs >= 5 ? t : null;
   }
+  /* Busy hours (tuning.json "busy", written by the review from the run log): in a
+     3-hour block (Eastern, Google's load doesn't care where the phone is) where the
+     usual writer is busy at least half the time, start on the less busy Flash model
+     if the log shows one, and start a backup after race_s seconds instead of up to 90. */
+  function busyNow() {
+    var b = tuning && tuning.busy, h;
+    if (!b || typeof b !== "object") return null;
+    try { h = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date())) % 24; } catch (e) { return null; }
+    var p = b[String(Math.floor(h / 3) * 3)];
+    if (!p || typeof p.race_s !== "number") return null;
+    return { start: typeof p.start === "string" ? p.start : "", race: Math.min(90, Math.max(15, Math.round(p.race_s))) };
+  }
+  function busyOrder(models, start) {
+    for (var i = 1; i < models.length; i++) if (start && models[i].replace(/^gemini-/, "") === start && !/lite/.test(models[i])) return [models[i]].concat(models.slice(0, i), models.slice(i + 1));
+    return models;
+  }
   /* lessons.json: short rules the twice-daily review learned from graded runs and
      stress tests (general prompt-writing lessons, never anyone's words). Every
      prompt build uses them. At most 6, each kept short, so the writer stays fast. */
@@ -1261,11 +1277,16 @@ export function startApp() {
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
     var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
-    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") : ""), est.secs, "write", skipAsk);
+    var busyP = quick ? null : busyNow();
+    var models = busyP ? busyOrder(writeModels(quick), busyP.start) : writeModels(quick);
+    var movedStart = busyP && models[0] !== writeModels(quick)[0];
+    session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
+    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk);
     /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
        a backup starts too and the first good prompt wins. */
     var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
-    return askGemini(text, false, writeModels(quick), depth.level, function (m) {
+    if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
+    return askGemini(text, false, models, depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT, hedgeAfter).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
@@ -1316,7 +1337,7 @@ export function startApp() {
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
-          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0 });
+          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null });
         gradeRun(prompt, run);
       }
     }).catch(function (e) {
