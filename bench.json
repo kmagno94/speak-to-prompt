@@ -1,0 +1,189 @@
+{
+  "note": "Grader bench: fixed prompts with Claude's answer key. The dev tools bench grades each one with the current grader (Live or Draft) and compares. Edit keys only after Kevin agrees. holdout cases are the final check: don't tune rules to them.",
+  "updated": "2026-10-21",
+  "cases": [
+    {
+      "id": "B1",
+      "name": "Notion playbook (real run)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "I've decided this I'm going to have a mirror of the playbook on my work space then I'll export both in Notion and upload to Claude.\n\nI'll use a key phrase and you extract the best from both and trim anything unnecessary or undated.\n\nThen I copy and paste the merged copy into both.\n\nThis sounds like a lot of work honestly.\n\nThis is two Notion pages that will contain both my lessons learn from developing for an evolving playbook as we go\n\nJust wish there was a way to have a central knowledge base where both sides can live as I continue this Claude + Notion + Front end utilizing the svelte stack",
+      "answers": [
+        {
+          "question": "What is the main bottleneck you want to fix in your current workflow?",
+          "answer": "Setting up a central knowledge base"
+        },
+        {
+          "question": "Are you open to using external automation tools to connect Notion and Claude?",
+          "answer": "Open to any tool that can realistically make this happen"
+        }
+      ],
+      "prompt": "You are an expert workflow automation engineer and developer tools architect.\n\nContext:\nI am actively developing an evolving playbook while working on a project using a stack that combines Claude, Notion, and a Svelte front end. Currently, I maintain two separate Notion pages across workspaces that track lessons learned and playbook updates. My current workflow is completely manual and inefficient: I export both pages from Notion, upload them to Claude, prompt Claude with a key phrase to merge the best elements while trimming out unnecessary or undated content, and then manually copy and paste the merged text back into both Notion locations. This sounds like a lot of work honestly. \n\nI want to eliminate this manual export-upload-merge-paste loop entirely and establish a centralized knowledge base where both sides can live and stay updated as I continue developing with Claude, Notion, and Svelte. I am open to using any external automation tools, APIs, webhooks, or integration platforms that can realistically make this happen.\n\nTask:\nRecommend the best approach to build an automated central knowledge base connecting Notion and Claude that supports my Svelte stack workflow. Briefly explain why your recommended approach is best, and then carry out the full implementation plan.\n\nPlease include:\n1. System Architecture: A clear overview of how the tools connect and how data flows between Notion, Claude, and my workflow.\n2. Step-by-Step Setup: Exact instructions for setting up the integrations, APIs/automation tools, and connections.\n3. Content Filtering & Merging Logic: How the workflow will automatically handle extracting the best insights from both sources while dropping undated or redundant entries.\n4. Limits & Troubleshooting: Known constraints, edge cases, and how to fix common points of failure.\n\nKeep your response technical, clear, and actionable. Start right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 3.0,
+        "missing": [
+          "format",
+          "context"
+        ],
+        "invented": false,
+        "rearranged": false,
+        "broke": [],
+        "why": "No length anywhere (four sections give shape only). A feeling was pasted into Context word for word."
+      }
+    },
+    {
+      "id": "B2",
+      "name": "Meal prep, first try (real run)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok so i want to set up a weekly meal prep thing for me and my roommate dana, like on sundays. we have maybe $80 a week and she's vegetarian. i want like 5 lunches each. ugh this is a lot honestly. also i hate cooking after 9pm",
+      "answers": [
+        {
+          "question": "What kitchen appliances do you have to use for prep?",
+          "answer": "Slow cooker or Instant Pot"
+        }
+      ],
+      "prompt": "Act as an expert budget meal planner and meal prep chef. \n\nContext:\nI need a weekly meal prep plan for myself and my roommate Dana. Dana is vegetarian, so all the lunches should be vegetarian. We need 5 lunches each per week (10 lunch servings total). Our combined grocery budget is $80 per week. We do our prep on Sundays and have a slow cooker or Instant Pot available. I hate cooking late and do not want to be cooking after 9:00 PM, so the prep session needs to be efficient, low-stress, and finished well before then.\n\nTask:\nCreate a complete, budget-friendly Sunday meal prep plan that delivers 10 vegetarian lunches within our $80 limit. \n\nPlease provide:\n1. The Meal Plan: 1 to 2 simple, delicious vegetarian recipes that scale well to 10 total servings and utilize our slow cooker or Instant Pot.\n2. Itemized Grocery List: An organized shopping list broken down by grocery section with estimated prices to ensure the total stays strictly within our $80 budget.\n3. Step-by-Step Sunday Prep Schedule: A clear, streamlined cooking timeline and workflow that maximizes the slow cooker or Instant Pot, keeps active hands-on time minimal, and guarantees everything is cooked, portioned, and cleaned up well before 9:00 PM.\n4. Storage and Reheating Instructions: How to properly store all 10 portions so they stay fresh through Friday, including freezing guidelines if needed.\n\nKeep the tone encouraging, practical, and straightforward. Please start right away, and ask at most one short question only if something essential is still missing.",
+      "key": {
+        "score": 4.0,
+        "missing": [
+          "format"
+        ],
+        "invented": false,
+        "rearranged": false,
+        "broke": [],
+        "why": "Strong everywhere except length: sections and tone, but never how long."
+      }
+    },
+    {
+      "id": "B3",
+      "name": "Meal prep, role buried (real run)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok so i want to set up a weekly meal prep thing for me and my roommate dana, like on sundays. we have maybe $80 a week and she's vegetarian. i want like 5 lunches each. ugh this is a lot honestly. also i hate cooking after 9pm",
+      "answers": [
+        {
+          "question": "What kitchen appliances do you have to use for prep?",
+          "answer": "Slow cooker or Instant Pot"
+        }
+      ],
+      "prompt": "Context:\nMy roommate Dana and I need a weekly meal prep plan for our weekday lunches. Dana is vegetarian, so all 10 lunches (5 for her, 5 for me) need to be vegetarian, filling, and hold up well in the fridge for the week. Our total budget for these lunches is $80 per week. We prep on Sundays and have a slow cooker or Instant Pot available. I hate cooking after 9:00 PM, so the prep routine must be straightforward, low-stress, and completely wrapped up well before the late evening.\n\nTask:\nAct as a budget-conscious meal prep expert. Design a complete Sunday meal prep plan for 10 vegetarian lunches under our $80 budget. \n\nPlease provide:\n1. The lunch recipes/meal concepts (10 servings total) that maximize value and use the slow cooker or Instant Pot to keep hands-on effort low.\n2. A categorized grocery shopping list with estimated item costs, proving the total fits within our $80 limit.\n3. A clear, step-by-step Sunday prep timeline and workflow showing how to batch-cook, assemble, and clean up efficiently so that cooking is finished well before 9:00 PM.\n4. Storage guidance (fridge vs. freezer, reheating instructions) to ensure the meals stay fresh through Friday.\n\nKeep it to about two screens, using concise sections and short bullet points.\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 4.0,
+        "missing": [
+          "role"
+        ],
+        "invented": false,
+        "rearranged": false,
+        "broke": [
+          "L3"
+        ],
+        "why": "The role line sits inside Task, under Context. Everything else is covered, including length."
+      }
+    },
+    {
+      "id": "B4",
+      "name": "Study plan, made-up day (real run)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok so i need a 3 day study plan for my networking quiz on friday, i work thursday 2 to 8 and i can only study like an hour on work days. keep it chill",
+      "answers": [
+        {
+          "question": "What is the primary topic of your networking quiz?",
+          "answer": "IP addressing and subnets"
+        }
+      ],
+      "prompt": "Role: Act as a patient, knowledgeable computer networking tutor.\n\nContext: I have a networking quiz coming up this Friday, primarily covering IP addressing and subnetting. Today is Tuesday, giving me a 3-day study window (Tuesday, Wednesday, and Thursday) to prepare. On Thursday, I work from 2:00 PM to 8:00 PM, meaning I can only dedicate about 1 hour to studying on that day. On Tuesday and Wednesday, I have more flexibility, but I want to keep the overall pacing manageable and low-stress.\n\nTask: Create a practical, 3-day study schedule leading up to Friday's quiz. Break down IP addressing and subnetting into digestible, step-by-step sessions across Tuesday, Wednesday, and Thursday, strictly limiting Thursday to a 1-hour session that accommodates my work shift (2:00 PM - 8:00 PM). For each day, provide the core concepts to review, brief explanations or shortcuts to make subnetting easier, and a couple of quick practice problems with answers to test my understanding. \n\nFormat & Tone: Keep the tone relaxed, encouraging, and clear. Use structured daily headings with bullet points, time estimates for each activity, and clean formatting for any practice math or binary conversions.\n\nPlease start right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 3.0,
+        "missing": [
+          "success"
+        ],
+        "invented": true,
+        "rearranged": false,
+        "broke": [],
+        "why": "Says today is Tuesday; nobody said it and today is Wednesday. Nothing says what a good result looks like."
+      }
+    },
+    {
+      "id": "B5",
+      "name": "Availability text to manager (written pass)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok so my manager wants me to send her my availability for november, i can't do mondays because of class and i want at least 2 closing shifts a week, can you help me write a short message to her, keep it friendly but not too casual",
+      "answers": [
+        {
+          "question": "How will you send it?",
+          "answer": "Text message"
+        }
+      ],
+      "prompt": "You are a workplace communication coach who writes short, friendly messages to managers.\n\nContext: My manager asked for my availability for November. I can't work Mondays because I have class. I want at least 2 closing shifts a week. I'm sending this as a text message.\n\nTask: Write the text message I'll send my manager with my November availability.\n\nConstraints: Say clearly that Mondays don't work because of class, and ask for at least 2 closing shifts a week. Keep it friendly but not too casual. Don't add days, times, or reasons I didn't give.\n\nFormat: One text message of a few short sentences, ready to copy. Under it, give one shorter alternate version.\n\nSuccess: My manager can read it once and know exactly which day I'm out and what shifts I want, and it sounds polite and professional.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 4.7,
+        "missing": [],
+        "invented": false,
+        "rearranged": false,
+        "broke": [],
+        "why": "Every label is there, in order, in clear words. Nothing added."
+      }
+    },
+    {
+      "id": "B6",
+      "name": "Dashboard lights (written pass)",
+      "today": "Wednesday, October 21, 2026",
+      "holdout": true,
+      "raw": "i want to learn how to read my car's dashboard warning lights, its a 2019 honda civic, i'm not a car person at all so explain it simple. mainly the orange ones i keep seeing",
+      "answers": [
+        {
+          "question": "Which lights have you seen?",
+          "answer": "Check engine and tire pressure"
+        }
+      ],
+      "prompt": "You are a patient auto mechanic who explains car problems to beginners in plain words.\n\nContext: I drive a 2019 Honda Civic and I'm not a car person. I keep seeing orange dashboard warning lights, mainly the check engine light and the tire pressure light.\n\nTask: Explain what these two orange warning lights mean on my 2019 Honda Civic and what I should do when each one comes on.\n\nSteps: For each light, tell me what it means, how urgent it is, and the first thing I should check or do myself before going to a shop.\n\nConstraints: Use simple words with no jargon. Only cover the check engine and tire pressure lights.\n\nFormat: Two short sections, one per light, with a few bullets each. Keep the whole answer to about one phone screen.\n\nSuccess: After reading it, I know whether I can keep driving, what to check myself, and when I need a mechanic.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 4.75,
+        "missing": [],
+        "invented": false,
+        "rearranged": false,
+        "broke": [],
+        "why": "Complete and specific, with a checkable success line. Nothing added."
+      }
+    },
+    {
+      "id": "B7",
+      "name": "Quick dinner, made-up details (written)",
+      "today": "Wednesday, October 21, 2026",
+      "holdout": true,
+      "raw": "need a quick dinner idea for tonight, i have chicken, rice and some frozen broccoli, i'm tired so nothing fancy, like 30 min max",
+      "answers": [],
+      "prompt": "You are a home cook who specializes in fast, low-effort weeknight dinners.\n\nContext: I'm cooking dinner tonight for two people. I have chicken thighs, jasmine rice, frozen broccoli, and soy sauce. I'm tired, so I want something simple.\n\nTask: Give me one easy dinner recipe using what I have.\n\nConstraints: 30 minutes max from start to plate. Nothing fancy.\n\nFormat: An ingredient list and short numbered steps, about half a phone screen.\n\nSuccess: I can cook it tonight without a store run, and it's on the table in 30 minutes.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 3.0,
+        "missing": [],
+        "invented": true,
+        "rearranged": false,
+        "broke": [],
+        "why": "Adds things never said: two people, chicken thighs, jasmine rice, soy sauce."
+      }
+    },
+    {
+      "id": "B8",
+      "name": "iPad notes, words rearranged (written)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "so i'm thinking about getting a used ipad for school notes, maybe an air, budget around 400, i mostly use goodnotes, not sure if i need the pencil or if a cheap stylus works",
+      "answers": [],
+      "prompt": "Role: so I'm thinking about getting a used iPad for school notes.\n\nContext: maybe an Air, budget around 400. I mostly use GoodNotes.\n\nTask: not sure if I need the pencil or if a cheap stylus works.\n\nPlease help.",
+      "key": {
+        "score": 1.0,
+        "missing": [
+          "role",
+          "task",
+          "format",
+          "success",
+          "ending"
+        ],
+        "invented": false,
+        "rearranged": true,
+        "broke": [
+          "L1"
+        ],
+        "why": "Their own sentences moved under labels. No real role, task, length, or success, and no clear ending."
+      }
+    }
+  ]
+}

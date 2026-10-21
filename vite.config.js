@@ -37,10 +37,10 @@ function stackLabel() {
   return parts.join(' + ') || 'Svelte 5 + Vite 8';
 }
 
-/* usage.json, tuning.json, and lessons.json stay at the repo root, where the Usage
+/* usage.json, tuning.json, lessons.json, and bench.json stay at the repo root, where the Usage
    Check and the review task update them. This serves them in dev and copies them next to
    the built page. */
-const ROOT_JSON = ['usage.json', 'tuning.json', 'lessons.json'];
+const ROOT_JSON = ['usage.json', 'tuning.json', 'lessons.json', 'bench.json'];
 function rootJson() {
   return {
     name: 'root-json',

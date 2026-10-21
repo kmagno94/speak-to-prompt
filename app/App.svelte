@@ -209,6 +209,13 @@
           <button type="button" id="draftClear" class="linkish" disabled>Clear draft</button>
         </div>
         <p class="hint">For grading sessions: a draft link from Claude swaps in new lessons and grader rules here only, with no push. Everyone else keeps Live.</p>
+        <p class="srchead">Grader bench</p>
+        <div class="row">
+          <button type="button" id="benchRun">Run grader bench</button>
+          <button type="button" id="benchCopy" disabled>Copy bench results</button>
+        </div>
+        <p class="hint" id="benchInfo">Grades the same fixed prompts with the grader above and compares with Claude's answer key. Uses your Gemini key, a few small calls.</p>
+        <div id="benchOut" class="benchout" hidden></div>
       </div>
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>

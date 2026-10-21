@@ -1126,6 +1126,80 @@ export function startApp() {
       if (!takeDraft(draftFrom(t))) info.textContent = "No draft link on the clipboard. Copy the whole link from Claude, then tap Paste draft link.";
     }, function () { info.textContent = "Couldn't read the clipboard."; });
   });
+  /* Grader bench (dev tools): bench.json holds fixed prompts with Claude's answer
+     key. One tap grades them all with the current grader (Live or Draft) and shows
+     how often it agrees. Same prompts every time, so a change in agreement comes
+     from the grader, not from the writer. Results stay on this device. */
+  var BENCH_KEY = "stp-bench", benchText = "";
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function sameSet(a, b) { a = (a || []).slice().sort(); b = (b || []).slice().sort(); return a.join() === b.join(); }
+  function benchLabel() { return (lessons.src === "draft" ? "Draft " + lessons.id : "Live") + " g" + lessons.gv; }
+  function benchRun() {
+    var info = document.getElementById("benchInfo"), btn = document.getElementById("benchRun");
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    btn.disabled = true;
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
+    ready.then(function () { return fetch("bench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("bench.json"); return r.json(); }); })
+      .then(function (b) {
+        var cases = (b && b.cases) || [], items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
+        info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
+        function one(c, i) {
+          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, gemini.plan.intake, "low", null, 45000).then(function (r) {
+            var g = gradeFrom(r.text, items); out[i] = { c: c, g: g, model: r.model };
+          }, function (e) { out[i] = { c: c, g: null, err: (e && e.message) || "failed" }; }).then(function () {
+            done++; info.textContent = "Grading " + done + " of " + cases.length + " with " + label + "...";
+          });
+        }
+        /* Four at a time, so a free key's per-minute limit isn't hit all at once. */
+        var chain = Promise.resolve();
+        for (var i = 0; i < cases.length; i += 4) (function (start) {
+          chain = chain.then(function () { return Promise.all(cases.slice(start, start + 4).map(function (c, k) { return one(c, start + k); })); });
+        })(i);
+        return chain.then(function () { showBench(out, label); });
+      })
+      .catch(function (e) { info.textContent = "Couldn't run the bench: " + ((e && e.message) || "unknown"); })
+      .then(function () { btn.disabled = false; });
+  }
+  function showBench(out, label) {
+    var ok = out.filter(function (o) { return o.g; }), n = ok.length;
+    var agree = ok.filter(function (o) { return (o.g.craft >= GRADE_PASS) === (o.c.key.score >= GRADE_PASS); }).length;
+    var inv = ok.filter(function (o) { return o.g.invented === !!o.c.key.invented; }).length;
+    var lab = ok.filter(function (o) { return sameSet(o.g.missing, o.c.key.missing); }).length;
+    var gap = n ? ok.reduce(function (t, o) { return t + Math.abs(o.g.craft - o.c.key.score); }, 0) / n : 0;
+    var pct = n ? Math.round(100 * agree / n) : 0;
+    var hist = {}; try { hist = JSON.parse(lsGet(BENCH_KEY) || "{}") || {}; } catch (e) {}
+    var prev = Object.keys(hist).filter(function (k) { return k !== label; }).map(function (k) { return k + ": " + hist[k].pct + "%"; });
+    hist[label] = { pct: pct, gap: Math.round(gap * 100) / 100, at: new Date().toISOString() };
+    lsSet(BENCH_KEY, JSON.stringify(hist));
+    var sum = label + ": " + agree + " of " + n + " pass/fail agree (" + pct + "%) \u00b7 avg gap " + gap.toFixed(2) + " \u00b7 invented " + inv + "/" + n + " \u00b7 labels exact " + lab + "/" + n;
+    var rows = out.map(function (o) {
+      var k = o.c.key, g = o.g, hold = o.c.holdout ? " class=\"hold\"" : "";
+      if (!g) return "<tr" + hold + "><td>" + esc(o.c.id) + "</td><td>" + k.score.toFixed(2) + "</td><td>error</td><td>\u26a0\ufe0f<small>" + esc(o.err) + "</small></td></tr>";
+      var match = (g.craft >= GRADE_PASS) === (k.score >= GRADE_PASS);
+      var diff = [];
+      if (!sameSet(g.missing, k.missing)) diff.push("missing: " + (g.missing.join(", ") || "none") + " vs " + (k.missing.join(", ") || "none"));
+      if (g.invented !== !!k.invented) diff.push("invented " + (g.invented ? "yes" : "no") + " vs " + (k.invented ? "yes" : "no"));
+      if (g.rearranged !== !!k.rearranged) diff.push("rearranged " + (g.rearranged ? "yes" : "no") + " vs " + (k.rearranged ? "yes" : "no"));
+      return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "</td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
+    }).join("");
+    var el = document.getElementById("benchOut");
+    el.innerHTML = "<p class=\"benchsum\">" + esc(sum) + "</p>" + (prev.length ? "<p class=\"hint\">Last runs: " + esc(prev.join(" \u00b7 ")) + "</p>" : "") +
+      "<table><thead><tr><th>Case</th><th>Claude</th><th>Grader</th><th>Match</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    el.hidden = false;
+    document.getElementById("benchInfo").textContent = "Done. \ud83d\udd12 cases are the final check: don't tune rules to them.";
+    benchText = ["GRADER BENCH", sum].concat(prev.length ? ["Last runs: " + prev.join(" \u00b7 ")] : []).concat(out.map(function (o) {
+      var k = o.c.key, g = o.g;
+      if (!g) return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": error " + o.err;
+      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no");
+    })).join("\n");
+    document.getElementById("benchCopy").disabled = false;
+  }
+  document.getElementById("benchRun").addEventListener("click", benchRun);
+  document.getElementById("benchCopy").addEventListener("click", function () {
+    if (!benchText || !navigator.clipboard) return;
+    navigator.clipboard.writeText("bench results\n\n" + benchText).then(function () { document.getElementById("benchInfo").textContent = "Copied. Paste it to Claude."; }, function () {});
+  });
   document.getElementById("draftCopy").addEventListener("click", function () {
     var d = savedDraft(); if (!d || !navigator.clipboard) return;
     navigator.clipboard.writeText(location.origin + location.pathname + "#draft=" + d.b64).then(function () { document.getElementById("srcInfo").textContent = "Copied draft " + d.id + "'s link."; }, function () {});

@@ -135,6 +135,13 @@ footer { font-size: 13px; color: var(--muted); }
 .stats { display: flex; flex-direction: column; gap: 4px; }
 .gradersrc { gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 14px; }
 .gradersrc[hidden] { display: none; }
+.benchout { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.benchout[hidden] { display: none; }
+.benchsum { margin: 0; font-weight: 700; }
+.benchout table { width: 100%; border-collapse: collapse; }
+.benchout th, .benchout td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.benchout td small { display: block; color: var(--muted); }
+.benchout tr.hold td:first-child::after { content: " \1F512"; }
 .srchead { margin: 0; font-weight: 700; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }

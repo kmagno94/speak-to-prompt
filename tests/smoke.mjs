@@ -74,7 +74,7 @@ async function page(opts = {}) {
       if (opts.regrade && p.grades.length) opts = { ...opts, grade: opts.regrade };
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      const g = JSON.stringify(opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
+      const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
@@ -1509,6 +1509,33 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   await q.click('#draftClear');
   expect(/Using Live/.test(await q.textContent('#srcInfo')) && await q.isDisabled('#srcDraft'), 'Clear draft should go back to Live');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('grader bench: one tap grades every bench.json case with the current grader and compares with the answer key', async () => {
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');
+  expect(bench.cases.some((c) => c.key.score >= 4.5) && bench.cases.some((c) => c.key.score < 4.5) && bench.cases.some((c) => c.holdout), 'bench needs passes, fails, and holdouts');
+  expect(!/\u2014/.test(JSON.stringify(bench)), 'no em dashes in bench.json');
+  // The grader agrees with the key on every case except the first, which it overrates
+  const first = bench.cases[0];
+  const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
+    return c === first ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
+  const p = await page({ gradeFn });
+  await devOn(p); await withKey(p); await p.click('#moreOpts summary');
+  await p.click('#benchRun');
+  await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
+  const n = bench.cases.length, sum = await p.textContent('.benchsum');
+  expect(p.grades.length === n, 'one grade call per case, got ' + p.grades.length);
+  expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
+  expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(first.today), 'each case is graded with its own date');
+  expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
+  expect(/\u274c/.test(await p.textContent('.benchout tbody tr:first-child')), 'the overrated case shows a miss');
+  await p.click('#benchCopy'); await p.waitForTimeout(200);
+  const t = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^bench results\n\nGRADER BENCH\n/.test(t) && t.includes(first.id + ': Claude ' + first.key.score.toFixed(2) + ' / grader 4.80'), 'bench copy wrong: ' + t.slice(0, 300));
+  // A second run remembers the first for comparison
+  await p.click('#benchRun'); await p.waitForFunction(() => /Done/.test(document.getElementById('benchInfo').textContent) && document.getElementById('benchRun').disabled === false, null, { timeout: 15000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
