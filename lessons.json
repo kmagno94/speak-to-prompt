@@ -1,7 +1,7 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 15:56 UTC",
-  "version": 2,
+  "updated": "2026-10-21 17:10 UTC",
+  "version": 3,
   "lessons": [
     {
       "id": "L1",
@@ -19,6 +19,12 @@
       "id": "L3",
       "text": "Open the prompt with the role line (who the AI should be), before Context or Task. Never tuck the role inside the Task section.",
       "why": "Regular run (Oct 21): role sat inside Task below Context; app 4.65 vs Claude 4.00 (role). Grader G3 now checks it.",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "L4",
+      "text": "Always state how long the answer should be (short or detailed, how many items, or about one screen) and what shape it takes, on its own line near the end. A list of sections to cover is not a length.",
+      "why": "Review AM Oct 21: format was missing in 11 of 17 graded runs (65%), and in 6 of 12 (50%) written by a Flash model, not only Flash-Lite. Grader G2 checks length.",
       "added": "2026-10-21"
     }
   ],
