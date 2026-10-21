@@ -1,6 +1,6 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 05:09 UTC",
+  "updated": "2026-10-21 06:20 UTC",
   "version": 1,
   "lessons": [
     {
@@ -16,12 +16,24 @@
       "added": "2026-10-21"
     }
   ],
-  "grader_version": 4,
+  "grader_version": 5,
   "grader": [
     {
       "id": "G1",
       "text": "If any line is broken or unfinished (a blank where a number or value belongs, a sentence that no longer makes sense, or note text pasted in with its filler), mark that label weak. A prompt with a broken line is never a 5.",
       "why": "Stress test 3 (Oct 20): app graded 5 with nothing missing; Claude graded 3. Distance and cost lines had blanks left by Auto-Repair (context), and no length was given (format).",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "G2",
+      "text": "A list of sections to include gives shape, not length. If the prompt never says roughly how long (a word count, a number of items, or short vs detailed), format is missing and the grade stays under 4.50.",
+      "why": "Regular run (Oct 21): app graded 4.65 pass with nothing missing; Claude graded 3.00. Four numbered sections but no length (format), and a filler line pasted into context by Auto-Repair (G1).",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "G2",
+      "text": "A list of sections to include gives shape, not length. If the prompt never says roughly how long (a word count, a number of items, or short vs detailed), format is missing and the grade stays under 4.50.",
+      "why": "Regular run (Oct 21): app graded 4.65 pass with nothing missing; Claude graded 3.00. Four numbered sections but no length (format), plus a feeling pasted into context by Auto-Repair (G1).",
       "added": "2026-10-21"
     }
   ]
