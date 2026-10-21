@@ -1,7 +1,7 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 13:40 UTC",
-  "version": 1,
+  "updated": "2026-10-21 13:55 UTC",
+  "version": 2,
   "lessons": [
     {
       "id": "L1",
@@ -13,6 +13,12 @@
       "id": "L2",
       "text": "When the person gives an amount and what is already spent or used, state what is left as exact math (for example $200 minus $35.50 is $164.50) instead of writing whatever is left.",
       "why": "Stress test 2 (Oct 18): the prompt said leaving whatever is left; the number check now accepts correct money math (308ada1).",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "L3",
+      "text": "Open the prompt with the role line (who the AI should be), before Context or Task. Never tuck the role inside the Task section.",
+      "why": "Regular run (Oct 21): role sat inside Task below Context; app 4.65 vs Claude 4.00 (role). Grader G3 now checks it.",
       "added": "2026-10-21"
     }
   ],
