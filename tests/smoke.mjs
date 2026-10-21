@@ -73,6 +73,7 @@ async function page(opts = {}) {
     if (/PROMPT TO GRADE:/.test(ask)) {
       if (opts.regrade && p.grades.length) opts = { ...opts, grade: opts.regrade };
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
+      if (opts.gradeBusyOnce) { p.busy = p.busy || new Map(); const k = ask.slice(-300); if (!p.busy.has(k)) p.busy.set(k, Date.now()); if (Date.now() - p.busy.get(k) < 400) { return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) }); } }
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
@@ -1533,6 +1534,13 @@ await check('grader bench: one tap grades every bench.json case with the current
   await p.click('#benchCopy'); await p.waitForTimeout(200);
   const t = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^bench results\n\nGRADER BENCH\n/.test(t) && t.includes(first.id + ': Claude ' + first.key.score.toFixed(2) + ' / grader 4.80'), 'bench copy wrong: ' + t.slice(0, 300));
+  // A busy server gets one retry, so it doesn't show up as an error row
+  const b = await page({ gradeFn, gradeBusyOnce: true });
+  await b.addInitScript(() => { window.__benchRetryMs = 800; }); await b.reload();
+  await devOn(b); await withKey(b); await b.click('#moreOpts summary'); await b.click('#benchRun');
+  await b.waitForSelector('#benchOut:not([hidden])', { timeout: 20000 });
+  expect(!/error/.test(await b.textContent('#benchOut')) && new RegExp((n - 1) + ' of ' + n).test(await b.textContent('.benchsum')), 'busy errors should be retried: ' + await b.textContent('.benchsum'));
+  await b.close();
   // A second run remembers the first for comparison
   await p.click('#benchRun'); await p.waitForFunction(() => /Done/.test(document.getElementById('benchInfo').textContent) && document.getElementById('benchRun').disabled === false, null, { timeout: 15000 });
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));

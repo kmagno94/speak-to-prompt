@@ -1130,7 +1130,7 @@ export function startApp() {
      key. One tap grades them all with the current grader (Live or Draft) and shows
      how often it agrees. Same prompts every time, so a change in agreement comes
      from the grader, not from the writer. Results stay on this device. */
-  var BENCH_KEY = "stp-bench", benchText = "";
+  var BENCH_KEY = "stp-bench", benchText = "", BENCH_RETRY_MS = window.__benchRetryMs || 4000;
   function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function sameSet(a, b) { a = (a || []).slice().sort(); b = (b || []).slice().sort(); return a.join() === b.join(); }
   function benchLabel() { return (lessons.src === "draft" ? "Draft " + lessons.id : "Live") + " g" + lessons.gv; }
@@ -1144,8 +1144,16 @@ export function startApp() {
       .then(function (b) {
         var cases = (b && b.cases) || [], items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
         info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
+        /* A busy server (503) or a full per-minute limit gets one retry after a short wait. */
+        function ask(c, retried) {
+          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, gemini.plan.intake, "low", null, 45000).catch(function (e) {
+            var busy = e && (e.status === 503 || e.status === 500 || (e.status === 429 && e.perMinute) || /high demand|overloaded/i.test(e.message || ""));
+            if (retried || !busy) throw e;
+            return new Promise(function (res) { setTimeout(res, BENCH_RETRY_MS); }).then(function () { return ask(c, true); });
+          });
+        }
         function one(c, i) {
-          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, gemini.plan.intake, "low", null, 45000).then(function (r) {
+          return ask(c, false).then(function (r) {
             var g = gradeFrom(r.text, items); out[i] = { c: c, g: g, model: r.model };
           }, function (e) { out[i] = { c: c, g: null, err: (e && e.message) || "failed" }; }).then(function () {
             done++; info.textContent = "Grading " + done + " of " + cases.length + " with " + label + "...";
