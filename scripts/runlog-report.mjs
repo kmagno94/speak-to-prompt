@@ -132,6 +132,7 @@ export function scorecard(runs) {
       coach_vs_xray: corr(withX.map((r) => [r.coach, r.xray_pct])),
       repair: { ran: repaired.length, ran_pct: share(repaired.length, withX.length), ...count(repaired, 'repair'), secs_p50: round(median(repaired.map((r) => r.repair_s))) }
     },
+    grades: gradesOf(ok),
     use: {
       n: acted.length, actions: count(acted, 'action'),
       kept_pct: share(kept.length, acted.length), redone_pct: share(redone.length, acted.length),
@@ -140,6 +141,24 @@ export function scorecard(runs) {
   };
   s.flags = flagsFor(s);
   return s;
+}
+
+/* Quality grades (the fast model's second opinion on each finished prompt) and
+   how they move with each lessons.json version. The review uses these to add,
+   keep, or retire lessons. */
+export function gradesOf(ok) {
+  const g = ok.filter((r) => num(r.grade));
+  const avg = (rs) => (rs.length ? round(rs.reduce((a, r) => a + r.grade, 0) / rs.length, 2) : null);
+  const missing = {};
+  for (const r of g) for (const m of String(r.grade_missing || '').split('+')) if (m && m !== 'none') missing[m] = (missing[m] || 0) + 1;
+  const versions = [...new Set(g.map((r) => (num(r.lessons_v) ? r.lessons_v : 0)))].sort((a, b) => a - b);
+  return {
+    n: g.length, avg: avg(g), p50: median(g.map((r) => r.grade)),
+    rearranged_pct: share(g.filter((r) => r.grade_rearranged === true).length, g.length),
+    invented_pct: share(g.filter((r) => r.grade_invented === true).length, g.length),
+    missing: Object.entries(missing).sort((a, b) => b[1] - a[1]).map(([label, n]) => ({ label, n, pct: share(n, g.length) })),
+    by_lessons: versions.map((v) => { const rs = g.filter((r) => (num(r.lessons_v) ? r.lessons_v : 0) === v); return { v, n: rs.length, avg: avg(rs) }; })
+  };
 }
 
 /* Things the review should act on or raise with Kevin. */
@@ -152,6 +171,14 @@ export function flagsFor(s) {
   if (s.quality.n >= MIN_N && s.quality.stray_pct >= 20) f.push(`Made-up numbers in ${s.quality.stray_pct}% of final prompts after repair. Look at the WRITE prompt (Kevin's call).`);
   if (s.quality.n >= MIN_N && s.quality.dropped_pct >= 30) f.push(`Details still dropped in ${s.quality.dropped_pct}% of final prompts. Look at repairs and the WRITE prompt (Kevin's call).`);
   if ((s.quality.repair.failed || 0) + (s.quality.repair['kept original'] || 0) >= 3 && s.quality.repair.ran && ((s.quality.repair.fixed || 0) / s.quality.repair.ran) < 0.5) f.push(`Auto-Repair helped in under half its tries (${s.quality.repair.fixed || 0} of ${s.quality.repair.ran}).`);
+  const g = s.grades;
+  if (g && g.n >= MIN_N && g.rearranged_pct >= 30) f.push(`Graded prompts read like rearranged words in ${g.rearranged_pct}% of runs. Consider a lesson (lessons.json rules).`);
+  if (g && g.n >= MIN_N && g.invented_pct >= 20) f.push(`Graded prompts added things nobody said in ${g.invented_pct}% of runs. Consider a lesson (lessons.json rules).`);
+  if (g && g.n >= MIN_N) for (const m of g.missing) if (m.pct >= 40) f.push(`Graded prompts were missing "${m.label}" in ${m.pct}% of runs. Consider a lesson (lessons.json rules).`);
+  if (g && g.by_lessons.length >= 2) {
+    const [prev, cur] = g.by_lessons.slice(-2);
+    if (prev.n >= MIN_N && cur.n >= MIN_N && cur.avg != null && prev.avg != null && prev.avg - cur.avg >= 0.5) f.push(`Lessons v${cur.v} grades ${cur.avg} vs v${prev.v} ${prev.avg}: the newest lesson change made prompts worse. Revert it (lessons.json rules).`);
+  }
   if (s.use.n >= MIN_N && s.use.redone_pct >= 30) f.push(`${s.use.redone_pct}% of prompts were redone (started over or rebuilt). Something isn't landing.`);
   return f;
 }
@@ -185,6 +212,14 @@ export function markdown(s, since) {
     `| Ghost Coach score, typical | ${fmt(s.quality.coach_p50, ' of 5')} |`,
     `| Better coach score means more of your words kept? (-1 to 1) | ${fmt(s.quality.coach_vs_xray)} |`,
     `| Auto-Repair ran | ${s.quality.repair.ran} (${fmt(s.quality.repair.ran_pct, '%')}): fixed ${s.quality.repair.fixed || 0}, kept original ${s.quality.repair['kept original'] || 0}, failed ${s.quality.repair.failed || 0}, typical ${fmt(s.quality.repair.secs_p50, 's')} |`, '');
+  const g = s.grades || { n: 0, missing: [], by_lessons: [] };
+  L.push('**Prompt grades (fast model, 1 to 5)**' + few(g.n), '', '| Measure | Value |', '|---|---|',
+    `| Graded runs | ${g.n} |`,
+    `| Grade, average | ${fmt(g.avg, ' of 5')} |`,
+    `| Reads like rearranged words | ${fmt(g.rearranged_pct, '%')} |`,
+    `| Added something nobody said | ${fmt(g.invented_pct, '%')} |`,
+    `| Most often missing | ${g.missing.length ? g.missing.map((m) => m.label + ' ' + m.pct + '%').join(', ') : 'nothing yet'} |`,
+    `| By lessons version | ${g.by_lessons.length ? g.by_lessons.map((b) => 'v' + b.v + ': ' + fmt(b.avg) + ' (' + b.n + ' runs)').join(', ') : 'n/a'} |`, '');
   L.push('**What happened next**' + few(s.use.n), '', '| Measure | Value |', '|---|---|',
     `| Kept (copied, opened an AI, or saved) | ${fmt(s.use.kept_pct, '%')} |`,
     `| Redone (started over or rebuilt) | ${fmt(s.use.redone_pct, '%')} |`,

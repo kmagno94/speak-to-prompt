@@ -39,6 +39,7 @@ async function page(opts = {}) {
   p.errors = [];
   p.calls = [];
   p.repairs = [];   // Auto-Repair requests, kept apart so older tests see only intake and write calls
+  p.grades = [];    // quality grade requests (run stats on), also kept apart
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -57,6 +58,12 @@ async function page(opts = {}) {
       const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
     }
+    if (/PROMPT TO GRADE:/.test(ask)) {
+      p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
+      if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const g = JSON.stringify(opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
+    }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
@@ -66,6 +73,7 @@ async function page(opts = {}) {
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
+  if (opts.lessons !== undefined) await p.route(/\/lessons\.json/, r => opts.lessons === null ? r.fulfill({ status: 404, body: '' }) : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.lessons) }));
   if (opts.tuning) await p.route(/\/tuning\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(opts.tuning) }));
   await p.goto(BASE);
   return p;
@@ -1121,10 +1129,10 @@ await check('report relay (Cloudflare Worker): only the app, only reports, no pi
     const postRun = (run, ip) => relay.fetch(new Request('https://relay.example/run', { method: 'POST',
       headers: { Origin: APP, 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ run }) }), env);
     sent.length = 0;
-    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, action: 'copied', xray_opened: true, est_intake_s: 3, hidden_s: 41.2, secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
+    const r1 = await postRun({ mode: 'Full', words_in: 12, write_s: 9.5, core: true, outcome: 'ok', repair: 'fixed', xray_pct: 54, coach: 4, action: 'copied', xray_opened: true, est_intake_s: 3, hidden_s: 41.2, lessons_v: 2, grade: 4, grade_rearranged: false, grade_missing: 'format+success', grade_model: '3.5-flash-lite', secret: 'my words', nested: { a: 1 }, detours: 'x'.repeat(500) + ' | @kmagno94' }, '6.6.6.6');
     expect(r1.status === 201 && sent.length === 1 && sent[0].url === 'https://api.github.com/repos/kmagno94/speak-to-prompt/issues/2/comments', 'run should become a comment on issue #2');
     const c = JSON.parse(sent[0].init.body).body;
-    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c) && /\| action \| copied \|/.test(c) && /\| xray_opened \| yes \|/.test(c) && /\| est_intake_s \| 3 \|/.test(c) && /\| hidden_s \| 41.2 \|/.test(c), 'run comment missing fields: ' + c);
+    expect(/\| mode \| Full \|/.test(c) && /\| words_in \| 12 \|/.test(c) && /\| core \| yes \|/.test(c) && /\| repair \| fixed \|/.test(c) && /\| xray_pct \| 54 \|/.test(c) && /\| coach \| 4 \|/.test(c) && /\| action \| copied \|/.test(c) && /\| xray_opened \| yes \|/.test(c) && /\| est_intake_s \| 3 \|/.test(c) && /\| hidden_s \| 41.2 \|/.test(c) && /\| lessons_v \| 2 \|/.test(c) && /\| grade \| 4 \|/.test(c) && /\| grade_rearranged \| no \|/.test(c) && /\| grade_missing \| format\+success \|/.test(c) && /\| grade_model \| 3\.5-flash-lite \|/.test(c), 'run comment missing fields: ' + c);
     expect(!/secret|my words|nested/.test(c) && !/@kmagno94/.test(c) && c.length < 1000, 'unknown fields, pings, and long text must be dropped: ' + c);
     expect((await postRun({ words_in: 3 }, '6.6.6.6')).status === 400 && (await postRun('nope', '6.6.6.6')).status === 400, 'non-run data should be refused');
     let lastRun;
@@ -1247,6 +1255,87 @@ await check('number check: a number that is not math on yours is still flagged',
   await withKey(p); await p.fill('#thoughts', 'budget is $200 and I spent $35.50 on decorations'); await p.click('#build'); await done(p);
   const w = await p.textContent('#numWarn');
   expect(/400/.test(w) && /57\.25/.test(w) && !/164/.test(w), 'should flag 400 and 57.25 but not 164.50: ' + w);
+});
+
+/* Lessons learned (lessons.json) and the quality grade that feeds them. */
+const relayRun = async (p, sent) => p.route('https://relay.test/report/run', async r => {
+  const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+  if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+  sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+});
+const noQ = { title: 'Lessons Test', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] };
+
+await check('lessons learned: lessons.json rules go into the writing step, cleaned and capped at 6, and the run logs the version', async () => {
+  const many = [{ text: 'Rule A: state the format.' }, { text: 'x'.repeat(300) }, { text: 'Rule\nB  spaced' }].concat([1, 2, 3, 4, 5, 6].map(n => ({ text: 'Extra ' + n })));
+  const p = await page({ intake: noQ, lessons: { version: 7, lessons: many } }); const sent = [];
+  await relayRun(p, sent);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'help me plan a garden'); await p.click('#build'); await done(p);
+  const w = p.calls.filter(c => !c.intake).pop().text;
+  const lines = (w.split('LESSONS FROM REVIEWS')[1] || '').split('RAW THOUGHTS:')[0].split('\n').filter(l => l.startsWith('- '));
+  expect(/LESSONS FROM REVIEWS OF EARLIER PROMPTS/.test(w) && lines[0] === '- Rule A: state the format.' && lines[1] === '- Rule B spaced', 'lessons should be cleaned and listed: ' + lines.join(' | '));
+  expect(lines.length === 6 && !w.includes('x'.repeat(250)), 'at most 6 lessons and none over 240 characters, got ' + lines.length);
+  expect(w.indexOf('LESSONS FROM REVIEWS') < w.indexOf('RAW THOUGHTS:'), 'lessons belong with the instructions, before the raw thoughts');
+  await p.click('#copy'); await p.waitForTimeout(300);
+  expect(sent[0] && sent[0].lessons_v === 7, 'run should log lessons_v 7: ' + JSON.stringify(sent[0]));
+  // No lessons file: no lessons block, version 0
+  const q = await page({ intake: noQ, lessons: null });
+  await withKey(q); await q.fill('#thoughts', 'help me plan a garden'); await q.click('#build'); await done(q);
+  expect(!/LESSONS FROM REVIEWS/.test(q.calls.filter(c => !c.intake).pop().text), 'no lessons file means no lessons block');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('quality grade: with run stats on, the fast model grades the prompt after it shows; only the score and labels reach the run log', async () => {
+  const RAW = 'ok so I want to start a little plant swap at the community garden, first Sunday of the month, Rosa said the shed has a table';
+  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 2, rearranged: true, invented: false, missing: ['format', 'bogus', 'format', 'Success'] } }); const sent = [];
+  await relayRun(p, sent);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'Plant swap prompt', 'the prompt shows without waiting for the grade');
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  const note = await p.textContent('#gradeNote');
+  expect(/Quality check: 2 of 5/.test(note) && /rearranged/.test(note) && /could add: format, success/.test(note) && !/bogus/.test(note), 'grade note wrong: ' + note);
+  expect(p.grades.length === 1 && /lite/.test(p.grades[0].model) && p.grades[0].level === 'low' && p.grades[0].json, 'grade should be one JSON call on Flash-Lite at low thinking: ' + JSON.stringify(p.grades[0] && { m: p.grades[0].model, l: p.grades[0].level }));
+  expect(p.grades[0].text.includes(RAW) && p.grades[0].text.includes('PROMPT TO GRADE:') && p.grades[0].text.includes('Plant swap prompt'), 'grader should see the raw thoughts and the prompt');
+  expect(p.calls.filter(c => !c.intake).length === 1, 'the grade is not a second write call');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  const r = sent[0] || {};
+  expect(r.grade === 2 && r.grade_rearranged === true && r.grade_invented === false && r.grade_missing === 'format+success' && /lite/.test(r.grade_model) && typeof r.grade_s === 'number' && r.action === 'copied', 'run should carry the grade: ' + JSON.stringify(r));
+  expect(!JSON.stringify(r).includes('plant') && !('_grade' in r), 'no words and no internals in the run log: ' + JSON.stringify(r));
+  await p.click('#copyAll');
+  // Stats off: no grade call, no note
+  const q = await page({ intake: noQ });
+  await withKey(q); await q.fill('#thoughts', RAW); await q.click('#build'); await done(q); await q.waitForTimeout(300);
+  expect(q.grades.length === 0 && await q.isHidden('#gradeNote'), 'no grade with run stats off');
+  // Grade fails: the run still goes out, without a grade
+  const f = await page({ intake: noQ, gradeFail: true }); const sentF = [];
+  await relayRun(f, sentF);
+  await f.click('#moreOpts summary'); await f.check('#statsToggle');
+  await withKey(f); await f.fill('#thoughts', RAW); await f.click('#build'); await done(f);
+  await f.waitForTimeout(300); await f.click('#copy'); await f.waitForTimeout(400);
+  expect(sentF[0] && sentF[0].action === 'copied' && sentF[0].grade === undefined && await f.isHidden('#gradeNote'), 'a failed grade should not block the run: ' + JSON.stringify(sentF[0]));
+  expect(!p.errors.length && !q.errors.length && !f.errors.length, 'page errors: ' + p.errors.concat(q.errors, f.errors).join('; '));
+});
+
+await check('Scorecard: grades by lessons version, with flags to add or revert a lesson', async () => {
+  const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
+  const row = (i, v, grade, re, miss) => ({ created_at: '2026-10-21T0' + (i % 10) + ':00:00Z', body: `**Run 2026-10-21 0${i % 10}:00 UTC**\n\n| field | value |\n|---|---|\n| mode | Full |\n| outcome | ok |\n| write_s | 30 |\n| lessons_v | ${v} |\n| grade | ${grade} |\n| grade_rearranged | ${re ? 'yes' : 'no'} |\n| grade_invented | no |\n| grade_missing | ${miss} |` });
+  const comments = [0, 1, 2, 3, 4].map(i => row(i, 1, 4, false, 'none')).concat([5, 6, 7, 8, 9].map(i => row(i, 2, 3, true, 'format+success')));
+  const s = scorecard(parseRuns(comments));
+  expect(s.grades.n === 10 && s.grades.avg === 3.5 && s.grades.rearranged_pct === 50, 'grade math wrong: ' + JSON.stringify(s.grades));
+  expect(s.grades.by_lessons.length === 2 && s.grades.by_lessons[1].avg === 3 && s.grades.missing[0].label === 'format' && s.grades.missing[0].pct === 50, 'by-version or missing wrong: ' + JSON.stringify(s.grades));
+  expect(s.flags.some(f => /rearranged words in 50%/.test(f)) && s.flags.some(f => /missing "format" in 50%/.test(f)) && s.flags.some(f => /Lessons v2 grades 3 vs v1 4.*Revert/.test(f)), 'flags missing: ' + s.flags.join(' | '));
+  const md = markdown(s);
+  expect(/Prompt grades/.test(md) && /v1: 4 \(5 runs\), v2: 3 \(5 runs\)/.test(md), 'markdown missing grades: ' + md.split('Prompt grades')[1]);
+  const none = markdown(scorecard(parseRuns([row(1, 0, 4, false, 'none')].map(c => ({ ...c, body: c.body.replace(/\| grade.*\n?/g, '') })))));
+  expect(/Graded runs \| 0/.test(none), 'no grades should still print cleanly');
+});
+
+await check('lessons.json is valid: versioned, at most 6 short lessons, no em dashes or mentions', async () => {
+  const p = await page();
+  const j = await p.evaluate(() => fetch('lessons.json', { cache: 'no-store' }).then(r => r.json()));
+  expect(typeof j.version === 'number' && Array.isArray(j.lessons) && j.lessons.length <= 6 && j.updated, 'lessons.json needs version, updated, and up to 6 lessons');
+  for (const l of j.lessons) expect(l.text && l.text.length <= 240 && !/\u2014|@/.test(l.text) && l.why, 'bad lesson: ' + JSON.stringify(l));
 });
 
 await check('usage.json is valid', async () => {

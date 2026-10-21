@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf } from './xray.js';
 import { assess } from './coach.js';
@@ -326,7 +326,7 @@ export function startApp() {
     report.collect().forEach(function (r) { if (r[1] !== "" && r[1] != null) out.push(r[0] + ": " + r[1]); });
     out.push("", "MY NOTE", raw);
     if (ans.length) { out.push("", "MY ANSWERS"); ans.forEach(function (a) { out.push("Q: " + a.question, "A: " + a.answer + (a.tapped ? " (tapped)" : "")); }); }
-    var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
+    var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
     if (shown.length) out.push("", "ON SCREEN", shown.join("\n"));
     var x = analyze(output.value, raw, ans, core.active ? core.block : "");
     out.push("", "X-RAY", x.pct + "% your words, " + x.added + " parts added to help");
@@ -390,6 +390,7 @@ export function startApp() {
     resetKeep();
     setBuild("");
     document.getElementById("numWarn").hidden = true;
+    hideGrade();
     ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
@@ -1036,6 +1037,20 @@ export function startApp() {
     var t = tuning && (key == null ? tuning.intake : tuning.depth[key]);
     return t && typeof t.secs === "number" && t.secs >= 1 && t.secs <= 600 && t.runs >= 5 ? t : null;
   }
+  /* lessons.json: short rules the twice-daily review learned from graded runs and
+     stress tests (general prompt-writing lessons, never anyone's words). Every
+     prompt build uses them. At most 6, each kept short, so the writer stays fast. */
+  var lessons = { v: 0, list: [] };
+  function loadLessons() {
+    fetch("lessons.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { lessons = lessonsFrom(j); }, function () {});
+  }
+  function lessonsFrom(j) {
+    var list = (j && Array.isArray(j.lessons) ? j.lessons : []).map(function (l) {
+      return String((l && l.text) || "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+    }).filter(function (t) { return t && t.length <= 240; }).slice(0, 6);
+    return { v: list.length && typeof j.version === "number" ? j.version : 0, list: list };
+  }
   function depthKeyOf(r) { return r.depth || (/Quick/.test(r.mode || "") ? "quick" : (r.complexity || "standard")); }
   function learned(field, key) {
     if (!testLog.on()) return null;
@@ -1229,12 +1244,14 @@ export function startApp() {
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
-    var text = WRITE + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    session.lessonsV = lessons.list.length ? lessons.v : 0;
+    var text = withLessons(WRITE, lessons.list) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     setBusy(true, "Writing your prompt...");
+    hideGrade();
     setBuild("");
     qaStatus.textContent = "";
     var run = ++writeRun;
@@ -1299,7 +1316,8 @@ export function startApp() {
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
-          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null });
+          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0 });
+        gradeRun(prompt, run);
       }
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
@@ -1312,6 +1330,41 @@ export function startApp() {
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
+  }
+
+  /* Quality grade (run stats on, with a key): after the prompt is on screen, the
+     fast model scores it in the background (1 to 5, rearranged, invented, what's
+     missing). Only the score and fixed labels go into the run, for the review's
+     lessons learned. It never slows the prompt down; if it's late or fails, the run
+     is sent without it. */
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; }
+  function gradeFrom(text) {
+    var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
+    var c = Math.round(Number(j && j.craft));
+    if (!(c >= 1 && c <= 5)) return null;
+    var miss = (Array.isArray(j.missing) ? j.missing : []).map(function (m) { return String(m).toLowerCase().trim(); })
+      .filter(function (m, i, a) { return GRADE_MISSING.indexOf(m) !== -1 && a.indexOf(m) === i; });
+    return { craft: c, rearranged: j.rearranged === true, invented: j.invented === true, missing: miss };
+  }
+  function gradeRun(prompt, run) {
+    if (!testLog.on() || !gemini.plan || !session) return;
+    var target = pendingRun, t0 = Date.now();
+    var job = askGemini(gradePrompt(prompt, session.raw, session.answers), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      var g = gradeFrom(r.text);
+      if (!g) return;
+      var fields = { grade: g.craft, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
+        grade_model: String(r.model || "").replace(/gemini-/, ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
+      if (target) for (var k in fields) target[k] = fields[k];
+      if (run !== writeRun) return;
+      var notes = [];
+      if (g.rearranged) notes.push("reads like your words rearranged");
+      if (g.invented) notes.push("added something you didn't say");
+      if (g.missing.length) notes.push("could add: " + g.missing.join(", "));
+      var el = document.getElementById("gradeNote");
+      el.textContent = "\ud83c\udfaf Quality check: " + g.craft + " of 5" + (notes.length ? " \u00b7 " + notes.join(" \u00b7 ") : "") + " (" + fields.grade_model + ", " + fields.grade_s + "s)";
+      el.hidden = false;
+    }, function () {});
+    if (target) target._grade = job;
   }
 
   function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
@@ -1558,6 +1611,18 @@ export function startApp() {
     var run = pendingRun;
     pendingRun = null;
     run.action = action;
+    var grade = run._grade;
+    delete run._grade;
+    /* Wait a few seconds for the quality grade, unless the page is going away. */
+    if (grade && action !== "left the page") {
+      var sent = false, send = function () { if (!sent) { sent = true; postRun(run); } };
+      grade.then(send, send);
+      setTimeout(send, 8000);
+      return;
+    }
+    postRun(run);
+  }
+  function postRun(run) {
     try {
       fetch(RELAY.replace(/\/+$/, "") + "/run", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run: run }), keepalive: true }).catch(function () {});
@@ -1660,4 +1725,5 @@ export function startApp() {
   };
   testLog.init();
   loadTuning();
+  loadLessons();
 }

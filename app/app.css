@@ -322,3 +322,4 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* Auto-Repair note under "Ready in ..." */
 .repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }
+.gradenote { margin: 0; font-size: 13px; color: var(--muted); }

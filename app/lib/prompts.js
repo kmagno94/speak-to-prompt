@@ -75,6 +75,37 @@ export const WRITE = [
   "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
 ].join("\n");
 
+/* Lessons learned: short, general rules the twice-daily review writes into
+   lessons.json from graded runs and stress tests. They never hold anyone's words,
+   only how to write better prompts. Added to WRITE so every run uses them. */
+export function withLessons(write, lessons) {
+  if (!lessons || !lessons.length) return write;
+  return write + "\n\nLESSONS FROM REVIEWS OF EARLIER PROMPTS (general rules this tool has learned; follow them when they fit this request, and never let one override what the person actually said):\n- " + lessons.join("\n- ");
+}
+
+/* Quality grade (run stats on): a second opinion on the finished prompt from the
+   fast model, in the background after the prompt is shown. It answers only with
+   a score and fixed labels, so the run log never holds anyone's words. */
+export const GRADE_MISSING = ['role', 'task', 'context', 'format', 'success', 'constraints', 'steps', 'ending'];
+export function gradePrompt(prompt, raw, answers) {
+  const out = [
+    "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is.",
+    "",
+    "craft, 1 to 5: 1 = their sentences moved around under labels, with no real instructions; 2 = mostly their words reorganized, with a vague task; 3 = clear and usable but plain; 4 = clear role, task, context, and format, with only small gaps; 5 = expert: an unmistakable task, the right context, the format and length stated, what a great result looks like, and nothing invented.",
+    "rearranged: true if most of the prompt is the person's own sentences reordered or relabeled, instead of clear instructions written for the AI.",
+    "invented: true if it adds facts, people, devices, numbers, or requirements the person never said or confirmed. Correct math on their own numbers (a total, what is left, a split) and unit conversions are fine.",
+    "missing: which of these would clearly make this prompt better, if any: role (who the AI should be), task (an unmistakable job), context (background the AI needs), format (shape and length of the answer), success (what a great result looks like), constraints (limits and hard noes), steps (how-to or troubleshooting the person needs), ending (a clear start-now or pick-an-option ending). Use an empty list if none.",
+    "",
+    'Respond with JSON only, in exactly this shape: {"craft": 3, "rearranged": false, "invented": false, "missing": ["format"]}',
+    "",
+    "PERSON'S RAW THOUGHTS:", '"""', raw, '"""'
+  ];
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "THEIR ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT TO GRADE:", '"""', prompt, '"""');
+  return out.join("\n");
+}
+
 /* Auto-Repair: one small, targeted fix when the phone's checks (X-ray and the
    number check) find details that were left out or numbers nobody said. It never
    rewrites the whole prompt; the page rechecks the result and keeps the original

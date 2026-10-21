@@ -1,0 +1,19 @@
+{
+  "note": "Lessons learned: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests. Never anyone's words. Every prompt build adds them to the writing step. At most 6, each under 240 characters. Bump version on every change so the run log can compare grades before and after.",
+  "updated": "2026-10-21 00:40 UTC",
+  "version": 1,
+  "lessons": [
+    {
+      "id": "L1",
+      "text": "Write the Task line as a clear instruction in your own words. Never paste the person's opening ramble or filler in as the task.",
+      "why": "Stress test 1 (Oct 18): the filler opening was pasted in as the Task.",
+      "added": "2026-10-21"
+    },
+    {
+      "id": "L2",
+      "text": "When the person gives an amount and what is already spent or used, state what is left as exact math (for example $200 minus $35.50 is $164.50) instead of writing whatever is left.",
+      "why": "Stress test 2 (Oct 18): the prompt said leaving whatever is left; the number check now accepts correct money math (308ada1).",
+      "added": "2026-10-21"
+    }
+  ]
+}
