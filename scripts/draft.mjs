@@ -39,7 +39,8 @@ export function problems(j) {
   return out;
 }
 export function linkFor(j, base = BASE) {
-  const slim = { version: j.version, grader_version: j.grader_version, lessons: j.lessons, grader: j.grader };
+  const keep = (a) => (a || []).map((l) => ({ id: l.id, text: l.text }));   // the app only reads id and text
+  const slim = { version: j.version, grader_version: j.grader_version, lessons: keep(j.lessons), grader: keep(j.grader) };
   return base + '#draft=' + Buffer.from(JSON.stringify(slim), 'utf8').toString('base64url');
 }
 function check(j) { const p = problems(j); if (p.length) { console.error('Draft has problems:\n- ' + p.join('\n- ')); process.exit(1); } }
@@ -69,6 +70,8 @@ if (import.meta.url === 'file://' + process.argv[1]) {
     if (!m) { console.error('No #draft= in that link'); process.exit(1); }
     const j = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8'));
     const live = read(LIVE);
+    const why = new Map([...live.lessons, ...live.grader].map((l) => [l.id + l.text, l.why]));
+    for (const k of ['lessons', 'grader']) j[k] = (j[k] || []).map((l) => ({ ...l, why: why.get(l.id + l.text) || 'Restored from a draft link', added: l.added || new Date().toISOString().slice(0, 10) }));
     save(DRAFT, { ...live, ...j }); console.log('Draft rebuilt from the link: ' + DRAFT);
   } else if (cmd === 'diff') {
     const d = diff(read(LIVE), read(DRAFT)); console.log(d.length ? d.join('\n') : 'No changes from lessons.json');
