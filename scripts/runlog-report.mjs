@@ -147,19 +147,27 @@ export function scorecard(runs) {
 /* Quality grades (the fast model's second opinion on each finished prompt) and
    how they move with each lessons.json version. The review uses these to add,
    keep, or retire lessons. */
+/* Grader version from grade_model ("3.5-flash-lite g2"); runs before versions were logged are g1. */
+export function graderOf(r) { const m = String(r.grade_model || '').match(/\bg(\d+)\s*$/); return m ? Number(m[1]) : 1; }
 export function gradesOf(ok) {
   const g = ok.filter((r) => num(r.grade));
+  const gvs = [...new Set(g.map(graderOf))].sort((a, b) => a - b);
+  const latestG = gvs.length ? gvs[gvs.length - 1] : null;
+  const sameG = g.filter((r) => graderOf(r) === latestG);
   const avg = (rs) => (rs.length ? round(rs.reduce((a, r) => a + r.grade, 0) / rs.length, 2) : null);
   const missing = {};
   for (const r of g) for (const m of String(r.grade_missing || '').split('+')) if (m && m !== 'none') missing[m] = (missing[m] || 0) + 1;
-  const versions = [...new Set(g.map((r) => (num(r.lessons_v) ? r.lessons_v : 0)))].sort((a, b) => a - b);
+  // Lessons versions are compared only within the newest grader, so a stricter grader never looks like a worse lesson.
+  const versions = [...new Set(sameG.map((r) => (num(r.lessons_v) ? r.lessons_v : 0)))].sort((a, b) => a - b);
   return {
     n: g.length, avg: avg(g), p50: median(g.map((r) => r.grade)),
     rearranged_pct: share(g.filter((r) => r.grade_rearranged === true).length, g.length),
     invented_pct: share(g.filter((r) => r.grade_invented === true).length, g.length),
     missing: Object.entries(missing).sort((a, b) => b[1] - a[1]).map(([label, n]) => ({ label, n, pct: share(n, g.length) })),
     by_model: [...new Set(g.map((r) => String(r.write_model || '').replace(/^gemini-/, '')))].filter(Boolean).map((m) => { const rs = g.filter((r) => String(r.write_model || '').replace(/^gemini-/, '') === m); return { model: m, n: rs.length, avg: avg(rs) }; }),
-    by_lessons: versions.map((v) => { const rs = g.filter((r) => (num(r.lessons_v) ? r.lessons_v : 0) === v); return { v, n: rs.length, avg: avg(rs) }; })
+    grader: latestG,
+    by_grader: gvs.map((v) => { const rs = g.filter((r) => graderOf(r) === v); return { v, n: rs.length, avg: avg(rs) }; }),
+    by_lessons: versions.map((v) => { const rs = sameG.filter((r) => (num(r.lessons_v) ? r.lessons_v : 0) === v); return { v, n: rs.length, avg: avg(rs) }; })
   };
 }
 
@@ -177,6 +185,7 @@ export function flagsFor(s) {
   if (g && g.n >= MIN_N && g.rearranged_pct >= 30) f.push(`Graded prompts read like rearranged words in ${g.rearranged_pct}% of runs. Consider a lesson (lessons.json rules).`);
   if (g && g.n >= MIN_N && g.invented_pct >= 20) f.push(`Graded prompts added things nobody said in ${g.invented_pct}% of runs. Consider a lesson (lessons.json rules).`);
   if (g && g.n >= MIN_N) for (const m of g.missing) if (m.pct >= 40) f.push(`Graded prompts were missing "${m.label}" in ${m.pct}% of runs. Consider a lesson (lessons.json rules).`);
+  if (g && g.n >= 10 && g.grader != null) { const cur = g.by_grader.find((b) => b.v === g.grader); if (cur && cur.n >= 10 && cur.avg >= 4.7) f.push(`Grader g${cur.v} averages ${cur.avg} over ${cur.n} runs: probably too soft to find patterns. Propose a stricter GRADE prompt (Kevin's call).`); }
   if (g && g.by_lessons.length >= 2) {
     const [prev, cur] = g.by_lessons.slice(-2);
     if (prev.n >= MIN_N && cur.n >= MIN_N && cur.avg != null && prev.avg != null && prev.avg - cur.avg >= 0.5) f.push(`Lessons v${cur.v} grades ${cur.avg} vs v${prev.v} ${prev.avg}: the newest lesson change made prompts worse. Revert it (lessons.json rules).`);
@@ -223,7 +232,8 @@ export function markdown(s, since) {
     `| Added something nobody said | ${fmt(g.invented_pct, '%')} |`,
     `| Most often missing | ${g.missing.length ? g.missing.map((m) => m.label + ' ' + m.pct + '%').join(', ') : 'nothing yet'} |`,
     `| By write model | ${(g.by_model || []).length ? g.by_model.map((b) => b.model + ': ' + fmt(b.avg) + ' (' + b.n + ')').join(', ') : 'n/a'} |`,
-    `| By lessons version | ${g.by_lessons.length ? g.by_lessons.map((b) => 'v' + b.v + ': ' + fmt(b.avg) + ' (' + b.n + ' runs)').join(', ') : 'n/a'} |`, '');
+    `| By grader version | ${(g.by_grader || []).length ? g.by_grader.map((b) => 'g' + b.v + ': ' + fmt(b.avg) + ' (' + b.n + ')').join(', ') : 'n/a'} |`,
+    `| By lessons version (newest grader only) | ${g.by_lessons.length ? g.by_lessons.map((b) => 'v' + b.v + ': ' + fmt(b.avg) + ' (' + b.n + ' runs)').join(', ') : 'n/a'} |`, '');
   L.push('**What happened next**' + few(s.use.n), '', '| Measure | Value |', '|---|---|',
     `| Kept (copied, opened an AI, or saved) | ${fmt(s.use.kept_pct, '%')} |`,
     `| Redone (started over or rebuilt) | ${fmt(s.use.redone_pct, '%')} |`,

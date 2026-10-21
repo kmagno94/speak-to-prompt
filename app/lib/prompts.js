@@ -87,23 +87,34 @@ export function withLessons(write, lessons) {
    fast model, in the background after the prompt is shown. It answers only with
    a score and fixed labels, so the run log never holds anyone's words. */
 export const GRADE_MISSING = ['role', 'task', 'context', 'format', 'success', 'constraints', 'steps', 'ending'];
-export function gradePrompt(prompt, raw, answers) {
+export function gradePrompt(prompt, raw, answers, calibration) {
   const out = [
-    "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is.",
+    "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is or how polite it sounds. Be hard to impress: most decent prompts are a 3 or a 4.",
     "",
-    "craft, 1 to 5: 1 = their sentences moved around under labels, with no real instructions; 2 = mostly their words reorganized, with a vague task; 3 = clear and usable but plain; 4 = clear role, task, context, and format, with only small gaps; 5 = expert: an unmistakable task, the right context, the format and length stated, what a great result looks like, and nothing invented.",
+    "missing: go through every label and list each one that is weak or absent: role (who the AI should be, stated up front, not buried inside the task), task (an unmistakable job), context (background the AI needs), format (the shape of the answer, such as a table, list, steps, or sections, AND roughly how long), success (what a great result looks like, or how the person will judge it), constraints (limits and hard noes the person gave), steps (how-to or troubleshooting the person needs), ending (a clear start-now or pick-an-option ending). A prompt that never says how long or what shape the answer should be is missing format. Use an empty list only if every label is clearly covered.",
     "rearranged: true if most of the prompt is the person's own sentences reordered or relabeled, instead of clear instructions written for the AI.",
     "invented: true if it adds facts, people, devices, numbers, or requirements the person never said or confirmed. Correct math on their own numbers (a total, what is left, a split) and unit conversions are fine.",
-    "missing: which of these would clearly make this prompt better, if any: role (who the AI should be), task (an unmistakable job), context (background the AI needs), format (shape and length of the answer), success (what a great result looks like), constraints (limits and hard noes), steps (how-to or troubleshooting the person needs), ending (a clear start-now or pick-an-option ending). Use an empty list if none.",
+    "craft, 1 to 5, decided after the labels above: 1 = their sentences moved around under labels, with no real instructions; 2 = mostly their words reorganized, with a vague task; 3 = clear and usable, but two or more labels are weak or missing; 4 = strong, with exactly one weak or missing label; 5 = rare: nothing in missing, nothing rearranged, nothing invented. Never give 5 if missing has anything in it.",
     "",
-    'Respond with JSON only, in exactly this shape: {"craft": 3, "rearranged": false, "invented": false, "missing": ["format"]}',
-    "",
-    "PERSON'S RAW THOUGHTS:", '"""', raw, '"""'
+    'Respond with JSON only, in exactly this shape: {"missing": ["format"], "rearranged": false, "invented": false, "craft": 4}'
   ];
+  const cal = (calibration || []).filter(Boolean);
+  if (cal.length) out.push("", "CALIBRATION FROM CLAUDE'S REVIEWS OF YOUR PAST GRADES (you graded these kinds of prompts wrong before; follow these):", ...cal.map((c) => "- " + c));
+  out.push("", "PERSON'S RAW THOUGHTS:", '"""', raw, '"""');
   const a = (answers || []).filter((x) => x && x.answer);
   if (a.length) out.push("", "THEIR ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
   out.push("", "PROMPT TO GRADE:", '"""', prompt, '"""');
   return out.join("\n");
+}
+
+/* The same caps the page applies after the model answers, so a soft score can't
+   slip through: each missing label costs a point, rearranged caps at 2, invented at 3. */
+export function capGrade(craft, missing, rearranged, invented) {
+  let g = Math.max(1, Math.min(5, Math.round(craft)));
+  g = Math.min(g, Math.max(1, 5 - (missing || []).length));
+  if (rearranged) g = Math.min(g, 2);
+  if (invented) g = Math.min(g, 3);
+  return g;
 }
 
 /* Auto-Repair: one small, targeted fix when the phone's checks (X-ray and the

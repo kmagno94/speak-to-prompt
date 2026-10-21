@@ -1320,6 +1320,24 @@ await check('quality grade: with run stats on, the fast model grades the prompt 
   expect(!p.errors.length && !q.errors.length && !f.errors.length, 'page errors: ' + p.errors.concat(q.errors, f.errors).join('; '));
 });
 
+await check('stricter grader: caps soft scores, uses grader calibration from lessons.json, and logs the grader version', async () => {
+  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 5, rearranged: false, invented: false, missing: ['format'] },
+    lessons: { version: 4, lessons: [{ text: 'Writer rule.' }], grader_version: 3, grader: [{ text: 'A prompt with no stated length is missing format.' }] } }); const sent = [];
+  await relayRun(p, sent);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'plant swap at the garden, first sunday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  expect(/Quality check: 4 of 5/.test(await p.textContent('#gradeNote')), 'a 5 with a missing label should be capped at 4: ' + await p.textContent('#gradeNote'));
+  const ask = p.grades[0].text;
+  expect(/CALIBRATION FROM CLAUDE'S REVIEWS/.test(ask) && ask.includes('- A prompt with no stated length is missing format.') && ask.indexOf('CALIBRATION') < ask.indexOf('PROMPT TO GRADE:'), 'grader calibration should be in the grade request');
+  expect(/Never give 5 if missing has anything in it/.test(ask) && !/LESSONS FROM REVIEWS/.test(ask), 'grade request uses the strict rubric, not the writer lessons');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent[0] && sent[0].grade === 4 && / g3$/.test(sent[0].grade_model) && sent[0].lessons_v === 4, 'run should log the capped grade and grader g3: ' + JSON.stringify(sent[0]));
+  const { capGrade } = await import('../app/lib/prompts.js');
+  expect(capGrade(5, [], true, false) === 2 && capGrade(5, [], false, true) === 3 && capGrade(4, ['a', 'b', 'c'], false, false) === 2 && capGrade(5, [], false, false) === 5, 'caps wrong');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('Scorecard: grades by lessons version, with flags to add or revert a lesson', async () => {
   const { parseRuns, scorecard, markdown } = await import('../scripts/runlog-report.mjs');
   const row = (i, v, grade, re, miss) => ({ created_at: '2026-10-21T0' + (i % 10) + ':00:00Z', body: `**Run 2026-10-21 0${i % 10}:00 UTC**\n\n| field | value |\n|---|---|\n| mode | Full |\n| outcome | ok |\n| write_s | 30 |\n| lessons_v | ${v} |\n| grade | ${grade} |\n| grade_rearranged | ${re ? 'yes' : 'no'} |\n| grade_invented | no |\n| grade_missing | ${miss} |` });
@@ -1330,6 +1348,12 @@ await check('Scorecard: grades by lessons version, with flags to add or revert a
   expect(s.flags.some(f => /rearranged words in 50%/.test(f)) && s.flags.some(f => /missing "format" in 50%/.test(f)) && s.flags.some(f => /Lessons v2 grades 3 vs v1 4.*Revert/.test(f)), 'flags missing: ' + s.flags.join(' | '));
   const md = markdown(s);
   expect(/Prompt grades/.test(md) && /v1: 4 \(5 runs\), v2: 3 \(5 runs\)/.test(md), 'markdown missing grades: ' + md.split('Prompt grades')[1]);
+  // A stricter grader (g2) must not look like a worse lesson
+  const gv = (c, n) => ({ ...c, body: c.body + `\n| grade_model | 3.5-flash-lite g${n} |` });
+  const mixed = scorecard(parseRuns([0, 1, 2, 3, 4].map(i => gv(row(i, 1, 4, false, 'none'), 1)).concat([5, 6, 7, 8, 9].map(i => gv(row(i, 2, 3, false, 'none'), 2)))));
+  expect(!mixed.flags.some(f => /Revert/.test(f)) && mixed.grades.grader === 2 && mixed.grades.by_grader.length === 2 && mixed.grades.by_lessons.length === 1, 'grader change should not trigger a lesson revert: ' + JSON.stringify(mixed.grades) + ' ' + mixed.flags.join(' | '));
+  const soft = scorecard(parseRuns(Array.from({ length: 10 }, (_, i) => gv(row(i, 1, 5, false, 'none'), 2))));
+  expect(soft.flags.some(f => /Grader g2 averages 5 over 10 runs/.test(f)), 'a grader handing out 5s should be flagged: ' + soft.flags.join(' | '));
   const none = markdown(scorecard(parseRuns([row(1, 0, 4, false, 'none')].map(c => ({ ...c, body: c.body.replace(/\| grade.*\n?/g, '') })))));
   expect(/Graded runs \| 0/.test(none), 'no grades should still print cleanly');
 });
@@ -1383,7 +1407,8 @@ await check('lessons.json is valid: versioned, at most 6 short lessons, no em da
   const p = await page();
   const j = await p.evaluate(() => fetch('lessons.json', { cache: 'no-store' }).then(r => r.json()));
   expect(typeof j.version === 'number' && Array.isArray(j.lessons) && j.lessons.length <= 6 && j.updated, 'lessons.json needs version, updated, and up to 6 lessons');
-  for (const l of j.lessons) expect(l.text && l.text.length <= 240 && !/\u2014|@/.test(l.text) && l.why, 'bad lesson: ' + JSON.stringify(l));
+  expect(typeof j.grader_version === 'number' && Array.isArray(j.grader) && j.grader.length <= 6, 'lessons.json needs grader_version and up to 6 grader rules');
+  for (const l of j.lessons.concat(j.grader)) expect(l.text && l.text.length <= 240 && !/\u2014|@/.test(l.text) && l.why, 'bad lesson: ' + JSON.stringify(l));
 });
 
 await check('usage.json is valid', async () => {

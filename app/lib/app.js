@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING, capGrade } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf } from './xray.js';
 import { assess } from './coach.js';
@@ -1056,16 +1056,20 @@ export function startApp() {
   /* lessons.json: short rules the twice-daily review learned from graded runs and
      stress tests (general prompt-writing lessons, never anyone's words). Every
      prompt build uses them. At most 6, each kept short, so the writer stays fast. */
-  var lessons = { v: 0, list: [] };
+  var lessons = { v: 0, list: [], gv: 1, grader: [] };
   function loadLessons() {
     fetch("lessons.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { lessons = lessonsFrom(j); }, function () {});
   }
   function lessonsFrom(j) {
-    var list = (j && Array.isArray(j.lessons) ? j.lessons : []).map(function (l) {
-      return String((l && l.text) || "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
-    }).filter(function (t) { return t && t.length <= 240; }).slice(0, 6);
-    return { v: list.length && typeof j.version === "number" ? j.version : 0, list: list };
+    function clean(arr) {
+      return (Array.isArray(arr) ? arr : []).map(function (l) {
+        return String((l && l.text) || "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+      }).filter(function (t) { return t && t.length <= 240; }).slice(0, 6);
+    }
+    var list = clean(j && j.lessons), grader = clean(j && j.grader);
+    return { v: list.length && typeof j.version === "number" ? j.version : 0, list: list,
+      gv: j && typeof j.grader_version === "number" ? j.grader_version : 1, grader: grader };
   }
   function depthKeyOf(r) { return r.depth || (/Quick/.test(r.mode || "") ? "quick" : (r.complexity || "standard")); }
   function learned(field, key) {
@@ -1365,16 +1369,17 @@ export function startApp() {
     if (!(c >= 1 && c <= 5)) return null;
     var miss = (Array.isArray(j.missing) ? j.missing : []).map(function (m) { return String(m).toLowerCase().trim(); })
       .filter(function (m, i, a) { return GRADE_MISSING.indexOf(m) !== -1 && a.indexOf(m) === i; });
-    return { craft: c, rearranged: j.rearranged === true, invented: j.invented === true, missing: miss };
+    var re = j.rearranged === true, inv = j.invented === true;
+    return { craft: capGrade(c, miss, re, inv), rearranged: re, invented: inv, missing: miss };
   }
   function gradeRun(prompt, run) {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
-    var job = askGemini(gradePrompt(prompt, session.raw, session.answers), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
       var g = gradeFrom(r.text);
       if (!g) return;
       var fields = { grade: g.craft, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
-        grade_model: String(r.model || "").replace(/gemini-/, ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
+        grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv, grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
       var notes = [];

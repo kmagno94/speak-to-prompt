@@ -1,6 +1,6 @@
 {
-  "note": "Lessons learned: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests. Never anyone's words. Every prompt build adds them to the writing step. At most 6, each under 240 characters. Bump version on every change so the run log can compare grades before and after.",
-  "updated": "2026-10-21 00:40 UTC",
+  "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step; bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Never anyone's words. At most 6 of each, each under 240 characters.",
+  "updated": "2026-10-21 03:20 UTC",
   "version": 1,
   "lessons": [
     {
@@ -15,5 +15,7 @@
       "why": "Stress test 2 (Oct 18): the prompt said leaving whatever is left; the number check now accepts correct money math (308ada1).",
       "added": "2026-10-21"
     }
-  ]
+  ],
+  "grader_version": 2,
+  "grader": []
 }
