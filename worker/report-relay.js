@@ -32,7 +32,7 @@ const hits = new Map();         // key -> [timestamps], lives only in this Worke
 /* The only run fields accepted, in the order they're shown. */
 const RUN_FIELDS = ['app', 'device', 'mode', 'complexity', 'depth', 'est_intake_s', 'est_s', 'est_from', 'intake_model', 'intake_s', 'intake_tokens', 'write_model', 'thinking',
   'write_s', 'write_tokens', 'thinking_tokens', 'detours', 'words_in', 'questions', 'answered', 'tapped', 'words_out', 'num_flags', 'coach', 'xray_pct', 'xray_dropped', 'xray_stray', 'repair', 'repair_s', 'core', 'outcome', 'action', 'xray_opened', 'hidden_s',
-  'lessons_v', 'busy_plan', 'grade', 'grade_pass', 'grade_broke', 'grade_rearranged', 'grade_invented', 'grade_missing', 'grade_model', 'grade_s', 'grade_before', 'label_fix', 'label_fix_s'];
+  'lessons_v', 'busy_plan', 'grade', 'grade_pass', 'grade_broke', 'grade_rearranged', 'grade_invented', 'grade_missing', 'grade_model', 'grade_s', 'grade_before', 'label_fix', 'label_fix_s', 'grade_confirm'];
 
 function cors(origin) {
   return {

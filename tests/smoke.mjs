@@ -1420,7 +1420,7 @@ await check('label fix: below the bar with only format missing, one small call a
   // 1. Fix scores higher: the new prompt shows, the note says what changed, the run logs both grades
   let { p, sent, note } = await run({ labelFix: FIXED, regrade: { craft: 4.7, rearranged: false, invented: false, missing: [] } });
   expect(p.fixes.length === 1 && /PROMPT TO FINISH:/.test(p.fixes[0].text) && /how long/.test(p.fixes[0].text) && /lite/.test(p.fixes[0].model), 'one label fix call on the fast model asking for a length: ' + (p.fixes[0] && p.fixes[0].model));
-  expect(p.grades.length === 2 && p.grades[1].text.includes('about one screen'), 'the fixed prompt should be graded again');
+  expect(p.grades.length === 3 && p.grades[1].text.includes('about one screen') && p.grades[2].text.includes('about one screen'), 'the fixed prompt should be graded again, and its pass confirmed: ' + p.grades.length);
   expect(await p.inputValue('#output') === FIXED, 'the fixed prompt should replace the draft');
   expect(/4\.7 of 5/.test(note) && /passes the 4\.5 bar/.test(note) && /added format, up from 4\.0 \(.*s fix\)$/.test(note.trim()), 'note wrong: ' + note);
   await p.check('#devTools'); await p.click('#copyGrader'); await p.waitForTimeout(300);
@@ -1526,7 +1526,8 @@ await check('grader bench: one tap grades every bench.json case with the current
   await p.click('#benchRun');
   await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
   const n = bench.cases.length, sum = await p.textContent('.benchsum');
-  expect(p.grades.length === n, 'one grade call per case, got ' + p.grades.length);
+  const passes = bench.cases.filter((c) => c === first || c.key.score >= 4.5).length;
+  expect(p.grades.length === n + passes, 'one grade per case plus a second look for each pass: ' + p.grades.length + ' vs ' + (n + passes));
   expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
   expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(first.today), 'each case is graded with its own date');
   expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
@@ -1543,6 +1544,36 @@ await check('grader bench: one tap grades every bench.json case with the current
   await b.close();
   // A second run remembers the first for comparison
   await p.click('#benchRun'); await p.waitForFunction(() => /Done/.test(document.getElementById('benchInfo').textContent) && document.getElementById('benchRun').disabled === false, null, { timeout: 15000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('confirm passes: a pass gets a second look and the lower grade wins; fails need no second look', async () => {
+  const PASS = { craft: 4.7, missing: [], invented: false, rearranged: false, broke: [] }, FAIL = { craft: 4.0, missing: ['format'], invented: false, rearranged: false, broke: [] };
+  async function run(seq) {
+    let i = 0;
+    const p = await page({ intake: noQ, write: 'Confirm prompt', gradeFn: () => seq[Math.min(i++, seq.length - 1)] }); const sent = [];
+    await p.route('https://relay.test/report/run', async (r) => {
+      const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' };
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: h });
+      sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
+    });
+    await p.click('#moreOpts summary'); await p.check('#statsToggle');
+    await withKey(p); await p.fill('#thoughts', 'a note'); await p.click('#build'); await done(p);
+    await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 }); await p.waitForTimeout(400);
+    const note = await p.textContent('#gradeNote');
+    await p.click('#copy'); await p.waitForTimeout(400);
+    return { p, note, r: sent[0] || {} };
+  }
+  // Lucky pass, then a fail: the lower grade wins
+  let { p, note, r } = await run([PASS, FAIL]);
+  expect(p.grades.length >= 2 && /4\.0 of 5/.test(note) && /below the 4\.5 bar/.test(note) && /a second look gave 4\.00 \(first 4\.70\)/.test(note), 'a lucky pass should drop: ' + note);
+  expect(r.grade === 4 && r.grade_confirm === 'dropped', 'run log should show the drop: ' + JSON.stringify(r));
+  // Real pass: both agree, it stays a pass and says confirmed
+  ({ p, note, r } = await run([PASS, PASS]));
+  expect(p.grades.length === 2 && /4\.7 of 5/.test(note) && /passes the 4\.5 bar, confirmed/.test(note) && r.grade_confirm === 'held', 'a real pass should hold: ' + note);
+  // A fail needs no second look
+  ({ p, note, r } = await run([{ ...FAIL, missing: ['format', 'success'] }]));
+  expect(p.grades.length === 1 && r.grade_confirm === 'none', 'a fail gets one grade only: ' + p.grades.length);
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

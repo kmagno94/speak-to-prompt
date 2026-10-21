@@ -337,7 +337,7 @@ export function startApp() {
     if (stray.length) out.push("Numbers you never said: " + stray.join(", "));
     if (s.grades && s.grades.length) {
       out.push("", "GRADER DETAILS (" + (lessons.gv ? "g" + lessons.gv : "g1") + ", lessons v" + (lessons.v || 0) + (lessons.src === "draft" ? ", draft " + lessons.id : ", live") + ")");
-      s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no")); });
+      s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + (g.secondCraft != null ? " (" + g.firstCraft.toFixed(2) + " then " + g.secondCraft.toFixed(2) + ")" : "") : "")); });
     } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
     if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
     out.push("", "PROMPT", output.value);
@@ -1152,9 +1152,10 @@ export function startApp() {
             return new Promise(function (res) { setTimeout(res, BENCH_RETRY_MS); }).then(function () { return ask(c, true); });
           });
         }
+        function once(c) { return function () { return ask(c, false).then(function (r) { var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g.model = r.model; return g; }); }; }
         function one(c, i) {
-          return ask(c, false).then(function (r) {
-            var g = gradeFrom(r.text, items); out[i] = { c: c, g: g, model: r.model };
+          return gradeConfirmed(once(c)).then(function (g) {
+            out[i] = { c: c, g: g, model: g.model };
           }, function (e) { out[i] = { c: c, g: null, err: (e && e.message) || "failed" }; }).then(function () {
             done++; info.textContent = "Grading " + done + " of " + cases.length + " with " + label + "...";
           });
@@ -1189,6 +1190,7 @@ export function startApp() {
       if (!sameSet(g.missing, k.missing)) diff.push("missing: " + (g.missing.join(", ") || "none") + " vs " + (k.missing.join(", ") || "none"));
       if (g.invented !== !!k.invented) diff.push("invented " + (g.invented ? "yes" : "no") + " vs " + (k.invented ? "yes" : "no"));
       if (g.rearranged !== !!k.rearranged) diff.push("rearranged " + (g.rearranged ? "yes" : "no") + " vs " + (k.rearranged ? "yes" : "no"));
+      if (confirmNote(g)) diff.push(confirmNote(g));
       return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "</td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
     }).join("");
     var el = document.getElementById("benchOut");
@@ -1199,7 +1201,7 @@ export function startApp() {
     benchText = ["GRADER BENCH", sum].concat(prev.length ? ["Last runs: " + prev.join(" \u00b7 ")] : []).concat(out.map(function (o) {
       var k = o.c.key, g = o.g;
       if (!g) return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": error " + o.err;
-      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no");
+      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + " (" + g.firstCraft.toFixed(2) + " then " + (g.secondCraft != null ? g.secondCraft.toFixed(2) : "none") + ")" : "");
     })).join("\n");
     document.getElementById("benchCopy").disabled = false;
   }
@@ -1532,15 +1534,39 @@ export function startApp() {
     var re = j.rearranged === true, inv = j.invented === true, g = capGrade(c, miss, re, inv, broke);
     return { craft: g, pass: g >= GRADE_PASS, rearranged: re, invented: inv, missing: miss, broke: broke };
   }
+  /* One grade: a promise of the parsed grade (with .model), or an error. */
+  function gradeOnce(prompt, raw, answers, today, items, grader) {
+    return function () {
+      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+        var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g.model = r.model; return g;
+      });
+    };
+  }
+  /* Confirm passes: the grader varies a little run to run, so a borderline prompt
+     could pass on one lucky grade. Any grade at or over the bar gets a second look,
+     and the lower one wins. Fails need no second look. If the second look doesn't
+     come back, the first grade stands, marked unconfirmed. */
+  function gradeConfirmed(once) {
+    return once().then(function (g) {
+      if (!g.pass) return g;
+      return once().then(function (g2) {
+        var low = g2.craft < g.craft ? g2 : g;
+        low.confirm = g2.pass ? "held" : "dropped"; low.firstCraft = g.craft; low.secondCraft = g2.craft;
+        return low;
+      }, function () { g.confirm = "unconfirmed"; g.firstCraft = g.craft; return g; });
+    });
+  }
+  function confirmNote(g) {
+    return g.confirm === "dropped" ? "a second look gave " + g.secondCraft.toFixed(2) + " (first " + g.firstCraft.toFixed(2) + ")" : g.confirm === "unconfirmed" ? "pass not confirmed" : "";
+  }
   function gradeRun(prompt, run) {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
-    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader, items, session.today), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
-      var g = gradeFrom(r.text, items);
-      if (!g) return;
+    var job = gradeConfirmed(gradeOnce(prompt, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g) {
+      var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
-        grade_broke: g.broke.join("+") || "none",
+        grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none",
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
@@ -1555,7 +1581,8 @@ export function startApp() {
     if (target) target._grade = job;
   }
   function gradeText(g, fields, extra) {
-    var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" : "\u270b below the " + GRADE_PASS + " bar"];
+    var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" + (g.confirm === "held" ? ", confirmed" : "") : "\u270b below the " + GRADE_PASS + " bar"];
+    if (confirmNote(g)) notes.push(confirmNote(g));
     if (g.rearranged) notes.push("reads like your words rearranged");
     if (g.invented) notes.push("added something you didn't say");
     if (g.missing.length) notes.push("could add: " + g.missing.join(", "));
@@ -1583,8 +1610,7 @@ export function startApp() {
       var fixed = cleanPrompt(r.text);
       if (!onlyAdded(fixed, prompt)) return end("kept original", "tried adding " + what + ", but it changed other lines, so this is the original");
       if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
-      return askGemini(gradePrompt(fixed, session.raw, session.answers, lessons.grader, items, session.today), true, gemini.plan.intake, "low", null, 30000).then(function (r2) {
-        var g2 = gradeFrom(r2.text, items);
+      return gradeConfirmed(gradeOnce(fixed, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g2) {
         if (!g2 || g2.craft <= g.craft) return end("kept original", "tried adding " + what + ", but it didn't score higher, so this is the original");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
         var before = g.craft;
@@ -1597,7 +1623,7 @@ export function startApp() {
         g = g2;
         if (target) {
           target.grade_before = before; target.grade = g2.craft; target.grade_pass = g2.pass; target.grade_missing = g2.missing.join("+") || "none";
-          target.grade_broke = g2.broke.join("+") || "none"; target.grade_rearranged = g2.rearranged; target.grade_invented = g2.invented;
+          target.grade_broke = g2.broke.join("+") || "none"; target.grade_rearranged = g2.rearranged; target.grade_invented = g2.invented; target.grade_confirm = g2.confirm || "none";
           target.words_out = words(fixed); target.num_flags = session.numFlags;
         }
         end("added " + what.split(" and ").join("+"), "added " + what + ", up from " + (Math.round(before * 10) / 10).toFixed(1));
