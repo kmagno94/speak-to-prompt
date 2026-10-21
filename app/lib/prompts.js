@@ -136,11 +136,18 @@ export function gradeLabel(g) {
    number check) find details that were left out or numbers nobody said. It never
    rewrites the whole prompt; the page rechecks the result and keeps the original
    if the fix isn't better. */
+/* A short reaction or feeling ("this sounds like a lot of work honestly") is not a
+   detail the AI needs. Auto-Repair skips these so it never pastes them in. */
+const ASIDE = /\b(honestly|tbh|lol|lmao|haha|ugh|sounds like a lot|that's a lot|this is a lot|kind of a pain|kinda a pain|so annoying|kinda annoying|i'm tired of|i guess)\b/i;
+export function isAside(text) {
+  const t = String(text || "").trim();
+  return t.split(/\s+/).length <= 10 && ASIDE.test(t);
+}
 export function repairPrompt(prompt, raw, answers, problems) {
   const out = ["You are fixing a prompt that was written from a person's raw thoughts. Make only the fixes listed below. Keep everything else exactly as written, word for word, in the same order and format."];
   let n = 1;
   if (problems.dropped.length) {
-    out.push("", n++ + ". These things the person said are missing. Add each one where it fits naturally, in the person's meaning. If one is clearly small talk or doesn't matter to the request, skip it:");
+    out.push("", n++ + ". These things the person said are missing. Add each one where it fits naturally, in the person's meaning. If one is clearly small talk, a feeling, or a reaction (how they feel about the work), or doesn't matter to the request, skip it. Never paste feelings and reactions in:");
     problems.dropped.forEach((d) => out.push('- "' + d + '"'));
   }
   if (problems.stray.length) {

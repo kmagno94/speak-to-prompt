@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, isAside, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
@@ -1407,11 +1407,11 @@ export function startApp() {
   function cleanPrompt(t) { return String(t || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim(); }
 
   /* What Auto-Repair looks for: sentences of yours that didn't make it in (X-ray,
-     skipping short filler), numbers nobody said, and numbers you said that went
+     skipping short filler and feelings), numbers nobody said, and numbers you said that went
      missing (the number check). score = how many things a fix would address. */
   function qualityCheck(prompt) {
     var x = analyze(prompt, session.raw, withMem(session.answers));
-    var dropped = x.sources.filter(function (s) { return !s.used && words(s.text) >= 4; }).map(function (s) { return s.text; });
+    var dropped = x.sources.filter(function (s) { return !s.used && words(s.text) >= 4 && !isAside(s.text); }).map(function (s) { return s.text; });
     var n = numberIssues(prompt);
     return { pct: x.pct, dropped: dropped, stray: n.extra, missingNums: n.missing, score: dropped.length + n.extra.length + n.missing.length };
   }

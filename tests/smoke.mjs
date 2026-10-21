@@ -876,6 +876,28 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('auto-repair skips feelings and asides: they never trigger a fix or get pasted in (regular run Oct 21)', async () => {
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides. This sounds like a lot of work honestly.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const GOOD = BAD.replace('with a rough daily budget of $450.', 'with a daily budget that fits the total. I get motion sick on long bus rides, so keep long bus trips out.');
+  const intake = { title: 'Tokyo Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [] };
+  async function run(opts) {
+    const p = await page({ intake, ...opts });
+    await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+    return p;
+  }
+  // 1. Only the aside is left out: nothing to fix
+  let p = await run({ write: GOOD });
+  expect(p.repairs.length === 0 && await p.isHidden('#repairNote'), 'a left-out feeling should not trigger a repair: ' + (p.repairs[0] && p.repairs[0].text.slice(0, 400)));
+  // 2. Real problems too: the repair list names them, not the aside
+  p = await run({ write: BAD, repair: GOOD });
+  expect(p.repairs.length === 1, 'real problems should still get one repair');
+  const ask = p.repairs[0].text.split('RAW THOUGHTS:')[0];
+  expect(/motion sick/.test(ask) && !/sounds like a lot/.test(ask), 'repair list should skip the aside: ' + ask.slice(0, 500));
+  expect(/feelings/.test(ask), 'repair instructions should say to skip feelings and reactions');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('auto-repair never strips real times; corrected numbers and "two weeks" are not flagged (Kevin\'s stress test)', async () => {
   const RAW = 'ok so um I need help planning the next two weeks because it\'s getting kind of chaotic. My exam is Friday October 30th, wait no, I just checked, it\'s actually Saturday the 31st at 10am. I work Tuesday 6am to 2pm and Saturday 7 to 3. I focus best at the library after 7pm. Budget is $120 for the two weeks.';
   const DRAFT = 'You are an expert study planner.\nI need a realistic two-week plan.\nContext: Exam on Saturday, October 31st at 10:00 AM. I work Tuesdays 6:00 AM to 2:00 PM and Saturdays 7:00 AM to 3:00 PM. I focus best at the library after 7:00 PM. Budget: $120 total for the 14 days.\nTask: Build a day-by-day plan.\nStart right away.';
