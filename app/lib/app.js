@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, gradePrompt, isAside, LABEL_FIXES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
@@ -1280,7 +1280,8 @@ export function startApp() {
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
-    var text = withLessons(WRITE, lessons.list) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    session.today = todayText();
+    var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
@@ -1395,7 +1396,7 @@ export function startApp() {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
-    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader, items), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+    var job = askGemini(gradePrompt(prompt, session.raw, session.answers, lessons.grader, items, session.today), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
       var g = gradeFrom(r.text, items);
       if (!g) return;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
@@ -1442,7 +1443,7 @@ export function startApp() {
       var fixed = cleanPrompt(r.text);
       if (!onlyAdded(fixed, prompt)) return end("kept original", "tried adding " + what + ", but it changed other lines, so this is the original");
       if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
-      return askGemini(gradePrompt(fixed, session.raw, session.answers, lessons.grader, items), true, gemini.plan.intake, "low", null, 30000).then(function (r2) {
+      return askGemini(gradePrompt(fixed, session.raw, session.answers, lessons.grader, items, session.today), true, gemini.plan.intake, "low", null, 30000).then(function (r2) {
         var g2 = gradeFrom(r2.text, items);
         if (!g2 || g2.craft <= g.craft) return end("kept original", "tried adding " + what + ", but it didn't score higher, so this is the original");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");

@@ -78,6 +78,15 @@ export const WRITE = [
 /* Lessons learned: short, general rules the twice-daily review writes into
    lessons.json from graded runs and stress tests. They never hold anyone's words,
    only how to write better prompts. Added to WRITE so every run uses them. */
+/* Today's date from the phone, so plans with relative days ("by Friday") count
+   from the real day instead of a guess. The grader sees it too, as known. */
+export function todayText(d) {
+  try { return (d || new Date()).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }); } catch (e) { return ""; }
+}
+export function withToday(write, today) {
+  if (!today) return write;
+  return write + "\n\nTODAY: " + today + " (the person's own date). Use it to work out which days are left or how far away a date is. Never guess a different day. Only say what day it is if the plan depends on it.";
+}
 export function withLessons(write, lessons) {
   if (!lessons || !lessons.length) return write;
   return write + "\n\nLESSONS FROM REVIEWS OF EARLIER PROMPTS (general rules this tool has learned; follow them when they fit this request, and never let one override what the person actually said):\n- " + lessons.join("\n- ");
@@ -89,7 +98,7 @@ export function withLessons(write, lessons) {
    Scores are 1.00 to 5.00 (two decimals); GRADE_PASS is the bar a prompt must reach. */
 export const GRADE_MISSING = ['role', 'task', 'context', 'format', 'success', 'constraints', 'steps', 'ending'];
 export const GRADE_PASS = 4.5;
-export function gradePrompt(prompt, raw, answers, calibration, lessons) {
+export function gradePrompt(prompt, raw, answers, calibration, lessons, today) {
   const ls = (lessons || []).filter((l) => l && l.id && l.text);
   const out = [
     "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is or how polite it sounds. Be hard to impress: most decent prompts land in the 3s or low 4s.",
@@ -105,6 +114,7 @@ export function gradePrompt(prompt, raw, answers, calibration, lessons) {
   if (ls.length) out.push("", "LESSONS LEARNED (rules from reviews of earlier prompts; each one is a thing a good prompt must not get wrong. List the id of any the prompt breaks in broke):", ...ls.map((l) => "- " + l.id + ": " + l.text));
   const cal = (calibration || []).filter(Boolean);
   if (cal.length) out.push("", "CALIBRATION FROM CLAUDE'S REVIEWS OF YOUR PAST GRADES (you graded these kinds of prompts wrong before; follow these):", ...cal.map((c) => "- " + c));
+  if (today) out.push("", "TODAY'S DATE (from the person's phone; the prompt may use it, and it counts as something they said): " + today);
   out.push("", "PERSON'S RAW THOUGHTS:", '"""', raw, '"""');
   const a = (answers || []).filter((x) => x && x.answer);
   if (a.length) out.push("", "THEIR ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));

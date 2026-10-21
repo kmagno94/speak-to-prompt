@@ -1445,6 +1445,19 @@ await check('label fix: below the bar with only format missing, one small call a
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
+await check("today's date: the writer and the grader both get the phone's date, so relative days are counted, not guessed", async () => {
+  const p = await page({ intake: noQ, write: 'Study plan prompt' });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'study plan for my quiz on friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  const want = await p.evaluate(() => new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
+  const w = p.calls.find((c) => !c.intake);
+  expect(w && w.text.includes('TODAY: ' + want) && /Never guess a different day/.test(w.text), 'write step should get today: ' + (w && w.text.slice(-400)));
+  expect(w.text.indexOf('TODAY:') < w.text.indexOf('RAW THOUGHTS:'), 'today goes with the instructions, before the raw thoughts');
+  expect(p.grades[0] && p.grades[0].text.includes("TODAY'S DATE (from the person's phone") && p.grades[0].text.includes(want), 'grader should know today too');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
   const L = { version: 2, lessons: [{ id: 'L1', text: 'Write the Task as a clear instruction.' }, { id: 'L2', text: 'State leftover money as exact math.' }], grader_version: 4, grader: [] };
   async function run(grade) {
