@@ -63,7 +63,7 @@ export const ANALYZE = [
 
 export const WRITE = [
   "You are a world-class prompt engineer. Turn a person's raw thoughts and their answers into one complete, ready-to-paste prompt for any AI assistant, such as ChatGPT, Claude, or Gemini.",
-  "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
+  "Build the prompt from whichever of these help: the expert role the AI should take; the full background and context; the exact task; one line on what a great result looks like (how the person will judge it); an example of a good result, only if it removes ambiguity; the format and length of the response; and the tone.",
   "Keep every relevant detail from the thoughts and answers: facts, names, numbers, dates, limits, and preferences. Drop filler, repetition, and false starts.",
   "Never add devices, people, facts, or requirements they did not mention or confirm.",
   "An answer marked (tapped from suggested options) is the closest of a few preset choices, not their own words, so treat it as approximate. If it conflicts with, narrows, or shifts the goal stated in the raw thoughts, follow the raw thoughts and use the tapped answer only where it fits. Typed answers are their own words.",
@@ -71,7 +71,7 @@ export const WRITE = [
   "Keep the full scope of what they want. Do not narrow it. When it helps them succeed, ask the AI to also cover how it works, the steps, and known limits or troubleshooting.",
   "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
   "Only if the person raised several separate goals or ideas and it is unclear which to pursue first, end the prompt by asking the AI to lay those goals out as numbered options, each with 2 to 4 sentences on what it would produce, then wait for the person to choose. Different ways to reach one goal are not separate goals: in that case, ask the AI to recommend the best approach, briefly say why, and carry it out. Otherwise, end the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
-  "Before you finish, check once that every key fact is kept, the task is unmistakable, and the format is stated. Do not show this check.",
+  "Before you finish, check once that every key fact is kept, the task is unmistakable, the format is stated, and what a great result looks like is stated. Do not show this check.",
   "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
 ].join("\n");
 
@@ -103,7 +103,7 @@ export function gradePrompt(prompt, raw, answers, calibration, lessons, today) {
   const out = [
     "You are a strict senior prompt engineer reviewing one prompt written by a prompt-building tool. Compare the person's raw thoughts with the prompt to grade. Judge how well the prompt sets an AI up to give this person a great result, not how long it is or how polite it sounds. Be hard to impress: most decent prompts land in the 3s or low 4s.",
     "",
-    "missing: go through every label and list each one that is weak or absent: role (who the AI should be, stated up front, not buried inside the task), task (an unmistakable job), context (background the AI needs), format (the shape of the answer, such as a table, list, steps, or sections, AND roughly how long), success (what a great result looks like, or how the person will judge it), constraints (limits and hard noes the person gave), steps (how-to or troubleshooting the person needs), ending (a clear start-now or pick-an-option ending). A prompt that never says how long or what shape the answer should be is missing format. Use an empty list only if every label is clearly covered.",
+    "missing: go through every label and list each one that is weak or absent: role (who the AI should be, stated up front, not buried inside the task), task (an unmistakable job), context (background the AI needs), format (the shape of the answer, such as a table, list, steps, or sections, AND roughly how long), success (what a great result looks like, or how the person will judge it), constraints (limits and hard noes the person gave; if they gave none, constraints is not missing), steps (how-to or troubleshooting, only when the request needs one; otherwise steps is not missing), ending (a clear start-now or pick-an-option ending). A prompt that never says how long or what shape the answer should be is missing format. A label that doesn't apply to this request is never missing. Use an empty list only if every label that applies is clearly covered.",
     "rearranged: true if most of the prompt is the person's own sentences reordered or relabeled, instead of clear instructions written for the AI.",
     "invented: true if it adds facts, people, devices, numbers, or requirements the person never said or confirmed. Correct math on their own numbers (a total, what is left, a split) and unit conversions are fine.",
     "broke: the id of every lesson below that the prompt breaks (an empty list if it breaks none, or if there are no lessons). A lesson that doesn't apply to this request is not broken.",
@@ -142,16 +142,26 @@ export function gradeLabel(g) {
   return tenth + " of 5" + (Number(tenth) === Number(exact) ? "" : " (" + exact + ")");
 }
 
-/* Label fix: when the quality grade is under the bar and the only thing missing is
-   a label the app can add on its own (how long the answer should be, or a start-now
-   ending), one small call adds just that line. The page checks nothing else
-   changed, grades it again, and keeps it only if the grade went up. */
-export const LABEL_FIXES = ['format', 'ending'];
-export function labelFixPrompt(prompt, missing) {
-  const out = ["You are finishing a prompt by adding one or two short lines. Keep every existing line exactly as written, word for word, in the same order. Do not reword, merge, or remove anything."];
+/* Label fix: when the quality grade is under the bar and something missing is a
+   label the app can add on its own (how long, what a great result looks like, the
+   person's limits, how-to steps, or a start-now ending), one small call adds just
+   those lines. The page checks nothing else changed, grades it again, and keeps it
+   only if the grade went up. Up to two tries. */
+export const LABEL_FIXES = ['format', 'success', 'constraints', 'steps', 'ending'];
+export const LABEL_NAMES = { role: 'who the AI is', task: 'the exact job', context: 'background', format: 'how long and what shape', success: 'what a great result looks like', constraints: 'your limits', steps: 'how-to steps', ending: 'a start-now ending' };
+export function labelFixPrompt(prompt, missing, raw, answers) {
+  const out = ["You are finishing a prompt by adding a few short lines. Keep every existing line exactly as written, word for word, in the same order. Do not reword, merge, or remove anything."];
+  if (missing.includes('success')) out.push("", "- Add one new line, after the task, saying what a great result looks like for this request, so the AI knows how it will be judged (for example: A great answer is one I can follow tonight without looking anything else up). Use only what the prompt and the person already said.");
+  if (missing.includes('constraints')) out.push("", "- Add one new line listing the limits the person gave in their raw thoughts or answers below (such as budget, time, or things to avoid), in their meaning. Only limits they actually said; if they gave none, skip this.");
+  if (missing.includes('steps')) out.push("", "- Add one new line asking the AI to give clear numbered how-to steps, plus a quick fix for anything likely to go wrong.");
   if (missing.includes('format')) out.push("", "- Add one new line, just before the closing line, saying roughly how long the answer should be and what shape it takes, fitted to this request (for example: Keep it to about one screen, with short bullets instead of long paragraphs). Say the length in words, not new numbers.");
   if (missing.includes('ending')) out.push("", "- Add one closing line at the very end telling the AI to start right away, and to ask at most one short question only if something essential is missing.");
   out.push("", "Do not add facts, people, numbers, or requirements. Output only the full prompt: no title, no commentary, and no code fences.");
+  if (missing.includes('constraints') && raw) {
+    out.push("", "PERSON'S RAW THOUGHTS (only to find their limits):", '"""', raw, '"""');
+    const a = (answers || []).filter((x) => x && x.answer);
+    if (a.length) out.push("", "THEIR ANSWERS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  }
   out.push("", "PROMPT TO FINISH:", '"""', prompt, '"""');
   return out.join("\n");
 }

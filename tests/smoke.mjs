@@ -45,7 +45,7 @@ async function page(opts = {}) {
   p.calls = [];
   p.repairs = [];   // Auto-Repair requests, kept apart so older tests see only intake and write calls
   p.grades = [];    // quality grade requests (run stats on), also kept apart
-  p.fixes = [];     // label fix requests (below the bar, only format or ending missing)
+  p.fixes = [];     // label fix requests (below the bar, with a label the app can add)
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
   await p.route(/generativelanguage\.googleapis\.com/, async r => {
@@ -67,11 +67,12 @@ async function page(opts = {}) {
     if (/PROMPT TO FINISH:/.test(ask)) {
       p.fixes.push({ model, text: ask });
       if (opts.fixFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      const done = opts.labelFix != null ? opts.labelFix : (opts.write || 'THE PROMPT');
+      const done = opts.labelFixFn ? opts.labelFixFn(ask, p.fixes.length) : opts.labelFix != null ? opts.labelFix : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 120 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: done }] } }] }) });
     }
     if (/PROMPT TO GRADE:/.test(ask)) {
       if (opts.regrade && p.grades.length) opts = { ...opts, grade: opts.regrade };
+      if (opts.gradeSeq) opts = { ...opts, grade: opts.gradeSeq[Math.min(p.grades.length, opts.gradeSeq.length - 1)] };
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeBusyOnce) { p.busy = p.busy || new Map(); const k = ask.slice(-300); if (!p.busy.has(k)) p.busy.set(k, Date.now()); if (Date.now() - p.busy.get(k) < 400) { return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) }); } }
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
@@ -1359,7 +1360,7 @@ await check('quality grade: with run stats on, the fast model grades the prompt 
   expect(await p.inputValue('#output') === 'Plant swap prompt', 'the prompt shows without waiting for the grade');
   await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
   const note = await p.textContent('#gradeNote');
-  expect(/Quality check: 2\.0 of 5 \u00b7 \u270b below the 4\.5 bar/.test(note) && /rearranged/.test(note) && /could add: format, success/.test(note) && !/bogus/.test(note), 'grade note wrong: ' + note);
+  expect(/Quality check: 2\.0 of 5 \u00b7 \u270b below the 4\.5 bar/.test(note) && /rearranged/.test(note) && /could add: format \(how long and what shape\), success \(what a great result looks like\)/.test(note) && !/bogus/.test(note), 'grade note wrong: ' + note);
   expect(p.grades.length === 1 && /lite/.test(p.grades[0].model) && p.grades[0].level === 'low' && p.grades[0].json, 'grade should be one JSON call on Flash-Lite at low thinking: ' + JSON.stringify(p.grades[0] && { m: p.grades[0].model, l: p.grades[0].level }));
   expect(p.grades[0].text.includes(RAW) && p.grades[0].text.includes('PROMPT TO GRADE:') && p.grades[0].text.includes('Plant swap prompt'), 'grader should see the raw thoughts and the prompt');
   expect(p.calls.filter(c => !c.intake).length === 1, 'the grade is not a second write call');
@@ -1401,7 +1402,7 @@ await check('stricter grader: caps soft scores, uses grader calibration from les
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('label fix: below the bar with only format missing, one small call adds a length, regrades, and keeps it only if better', async () => {
+await check('label fix: below the bar with a label the app can add, small calls add those lines, regrade, and keep them only if better, up to two tries', async () => {
   const DRAFT = 'You are a meal prep coach.\nContext: Two roommates, $80 a week, vegetarian lunches.\nTask: Plan 10 lunches.\nStart right away.';
   const FIXED = 'You are a meal prep coach.\nContext: Two roommates, $80 a week, vegetarian lunches.\nTask: Plan 10 lunches.\nKeep it to about one screen, with short bullets instead of long paragraphs.\nStart right away.';
   const L = { version: 2, lessons: [], grader_version: 5, grader: [] };
@@ -1437,8 +1438,22 @@ await check('label fix: below the bar with only format missing, one small call a
   // 4. Fix fails: original stays, page still works
   ({ p, sent, note } = await run({ fixFail: true }));
   expect(await p.inputValue('#output') === DRAFT && /couldn't add format/.test(note), 'a failed fix should keep the original: ' + note);
-  // 5. Something besides format is missing, or it passes: no fix call
-  const q = await page({ intake: noQ, write: DRAFT, lessons: L, grade: { craft: 3.6, rearranged: false, invented: false, missing: ['format', 'success'] } });
+  // 5. Two tries: the first fix adds success and the limits, still under the bar, so a second adds a length
+  const FIX1 = DRAFT.replace('Start right away.', 'A great plan is one we can shop for in one trip.\nNo meat, ever.\nStart right away.');
+  const FIX2 = FIX1.replace('Start right away.', 'Keep it to about one screen, with short bullets.\nStart right away.');
+  ({ p, sent, note } = await run({ labelFixFn: (ask, n) => n === 1 ? FIX1 : FIX2, gradeSeq: [
+    { craft: 3.4, rearranged: false, invented: false, missing: ['success', 'constraints', 'format'] },
+    { craft: 3.9, rearranged: false, invented: false, missing: ['format'] },
+    { craft: 4.7, rearranged: false, invented: false, missing: [] }] }));
+  expect(p.fixes.length === 2 && /great result looks like/.test(p.fixes[0].text) && /limits the person gave/.test(p.fixes[0].text) && /how long/.test(p.fixes[0].text) && /PERSON'S RAW THOUGHTS \(only to find their limits\)/.test(p.fixes[0].text) && !/who the AI/.test(p.fixes[0].text), 'first try should add success, limits and length (never role), with the raw thoughts for limits: ' + (p.fixes[0] && p.fixes[0].text.slice(0, 300)));
+  expect(p.fixes[1].text.includes('No meat, ever.') && /how long/.test(p.fixes[1].text) && !/great result looks like/.test(p.fixes[1].text) && !/RAW THOUGHTS/.test(p.fixes[1].text), 'second try works on the first fix and adds only what is still missing');
+  expect(await p.inputValue('#output') === FIX2 && /4\.7 of 5/.test(note) && /added success, constraints and format, up from 2\.0 in 2 tries/.test(note), 'two-try note wrong: ' + note);
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent[0] && sent[0].label_fix === 'added success+constraints+format' && sent[0].label_fix_tries === 2 && sent[0].grade_before === 2 && sent[0].grade === 4.7, 'run should log both tries: ' + JSON.stringify(sent[0]));
+  const w = p.calls.find((c) => !c.intake);
+  expect(/what a great result looks like/.test(w.text) && /A label that doesn't apply to this request is never missing/.test(p.grades[0].text) && /constraints is not missing/.test(p.grades[0].text), 'writer asks for a success line and the grader skips labels that do not apply');
+  // 6. Only a label the app cannot add is missing: no fix call
+  const q = await page({ intake: noQ, write: DRAFT, lessons: L, grade: { craft: 3.6, rearranged: false, invented: false, missing: ['role', 'context'] } });
   await q.click('#moreOpts summary'); await q.check('#statsToggle');
   await withKey(q); await q.fill('#thoughts', 'meal prep for me and my roommate'); await q.click('#build'); await done(q);
   await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 }); await q.waitForTimeout(500);

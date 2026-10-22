@@ -1,6 +1,6 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-10-21 21:06 UTC",
+  "updated": "2026-10-22 00:49 UTC",
   "version": 4,
   "lessons": [
     {
@@ -34,7 +34,7 @@
       "added": "2026-10-21"
     }
   ],
-  "grader_version": 12,
+  "grader_version": 13,
   "grader": [
     {
       "id": "G1",
@@ -56,9 +56,9 @@
     },
     {
       "id": "G5",
-      "text": "Before scoring, check each label as yes or no. A yes needs a line in the prompt you could quote as proof; with no such line, the label goes in missing. Decide the score only after the checklist.",
-      "why": "Draft A (Oct 21 research): checklist with evidence (CheckEval, GoDaddy calibration) instead of a gut 1 to 5 score.",
-      "added": "2026-10-21"
+      "text": "Before scoring, check each label as yes, no, or doesn't apply. A yes needs a line you could quote as proof. Constraints when no limits were given, or steps when no how-to is needed, don't apply and are never missing.",
+      "why": "Regular run review (Oct 21): 4 of 14 graded runs scored 1.00 because constraints and steps were marked missing on notes with no limits and no how-to; the same note scored 1.00 then 4.65 a minute later. Was: no quotable line means missing.",
+      "added": "2026-10-22"
     },
     {
       "id": "G6",
