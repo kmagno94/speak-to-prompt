@@ -8,7 +8,7 @@
   const ICON = { empty: '✎', error: '!', warn: '⏳', success: '✓', info: 'i' };
 </script>
 
-<div class="msgbox {kind}" {id} role={kind === 'error' ? 'alert' : 'status'} in:fly={{ y: 6, duration: ms(200) }}>
+<div class="msgbox k-{kind}" {id} role={kind === 'error' ? 'alert' : 'status'} in:fly={{ y: 6, duration: ms(200) }}>
   <span class="mic" aria-hidden="true">{ICON[kind] || 'i'}</span>
   <div class="mbody">
     {#if title}<p class="mtitle">{title}</p>{/if}
@@ -30,12 +30,12 @@
   .macts { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-1); }
   .macts button { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); font-weight: 700; border-radius: var(--r-pill); }
   .macts button:active { transform: scale(0.97); }
-  .error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
-  .error .mic { background: var(--danger); color: var(--surface); }
-  .warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
-  .warn .mic { background: var(--warn); color: var(--surface); }
-  .warn .mtext { color: var(--ink); }
-  .success { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 9%, var(--surface)); }
-  .success .mic { background: var(--ok); color: var(--surface); }
-  .empty { border-style: dashed; }
+  .k-error { border-color: color-mix(in srgb, var(--danger) 55%, transparent); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+  .k-error .mic { background: var(--danger); color: var(--surface); }
+  .k-warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
+  .k-warn .mic { background: var(--warn); color: var(--surface); }
+  .k-warn .mtext { color: var(--ink); }
+  .k-success { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 9%, var(--surface)); }
+  .k-success .mic { background: var(--ok); color: var(--surface); }
+  .k-empty { border-style: dashed; }
 </style>
