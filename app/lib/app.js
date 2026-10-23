@@ -6,12 +6,16 @@ import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
+import { context } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
 export function startApp() {
+  /* What the page adds to the end of every finished prompt: picked context, then the core. */
+  function extras(p) { return core.apply(context.apply(p)); }
+  function extraBlock() { return [context.active ? context.block : "", core.active ? core.block : ""].filter(Boolean).join("\n\n"); }
   /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
   function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
   /* The deck shuffles in place, so each start works on its own copy. */
@@ -314,7 +318,7 @@ export function startApp() {
     notify("result");
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
-    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
+    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock() });   /* Prompt X-ray */
     setCategoryLine();
     setReady(true);
     output.value = text;
@@ -328,7 +332,7 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(core.apply(buildPrompt(raw)),   /* core */
+    showResult(extras(buildPrompt(raw)),   /* core */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
@@ -376,7 +380,7 @@ export function startApp() {
     if (ans.length) { out.push("", "MY ANSWERS"); ans.forEach(function (a) { out.push("Q: " + a.question, "A: " + a.answer + (a.tapped ? " (tapped)" : "")); }); }
     var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
     if (shown.length) out.push("", "ON SCREEN", shown.join("\n"));
-    var x = analyze(output.value, raw, ans, core.active ? core.block : "");
+    var x = analyze(output.value, raw, ans, extraBlock());
     out.push("", "X-RAY", x.pct + "% your words, " + x.added + " parts added to help");
     x.sources.filter(function (z) { return !z.used; }).forEach(function (z) { out.push("Not in the prompt: " + z.text); });
     var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
@@ -1474,6 +1478,7 @@ export function startApp() {
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
+    if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (added to the end of the prompt automatically, so don't repeat it; point to it by its titles where it helps):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     setBusy(true, "Writing your prompt...");
@@ -1529,7 +1534,7 @@ export function startApp() {
         if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
-        showResult(core.apply(prompt), techOn()   /* core */
+        showResult(extras(prompt), techOn()   /* core */
           ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
           : "Ready in " + secs + ". Your AI can start working right away.", session.title);
         showRepairNote(rep);
@@ -1660,7 +1665,7 @@ export function startApp() {
   function fixLabel(prompt, run, target, g, fields, items, el) {
     var t0 = Date.now(), first = g, best = g, cur = prompt, tries = 0, added = [], last = "", lastStatus = "kept original";
     function secs() { return Math.round((Date.now() - t0) / 100) / 10; }
-    function used() { return run !== writeRun || pendingRun !== target || output.value !== core.apply(cur); }
+    function used() { return run !== writeRun || pendingRun !== target || output.value !== extras(cur); }
     function end(status, note) {
       var s = secs();
       if (target) { target.label_fix = status; target.label_fix_s = s; target.label_fix_tries = tries; }
@@ -1692,8 +1697,8 @@ export function startApp() {
           session.grades.push(g2);
           session.draftBefore = prompt;
           cur = fixed; best = g2;
-          output.value = core.apply(fixed);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: core.active ? core.block : '' });
+          output.value = extras(fixed);
+          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
           var nc = showNumberCheck(fixed);
           session.numFlags = nc.extra.length + nc.missing.length;
           if (target) {

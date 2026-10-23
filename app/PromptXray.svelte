@@ -68,7 +68,7 @@
         {:else}
           <button type="button" class="seg {s.kind} c{s.color ?? 0}" class:on={picked === i} class:dim={source >= 0 && s.src !== source}
                   data-kind={s.kind} data-src={s.src ?? ''} onclick={() => tapSeg(i)}
-                  aria-label="{s.kind === 'from' ? 'From your sentence ' + num(s.src) : s.kind === 'core' ? 'Your core' : 'Added to help: ' + s.why}: {s.text}">
+                  aria-label="{s.kind === 'from' ? 'From your sentence ' + num(s.src) : s.kind === 'core' ? (s.text.includes('MY CONTEXT') ? 'Your context' : 'Your core') : 'Added to help: ' + s.why}: {s.text}">
             {#if s.kind === 'from'}<i class="num c{s.color}" aria-hidden="true">{num(s.src)}</i>{/if}{#if s.kind === 'added'}<small class="tag">{s.why}</small>{/if}{#each pieces(s) as p}{#if p.stray}<span class="stray" title="A number you never said">{p.t}</span>{:else if p.hit}<u>{p.t}</u>{:else}{p.t}{/if}{/each}
           </button>{' '}
         {/if}
@@ -101,8 +101,8 @@
             <p class="quote c{s.color}">{s.text}</p>
             <p class="wn">Underlined words match yours.</p>
           {:else if seg.kind === 'core'}
-            <p class="wl">Your core</p>
-            <p>Added at the end of every prompt while Use my core is on.</p>
+            <p class="wl">{seg.text.includes('MY CONTEXT') ? 'Your context' + (seg.text.includes('MY CORE') ? ' and core' : '') : 'Your core'}</p>
+            <p>{seg.text.includes('MY CONTEXT') ? 'The context you picked under Build, added at the end so the AI can refer to it.' : 'Added at the end of every prompt while Use my core is on.'}</p>
           {:else}
             <p class="wl">Added to help: {seg.why}</p>
             <p>{whyText(seg.why)}</p>
