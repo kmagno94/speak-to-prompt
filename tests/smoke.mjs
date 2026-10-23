@@ -1764,6 +1764,22 @@ await check('finish line: a long prompt can open in full, and Copy turns into a 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('quality check: a glanceable score, a plain label, and one tip (never color alone)', async () => {
+  const noQ = { questions: [] };
+  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 2, rearranged: false, invented: false, missing: ['success'] } });
+  await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'plant swap at the garden first Sunday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#qualityCheck', { timeout: 5000 });
+  const t = await p.textContent('#qualityCheck');
+  expect(/Could be sharper/.test(t) && /2\.0\s*\/5/.test(t), 'label and score missing: ' + t);
+  expect(/Tip: It could say what a great result looks like/.test(t), 'tip should name the missing piece: ' + t);
+  expect(await p.getAttribute('#qualityCheck .meter', 'aria-label') === '2.0 out of 5', 'meter needs a text label');
+  await p.click('#reset');
+  expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
   const p = await page();
   expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');

@@ -1545,7 +1545,7 @@ export function startApp() {
      labels, and lesson ids go into the run, for the review's lessons learned.
      It never slows the prompt down; if it's late or fails, the run is sent
      without it. */
-  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; }
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
     var c = Number(j && j.craft);
@@ -1602,7 +1602,18 @@ export function startApp() {
     }, function () {});
     if (target) target._grade = job;
   }
+  /* The glanceable Quality check (QualityCheck.svelte): score, a plain label, one tip. */
+  function gradeView(g, extra) {
+    var tip = g.pass ? "Paste it as is. It covers what a great answer needs."
+      : g.invented ? "Check it didn't add anything you didn't say."
+      : g.rearranged ? "Say what you want done, not only what's on your mind."
+      : g.missing.length ? "It could say " + (LABEL_NAMES[g.missing[0]] || g.missing[0]) + ". Add that to your note and build again."
+      : "Add a detail or two about what you want, then build again.";
+    var score = Math.round(g.craft * 10) / 10;
+    return { score: score, pass: !!g.pass, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
+  }
   function gradeText(g, fields, extra) {
+    ui.grade = gradeView(g, extra);
     var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" + (g.confirm === "held" ? ", confirmed" : "") : "\u270b below the " + GRADE_PASS + " bar"];
     if (confirmNote(g)) notes.push(confirmNote(g));
     if (g.rearranged) notes.push("reads like your words rearranged");

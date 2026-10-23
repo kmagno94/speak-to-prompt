@@ -17,6 +17,7 @@
   import Notice from './Notice.svelte';
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
+  import QualityCheck from './QualityCheck.svelte';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
@@ -116,6 +117,7 @@
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
+    <QualityCheck />
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>

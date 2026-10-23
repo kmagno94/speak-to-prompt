@@ -8,7 +8,8 @@ export const ui = $state({
   /* One message per place ('form' under the thoughts box, 'result' on the prompt card),
      shown by Notice.svelte with the shared Message look. app.js sets them with
      notify(); a button's `act` comes back to app.js as a window 'stp-act' event. */
-  notices: { form: null, result: null }
+  notices: { form: null, result: null },
+  grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
 
 /* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }] */
