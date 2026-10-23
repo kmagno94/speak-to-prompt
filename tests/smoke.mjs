@@ -79,6 +79,15 @@ async function page(opts = {}) {
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
+    if (/REWORK QUESTION STEP/.test(ask)) {
+      (p.reworkQs = p.reworkQs || []).push({ model, text: ask });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 90 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(opts.reworkQ || { question: '' }) }] } }] }) });
+    }
+    if (/FIRST DRAFT TO REWORK/.test(ask)) {
+      (p.reworks = p.reworks || []).push({ model, text: ask });
+      if (opts.reworkFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 600 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.rework || 'REWORKED PROMPT' }] } }] }) });
+    }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
@@ -1838,6 +1847,47 @@ await check('voice help: on iPhone, No shortcut? opens the Voice Memos steps; el
   expect(await p.evaluate(() => document.getElementById('memoGuide').open && document.getElementById('moreOpts').open), 'No shortcut? should open the by-hand steps');
   const q = await page();
   expect(!(await q.isVisible('#noShortcut')), 'No shortcut? should hide where Talk it out is hidden');
+});
+
+async function reworkPage(opts) {
+  const p = await page({ intake: { questions: [] }, write: 'First prompt', ...opts });
+  await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan a bake sale for the robotics club, friday, gym lobby'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#reworkBtn', { timeout: 5000 });
+  return p;
+}
+await check('rework: under the bar, it asks one question, rewrites from the first prompt, and keeps the higher score', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), reworkQ: { question: 'How much should each item cost?', choices: ['$1', '$2 to $3', '$5'] } });
+  await p.click('#reworkBtn');
+  await p.waitForSelector('#reworkQ');
+  expect(/How much should each item cost/.test(await p.textContent('#reworkQ')), 'the clarifying question should show');
+  await p.click('#reworkQ .chips button:has-text("$2 to $3")');
+  await p.waitForSelector('#reworkNote', { timeout: 5000 });
+  const w = p.reworks[0].text;
+  expect(/FIRST DRAFT TO REWORK[\s\S]*First prompt/.test(w) && /words rearranged/.test(w), 'rewrite should start from the first prompt with what was weak');
+  expect(/Q: How much should each item cost\?\nA: \$2 to \$3/.test(w), 'the new answer should reach the writer');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT', 'the higher-scoring rework should replace the prompt');
+  expect(/Reworked: 2\.0 to 5\.0, kept the new one/.test(await p.textContent('#reworkNote')), 'note wrong: ' + await p.textContent('#reworkNote'));
+  expect(!(await p.$('#reworkBtn')), 'only one rework per prompt');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: no question needed goes straight to the rewrite; a worse rework keeps the first prompt; a failed one says so', async () => {
+  const low = { craft: 3, rearranged: true, invented: false, missing: [] }, lower = { craft: 2, rearranged: true, invented: false, missing: [] };
+  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? lower : low) });
+  await p.click('#reworkBtn');
+  await p.waitForSelector('#reworkNote', { timeout: 5000 });
+  expect(!(await p.$('#reworkQ')), 'no question should show when none is needed');
+  expect(await p.inputValue('#output') === 'First prompt', 'a lower-scoring rework must not replace the prompt');
+  expect(/kept the first one/.test(await p.textContent('#reworkNote')), 'note should say the first was kept');
+  const q = await reworkPage({ grade: low, reworkFail: true });
+  await q.click('#reworkBtn');
+  await q.waitForSelector('#notice-result', { timeout: 5000 });
+  expect(/rework didn't come through/.test(await q.textContent('#notice-result')) && await q.inputValue('#output') === 'First prompt', 'a failed rework should keep the prompt and say so');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
