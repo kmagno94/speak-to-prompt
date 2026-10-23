@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, withContext, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, withContext, REWORK_QUESTION, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
@@ -246,6 +246,7 @@ export function startApp() {
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
+    else if (act === "rework") startRework();
   });
 
   form.addEventListener("submit", function (e) {
@@ -1492,18 +1493,24 @@ export function startApp() {
   }
   chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
-  function writeFinal(answers, quick) {
-    if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
-    session.answers = answers.filter(function (a) { return a.answer; });
+  /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
+  function writerText() {
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
-    session.lessonsV = lessons.list.length ? lessons.v : 0;
-    session.today = todayText();
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (added to the end of the prompt automatically, so don't repeat it; point to it by its titles where it helps):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
+    return text;
+  }
+  function writeFinal(answers, quick) {
+    if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
+    session.answers = answers.filter(function (a) { return a.answer; });
+    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
+    session.lessonsV = lessons.list.length ? lessons.v : 0;
+    session.today = todayText();
+    var text = writerText();
     setBusy(true, "Writing your prompt...");
     hideGrade();
     setBuild("");
@@ -1557,6 +1564,7 @@ export function startApp() {
         if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
+        session.basePrompt = prompt;
         showResult(extras(prompt), techOn()   /* core */
           ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
           : "Ready in " + secs + ". Your AI can start working right away.", session.title);
@@ -1599,7 +1607,84 @@ export function startApp() {
      labels, and lesson ids go into the run, for the review's lessons learned.
      It never slows the prompt down; if it's late or fails, the run is sent
      without it. */
-  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; }
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; ui.rework = null; }
+
+  /* Rework (from the Quality check, when it's under the bar): first see if one more
+     question would raise the grade and ask it; then rewrite with everything the same
+     plus the first prompt as the starting point and what was weak. The new version is
+     graded and kept only if it scores higher. Once per prompt, so it can't loop. */
+  function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
+  function reworkNotes(g) {
+    var n = [];
+    if (g.rearranged) n.push("It reads like the person's words rearranged. Turn it into clear instructions for the AI.");
+    if (g.invented) n.push("It added something the person didn't say. Take it out.");
+    g.missing.forEach(function (m) { n.push("It's missing " + (LABEL_NAMES[m] || m) + "."); });
+    (g.broke || []).forEach(function (b) { n.push("It broke lesson " + b + "."); });
+    if (!n.length) n.push("Make it sharper and more specific, using only what the person said.");
+    return n;
+  }
+  function startRework() {
+    var g = lastGrade(), key = gemini.key || gkey.value.trim();
+    if (!g || g.pass || !session.basePrompt || busy || !key || !gemini.plan || session.reworked) return;
+    session.reworked = true;
+    notify("result");
+    ui.rework = { stage: "asking" };
+    setBusy(true, "Checking if one question would help...");
+    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
+    var ask = REWORK_QUESTION + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS SO FAR:\n" + (lines.length ? lines.join("\n\n") : "None.") +
+      "\n\nCURRENT PROMPT:\n\"\"\"\n" + session.basePrompt + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
+    askGemini(ask, true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      var j = null; try { j = JSON.parse(cleanPrompt(r.text)); } catch (e) {}
+      var q = j && typeof j.question === "string" ? j.question.trim().slice(0, 160) : "";
+      if (!q) return doRework();
+      setBusy(false);
+      ui.rework = { stage: "question", question: q, choices: (Array.isArray(j.choices) ? j.choices : []).filter(function (c) { return typeof c === "string" && c.trim(); }).slice(0, 3).map(function (c) { return c.trim().slice(0, 60); }) };
+    }, function () { doRework(); });
+  }
+  window.addEventListener("stp-rework-answer", function (e) {
+    if (!ui.rework || ui.rework.stage !== "question" || !session) return;
+    var d = e.detail || {};
+    if (d.answer && String(d.answer).trim()) session.answers = session.answers.concat([{ question: ui.rework.question, answer: String(d.answer).trim().slice(0, 500), tapped: !!d.tapped }]);
+    doRework();
+  });
+  function doRework() {
+    var g = lastGrade(), first = session.basePrompt, run = writeRun, fields = session.gradeFields || {};
+    ui.rework = { stage: "writing" };
+    setBusy(true, "Reworking your prompt...");
+    var text = writerText() + "\n\nFIRST DRAFT TO REWORK (keep what works, fix what's weak, follow every rule above):\n\"\"\"\n" + first + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
+    var t0 = Date.now();
+    askGemini(text, false, writeModels(false), depthOf(session.complexity).level, null, WRITE_LIMIT).then(function (r) {
+      var next = cleanPrompt(r.text);
+      return gradeConfirmed(gradeOnce(next, session.raw, session.answers, session.today, lessons.items, lessons.grader)).then(function (g2) {
+        if (run !== writeRun) { setBusy(false); return; }
+        setBusy(false);
+        var keep = g2.craft > g.craft;
+        var note = "\ud83d\udd01 Reworked: " + (Math.round(g.craft * 10) / 10).toFixed(1) + " to " + (Math.round(g2.craft * 10) / 10).toFixed(1) + ", kept the " + (keep ? "new one" : "first one");
+        if (keep) {
+          session.draftBefore = first;
+          session.basePrompt = next;
+          session.grades.push(g2);
+          output.value = extras(next);
+          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
+          var nc = showNumberCheck(next);
+          session.numFlags = nc.extra.length + nc.missing.length;
+          output.dispatchEvent(new Event("stp:changed"));
+        }
+        session.rework = { kept: keep, before: g.craft, after: g2.craft, secs: Math.round((Date.now() - t0) / 100) / 10 };
+        var el = document.getElementById("gradeNote");
+        el.textContent = gradeText(keep ? g2 : g, fields, note);
+        el.hidden = false;
+        ui.grade = Object.assign({}, ui.grade, { reworked: true, note: note.replace(/^\S+ /, "") });
+        ui.rework = { stage: "done" };
+      });
+    }).catch(function () {
+      if (run !== writeRun) return;
+      setBusy(false);
+      session.reworked = false;
+      ui.rework = null;
+      notify("result", "error", "The rework didn't come through", "Your first prompt is still here and ready to copy. You can try the rework again.", [{ label: "Try the rework again", act: "rework", primary: true }]);
+    });
+  }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
     var c = Number(j && j.craft);
@@ -1649,6 +1734,7 @@ export function startApp() {
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
       session.grades = [g];
+      session.gradeFields = fields;
       var el = document.getElementById("gradeNote");
       el.textContent = gradeText(g, fields, "");
       el.hidden = false;
@@ -1720,6 +1806,7 @@ export function startApp() {
           session.grades.push(g2);
           session.draftBefore = prompt;
           cur = fixed; best = g2;
+          session.basePrompt = fixed;
           output.value = extras(fixed);
           xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
           var nc = showNumberCheck(fixed);

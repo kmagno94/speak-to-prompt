@@ -9,6 +9,7 @@ export const ui = $state({
      shown by Notice.svelte with the shared Message look. app.js sets them with
      notify(); a button's `act` comes back to app.js as a window 'stp-act' event. */
   notices: { form: null, result: null },
+  rework: null,       // Rework from the Quality check: { stage: asking | question | writing | done, question, choices }
   grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
 
