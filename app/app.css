@@ -140,7 +140,9 @@ textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px sol
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 button { font: inherit; cursor: pointer; border-radius: var(--r-sm); padding: var(--sp-3) 18px; min-height: var(--tap); border: 1px solid var(--line); background: var(--surface); color: var(--ink); transition: transform var(--dur-fast) var(--ease); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 25%, transparent); }
-button.primary:active, .btnlink:active { transform: translateY(1px); }
+/* Tap feedback: everything you can press gives a little under your finger. */
+button:active:not(:disabled), .btnlink:active, .filelink:active, .openrow a:active, .mode:active { transform: scale(0.97); }
+.btnlink, .filelink, .openrow a, .mode { transition: transform var(--dur-fast) var(--ease); }
 button.link { border: none; background: none; padding: 6px 2px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .error { color: var(--danger); font-size: 14px; margin: 0; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-4) 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 0 var(--line), 0 10px 24px -18px rgba(20, 40, 70, 0.35); }
@@ -245,8 +247,7 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .tracker li.active::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, var(--accent-soft) 6px); }
 .tracker li.skip { opacity: 0.45; text-decoration: line-through; }
 @media (prefers-reduced-motion: no-preference) {
-  .tracker li.active::before { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+  .tracker li.active::before { box-shadow: 0 0 0 5px var(--accent-soft); transition: box-shadow var(--dur) var(--ease); }
 }
 .tracker .nums { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .tracker .nums b { font-family: var(--mono); font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -271,7 +272,7 @@ button.getlink { color: var(--accent); font-weight: 700; text-decoration: underl
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
 .modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
-.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: 38px; line-height: 1.1; }
+.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: var(--tap); line-height: 1.1; }
 .mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
 .mode b, .mode small { position: relative; pointer-events: none; }
 .mode b { font-size: 13px; }
@@ -317,7 +318,6 @@ details.key[open] summary { margin-bottom: 10px; }
 .openrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .openrow span { font-size: 14px; color: var(--muted); flex-basis: 100%; }
 .openrow a { text-decoration: none; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 9px 16px; min-height: 42px; display: inline-flex; align-items: center; }
-.openrow a:active { transform: translateY(1px); }
 .keybody { display: flex; flex-direction: column; gap: 10px; }
 .keybody p { margin: 0; font-size: 14px; color: var(--muted); }
 .keybody a { color: var(--accent); font-weight: 700; }
@@ -328,7 +328,15 @@ details.key[open] summary { margin-bottom: 10px; }
 #keyStatus { font-size: 14px; margin: 0; min-height: 1.2em; }
 #keyStatus.good { color: var(--ok); }
 #keyStatus.bad { color: var(--danger); }
-@media (prefers-reduced-motion: no-preference) { .card { animation: rise 220ms ease-out; } @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } } }
+@media (prefers-reduced-motion: no-preference) {
+  .card { animation: rise var(--dur) var(--ease); }
+  @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+  /* Welcome: the page settles in once, under a second, and never blocks typing. */
+  .wrap > header, .journey, .hero { animation: arrive var(--dur-slow) var(--ease) both; }
+  .journey { animation-delay: 90ms; }
+  .hero { animation-delay: 180ms; }
+  @keyframes arrive { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
 
 /* Chat look, shared by the follow-up questions (ChatBuilder) and the starter (StartHelper). */
 .thread { display: flex; flex-direction: column; gap: 8px; }
@@ -372,7 +380,6 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* File voice note: a quieter pill beside Talk it out (only with "Use my Notes shortcuts") */
 .filelink { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; border-radius: 999px; padding: 10px 16px; min-height: 44px; color: var(--ink); border: 1.5px dashed var(--line); background: transparent; }
-.filelink:active { transform: translateY(1px); }
 
 .brief li em.tapped { font-style: normal; font-weight: 500; }
 

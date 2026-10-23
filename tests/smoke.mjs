@@ -1804,6 +1804,19 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
+await check('motion and touch: welcome entrance under a second, none with Reduce Motion, main controls at least 44px', async () => {
+  const p = await page();
+  const total = await p.evaluate(() => Math.max(...['.wrap > header', '.journey', '.hero'].map(s => { const c = getComputedStyle(document.querySelector(s)); return (parseFloat(c.animationDuration) + parseFloat(c.animationDelay)) * (c.animationDuration.endsWith('ms') ? 1 : 1000); })));
+  expect(total > 0 && total < 1000, 'entrance should finish under 1s, got ' + total + 'ms');
+  const small = await p.evaluate(() => ['#build', '#bannerPaste', '#quickMode', '#starterBtn'].map(s => { const el = document.querySelector(s); if (!el || el.closest('[hidden]')) return null; const r = (el.closest('.mode') || el).getBoundingClientRect(); return r.height < 44 ? s + ' ' + r.height : null; }).filter(Boolean));
+  expect(!small.length, 'touch targets under 44px: ' + small.join(', '));
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  const q = await ctx.newPage(); await q.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort()); await q.goto(BASE);
+  const anim = await q.evaluate(() => getComputedStyle(document.querySelector('.hero')).animationName);
+  expect(anim === 'none', 'Reduce Motion should turn the entrance off, got ' + anim);
+  await ctx.close();
+});
+
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
   const p = await page();
   expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');
