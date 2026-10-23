@@ -1850,6 +1850,57 @@ await check('mode: starts Quick with no key, moves to Normal when a key is added
   expect(await q.isChecked('#quickMode'), 'a mode you picked should stay picked');
 });
 
+/* My context (dev tools): reusable background picked per prompt. */
+await check('my context: hidden without dev tools; write, edit, delete, and it survives a reload', async () => {
+  const p = await page();
+  expect(!(await p.$('#contextRow')), 'My context should be hidden without dev tools');
+  await devOn(p);
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
+  await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.reload();
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'saved context should come back as a chip');
+  await p.click('#contextEdit');
+  await p.fill('#contextEditor .ctxtitle', 'Roastery');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
+  await p.click('#contextEdit');
+  await p.click('#contextEditor button:text-is("Delete")');
+  await p.click('#contextEditor button:text-is("Tap again to delete")');
+  await p.reload();
+  expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('my context: only picked pieces reach the prompt and the writer, the X-ray labels them, and the thoughts box is never saved', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }, { id: 'b', title: 'WGU', text: 'Taking D522 Python.' }])));
+  await devOn(p);
+  await p.fill('#thoughts', 'SECRET-NOTE plan my roast week');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  expect(/1 added to this prompt/.test(await p.textContent('#contextRow')), 'count should show 1 picked');
+  await p.click('#build'); await done(p);
+  let out = await p.inputValue('#output');
+  expect(/MY CONTEXT/.test(out) && /\[Roastery\]/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be added: ' + out.slice(-300));
+  await p.click('#xrayBtn');
+  expect(await p.$('#xray [aria-label^="Your context"]'), 'X-ray should label the context part as Your context');
+  expect(!/SECRET-NOTE/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the thoughts box must never be saved');
+  const q = await page();
+  await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Roastery")');
+  await q.fill('#thoughts', 'memo'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])'); await q.click('#qaList .chips button'); await q.click('#qaGo'); await done(q);
+  const write = q.calls.find(c => !c.intake);
+  expect(/CONTEXT THE PERSON PICKED/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context');
+  const r = await page();
+  await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
+  await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
+  expect(!/MY CONTEXT/.test(await r.inputValue('#output')), 'dev tools off should add no context');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
+});
+
 /* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
 async function ideasOn(p) { await p.click('#moreOpts summary'); await p.check('#ideasToggle'); }
 async function logIdea(p, kind, area, text) {

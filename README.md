@@ -41,6 +41,10 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
 
+### My context (testing)
+
+Also behind **Show my dev tools**. Under Build, **My context** keeps reusable pieces of background, each a title and a big text box (like "Bean N Bean roasting" or "My WGU class"). Tap a chip to add that piece to this prompt; the picked pieces go at the end (before Your core) and the writer sees them, so the prompt can point to them by title instead of repeating them. **+ New** or **Edit** opens the editor (Delete asks twice). Saved on this phone only (`stp-context`); picks are never saved.
+
 ### 💡 Ideas tab (just for me)
 
 Hidden unless **More options > Show my Ideas tab** is on. A 💡 button at the bottom right opens a side panel to log what I notice while using the app:
@@ -153,6 +157,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `app/ContextRow.svelte`, `app/lib/context.svelte.js` | My context (dev tools): reusable background picked per prompt |
   | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
   | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |
   | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
