@@ -56,6 +56,8 @@ Hidden unless **More options > Show my Ideas tab** is on. A 💡 button at the b
 
 Each idea can be marked fixed (it records the version), won't do, reopened, or deleted. **Copy fix session** copies one prompt with every open idea, oldest first, plus the repo and the staging rules, ready to paste into a new Claude chat.
 
+**Fixes close their own ideas:** each fix commit adds the idea's id to `ideas-done.json` (id, commit, version, and a short note about the fix, never the idea's text). When the tab opens, matching open ideas move to done ("Fixed in v2.1.0 (b1db256)") with a line saying how many closed, so the next Fix session lists only what's left. **Reopen** keeps an idea open even though a fix lists it. **Clear done** (asks twice) removes all done ideas from the phone.
+
 **Privacy:** ideas are saved on this phone only (`stp-ideas`, and under `stg:` on staging). Only what's typed in the panel is kept. The "where I just was" trail holds area names and problem signals, in memory only, and never anything from the prompt box, questions, or results. Nothing is sent anywhere.
 
 ### Two modes (next to Build my prompt)
@@ -156,6 +158,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/lib/prompts.js` | What gets sent to Gemini, and the no-key quick version |
   | `app/lib/ideas.js` | The idea strip's ideas |
   | `app/app.css` | Styles and color tokens (light and dark) |
+  | `ideas-done.json` | Idea ids closed by fix commits (no idea text); the Ideas tab marks them fixed, copied into the build |
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |

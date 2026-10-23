@@ -28,7 +28,10 @@
   const ready = $derived(!!(kind && area && text.trim() && soon));
   const done = $derived(ideas.list.filter((i) => i.status !== 'open'));
 
-  onMount(() => startTrail());
+  onMount(() => { startTrail(); ideas.syncDone(); });
+  $effect(() => { if (ideas.open) ideas.syncDone(); });
+  let clearArmed = $state(false);
+  function clearDone() { if (!clearArmed) { clearArmed = true; return; } ideas.clearDone(); clearArmed = false; showDone = false; }
 
   $effect(() => { if (ideas.open) tick().then(() => panel?.querySelector('button.ichip')?.focus()); });
 
@@ -156,6 +159,7 @@
     </section>
 
     <section class="list" aria-label="Your ideas">
+      {#if ideas.closedNote}<p class="closed" id="ideaClosed" role="status">{ideas.closedNote}</p>{/if}
       <p class="lbl">Open <span class="n">{ideas.openList.length}</span></p>
       {#each ideas.openList as it (it.id)}
         <div class="item" data-id={it.id}>
@@ -179,7 +183,8 @@
               <span class="ic" aria-hidden="true">{kindOf(it.kind).icon}</span>
               <div class="body">
                 <p class="txt">{it.text}</p>
-                <p class="meta">{it.where} · {it.status === 'fixed' ? `✅ Fixed${it.fixedIn ? ' in v' + it.fixedIn : ''}` : '🚫 Won’t do'}</p>
+                <p class="meta">{it.where} · {it.status === 'fixed' ? `✅ Fixed${it.fixedIn ? ' in v' + it.fixedIn : ''}${it.by ? ' (' + it.by + ')' : ''}` : '🚫 Won’t do'}</p>
+                {#if it.fixNote}<p class="meta">{it.fixNote}</p>{/if}
                 <div class="acts">
                   <button type="button" class="link" onclick={() => ideas.setStatus(it.id, 'open')}>Reopen</button>
                   <button type="button" class="link del" onclick={() => del(it.id)}>{armed === it.id ? 'Tap again to delete' : 'Delete'}</button>
@@ -187,6 +192,7 @@
               </div>
             </div>
           {/each}
+          <button type="button" class="link del" id="ideaClearDone" onclick={clearDone}>{clearArmed ? `Tap again to clear ${done.length} done` : `Clear done (${done.length})`}</button>
         {/if}
       {/if}
     </section>
@@ -247,6 +253,7 @@
   .acts { display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .acts .link { min-height: 40px; }
   .del { color: var(--danger) !important; }
+  .closed { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 14%, var(--surface)); color: var(--ok); font-weight: 700; font-size: 14px; }
   .privacy { margin: 0; font-size: 13px; color: var(--muted); }
   @media (prefers-reduced-motion: reduce) { .ideatab, .ichip, .pick { transition: none; } }
 </style>

@@ -2085,6 +2085,32 @@ await check('ideas tab: a Gemini failure becomes a "Looks like it might be" sugg
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen keeps one open, Clear done empties the done list', async () => {
+  const p = await page();
+  await p.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: 'fixme1', commit: 'abc1234', version: '2.1.0', note: 'Copy now works on iPad' }] }) }));
+  const item = (id, text) => ({ id, kind: 'bug', area: 'copy', where: 'Copy and open', topic: '', topicLabel: '', text, soon: 'now', context: { trail: [], signals: [] }, at: '2026-10-23T10:00:00Z', date: '2026-10-23', version: '2.1.0', status: 'open' });
+  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
+  await p.reload(); await p.click('#ideaTab');
+  await p.waitForSelector('#ideaClosed');
+  expect(/1 idea closed by the latest fixes/.test(await p.textContent('#ideaClosed')), 'should say one idea was closed');
+  expect(/Open 1/.test(await p.textContent('#ideaPanel .list')) && /1/.test(await p.textContent('#ideaTab .count')), 'only the unfixed idea should stay open');
+  await p.click('#ideaFix');
+  const clip = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/1 open idea/.test(clip) && /Paste is slow/.test(clip) && !/Copy did nothing/.test(clip), 'fix session should list only what is left');
+  expect(/ideas-done\.json/.test(clip), 'fix session should tell Claude to close ideas in ideas-done.json');
+  await p.click('#ideaPanel .list button:has-text("Show done")');
+  expect(/Fixed in v2\.1\.0 \(abc1234\)/.test(await p.textContent('#ideaPanel .list')) && /Copy now works on iPad/.test(await p.textContent('#ideaPanel .list')), 'done item should show the commit and the fix note');
+  await p.click('#ideaPanel .list .done button:text-is("Reopen")');
+  await p.keyboard.press('Escape'); await p.waitForSelector('#ideaPanel', { state: 'detached' });
+  await p.click('#ideaTab');
+  expect(/Open 2/.test(await p.textContent('#ideaPanel .list')), 'a reopened idea must not be closed again by the same fix');
+  await p.click('#ideaPanel .list button:text-is("Mark fixed") >> nth=0');
+  if (await p.$('#ideaPanel .list button:has-text("Show done")')) await p.click('#ideaPanel .list button:has-text("Show done")');
+  await p.click('#ideaClearDone'); await p.click('#ideaClearDone');
+  expect(!(await p.$('#ideaPanel .list .done')) && JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas'))).length === 1, 'Clear done should remove the done ideas only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 /* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
    live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
 if (process.env.APP_CHANNEL === 'staging') {

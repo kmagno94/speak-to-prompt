@@ -96,11 +96,34 @@ class Ideas {
   }
 
   setStatus(id, status) {
-    this.list = this.list.map((i) => (i.id !== id ? i : { ...i, status, statusAt: new Date().toISOString(), fixedIn: status === 'fixed' ? SEMVER : undefined }));
+    /* Reopening keeps an idea open even if a fix lists it later, so it isn't closed again. */
+    this.list = this.list.map((i) => (i.id !== id ? i : { ...i, status, statusAt: new Date().toISOString(), fixedIn: status === 'fixed' ? SEMVER : undefined, by: undefined, keepOpen: status === 'open' ? true : i.keepOpen }));
     writeList(this.list);
   }
 
   remove(id) { this.list = this.list.filter((i) => i.id !== id); writeList(this.list); }
+
+  /* Clear done: removes every fixed and won't-do idea from this phone. */
+  clearDone() { this.list = this.list.filter((i) => i.status === 'open'); writeList(this.list); }
+
+  /* Fixes close their own ideas: each fix commit adds the idea's id to ideas-done.json
+     (ids, commit, and a short note about the fix, never the idea's text). On open, the
+     tab marks matching open ideas fixed, so the next Fix session only lists what's left. */
+  closedNote = $state('');
+  async syncDone() {
+    if (!this.on || typeof fetch !== 'function') return;
+    let done = [];
+    try { const r = await fetch('ideas-done.json?t=' + Date.now(), { cache: 'no-store' }); if (r.ok) done = (await r.json()).done || []; } catch (e) { return; }
+    const byId = new Map(done.filter((d) => d && typeof d.id === 'string').map((d) => [d.id, d]));
+    let n = 0;
+    this.list = this.list.map((i) => {
+      const d = byId.get(i.id);
+      if (!d || i.status !== 'open' || i.keepOpen) return i;
+      n++;
+      return { ...i, status: 'fixed', statusAt: new Date().toISOString(), fixedIn: String(d.version || SEMVER).slice(0, 20), by: String(d.commit || '').slice(0, 12), fixNote: String(d.note || '').slice(0, 140) };
+    });
+    if (n) { writeList(this.list); this.closedNote = `✅ ${n} idea${n === 1 ? '' : 's'} closed by the latest fixes. They're under Show done.`; }
+  }
 
   /* Context trail: called when a tap lands in a new area. Keeps the last 3. */
   notePlace(area) {
@@ -182,7 +205,7 @@ Do this:
 2. Plan: a table of every idea (#, what you'd change, size S/M/L, risk). Group the small safe ones into one batch, then the rest one at a time, most urgent first. Wait for my OK.
 3. Build on the staging branch only. Never push to main. Only a promote pull request touches main. Add a smoke test for each bug you fix.
 4. For each change: a messy voice-memo style "Try it" note (made-up details) plus a what-to-tap, what-I-should-see table.
-5. When an idea is done and I've checked it on staging, tell me its number so I can tap Mark fixed in my Ideas tab.
+5. In the same commit as each fix, add the idea's id to ideas-done.json at the repo root ({ "id", "commit", "version", "note" }, where the note says what changed and never repeats the idea's text). My Ideas tab closes those ideas by itself once staging deploys, so the next Fix session only lists what's left. Tell me which numbers you closed so I can check them; if one isn't right I'll tap Reopen.
 
 How I work: casual like a friend, tables and lists, one clear recommendation. Start every reply with "STEP #: " and a one-line summary. Never say a push or deploy worked unless you confirmed it. Delete only when I say so. Never put my email on a public page. No em dashes. If Notion is connected, log each change in this project's Building Log with your full response.`;
 }

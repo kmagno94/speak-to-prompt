@@ -1,0 +1,8 @@
+{
+  "about": "Ideas closed by fixes. Each fix commit adds its idea's id here; the owner-only Ideas tab marks matching ideas fixed on the phone. Ids, commits, and a short note about the fix only, never the idea's text.",
+  "done": [
+    { "id": "mvkn9z1mlw4n", "commit": "9728d58", "version": "2.1.0", "note": "My context: reusable pieces picked under Build (questions see them too, 38477b0)" },
+    { "id": "mvkv67pecul3", "commit": "b1db256", "version": "2.1.0", "note": "Screen stays awake while Gemini works" },
+    { "id": "mvkv7qsjgbv7", "commit": "9246c45", "version": "2.1.0", "note": "Rework from this prompt, asking one question first if it helps" }
+  ]
+}
