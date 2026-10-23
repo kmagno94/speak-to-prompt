@@ -18,6 +18,8 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import QualityCheck from './QualityCheck.svelte';
+  import ContextRow from './ContextRow.svelte';
+  import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
@@ -94,6 +96,7 @@
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
+      <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
     <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
@@ -272,5 +275,5 @@
   <IdeasTab />
   <Guide />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>
