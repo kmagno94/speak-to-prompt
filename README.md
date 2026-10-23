@@ -41,6 +41,19 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
 
+### 💡 Ideas tab (just for me)
+
+Hidden unless **More options > Show my Ideas tab** is on. A 💡 button at the bottom right opens a side panel to log what I notice while using the app:
+
+1. **What is it?** 🐞 Bug, 💡 Idea, or ⚡ Faster way.
+2. **Looks like it might be…** up to 3 guesses from where I just tapped and what just went wrong (Gemini failed, copy failed, fast repeat taps, a page error). Tapping one fills in the spot, topic, and a starter sentence.
+3. **Where?** 12 areas of the app, grouped Before, During, After, Setup, Anywhere. Then **About what?** a few topics per area, and **Say it**.
+4. **How soon?** 🔥 Now, 🗓️ Soon, or 🌱 Someday. Then **Drop it in the jar**.
+
+Each idea can be marked fixed (it records the version), won't do, reopened, or deleted. **Copy fix session** copies one prompt with every open idea, oldest first, plus the repo and the staging rules, ready to paste into a new Claude chat.
+
+**Privacy:** ideas are saved on this phone only (`stp-ideas`, and under `stg:` on staging). Only what's typed in the panel is kept. The "where I just was" trail holds area names and problem signals, in memory only, and never anything from the prompt box, questions, or results. Nothing is sent anywhere.
+
 ### Two modes (next to Build my prompt)
 
 | Mode | What it does | Time |
@@ -127,6 +140,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
   | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |
   | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
 

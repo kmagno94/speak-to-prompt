@@ -13,6 +13,8 @@
   import { core } from './lib/core.svelte.js';
   import { memory } from './lib/memory.svelte.js';
   import MemorySuggest from './MemorySuggest.svelte';
+  import IdeasTab from './IdeasTab.svelte';
+  import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
@@ -196,6 +198,10 @@
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
         <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
       </div>
+      <div class="stats">
+        <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
+        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
+      </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>
         <div class="seg" role="group" aria-label="Grader source">
@@ -245,7 +251,8 @@
   </details>
 
   <Tutorial bind:this={tutorial} />
+  <IdeasTab />
   <Guide />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

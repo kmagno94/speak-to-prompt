@@ -1713,6 +1713,81 @@ await check('usage.json is valid', async () => {
   expect(j.day && j.updated && j.models && j.limits, 'usage.json missing day, updated, models, or limits');
 });
 
+/* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
+async function ideasOn(p) { await p.click('#moreOpts summary'); await p.check('#ideasToggle'); }
+async function logIdea(p, kind, area, text) {
+  await p.click('#ideaKind-' + kind); await p.click('#ideaArea-' + area);
+  await p.fill('#ideaText', text); await p.click('#ideaSave');
+  await p.waitForSelector('#ideaSaved');
+}
+
+await check('ideas tab: hidden by default, the More options toggle shows it and remembers', async () => {
+  const p = await page();
+  expect(!(await p.$('#ideaTab')), 'Ideas tab should be hidden until turned on');
+  await ideasOn(p);
+  await p.waitForSelector('#ideaTab');
+  await p.reload(); await p.waitForSelector('#ideaTab');
+  await p.click('#moreOpts summary'); await p.uncheck('#ideasToggle');
+  expect(!(await p.$('#ideaTab')), 'turning it off should hide the tab');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, Delete', async () => {
+  const p = await page();
+  await ideasOn(p); await p.click('#ideaTab'); await p.waitForSelector('#ideaPanel');
+  await logIdea(p, 'bug', 'copy', 'Copy button did nothing on my iPad');
+  expect(/1 open/.test(await p.textContent('#ideaSaved')), 'saved line should count 1 open');
+  expect(/1/.test(await p.textContent('#ideaTab .count')), 'tab badge should show 1');
+  await p.reload(); await p.click('#ideaTab'); await p.waitForSelector('#ideaPanel');
+  expect(/Copy button did nothing/.test(await p.textContent('#ideaPanel .list')), 'idea should survive a reload');
+  await p.click('#ideaPanel .list button:text-is("Mark fixed")');
+  expect(!(await p.$('#ideaTab .count')), 'no open ideas after Mark fixed');
+  await p.click('#ideaPanel .list button:has-text("Show done")');
+  expect(/Fixed in v\d/.test(await p.textContent('#ideaPanel .list')), 'fixed idea should show its version');
+  await p.click('#ideaPanel .list button:text-is("Reopen")');
+  await p.click('#ideaPanel .list button:text-is("Delete")');
+  await p.click('#ideaPanel .list button:text-is("Tap again to delete")');
+  expect(!(await p.evaluate(() => localStorage.getItem('stp-ideas'))), 'deleting the last idea should clear storage');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#ideaPanel', { state: 'detached', timeout: 2000 }).catch(() => { throw new Error('Escape should close the panel'); });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: never saves the prompt box, sends nothing, and the fix session lists open ideas with the staging rules', async () => {
+  const p = await page();
+  const sent = []; p.on('request', r => { if (!/localhost|generativelanguage|fonts\./.test(r.url())) sent.push(r.url()); });
+  await p.fill('#thoughts', 'SECRET-THOUGHTS plan my sister surprise party');
+  await p.click('#build'); await done(p);
+  await ideasOn(p); await p.click('#ideaTab');
+  await logIdea(p, 'idea', 'result', 'Show the word count under the prompt');
+  await logIdea(p, 'faster', 'input', 'Paste should happen in one tap');
+  const stored = await p.evaluate(() => localStorage.getItem('stp-ideas') || '');
+  expect(!/SECRET-THOUGHTS|sister/.test(stored), 'Ideas tab must never store the prompt box text');
+  expect(!sent.length, 'Ideas tab sent requests: ' + sent.join(', '));
+  await p.click('#ideaFix');
+  const clip = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/2 open ideas/.test(clip), 'fix session should count 2 open ideas');
+  expect(/Show the word count/.test(clip) && /Paste should happen/.test(clip), 'fix session should list both ideas');
+  expect(/staging branch only/i.test(clip) && /Never push to main/.test(clip), 'fix session should carry the staging rules');
+  expect(!/SECRET-THOUGHTS/.test(clip), 'fix session must not include the prompt box text');
+  expect(/saved on this phone only/i.test(await p.textContent('#footer')), 'footer should say ideas are saved on this phone');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: a Gemini failure becomes a "Looks like it might be" suggestion', async () => {
+  const fail = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
+  const p = await page({ fail });
+  await withKey(p);
+  await p.fill('#thoughts', 'plan a road trip'); await p.click('#build'); await done(p);
+  await ideasOn(p); await p.click('#ideaTab'); await p.click('#ideaKind-bug');
+  await p.waitForSelector('#ideaPicks');
+  const picks = await p.textContent('#ideaPicks');
+  expect(/Building › Fell back to quick version/.test(picks) && /Gemini failed/.test(picks), 'expected a Gemini failed suggestion, got: ' + picks);
+  await p.click('#ideaPicks .pick');
+  expect(/switched to the quick version/.test(await p.inputValue('#ideaText')), 'picking it should prefill the starter sentence');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 /* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
    live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
 if (process.env.APP_CHANNEL === 'staging') {

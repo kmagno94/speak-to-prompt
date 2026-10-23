@@ -12,6 +12,8 @@ import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
 export function startApp() {
+  /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
+  function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
   /* The deck shuffles in place, so each start works on its own copy. */
   var IDEAS = IDEA_LIST.slice();
   var form = document.getElementById("form");
@@ -299,6 +301,7 @@ export function startApp() {
 
 
   function selectFallback() {
+    signal("copy-failed", "Copy prompt");
     output.focus();
     output.select();
     output.setSelectionRange(0, output.value.length);
@@ -1401,6 +1404,7 @@ export function startApp() {
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
+      signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       session.mode = "Intake";
       session.intakeError = e && e.message ? e.message : "unknown";
@@ -1509,6 +1513,7 @@ export function startApp() {
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
+      signal("gemini-failed", "While writing");
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
