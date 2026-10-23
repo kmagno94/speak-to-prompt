@@ -310,6 +310,15 @@ export function startApp() {
   }
 
 
+  /* The finish line answers back: Copy turns into a check for a moment. */
+  function copiedFlash(btn) {
+    if (!btn) return;
+    if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+    btn.classList.remove("copied"); void btn.offsetWidth; btn.classList.add("copied");
+    btn.textContent = "\u2713 Copied";
+    clearTimeout(btn._flash);
+    btn._flash = setTimeout(function () { btn.classList.remove("copied"); btn.textContent = btn.dataset.label; }, 2200);
+  }
   function selectFallback() {
     signal("copy-failed", "Copy prompt");
     output.focus();
@@ -380,7 +389,8 @@ export function startApp() {
     var text = output.value;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        status.textContent = "Copied. Now paste it into your AI.";
+        status.textContent = "Copied. Paste it into your AI and take the first step.";
+        copiedFlash(document.getElementById("copy"));
         promptCopied = true;
         if (!noteSaved) {
           keepStatus.textContent = "Want a note of this too? Save it now. Your prompt stays copied.";

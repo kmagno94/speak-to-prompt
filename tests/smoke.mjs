@@ -1748,6 +1748,22 @@ await check('journey strip: Speak, then Answer while questions show, then Copy o
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
+await check('finish line: a long prompt can open in full, and Copy turns into a check', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'ok so I want to start running again but my knees hurt and I only have mornings before work and I hate treadmills, also my dog needs walks');
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#outputMore');
+  const before = await p.evaluate(() => document.getElementById('output').clientHeight);
+  await p.click('#outputMore');
+  const after = await p.evaluate(() => { const o = document.getElementById('output'); return { h: o.clientHeight, sh: o.scrollHeight }; });
+  expect(after.h > before && after.h >= after.sh - 4, 'Show the whole prompt should open the box to full length: ' + JSON.stringify({ before, after }));
+  expect(/Show less/.test(await p.textContent('#outputMore')), 'the button should flip to Show less');
+  await p.click('#copy');
+  await p.waitForFunction(() => /Copied/.test(document.getElementById('copy').textContent), null, { timeout: 2000 });
+  expect(/first step/.test(await p.textContent('#status')), 'status should say what to do next');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
   const p = await page();
   expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');

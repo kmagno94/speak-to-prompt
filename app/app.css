@@ -153,7 +153,17 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
   background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule) 27px 28px);
   background-position: 0 9px; background-attachment: local; border-color: var(--line);
 }
-.status { font-size: 14px; color: var(--ok); min-height: 1.2em; margin: 0; }
+.status { font-size: var(--fs-sm); font-weight: 600; color: var(--ok); min-height: 1.2em; margin: 0; }
+/* The finish line: one big Copy, the quieter moves under it. */
+.finish { display: grid; gap: var(--sp-2); }
+button.copybig { width: 100%; min-height: 56px; font-size: var(--fs-lg); font-family: var(--display); border-radius: var(--r-md); }
+button.copybig.copied { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.finish .secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.finish .secondary button { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-3); }
+@media (prefers-reduced-motion: no-preference) {
+  button.copybig.copied { animation: copied var(--dur-slow) var(--ease); }
+  @keyframes copied { from { transform: scale(0.96); } to { transform: none; } }
+}
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }

@@ -16,6 +16,7 @@
   import IdeasTab from './IdeasTab.svelte';
   import Notice from './Notice.svelte';
   import JourneyStrip from './JourneyStrip.svelte';
+  import OutputMore from './OutputMore.svelte';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
@@ -120,12 +121,15 @@
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
+    <OutputMore />
     <ReportIssue />
     <MemorySuggest />
-    <div class="row">
-      <button type="button" class="primary" id="copy">Copy prompt</button>
-      <button type="button" id="copyNote">Copy prompt + my note</button>
-      <button type="button" id="reset">Start over</button>
+    <div class="finish">
+      <button type="button" class="primary copybig" id="copy">Copy prompt</button>
+      <div class="row secondary">
+        <button type="button" id="copyNote">Copy prompt + my note</button>
+        <button type="button" id="reset">Start over</button>
+      </div>
     </div>
     <div class="openrow">
       <span>Copy and open in:</span>
