@@ -1729,6 +1729,25 @@ await check('messages: a blank Build shows a friendly empty message with a next 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('journey strip: Speak, then Answer while questions show, then Copy on the result, back to Speak on Start over', async () => {
+  const p = await page();
+  const here = () => p.textContent('.journey li[aria-current="step"] .word');
+  expect(/Speak/.test(await here()), 'should start on Speak');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(/Answer/.test(await here()), 'questions should put you on Answer, got ' + await here());
+  expect(/Speak, done/.test(await p.textContent('.journey')), 'Speak should read as done for screen readers');
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForFunction(() => /Copy/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
+  await p.click('#reset');
+  await p.waitForFunction(() => /Speak/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
+  const q = await page();
+  await q.fill('#thoughts', 'help me plan a 5k'); await q.click('#build'); await done(q);
+  expect(/Skipped in Quick/.test(await q.textContent('.journey')), 'Quick should mark Answer as skipped');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
   const p = await page();
   expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');

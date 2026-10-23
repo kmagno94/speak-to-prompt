@@ -15,6 +15,7 @@
   import MemorySuggest from './MemorySuggest.svelte';
   import IdeasTab from './IdeasTab.svelte';
   import Notice from './Notice.svelte';
+  import JourneyStrip from './JourneyStrip.svelte';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
@@ -51,6 +52,8 @@
     </svg>
     <p class="lede">Every great answer starts with a good first step. Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</p>
   </header>
+
+  <JourneyStrip />
 
   <form id="form" class="field hero" novalidate>
     <label for="thoughts" class="herolabel">What's on your mind?</label>
