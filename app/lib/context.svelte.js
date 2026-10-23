@@ -30,6 +30,10 @@ class Context {
     return parts.join('\n');
   });
 
+  /* Rough size of what picking adds (about 4 characters per token), shown under Build and
+     logged in run stats, so you can see what context costs. */
+  tokens = $derived(this.active ? Math.ceil((this.block.length + 2) / 4) : 0);
+
   constructor() { this.list = read(); }
 
   save() { write(this.list.filter((c) => c.title.trim() || c.text.trim())); }

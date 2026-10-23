@@ -24,7 +24,7 @@
   <div class="ctxrow" id="contextRow">
     <div class="ctxhead">
       <span class="ctxlabel">My context</span>
-      {#if context.chosen.length}<span class="ctxcount">{context.chosen.length} added to this prompt</span>{/if}
+      {#if context.chosen.length}<span class="ctxcount" id="contextCount">{context.chosen.length} added to this prompt · about {context.tokens} tokens</span>{/if}
       <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : (context.open = true))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
     </div>
     <div class="chips" role="group" aria-label="Context to add to this prompt">

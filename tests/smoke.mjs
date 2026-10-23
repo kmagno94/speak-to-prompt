@@ -1901,6 +1901,40 @@ await check('my context: only picked pieces reach the prompt and the writer, the
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
+await check('my context: the question step sees picked context so it can skip what it already answers', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Harbor Bean roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am.' }])));
+  await devOn(p); await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  let intake = p.calls.find(c => c.intake);
+  expect(!/CONTEXT THE PERSON PICKED/.test(intake.text), 'unpicked context must not reach the question step');
+  const q = await page();
+  await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Harbor Bean roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am.' }])));
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Harbor Bean")');
+  await q.fill('#thoughts', 'memo'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  intake = q.calls.find(c => c.intake);
+  expect(/CONTEXT THE PERSON PICKED[\s\S]*never ask a question it answers[\s\S]*Tuesday and Friday[\s\S]*RAW THOUGHTS:/.test(intake.text), 'picked context should sit before the raw thoughts with the never-ask rule');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('my context: shows about how many tokens picking adds, and run stats log it', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am. Two blends.' }])));
+  await devOn(p);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  const label = await p.textContent('#contextCount');
+  const m = label.match(/about (\d+) tokens/);
+  expect(m && +m[1] > 10 && +m[1] < 60, 'token estimate missing or off: ' + label);
+  await p.fill('#thoughts', 'plan my roast week'); await p.click('#build'); await done(p);
+  await p.click('#testLog summary').catch(() => {});
+  expect(new RegExp('context: 1 picked, about ' + m[1] + ' tokens added').test(await p.textContent('#testRuns')), 'run stats should log the context size: ' + await p.textContent('#testRuns'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 /* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
 async function ideasOn(p) { await p.click('#moreOpts summary'); await p.check('#ideasToggle'); }
 async function logIdea(p, kind, area, text) {
