@@ -287,7 +287,20 @@ export function startApp() {
     document.getElementById("categoryLine").hidden = !name;
     document.getElementById("categoryName").textContent = name;
   }
+  /* When Gemini can't finish, the quick prompt still shows, and one message says what
+     happened and the next step (Try again, Fix my key, or just wait). */
+  function failNotice(e) {
+    var st = e && e.status, offline = navigator.onLine === false || st === "network";
+    var retry = { label: "Try again", act: "retry", primary: true };
+    if (offline) return notify("result", "error", "You look offline", "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
+    if (st === 429) return e.perMinute
+      ? notify("result", "warn", "Google needs a short breather", "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
+      : notify("result", "warn", "Today's free Gemini limit is used up", "Your quick prompt is below and ready to copy. Google's free limit refreshes overnight, so follow-up questions are back tomorrow.");
+    if (st === 400 || st === 403) return notify("result", "error", "Google didn't accept your key", "Your quick prompt is below. Copy your key again from Google AI Studio, paste it, and tap Check key.", [{ label: "Fix my key", act: "key", primary: true }]);
+    notify("result", "error", "Gemini didn't come through", "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+  }
   function showResult(text, madeBy, title) {
+    notify("result");
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
     xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
@@ -1425,6 +1438,7 @@ export function startApp() {
       setBuild("");
       signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
+      failNotice(e);
       session.mode = "Intake";
       session.intakeError = e && e.message ? e.message : "unknown";
       logRun({ outcome: "intake failed: " + (e && e.message ? e.message : "unknown") });
@@ -1534,6 +1548,7 @@ export function startApp() {
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+      failNotice(e);
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });

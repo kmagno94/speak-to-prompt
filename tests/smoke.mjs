@@ -1766,18 +1766,42 @@ await check('finish line: a long prompt can open in full, and Copy turns into a 
 
 await check('quality check: a glanceable score, a plain label, and one tip (never color alone)', async () => {
   const noQ = { questions: [] };
-  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 2, rearranged: false, invented: false, missing: ['success'] } });
+  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 2, rearranged: true, invented: false, missing: [] } });
   await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', 'plant swap at the garden first Sunday'); await p.click('#build'); await done(p);
   await p.waitForSelector('#qualityCheck', { timeout: 5000 });
   const t = await p.textContent('#qualityCheck');
   expect(/Could be sharper/.test(t) && /2\.0\s*\/5/.test(t), 'label and score missing: ' + t);
-  expect(/Tip: It could say what a great result looks like/.test(t), 'tip should name the missing piece: ' + t);
+  expect(/Tip: Say what you want done/.test(t), 'tip should give one next step: ' + t);
   expect(await p.getAttribute('#qualityCheck .meter', 'aria-label') === '2.0 out of 5', 'meter needs a text label');
   await p.click('#reset');
   expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('errors: Gemini failing still gives a prompt, plus a plain message with Try again; a used-up limit says when it comes back', async () => {
+  const all = (code) => ({ 'gemini-3.8-flash': code, 'gemini-3.7-flash': code, 'gemini-3.6-flash': code, 'gemini-3.5-flash-lite': code });
+  const p = await page({ fail: all(500) });
+  await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#notice-result');
+  let t = await p.textContent('#notice-result');
+  expect(/didn't come through/.test(t) && /quick prompt is below/.test(t), 'failure message wrong: ' + t);
+  expect((await p.inputValue('#output')).length > 50, 'the quick prompt should still be there');
+  await p.click('#notice-result button:has-text("Try again")');
+  await p.waitForSelector('#notice-result');
+  const q = await page({ fail: all(429) });
+  await withKey(q); await q.fill('#thoughts', 'plan a road trip'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#notice-result');
+  t = await q.textContent('#notice-result');
+  expect(/limit|breather/.test(t) && /quick prompt is below/.test(t), 'rate limit message wrong: ' + t);
+  const r = await page({ fail: all(400) });
+  await withKey(r); await r.fill('#thoughts', 'plan a road trip'); await r.click('#build'); await done(r);
+  await r.waitForSelector('#notice-result');
+  expect(/didn't accept your key/.test(await r.textContent('#notice-result')), 'bad key message missing: ' + await r.textContent('#notice-result'));
+  await r.click('#notice-result button:has-text("Fix my key")');
+  expect(await r.evaluate(() => document.getElementById('keyPanel').open), 'Fix my key should open the key panel');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
