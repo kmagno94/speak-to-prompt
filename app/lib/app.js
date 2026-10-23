@@ -868,7 +868,27 @@ export function startApp() {
     buildBtn.disabled = on;
     chat.busy = on;
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
+    if (on) wakeOn(); else wakeOff();
   }
+  /* Keep the screen awake while Gemini works, so the phone doesn't lock mid-build.
+     Only while busy: let go when it's done, fails, or the page is hidden; ask again if
+     you come back mid-build. Phones without it get a one-line tip instead. */
+  var wakeLock = null, wakeTip = document.getElementById("wakeTip");
+  function wakeOn() {
+    if (!navigator.wakeLock || !navigator.wakeLock.request) { if (wakeTip) wakeTip.hidden = false; return; }
+    if (wakeLock || document.visibilityState !== "visible") return;
+    navigator.wakeLock.request("screen").then(function (l) {
+      if (!busy) { l.release().catch(function () {}); return; }
+      wakeLock = l;
+      l.addEventListener && l.addEventListener("release", function () { if (wakeLock === l) wakeLock = null; });
+    }, function () { if (wakeTip) wakeTip.hidden = false; });
+  }
+  function wakeOff() {
+    if (wakeTip) wakeTip.hidden = true;
+    var l = wakeLock; wakeLock = null;
+    if (l) l.release().catch(function () {});
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && busy) wakeOn(); });
 
 
 

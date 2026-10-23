@@ -1850,6 +1850,31 @@ await check('mode: starts Quick with no key, moves to Normal when a key is added
   expect(await q.isChecked('#quickMode'), 'a mode you picked should stay picked');
 });
 
+await check('wake lock: the screen stays awake only while Gemini works, and phones without it get a tip', async () => {
+  const p = await page({ intake: { questions: [] } });
+  await p.addInitScript(() => {
+    window.__wl = { req: 0, rel: 0, held: 0 };
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: () => { window.__wl.req++; window.__wl.held++; return Promise.resolve({ release: () => { window.__wl.rel++; window.__wl.held--; return Promise.resolve(); }, addEventListener() {} }); } } });
+  });
+  await p.reload();
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  await p.waitForFunction(() => window.__wl.req >= 1, null, { timeout: 3000 }).catch(() => { throw new Error('building should ask for a wake lock'); });
+  await done(p); await p.waitForTimeout(200);
+  const wl = await p.evaluate(() => window.__wl);
+  expect(wl.held === 0 && wl.rel >= 1, 'the wake lock should be let go once the prompt is ready: ' + JSON.stringify(wl));
+  expect(await p.isHidden('#wakeTip'), 'no tip when the phone supports it');
+  const q = await page({ intake: { questions: [] } });
+  await q.addInitScript(() => Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined }));
+  await q.reload();
+  await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.fill('#thoughts', 'plan my week'); await q.click('#build');
+  await q.waitForSelector('#wakeTip:not([hidden])', { timeout: 3000 });
+  await done(q); await q.waitForTimeout(200);
+  expect(await q.isHidden('#wakeTip'), 'the tip should go away when the build is done');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
 /* My context (dev tools): reusable background picked per prompt. */
 await check('my context: hidden without dev tools; write, edit, delete, and it survives a reload', async () => {
   const p = await page();

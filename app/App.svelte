@@ -107,6 +107,7 @@
       <p class="detail"></p>
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
+    <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
     <ReportIssue place="front" />
   </form>
 
