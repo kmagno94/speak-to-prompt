@@ -49,20 +49,19 @@
         <rect style="--i:2" x="112" y="22" width="140" height="4" rx="2"/>
       </g>
     </svg>
-    <p class="lede">Say what's on your mind, messy is fine. Get back a prompt you can paste into any AI to get a great answer.</p>
+    <p class="lede">Every great answer starts with a good first step. Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</p>
   </header>
 
-  <form id="form" class="field" novalidate>
-    <label for="thoughts">What's on your mind?</label>
+  <form id="form" class="field hero" novalidate>
+    <label for="thoughts" class="herolabel">What's on your mind?</label>
     <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
-      <button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button>
-    </div>
-    <div id="pasteWrap" class="pastewrap" hidden>
-      <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
-      {#if core.dev}<button type="button" class="pastebtn devpaste" id="pasteImprove">🛠️ Paste for Improve this app</button>{/if}
-      <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
+      <div id="pasteWrap" class="pastewrap" hidden>
+        <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
+        {#if core.dev}<button type="button" class="pastebtn devpaste" id="pasteImprove">🛠️ Paste for Improve this app</button>{/if}
+        <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
+      </div>
     </div>
     <div class="ideabox">
       <textarea id="thoughts" autocomplete="off" placeholder="Type or paste your thoughts. Messy is fine."></textarea>
@@ -85,6 +84,7 @@
       <CoreToggle />
       <div class="starterwrap"><StartHelper /></div>
     </div>
+    <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>

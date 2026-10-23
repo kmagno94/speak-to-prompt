@@ -78,8 +78,19 @@ h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-heigh
 .steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
 .steps b { display: block; font-family: var(--display); color: var(--accent); font-size: 15px; }
 @media (max-width: 460px) { .steps { grid-template-columns: 1fr; } }
-label { font-family: var(--display); font-weight: 600; font-size: 19px; }
-.field { display: flex; flex-direction: column; gap: 8px; }
+label { font-family: var(--display); font-weight: 600; font-size: var(--fs-lg); }
+.field { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* The hero: one warm card owns the first screen. The thoughts box is the start of the trip;
+   Talk it out and Paste are the only two moves before you type. */
+.hero {
+  gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-lg); background: var(--surface);
+  border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line), 0 18px 40px -28px rgba(20, 40, 70, 0.45);
+}
+.herolabel { font-size: var(--fs-xl); letter-spacing: -0.01em; line-height: 1.15; }
+.hero .voice { align-items: stretch; }
+.hero .voice .pastewrap:not(.banner) { flex: 1 1 140px; }
+.hero .voice .pastewrap.banner { flex: 1 1 100%; }
+.helpers { margin: calc(var(--sp-2) * -1) 0 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
 .hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
 textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; border: 1px solid var(--line); resize: vertical; }
 #thoughts {
