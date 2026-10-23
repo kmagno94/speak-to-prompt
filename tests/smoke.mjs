@@ -1713,6 +1713,20 @@ await check('usage.json is valid', async () => {
   expect(j.day && j.updated && j.models && j.limits, 'usage.json missing day, updated, models, or limits');
 });
 
+/* Experience pass: shared messages, first screen, journey strip, copy, quality check, errors. */
+await check('messages: a blank Build shows a friendly empty message with a next step, and typing clears it', async () => {
+  const p = await page();
+  await p.evaluate(() => document.getElementById('build').click());
+  await p.waitForSelector('#notice-form');
+  const t = await p.textContent('#notice-form');
+  expect(/Start with a thought/.test(t) && /Messy|messy/.test(t), 'empty message wrong: ' + t);
+  expect(await p.isVisible('#notice-form button:has-text("Give me an idea")'), 'empty message should offer an idea');
+  await p.click('#notice-form button:has-text("Give me an idea")');
+  expect((await p.inputValue('#thoughts')).length > 10, 'Give me an idea should fill the box');
+  expect(!(await p.$('#notice-form')), 'the message should clear once there is text');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 /* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
 async function ideasOn(p) { await p.click('#moreOpts summary'); await p.check('#ideasToggle'); }
 async function logIdea(p, kind, area, text) {

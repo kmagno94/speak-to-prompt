@@ -14,6 +14,7 @@
   import { memory } from './lib/memory.svelte.js';
   import MemorySuggest from './MemorySuggest.svelte';
   import IdeasTab from './IdeasTab.svelte';
+  import Notice from './Notice.svelte';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
@@ -77,7 +78,7 @@
     </div>
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
-    <p id="err" class="error" hidden>Type or paste something first.</p>
+    <Notice where="form" />
     <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
@@ -108,6 +109,7 @@
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
     <p id="gradeNote" class="gradenote" role="status" hidden></p>

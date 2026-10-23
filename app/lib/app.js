@@ -3,7 +3,7 @@ import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, 
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
-import { ui } from './ui.svelte.js';
+import { ui, notify } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
 import { report, RELAY } from './report.svelte.js';
@@ -18,7 +18,6 @@ export function startApp() {
   var IDEAS = IDEA_LIST.slice();
   var form = document.getElementById("form");
   var thoughts = document.getElementById("thoughts");
-  var err = document.getElementById("err");
   var result = document.getElementById("result");
   var output = document.getElementById("output");
   var status = document.getElementById("status");
@@ -220,12 +219,23 @@ export function startApp() {
 
 
 
-  thoughts.addEventListener("input", function () { err.hidden = true; });
+  thoughts.addEventListener("input", function () { notify("form"); });
+
+  /* Buttons on the shared messages (Notice.svelte) come back here. */
+  window.addEventListener("stp-act", function (e) {
+    var act = e.detail && e.detail.act;
+    if (act === "idea") { if (typeof ideasTry !== "undefined" && DECK.length) { ideasTry.click(); } thoughts.focus(); notify("form"); }
+    else if (act === "paste") pasteBtn.click();
+    else if (act === "retry") { notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "dismiss") notify(e.detail.where);
+  });
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var raw = thoughts.value.trim();
-    if (!raw) { err.textContent = "Type or paste something first."; err.hidden = false; thoughts.focus(); return; }
+    if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
     var key = gemini.key || gkey.value.trim();
     if (key) { geminiFlow(raw, key); return; }
@@ -387,7 +397,7 @@ export function startApp() {
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-    err.hidden = true;
+    notify("form");
     document.getElementById("handoff").hidden = true;
     output.value = "";
     status.textContent = "";
@@ -431,23 +441,22 @@ export function startApp() {
   var handoff = document.getElementById("handoff");
   function pasteFailed() {
     thoughts.focus();
-    err.textContent = "Press and hold inside the box, then tap Paste.";
-    err.hidden = false;
+    notify("form", "info", "Paste it in yourself", "Press and hold inside the box, then tap Paste.");
   }
   /* wrap (optional): turns the transcript into the box text, e.g. the Improve this app background. */
   function pasteFromClipboard(fromShortcut, wrap) {
     if (!navigator.clipboard || !navigator.clipboard.readText) { pasteFailed(); return; }
     navigator.clipboard.readText().then(function (text) {
       text = (text || "").trim();
-      if (!text) { err.textContent = "Your clipboard is empty. Copy the transcript in Voice Memos first."; err.hidden = false; return; }
-      if (text === "Speak to Prompt: waiting for your transcript") { err.textContent = "That's the shortcut's placeholder, not your transcript. In Voice Memos, choose Copy Transcript first."; err.hidden = false; return; }
+      if (!text) { notify("form", "warn", "Your clipboard is empty", "In Voice Memos, tap the three dots on your recording, then Copy Transcript. Then come back and tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
+      if (text === "Speak to Prompt: waiting for your transcript") { notify("form", "warn", "That's the shortcut's placeholder", "It isn't your transcript yet. In Voice Memos, choose Copy Transcript, then tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
       /* From the shortcut, the transcript replaces whatever was in the box
          (a fresh run). Tapped by hand, it adds to what's already typed. */
       var current = fromShortcut ? "" : thoughts.value.trim();
       if (wrap) text = wrap(text);
       thoughts.value = current ? current + "\n\n" + text : text;
       thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-      err.hidden = true;
+      notify("form");
       setShortcutMode(false);
       if (fromShortcut) handoff.hidden = false;
       ideasSync();
@@ -666,7 +675,7 @@ export function startApp() {
   ideasTry.addEventListener("click", function () {
     thoughts.value = DECK[ideasIdx][2];
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-    err.hidden = true;
+    notify("form");
     handoff.hidden = true;
     ideasHide();
   });
