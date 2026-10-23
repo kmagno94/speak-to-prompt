@@ -1,17 +1,31 @@
-# Builds Speak to Prompt, runs the smoke tests, and publishes to GitHub Pages
-# (and the report Worker to Cloudflare, once its secrets are set) on every push
-# to main. A failing test stops the deploy, so the live site only ever gets a
-# build that passed.
-# One-time setup: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
+# Builds Speak to Prompt, runs the smoke tests, and publishes BOTH versions to GitHub Pages:
+#   live    https://kmagno94.github.io/speak-to-prompt/          (from main)
+#   staging https://kmagno94.github.io/speak-to-prompt/staging/  (from the staging branch)
+# Pages hosts one site per repo and every deploy replaces all of it, so every run builds
+# both lanes together. That way a staging push never wipes live, and a live push never
+# wipes staging. A failing test in either lane stops the deploy.
+#
+# Releases: work goes to staging. Promote = a pull request from staging into main, merged,
+# then tag main with the version (like v2.0.1). Roll back = Actions > Test and deploy >
+# Run workflow, type a tag in "live_tag" (like v2.0.0). That pins live to the tag (a
+# live-hold tag) so later staging pushes keep it there. Type "main" to unpin.
+#
+# One-time setup: repo Settings > Pages > Source: "GitHub Actions", and Settings >
+# Environments > github-pages > Deployment branches: allow main AND staging.
 name: Test and deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
+    inputs:
+      live_tag:
+        description: 'Roll back: a tag to put live (like v2.0.0). Type main to go back to main. Empty: normal deploy.'
+        required: false
+        default: ''
 
 permissions:
-  contents: read
+  contents: write   # only to move the live-hold tag during a roll back
   pages: write
   id-token: write
 
@@ -22,31 +36,91 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      live: ${{ steps.src.outputs.live }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: ctl
+      - name: Decide what goes live
+        id: src
+        working-directory: ctl
+        env:
+          LIVE_TAG: ${{ inputs.live_tag }}
+        run: |
+          set -e
+          if [ "$LIVE_TAG" = "main" ]; then
+            git push origin :refs/tags/live-hold || true
+            echo "::notice title=Live unpinned::Live builds from main again."
+          elif [ -n "$LIVE_TAG" ]; then
+            git fetch --depth 1 origin "refs/tags/$LIVE_TAG:refs/tags/$LIVE_TAG" || { echo "::error title=No such tag::There is no tag named $LIVE_TAG"; exit 1; }
+            git push -f origin "refs/tags/$LIVE_TAG^{commit}:refs/tags/live-hold"
+            echo "::notice title=Live pinned::Live is pinned to $LIVE_TAG. Run this again with main to unpin."
+          fi
+          HOLD=$(git ls-remote --tags origin refs/tags/live-hold | cut -f1)
+          if [ -n "$HOLD" ]; then
+            echo "live=$HOLD" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Live is pinned::Live is built from the live-hold tag ($HOLD), not main."
+          else
+            echo "live=main" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.src.outputs.live }}
+          path: live
+      - uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: stg
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Smoke tests
-        run: npm test
-      - name: Build for GitHub Pages
-        run: npm run build
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/
+          cache-dependency-path: |
+            live/package-lock.json
+            stg/package-lock.json
+
+      # GITHUB_SHA is unset for the builds so each lane's version label is its own
+      # commit (vite.config.js falls back to git), not the commit that started the run.
+      - name: Live lane, smoke tests
+        working-directory: live
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          env -u GITHUB_SHA npm test
+      - name: Staging lane, smoke tests
+        working-directory: stg
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          env -u GITHUB_SHA APP_CHANNEL=staging npm test
+
+      - name: Build live
+        working-directory: live
+        run: env -u GITHUB_SHA BASE_PATH=/${{ github.event.repository.name }}/ npm run build
+      - name: Build staging
+        working-directory: stg
+        run: env -u GITHUB_SHA APP_CHANNEL=staging BASE_PATH=/${{ github.event.repository.name }}/staging/ npm run build
+      - name: Put both lanes in one site
+        run: |
+          mkdir -p site/staging
+          cp -r live/dist/. site/
+          cp -r stg/dist/. site/staging/
+          echo "live:    $(cat site/version.json)"
+          echo "staging: $(cat site/staging/version.json)"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
-  # The Cloudflare Worker (worker/report-relay.js), only after the tests pass.
+  # The Cloudflare Worker (worker/report-relay.js), only after the tests pass, and only
+  # from a normal push to main, so staging work never changes the live relay.
   # Needs two repo secrets: CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers"
   # template) and CLOUDFLARE_ACCOUNT_ID. Without them it skips with a note, and
   # the Worker can still be pasted by hand.
   worker:
     needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.outputs.live == 'main'
     runs-on: ubuntu-latest
     env:
       HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}

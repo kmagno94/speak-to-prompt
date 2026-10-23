@@ -3,6 +3,7 @@
 Turn messy thoughts, typed or spoken, into one ready-to-paste prompt for any AI. Stateless: nothing is saved. Built for AI beginners.
 
 **Live:** https://kmagno94.github.io/speak-to-prompt/
+**Staging (test copy):** https://kmagno94.github.io/speak-to-prompt/staging/
 
 ## Why it exists
 
@@ -107,7 +108,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 ## How it's built
 
 - **Svelte 5 + Vite.** It builds to plain static files (about 30 KB of script, gzipped) and is tuned for Safari on iPhone, iPad, and Mac.
-- **Hosted free on GitHub Pages**, published by GitHub Actions. Every push to `main` runs the smoke tests first, so the live site only gets builds that passed.
+- **Hosted free on GitHub Pages**, published by GitHub Actions. Every push to `main` or `staging` runs the smoke tests for both versions first, so neither site gets a build that failed. See How releases work below.
 - **Where things live:**
 
   | Path | What it is |
@@ -125,7 +126,8 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/app.css` | Styles and color tokens (light and dark) |
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
-  | `.github/workflows/deploy.yml` | Test, build, and publish (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |
   | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
 
 - **Run it locally:** `npm install`, then `npm run dev` and open the Network address on your iPhone (same Wi-Fi). Changes show up as you save.
@@ -136,6 +138,21 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   - **Busy hours:** tuning.json also lists 3-hour blocks where the usual writer is busy at least half the time. There the page starts on the less busy Flash model (if the run log shows one) and starts a backup after 30 seconds instead of up to 90.
   - **Backups:** each model has its own daily limit, so when one runs out the page moves to the next. Only when every model is used up does it switch to the quick version.
 - The prompt logic comes from my Prompt Optimization Engine: a short chat title, working out what the person actually needs, clarifying questions, then a prompt built from role, context, task, example, format, and tone.
+
+## How releases work
+
+Staging first. Live only changes through a promote.
+
+| Step | What happens |
+|---|---|
+| **Build** | All work goes to the `staging` branch. Each push tests both versions and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version. Live stays as it is |
+| **Test** | Open staging on the iPhone and go through the promote checklist in the Control Hub |
+| **Promote** | A pull request from `staging` into `main`, merged, then tag `main` with the version (like `v2.0.1`). Nothing else ever changes `main` |
+| **Roll back** | Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted |
+
+- **Versions** are semver in `package.json`, shown on the staging badge. The version pill shows the commit each build came from.
+- **Saved data is kept apart.** Staging and live share one web address, so the staging build prefixes every saved key with `stg:`. Testing never touches live settings, and staging asks for its own Gemini key.
+- **Only a normal push to `main`** deploys the report Worker, so staging work never changes the live relay.
 
 ## Tests
 

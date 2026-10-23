@@ -7,6 +7,11 @@ import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+/* "staging" when the deploy builds the staging branch (APP_CHANNEL=staging), else "live".
+   lib/channel.js uses it for the STAGING badge and the separate saved data. */
+const CHANNEL = process.env.APP_CHANNEL === 'staging' ? 'staging' : 'live';
+const SEMVER = JSON.parse(readFileSync(path.join(here, 'package.json'), 'utf8')).version;
+
 /* The commit the page was built from, shown in problem reports. */
 function appVersion() {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
@@ -63,6 +68,6 @@ export default defineConfig({
   envDir: here,
   base: process.env.BASE_PATH || '/',
   plugins: [svelte(), rootJson(), versionJson()],
-  define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()) },
+  define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()), __CHANNEL__: JSON.stringify(CHANNEL), __SEMVER__: JSON.stringify(SEMVER) },
   build: { outDir: path.join(here, 'dist'), emptyOutDir: true, target: 'safari16' }
 });

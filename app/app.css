@@ -343,3 +343,13 @@ details.key[open] summary { margin-bottom: 10px; }
 /* Auto-Repair note under "Ready in ..." */
 .repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }
 .gradenote { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* STAGING badge: only the staging build adds it (lib/channel.js). Amber with dark text
+   reads the same in light and dark mode, and it sits in the page flow so it never
+   covers a button. */
+.stg-badge {
+  max-width: 640px; margin: 0 auto 12px; padding: 6px 12px; border-radius: 8px;
+  background: #f2b33d; color: #2a1c00; border: 2px dashed #2a1c00;
+  font: 700 13px/1.35 var(--mono); letter-spacing: 0.03em; text-align: center;
+  overflow-wrap: anywhere;
+}

@@ -1713,6 +1713,33 @@ await check('usage.json is valid', async () => {
   expect(j.day && j.updated && j.models && j.limits, 'usage.json missing day, updated, models, or limits');
 });
 
+/* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
+   live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
+if (process.env.APP_CHANNEL === 'staging') {
+  await check('staging build: shows the STAGING badge and keeps its saved data under stg: keys', async () => {
+    const p = await page();
+    const badge = await p.textContent('#stgBadge').catch(() => '');
+    expect(/STAGING · v\d+\.\d+\.\d+/.test(badge || ''), 'STAGING badge with version missing, got: ' + badge);
+    expect(/^STAGING/.test(await p.title()), 'tab title should start with STAGING');
+    const keys = await p.evaluate(() => {
+      localStorage.setItem('stp-probe', '1');
+      const raw = []; for (let i = 0; i < localStorage.length; i++) raw.push(localStorage.key(i));
+      const back = localStorage.getItem('stp-probe');
+      localStorage.removeItem('stp-probe');
+      return { raw, back };
+    });
+    expect(keys.back === '1', 'reading back a saved key failed on staging');
+    expect(keys.raw.length && keys.raw.every(k => k.startsWith('stg:')), 'every stored key should start with stg:, got: ' + keys.raw.join(', '));
+  });
+} else {
+  await check('live build: no STAGING badge and saved keys stay unprefixed', async () => {
+    const p = await page();
+    expect(!(await p.$('#stgBadge')), 'live build must not show the STAGING badge');
+    const raw = await p.evaluate(() => { localStorage.setItem('stp-probe', '1'); const r = []; for (let i = 0; i < localStorage.length; i++) r.push(localStorage.key(i)); localStorage.removeItem('stp-probe'); return r; });
+    expect(raw.includes('stp-probe') && !raw.some(k => k.startsWith('stg:')), 'live keys should be unprefixed, got: ' + raw.join(', '));
+  });
+}
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
