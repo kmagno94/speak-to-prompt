@@ -1817,6 +1817,29 @@ await check('motion and touch: welcome entrance under a second, none with Reduce
   await ctx.close();
 });
 
+await check('input hints: one word, a very long ramble, and another language each get a gentle note, and the build still runs', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'budget'); await p.click('#build'); await done(p);
+  expect(/Short works/.test(await p.textContent('#notice-form')), 'one word should get a gentle note');
+  await p.click('#reset');
+  await p.fill('#thoughts', Array.from({ length: 650 }, (_, i) => 'word' + (i % 40)).join(' ')); await p.click('#build'); await done(p);
+  expect(/That's a lot/.test(await p.textContent('#notice-form')), 'very long input should get a reassuring note');
+  await p.click('#reset');
+  await p.fill('#thoughts', 'quiero un plan para correr por las mañanas porque tengo poco tiempo'); await p.click('#build'); await done(p);
+  expect(/another language/.test(await p.textContent('#notice-form')), 'Spanish should get the language note');
+  expect((await p.inputValue('#output')).includes('quiero un plan'), 'the words go in as written');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('voice help: on iPhone, No shortcut? opens the Voice Memos steps; elsewhere it stays hidden', async () => {
+  const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'iPhone should show Talk it out and No shortcut?');
+  await p.click('#noShortcut');
+  expect(await p.evaluate(() => document.getElementById('memoGuide').open && document.getElementById('moreOpts').open), 'No shortcut? should open the by-hand steps');
+  const q = await page();
+  expect(!(await q.isVisible('#noShortcut')), 'No shortcut? should hide where Talk it out is hidden');
+});
+
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
   const p = await page();
   expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');

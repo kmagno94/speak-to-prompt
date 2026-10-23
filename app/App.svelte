@@ -20,6 +20,12 @@
   import QualityCheck from './QualityCheck.svelte';
   import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
+  /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
+  function noShortcut() {
+    const more = document.getElementById('moreOpts'), memo = document.getElementById('memoGuide');
+    more.open = true; memo.open = true;
+    memo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -61,6 +67,7 @@
     <label for="thoughts" class="herolabel">What's on your mind?</label>
     <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
+      <button type="button" class="getlink nosc" id="noShortcut" onclick={noShortcut}>No shortcut?</button>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
       <div id="pasteWrap" class="pastewrap" hidden>
         <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>

@@ -221,6 +221,16 @@ export function startApp() {
 
   thoughts.addEventListener("input", function () { notify("form"); });
 
+  /* Gentle, non-blocking notes about the input itself. The build always goes ahead. */
+  function inputHint(raw) {
+    var n = words(raw);
+    var spanish = (raw.toLowerCase().match(/(^|\s)(que|para|por|una|los|las|del|est[aá]|quiero|tengo)(?=\s|$)/g) || []).length;
+    var letters = raw.replace(/[^\p{L}]/gu, ""), nonLatin = letters ? letters.replace(/[A-Za-z\u00C0-\u024F]/g, "").length / letters.length : 0;
+    if (n <= 2) return notify("form", "info", "Short works, a sentence works better", "Building now. Next time, add what you want to happen, like 'help me plan a 5k for a beginner', for a sharper prompt.");
+    if (n > 600) return notify("form", "info", "That's a lot, and that's fine", "Long, rambling notes are welcome. The prompt keeps the key details, so give it a moment.");
+    if (spanish >= 3 || nonLatin > 0.3) return notify("form", "info", "Writing in another language?", "Your words go in exactly as you wrote them. To get the answer in your language, add a line like 'Answer in Spanish'.");
+  }
+
   /* Buttons on the shared messages (Notice.svelte) come back here. */
   window.addEventListener("stp-act", function (e) {
     var act = e.detail && e.detail.act;
@@ -237,6 +247,7 @@ export function startApp() {
     var raw = thoughts.value.trim();
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
+    inputHint(raw);
     var key = gemini.key || gkey.value.trim();
     if (key) { geminiFlow(raw, key); return; }
     session = { raw: raw, quick: true };

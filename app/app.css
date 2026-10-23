@@ -302,8 +302,16 @@ details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
-details.key { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
-details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
+/* Settings rows: quieter than the journey cards, with a chevron that turns when open. */
+details.key { background: transparent; border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
+details.key[open] { background: var(--surface); }
+details.key > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--tap); }
+details.key > summary::-webkit-details-marker { display: none; }
+details.key > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur) var(--ease); margin-right: 4px; }
+details.key[open] > summary::after { transform: rotate(-135deg); }
+#talkLink[hidden] ~ .nosc { display: none; }
+.voice .nosc { min-height: var(--tap); }
+details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: var(--fs-md); color: var(--ink); }
 details.key[open] summary { margin-bottom: 10px; }
 .statsbody { display: flex; flex-direction: column; gap: 12px; }
 .morebody { display: flex; flex-direction: column; gap: 14px; }

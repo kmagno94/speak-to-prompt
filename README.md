@@ -63,6 +63,17 @@ Each idea can be marked fixed (it records the version), won't do, reopened, or d
 
 You can also tap **Quick prompt** on the questions card to write right away with whatever you've answered.
 
+The app starts in **Quick** when there's no key, so nobody hits a "needs a key" wall, and moves to **Normal** once a key is added, unless you picked a mode yourself.
+
+### The journey (what the page looks like)
+
+- **Speak › Answer › Copy** at the top shows where you are: numbered, labeled, a check when done, and "Skipped in Quick" when there are no questions.
+- **One message style** for empty, error, warning, and success notes (`Message.svelte`): an icon and a plain title, one line on what to do next, and a button. Gemini failing still gives the quick prompt, with Try again, Fix my key, or when the limit comes back.
+- **Copy is the finish line:** one big button that turns into a check. Long prompts get Show the whole prompt.
+- **Quality check** (when the grader runs): a 5-step meter, the score, a plain label, and one tip.
+- **Gentle input notes** for one word, very long notes, and other languages. The build always goes ahead.
+- **Motion** is small and uses shared tokens (150 to 300 ms, ease-out, transform and opacity only), with a welcome under a second. Reduce Motion turns it all off.
+
 **Number check (free).** Every prompt is checked by the page itself, with no extra Gemini request: if it mentions a number you never said (like iOS 18 when you said iOS 27, or a made-up 400-word limit) or leaves out one you did, a "Heads up" note shows above the prompt. The writer is also told to keep every number, version, and product name exactly as you said it, even ones it doesn't recognize.
 
 *A Deep mode (look-ups, review, rewrite loop) was built and tested, then removed: it never beat Normal and used up to 6 Flash requests a run.*
@@ -127,6 +138,8 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | Path | What it is |
   |---|---|
   | `app/App.svelte` | The page markup |
+  | `app/Message.svelte`, `app/Notice.svelte` | The one look for empty, error, warning, and success messages, and where each shows |
+  | `app/JourneyStrip.svelte`, `app/QualityCheck.svelte`, `app/OutputMore.svelte` | Speak › Answer › Copy, the glanceable Quality check, and Show the whole prompt |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
   | `app/lib/rotate.js` | Picks which 5 starter answers show, from the current 3-hour window (no storage) |
