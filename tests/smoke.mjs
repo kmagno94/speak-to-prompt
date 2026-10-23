@@ -312,9 +312,11 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
 
 await check('mode picker (Svelte component): hint follows the mode and the key', async () => {
   const p = await page();
+  expect(await p.isChecked('#quickMode') && /^Quick: writes right away/.test(await p.textContent('#modeHint')), 'without a key the app should start in Quick: ' + await p.textContent('#modeHint'));
+  await p.check('#normalMode');
   expect(/Normal: .*Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'Normal without a key should say it needs one');
   await p.check('#quickMode');
-  expect(/^Quick: skips/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
+  expect(/^Quick:/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
   await p.check('#normalMode'); await withKey(p);
   expect(!/Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'hint still asks for a key after one was typed');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
@@ -1725,6 +1727,16 @@ await check('messages: a blank Build shows a friendly empty message with a next 
   expect((await p.inputValue('#thoughts')).length > 10, 'Give me an idea should fill the box');
   expect(!(await p.$('#notice-form')), 'the message should clear once there is text');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
+  const p = await page();
+  expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.waitForFunction(() => document.getElementById('normalMode').checked, null, { timeout: 2000 }).catch(() => { throw new Error('adding a key should switch to Normal'); });
+  const q = await page();
+  await q.check('#normalMode'); await q.check('#quickMode'); await withKey(q); await q.dispatchEvent('#gkey', 'input'); await q.waitForTimeout(200);
+  expect(await q.isChecked('#quickMode'), 'a mode you picked should stay picked');
 });
 
 /* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
