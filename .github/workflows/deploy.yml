@@ -12,6 +12,13 @@
 # Run workflow, type a tag in "live_tag" (like v2.0.0). That pins live to the tag (a
 # live-hold tag) so later staging pushes keep it there. Type "main" to unpin.
 #
+# Two speeds, so staging stays quick and live stays safe:
+#   staging push  release check + QUICK core smoke tests gate the deploy (a few minutes);
+#                 live is rebuilt but not re-tested if main's commit already passed;
+#                 the full suite runs in the background ("Full tests") and turns the run red if it fails
+#   promote PR    promote-check.yml runs the full suite on what will go live, before the merge
+#   main push     the full suite on both lanes gates the deploy (same as roll back)
+#
 # One-time setup: repo Settings > Pages > Source: "GitHub Actions", and Settings >
 # Environments > github-pages > Deployment branches: allow main AND staging.
 name: Test and deploy
@@ -30,6 +37,7 @@ permissions:
   contents: write   # only to move the live-hold tag during a roll back
   pages: write
   id-token: write
+  actions: read     # to see whether main's commit already passed its full run
 
 concurrency:
   group: pages
@@ -49,6 +57,8 @@ jobs:
         working-directory: ctl
         env:
           LIVE_TAG: ${{ inputs.live_tag }}
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           if [ "$LIVE_TAG" = "main" ]; then
@@ -60,15 +70,33 @@ jobs:
             echo "::notice title=Live pinned::Live is pinned to $LIVE_TAG. Run this again with main to unpin."
           fi
           HOLD=$(git ls-remote --tags origin refs/tags/live-hold | cut -f1)
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
           if [ -n "$HOLD" ]; then
             echo "live=$HOLD" >> "$GITHUB_OUTPUT"
+            echo "live_ref=$HOLD" >> "$GITHUB_OUTPUT"
             echo "::notice title=Live is pinned::Live is built from the live-hold tag ($HOLD), not main."
           else
             echo "live=main" >> "$GITHUB_OUTPUT"
+            echo "live_ref=$MAIN_SHA" >> "$GITHUB_OUTPUT"
           fi
+          # Two speeds. A staging push only changes staging, so live's code is rebuilt but not
+          # re-tested when this exact main commit already passed its own full run. Anything
+          # else (main push, roll back, pinned live, or main never passed) tests live in full.
+          TEST_LIVE=true
+          if [ "$EVENT" = "push" ] && [ "$GITHUB_REF" = "refs/heads/staging" ] && [ -z "$HOLD" ]; then
+            OK=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&event=push&status=success&head_sha=$MAIN_SHA&per_page=1" --jq '.total_count' 2>/dev/null || echo 0)
+            if [ "${OK:-0}" -gt 0 ]; then
+              TEST_LIVE=false
+              echo "::notice title=Live not re-tested::main ($MAIN_SHA) already passed its full run; live is rebuilt as is."
+            else
+              echo "::notice title=Testing live too::main ($MAIN_SHA) has no passing full run yet, so live gets the full suite."
+            fi
+          fi
+          echo "test_live=$TEST_LIVE" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" = "refs/heads/staging" ] && [ "$EVENT" = "push" ]; then echo "quick=1" >> "$GITHUB_OUTPUT"; else echo "quick=0" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.src.outputs.live }}
+          ref: ${{ steps.src.outputs.live_ref }}
           path: live
       - uses: actions/checkout@v4
         with:
@@ -84,10 +112,13 @@ jobs:
 
       # GITHUB_SHA is unset for the builds so each lane's version label is its own
       # commit (vite.config.js falls back to git), not the commit that started the run.
-      - name: Live lane, smoke tests
+      - name: Live lane, install
+        working-directory: live
+        run: npm ci
+      - name: Live lane, smoke tests (full)
+        if: steps.src.outputs.test_live == 'true'
         working-directory: live
         run: |
-          npm ci
           npx playwright install --with-deps chromium
           env -u GITHUB_SHA npm test
       # Release loop: releases.json matches package.json and staging is at most 5 builds
@@ -99,12 +130,14 @@ jobs:
           LIVE_PACKAGE: ${{ github.workspace }}/live/package.json
         run: |
           if [ -f scripts/check-release.mjs ]; then node scripts/check-release.mjs; else echo "No release check on this branch yet."; fi
-      - name: Staging lane, smoke tests
+      # Staging push: the QUICK core set gates the deploy (about a minute); the full suite runs
+      # in the background job below. Main push or roll back: the full suite gates the deploy.
+      - name: Staging lane, smoke tests (${{ steps.src.outputs.quick == '1' && 'quick' || 'full' }})
         working-directory: stg
         run: |
           npm ci
           npx playwright install --with-deps chromium
-          env -u GITHUB_SHA APP_CHANNEL=staging npm test
+          env -u GITHUB_SHA APP_CHANNEL=staging QUICK=${{ steps.src.outputs.quick }} npm test
 
       - name: Build live
         working-directory: live
@@ -123,6 +156,25 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+  # Staging push only: the full suite on the pushed staging commit, next to the quick deploy.
+  # It never holds up the deploy, but a failure turns the run red so it's caught long before
+  # the promote check (which would stop the promote anyway).
+  full-staging:
+    name: Full tests (staging, background)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: env -u GITHUB_SHA APP_CHANNEL=staging npm test
 
   # The Cloudflare Worker (worker/report-relay.js), only after the tests pass, and only
   # from a normal push to main, so staging work never changes the live relay.

@@ -27,9 +27,24 @@ const browser = await chromium.launch({ executablePath: browserPath() });
 
 const results = [];
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
+/* QUICK=1: the core set that gates every staging deploy, about 20 checks in under a minute:
+   the main journey (build, questions, copy), Gemini failures and fallback, the privacy rules,
+   the Ideas tab fix session, and the staging/live split. Everything else runs in the full
+   suite: in the background on every staging push, and as the gate for a promote and for main.
+   Match is on the start of each check's name. */
+const CORE = [
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash',
+  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
+  'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
+  'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
+  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:',
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:'
+];
+const QUICK = process.env.QUICK === '1';
 let skipped = 0;
 async function check(name, fn) {
   if (ONLY && !ONLY.test(name)) { skipped++; return; }
+  if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
 }
@@ -2070,6 +2085,7 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
   expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
   expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
+  expect(/QUICK=1 npm test/.test(clip) && /Full tests \(staging, background\)/.test(clip) && /Promote check/.test(clip), 'fix session should carry the two test speeds');
   expect(!/SECRET-THOUGHTS/.test(clip), 'fix session must not include the prompt box text');
   expect(/saved on this phone only/i.test(await p.textContent('#footer')), 'footer should say ideas are saved on this phone');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
@@ -2148,6 +2164,7 @@ for (const r of results) console.log(r.join('  '));
 /* On GitHub Actions, each failure also becomes an annotation on the run page. */
 if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
-console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : ''));
+console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : ''));
+if (QUICK && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
 if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
 process.exit(failed ? 1 : 0);

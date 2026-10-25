@@ -1,0 +1,45 @@
+# Promote check: runs on the pull request from staging into main, before it's merged.
+# The full suite on exactly what will go live (live build, no STAGING badge), plus the
+# release check. Merge only when it's green. The main push then runs the full suite on
+# both lanes again before deploying, so live never gets a build that skipped a check.
+#
+# Optional, one time: Settings > Branches > add a rule for main > Require status checks >
+# pick "Full tests (what goes live)", so GitHub won't let the merge happen while it's red.
+name: Promote check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full:
+    name: Full tests (what goes live)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only staging promotes into main
+        if: github.head_ref != 'staging'
+        env:
+          FROM: ${{ github.head_ref }}
+        run: |
+          echo "::error title=Not a promote::Only a pull request from staging can go into main (this one is from $FROM)."
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Release check
+        run: |
+          git fetch --depth 1 origin main
+          node scripts/check-release.mjs
+      - run: npx playwright install --with-deps chromium
+      - name: Full smoke tests (live build)
+        run: env -u GITHUB_SHA npm test

@@ -185,10 +185,10 @@ Staging first. Live only changes through a promote.
 |---|---|
 | **Capture** | Bugs, ideas and faster ways go in the 💡 Ideas tab. Anything asked for in chat but not built comes back in a "Queued for my jar" table to drop in |
 | **Fix session** | Ideas tab > Copy fix session, paste into a fresh Claude chat. It checks the release limit before any code, then plans: small safe fixes in one batch, the rest one at a time |
-| **Build** | All work goes to the `staging` branch. Each session is one staging build: patch version bump plus a new entry at the top of `releases.json`. Each push checks the release list, tests both versions, and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version. Live stays as it is |
+| **Build** | All work goes to the `staging` branch. Each session is one staging build: patch version bump plus a new entry at the top of `releases.json`. Each push checks the release list, runs the quick core tests, and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version, in a few minutes. Live stays as it is. The full suite runs in the background on the same push (see Two test speeds below) |
 | **Release limit** | Staging can be at most **5 builds** ahead of live (entries in `releases.json` newer than main's `package.json`). Past 5 the deploy stops with "Staging is 6 builds ahead of live": test and promote first. `npm run check:release` shows the count locally |
 | **Test** | Open staging on the iPhone and run each build's `checks` from `releases.json`, plus the promote checklist in the Control Hub |
-| **Promote** | Say "Pre-flight passed, promote": a pull request from `staging` into `main`, merged, then tag `main` with the version (like `v2.0.1`). Nothing else ever changes `main`. The count resets to 0/5 by itself. Ends with a ✅ table and a 🔁 Loop check (what slowed this round, did anything skip the process, one fix for the loop) |
+| **Promote** | Say "Pre-flight passed, promote": a pull request from `staging` into `main`. Its Promote check runs the full suite on what goes live; merge only when it's green, then tag `main` with the version (like `v2.0.1`). The main deploy runs the full suite on both versions again before live changes. Nothing else ever changes `main`. The count resets to 0/5 by itself. Ends with a ✅ table and a 🔁 Loop check (what slowed this round, did anything skip the process, one fix for the loop) |
 | **Roll back** | "Roll back to vX.Y.Z" = Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted. A manual run skips the release check, so a roll back is never blocked |
 | **Audit** | A full loop audit only after a roll back, the same check failing twice, or about once a month |
 
@@ -201,7 +201,18 @@ Staging first. Live only changes through a promote.
 
 `npm install && npm test` (from the repo root) first runs the release list tests (`tests/releases.test.mjs`: version order, the N/5 count, and that `releases.json` matches `package.json`), then builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, usage.json, lessons learned, and the quality grade.
 
-**Fast check while working:** `ONLY=grade npm test` builds and runs only the checks whose name matches (any word or regex, case ignored, like `ONLY="grade|scorecard"`), in under a minute. It says how many it skipped. The plain `npm test` is still what ships: GitHub Actions always runs every check.
+**Two test speeds.** Staging stays quick, live stays safe:
+
+| When | What runs | Gates |
+|---|---|---|
+| Push to `staging` | Release check, release tests, `QUICK=1` core smoke tests (22 checks: the main journey, Gemini failures, privacy rules, Ideas tab, staging/live split). Live is rebuilt without re-testing when main's commit already passed its full run | The staging deploy (a few minutes) |
+| Same push, in the background | "Full tests (staging, background)": every check | Nothing, but a failure turns the run red. Fix it before the next session |
+| Pull request `staging` into `main` | "Promote check" (`.github/workflows/promote-check.yml`): release check plus every check on the live build. Fails if the pull request isn't from `staging` | The merge |
+| Push to `main`, or a roll back | Every check on both versions | The live deploy |
+
+`QUICK=1 npm test` runs the core set locally in about a minute. The core list is `CORE` in `tests/smoke.mjs`; it fails if a core check is renamed or removed, so keep the list in step.
+
+**Fast check while working:** `ONLY=grade npm test` builds and runs only the checks whose name matches (any word or regex, case ignored, like `ONLY="grade|scorecard"`), in under a minute. It says how many it skipped. The plain `npm test` is still what ships: GitHub Actions runs every check in the background on staging, and before every promote and live deploy.
 
 ## Status
 

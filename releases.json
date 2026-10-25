@@ -2,6 +2,31 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.2",
+      "date": "2026-10-25",
+      "title": "Two-speed tests: quick staging, full suite for promote and live",
+      "items": [
+        "Staging pushes deploy after the release check and a quick core set of 22 smoke tests, instead of the full suite on both versions.",
+        "Live is only re-tested on a staging push when main hasn't passed its own full run.",
+        "The full suite still runs on every staging push, in the background, and turns the run red if anything fails.",
+        "A pull request from staging into main runs the full suite on what goes live (Promote check), and the main deploy runs it again on both versions."
+      ],
+      "checks": [
+        {
+          "say": "Open the newest Test and deploy run for staging in the Actions tab.",
+          "see": "\"Live not re-tested\" note, the staging smoke step says (quick), and build plus deploy finish in a few minutes. \"Full tests (staging, background)\" finishes after and is green."
+        },
+        {
+          "say": "Open staging on the iPhone after that run.",
+          "see": "The STAGING badge says v2.1.2."
+        },
+        {
+          "say": "At the next promote, open the pull request from staging into main.",
+          "see": "A Promote check called \"Full tests (what goes live)\" runs and turns green before you merge."
+        }
+      ]
+    },
+    {
       "version": "2.1.1",
       "date": "2026-10-25",
       "title": "Release loop: N/5 limit and the full fix session",
@@ -11,8 +36,14 @@
         "Copy fix session now starts with the release limit check, ends with the N/5 count, and carries the promote steps and the 3-question loop check."
       ],
       "checks": [
-        { "say": "Open the latest Test and deploy run on GitHub (Actions tab) and look at the Release check step.", "see": "A Release limit note like \"Staging is 3/5 ahead of live\" and \"Release check passed.\"" },
-        { "say": "On staging, turn on More options > Show my Ideas tab, log a test idea, then tap Copy fix session and paste it into Notes.", "see": "It has a Release limit step before any code, a Queued for my jar table rule, releases.json, the Pre-flight passed, promote steps, and a Loop check. Delete the test idea after." }
+        {
+          "say": "Open the latest Test and deploy run on GitHub (Actions tab) and look at the Release check step.",
+          "see": "A Release limit note like \"Staging is 3/5 ahead of live\" and \"Release check passed.\""
+        },
+        {
+          "say": "On staging, turn on More options > Show my Ideas tab, log a test idea, then tap Copy fix session and paste it into Notes.",
+          "see": "It has a Release limit step before any code, a Queued for my jar table rule, releases.json, the Pre-flight passed, promote steps, and a Loop check. Delete the test idea after."
+        }
       ]
     },
     {
@@ -26,10 +57,22 @@
         "Screen stays awake while Gemini works, and Rework from this prompt."
       ],
       "checks": [
-        { "say": "On the iPhone, open staging fresh and build one prompt in Quick.", "see": "Speak, Answer, Copy at the top, Answer says Skipped in Quick, and Copy turns into a check when tapped." },
-        { "say": "Turn on More options > Show my Ideas tab, tap the 💡, log a test bug, then Delete it.", "see": "The idea shows in the list, stays after a reload, and Delete removes it." },
-        { "say": "Show my dev tools on, open My context under Build, add a piece, tap its chip, build a prompt.", "see": "The prompt points to the piece by its title. Delete the test piece after (asks twice)." },
-        { "say": "Build a Normal prompt and lock nothing; watch the screen while it works.", "see": "The screen stays on until the prompt is ready." }
+        {
+          "say": "On the iPhone, open staging fresh and build one prompt in Quick.",
+          "see": "Speak, Answer, Copy at the top, Answer says Skipped in Quick, and Copy turns into a check when tapped."
+        },
+        {
+          "say": "Turn on More options > Show my Ideas tab, tap the 💡, log a test bug, then Delete it.",
+          "see": "The idea shows in the list, stays after a reload, and Delete removes it."
+        },
+        {
+          "say": "Show my dev tools on, open My context under Build, add a piece, tap its chip, build a prompt.",
+          "see": "The prompt points to the piece by its title. Delete the test piece after (asks twice)."
+        },
+        {
+          "say": "Build a Normal prompt and don't touch the phone while it works.",
+          "see": "The screen stays on until the prompt is ready."
+        }
       ]
     },
     {
@@ -41,7 +84,10 @@
         "Roll back by tag from the Actions tab."
       ],
       "checks": [
-        { "say": "Open staging and live side by side.", "see": "Only staging shows the STAGING badge with its version. A Gemini key saved on staging doesn't show up on live." }
+        {
+          "say": "Open staging and live side by side.",
+          "see": "Only staging shows the STAGING badge with its version. A Gemini key saved on staging doesn't show up on live."
+        }
       ]
     }
   ]
