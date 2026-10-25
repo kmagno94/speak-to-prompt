@@ -11,6 +11,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
    lib/channel.js uses it for the STAGING badge and the separate saved data. */
 const CHANNEL = process.env.APP_CHANNEL === 'staging' ? 'staging' : 'live';
 const SEMVER = JSON.parse(readFileSync(path.join(here, 'package.json'), 'utf8')).version;
+/* Staging only: live's version, passed in by the deploy (LIVE_SEMVER), so the Test lab knows
+   which releases.json builds aren't live yet. Empty locally and in tests. */
+const LIVE_SEMVER = CHANNEL === 'staging' ? String(process.env.LIVE_SEMVER || '').slice(0, 20) : '';
 
 /* The commit the page was built from, shown in problem reports. */
 function appVersion() {
@@ -68,6 +71,6 @@ export default defineConfig({
   envDir: here,
   base: process.env.BASE_PATH || '/',
   plugins: [svelte(), rootJson(), versionJson()],
-  define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()), __CHANNEL__: JSON.stringify(CHANNEL), __SEMVER__: JSON.stringify(SEMVER) },
+  define: { __APP_VERSION__: JSON.stringify(appVersion()), __STACK__: JSON.stringify(stackLabel()), __CHANNEL__: JSON.stringify(CHANNEL), __SEMVER__: JSON.stringify(SEMVER), __LIVE_SEMVER__: JSON.stringify(LIVE_SEMVER) },
   build: { outDir: path.join(here, 'dist'), emptyOutDir: true, target: 'safari16' }
 });

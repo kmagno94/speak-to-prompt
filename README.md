@@ -60,6 +60,16 @@ Each idea can be marked fixed (it records the version), won't do, reopened, or d
 
 **Privacy:** ideas are saved on this phone only (`stp-ideas`, and under `stg:` on staging). Only what's typed in the panel is kept. The "where I just was" trail holds area names and problem signals, in memory only, and never anything from the prompt box, questions, or results. Nothing is sent anywhere.
 
+### 🧪 Test lab (staging only)
+
+On the staging build only, a 🧪 button at the bottom left (with **Show my Ideas tab** on) opens the Test lab. The link `kmagno94.github.io/speak-to-prompt/staging/#testlab` opens it straight away. It lists every check from `releases.json` for the builds that aren't live yet, oldest first, then four **Before you promote** checks (iPhone, iPad, Reduce Motion, Dark Mode).
+
+- **Start / Continue** walks the checks one at a time: what to do, what you should see, then **✓ Works** or **✗ Broken** with a note. Steps you passed don't come back.
+- **Re-check** walks only the broken ones once there are any, after a fix.
+- **💡 Add to Ideas jar** turns a broken check into a 🔥 Now bug, so it rides the next Fix session.
+- The verdict: "Don't promote: 2 broken", or "All 14 work. Ready to promote v2.1.3" with a button that copies **Pre-flight passed, promote v2.1.3** for the Claude chat.
+- Live's version is passed in by the deploy, so the plan always matches what's actually live. Results are saved on this phone only (`stp-testlab` under `stg:`). The live build never shows it.
+
 ### Two modes (next to Build my prompt)
 
 | Mode | What it does | Time |
@@ -165,6 +175,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
   | `app/ContextRow.svelte`, `app/lib/context.svelte.js` | My context (dev tools): reusable background picked per prompt |
   | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
+  | `app/TestLab.svelte`, `app/lib/testlab.svelte.js`, `app/lib/testlabPlan.js` | Staging only: the 🧪 Test lab, a walkthrough of every `releases.json` check not live yet, with ✓ / ✗, notes, and the promote verdict |
   | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |
   | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
 
@@ -187,7 +198,7 @@ Staging first. Live only changes through a promote.
 | **Fix session** | Ideas tab > Copy fix session, paste into a fresh Claude chat. It checks the release limit before any code, then plans: small safe fixes in one batch, the rest one at a time |
 | **Build** | All work goes to the `staging` branch. Each session is one staging build: patch version bump plus a new entry at the top of `releases.json`. Each push checks the release list, runs the quick core tests, and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version, in a few minutes. Live stays as it is. The full suite runs in the background on the same push (see Two test speeds below) |
 | **Release limit** | Staging can be at most **5 builds** ahead of live (entries in `releases.json` newer than main's `package.json`). Past 5 the deploy stops with "Staging is 6 builds ahead of live": test and promote first. `npm run check:release` shows the count locally |
-| **Test** | Open staging on the iPhone and run each build's `checks` from `releases.json`, plus the promote checklist in the Control Hub |
+| **Test** | Open the staging Test lab on the iPhone (`/speak-to-prompt/staging/#testlab`) and walk every check: ✓ Works or ✗ Broken. A broken one can go straight to the 💡 Ideas jar. When everything passes it says Ready to promote and copies the promote phrase |
 | **Promote** | Say "Pre-flight passed, promote": a pull request from `staging` into `main`. Its Promote check runs the full suite on what goes live; merge only when it's green, then tag `main` with the version (like `v2.0.1`). The main deploy runs the full suite on both versions again before live changes. Nothing else ever changes `main`. The count resets to 0/5 by itself. Ends with a ✅ table and a 🔁 Loop check (what slowed this round, did anything skip the process, one fix for the loop) |
 | **Roll back** | "Roll back to vX.Y.Z" = Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted. A manual run skips the release check, so a roll back is never blocked |
 | **Audit** | A full loop audit only after a roll back, the same check failing twice, or about once a month |

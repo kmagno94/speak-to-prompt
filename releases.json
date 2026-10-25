@@ -2,6 +2,40 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.3",
+      "date": "2026-10-25",
+      "title": "Test lab on staging",
+      "items": [
+        "🧪 Test lab on staging: every check for the builds that aren't live yet, oldest first, then the Before you promote checks.",
+        "Mark each one ✓ Works or ✗ Broken, add a note, and send a broken one to the 💡 Ideas jar as a 🔥 Now bug.",
+        "Re-check walks only the broken ones after a fix; Continue walks only what isn't ✓ yet.",
+        "When everything passes it says Ready to promote and copies the promote message for your Claude chat.",
+        "Opens from the 🧪 button bottom left (with Show my Ideas tab on) or straight from the staging link ending in #testlab. Never on live. Results are saved on this phone only."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging link ending in #testlab on the iPhone.",
+          "see": "The Test lab opens on its own and the top line says Live v2.0.0, staging v2.1.3, 5/5 ahead."
+        },
+        {
+          "say": "Tap Start, mark this step ✓ Works, then on the next one tap ✗ Broken and type a short note.",
+          "see": "The note box shows under the buttons and the 🧪 button bottom left says ✗ 1 broken after you close the panel."
+        },
+        {
+          "say": "Open that broken step again and tap 💡 Add to Ideas jar.",
+          "see": "It says it's in the Ideas jar as a 🔥 Now bug, and the 💡 Ideas tab lists it."
+        },
+        {
+          "say": "Close and reopen staging, then open the Test lab.",
+          "see": "Your ✓ and ✗ are still there, and the button says ▶ Re-check 1 fix."
+        },
+        {
+          "say": "Open the live site.",
+          "see": "No 🧪 button, even with Show my Ideas tab on."
+        }
+      ]
+    },
+    {
       "version": "2.1.2",
       "date": "2026-10-25",
       "title": "Two-speed tests: quick staging, full suite for promote and live",
@@ -19,10 +53,6 @@
         {
           "say": "Open staging on the iPhone after that run.",
           "see": "The STAGING badge says v2.1.2."
-        },
-        {
-          "say": "At the next promote, open the pull request from staging into main.",
-          "see": "A Promote check called \"Full tests (what goes live)\" runs and turns green before you merge."
         }
       ]
     },

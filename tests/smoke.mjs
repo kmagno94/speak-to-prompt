@@ -38,7 +38,7 @@ const CORE = [
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:',
-  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:'
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -2085,6 +2085,7 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
   expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
   expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
+  expect(/staging\/#testlab/.test(clip), 'fix session should hand over the Test lab link');
   expect(/QUICK=1 npm test/.test(clip) && /Full tests \(staging, background\)/.test(clip) && /Promote check/.test(clip), 'fix session should carry the two test speeds');
   expect(!/SECRET-THOUGHTS/.test(clip), 'fix session must not include the prompt box text');
   expect(/saved on this phone only/i.test(await p.textContent('#footer')), 'footer should say ideas are saved on this phone');
@@ -2149,7 +2150,75 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(keys.back === '1', 'reading back a saved key failed on staging');
     expect(keys.raw.length && keys.raw.every(k => k.startsWith('stg:')), 'every stored key should start with stg:, got: ' + keys.raw.join(', '));
   });
+
+  /* 🧪 Test lab (staging only). releases.json is mocked; ?live= sets the live version. */
+  const LAB = { releases: [
+    { version: '9.0.2', title: 'Two', items: ['x'], checks: [{ say: 'Check two A', see: 'Two A shows' }] },
+    { version: '9.0.1', title: 'One', items: ['x'], checks: [{ say: 'Check one A', see: 'One A shows' }, { say: 'Check one B', see: 'One B shows' }] },
+    { version: '9.0.0', title: 'Live already', items: ['x'], checks: [{ say: 'Old check', see: 'old' }] }
+  ] };
+  async function labPage(url = '?live=9.0.0#testlab') {
+    const p = await page();
+    await p.route(/releases\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LAB) }));
+    await p.goto(BASE + url);
+    return p;
+  }
+
+  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Ideas jar, kept on reload, Re-check', async () => {
+    const p = await labPage();
+    await p.waitForSelector('#labVerdict');
+    expect(/Live v9\.0\.0/.test(await p.textContent('#labLive')), 'top line should name live v9.0.0');
+    const keys = await p.$$eval('#labPanel .stepbtn', els => els.map(e => e.dataset.key));
+    expect(keys.length === 7 && keys[0] === '9.0.1#0' && keys[2] === '9.0.2#0' && keys[3] === 'x-0', 'plan should be 9.0.1 (2), 9.0.2 (1), then 4 Before you promote checks, got: ' + keys.join(', '));
+    expect(!(await p.textContent('#labPanel')).includes('Old check'), 'a build that is already live must not be in the plan');
+    expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'verdict should start at 0 of 7');
+    await p.click('#labRun');
+    expect(/Check one A/.test(await p.textContent('#labStep')) && /One A shows/.test(await p.textContent('#labStep')), 'first step should be the oldest build');
+    await p.click('#labWorks');
+    expect(/Check one B/.test(await p.textContent('#labStep')), 'Works should move to the next step');
+    await p.click('#labBroken');
+    await p.fill('#labNote', 'Button did nothing'); await p.click('#labJar');
+    await p.waitForSelector('#labJarMsg');
+    const jar = JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')) || '[]');
+    expect(jar.length === 1 && jar[0].kind === 'bug' && jar[0].soon === 'now' && /Check one B/.test(jar[0].text) && /Button did nothing/.test(jar[0].text), 'a broken step should become a Now bug in the Ideas jar with the check and the note');
+    await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+    await p.waitForSelector('#labPanel', { state: 'detached' });
+    expect(/1 broken/.test(await p.textContent('#labTab')), 'the 🧪 button should say 1 broken');
+    await p.reload(); await p.waitForSelector('#labVerdict');
+    expect(/Don't promote: 1 broken/.test(await p.textContent('#labVerdict')), 'results should survive a reload');
+    expect(/Re-check 1 fix/.test(await p.textContent('#labRun')), 'with a broken step, the run should be a Re-check');
+    await p.click('#labRun');
+    expect(/Check one B/.test(await p.textContent('#labStep')) && /1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
+    await p.click('#labWorks');
+    expect(/Continue · 5 left/.test(await p.textContent('#labRun')), 'after the fix passes, Continue should walk only the 5 not checked');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+
+  await check('test lab: all pass says Ready and copies the promote phrase; Clear results asks twice; hidden without the Ideas toggle unless opened from #testlab', async () => {
+    const p = await labPage('?live=9.0.0');
+    expect(!(await p.$('#labTab')), 'the 🧪 button should stay hidden until Show my Ideas tab is on');
+    await ideasOn(p);
+    await p.click('#labTab'); await p.waitForSelector('#labVerdict');
+    await p.click('#labRun');
+    for (let i = 0; i < 7; i++) await p.click('#labWorks');
+    expect(/All 7 work\. Ready to promote v9\.0\.2\./.test(await p.textContent('#labVerdict')), 'all passed should say Ready to promote v9.0.2');
+    await p.click('#labPromote');
+    expect((await p.evaluate(() => navigator.clipboard.readText())) === 'Pre-flight passed, promote v9.0.2', 'Copy should put the exact promote phrase on the clipboard');
+    await p.click('#labReset');
+    expect(/All 7 work/.test(await p.textContent('#labVerdict')), 'one tap must not clear results');
+    await p.click('#labReset');
+    expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'second tap should clear every result');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
 } else {
+  await check('live build: no Test lab, even with #testlab and the Ideas tab on', async () => {
+    const p = await page();
+    await ideasOn(p);
+    await p.goto(BASE + '?live=1.0.0#testlab');
+    await p.waitForSelector('#ideaTab');
+    expect(!(await p.$('#labTab')) && !(await p.$('#labPanel')), 'the live build must never show the Test lab');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
   await check('live build: no STAGING badge and saved keys stay unprefixed', async () => {
     const p = await page();
     expect(!(await p.$('#stgBadge')), 'live build must not show the STAGING badge');

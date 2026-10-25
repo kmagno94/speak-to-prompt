@@ -53,3 +53,48 @@ test('the real releases.json is well formed and matches package.json', () => {
   const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
   assert.deepEqual(registryProblems(registry, pkg.version), []);
 });
+
+/* Test lab plan (app/lib/testlabPlan.js) */
+import { labPlan, runSteps, verdict, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
+
+test('test lab plan: builds newer than live, oldest first, then Before you promote', () => {
+  const list = [rel('2.1.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] }), rel('2.1.1'), rel('2.1.0')];
+  const plan = labPlan(list, '2.1.0');
+  assert.deepEqual(plan.builds.map((b) => b.version), ['2.1.1', '2.1.2', '']);
+  assert.equal(plan.steps.length, 1 + 2 + BEFORE_PROMOTE.length);
+  assert.equal(plan.newest, '2.1.2');
+  assert.equal(plan.steps[1].key, '2.1.2#0');
+});
+
+test('test lab runs: Re-check walks only broken steps, Continue skips passed ones', () => {
+  const plan = labPlan([rel('1.0.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] })], '1.0.1');
+  const k = plan.steps.map((s) => s.key);
+  assert.equal(runSteps(plan, {}).steps.length, plan.steps.length);
+  const passed = { [k[0]]: { s: 'pass' } };
+  assert.equal(runSteps(plan, passed).steps.length, plan.steps.length - 1);
+  const r = runSteps(plan, { ...passed, [k[1]]: { s: 'fail' } });
+  assert.equal(r.recheck, true);
+  assert.deepEqual(r.steps.map((s) => s.key), [k[1]]);
+});
+
+test('test lab verdict: broken blocks, all pass is ready with the promote phrase, nothing ahead says so', () => {
+  const plan = labPlan([rel('1.0.2')], '1.0.1');
+  const all = Object.fromEntries(plan.steps.map((s) => [s.key, { s: 'pass' }]));
+  const v = verdict(plan, all);
+  assert.equal(v.ready, true);
+  assert.equal(v.text, `All ${plan.steps.length} work. Ready to promote v1.0.2.`);
+  assert.equal(v.promote, 'Pre-flight passed, promote v1.0.2');
+  const bad = verdict(plan, { ...all, [plan.steps[0].key]: { s: 'fail' } });
+  assert.equal(bad.ready, false);
+  assert.equal(bad.text, "Don't promote: 1 broken.");
+  const none = verdict(labPlan([rel('1.0.1')], '1.0.1'), {});
+  assert.equal(none.ready, false);
+  assert.match(none.text, /Nothing on staging is newer than live/);
+});
+
+test('the real releases.json: every check in the Test lab plan has say and see', () => {
+  const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
+  const plan = labPlan(registry.releases, '0.0.0');
+  const declared = registry.releases.reduce((n, r) => n + r.checks.length, 0);
+  assert.equal(plan.steps.length, declared + BEFORE_PROMOTE.length, 'a check was dropped from the plan');
+});

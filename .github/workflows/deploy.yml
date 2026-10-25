@@ -142,9 +142,13 @@ jobs:
       - name: Build live
         working-directory: live
         run: env -u GITHUB_SHA BASE_PATH=/${{ github.event.repository.name }}/ npm run build
+      # LIVE_SEMVER tells the staging Test lab which releases.json builds aren't live yet.
       - name: Build staging
         working-directory: stg
-        run: env -u GITHUB_SHA APP_CHANNEL=staging BASE_PATH=/${{ github.event.repository.name }}/staging/ npm run build
+        run: |
+          LIVE_SEMVER=$(node -p "require('../live/package.json').version")
+          echo "Test lab plan: builds newer than live v$LIVE_SEMVER"
+          env -u GITHUB_SHA APP_CHANNEL=staging LIVE_SEMVER="$LIVE_SEMVER" BASE_PATH=/${{ github.event.repository.name }}/staging/ npm run build
       - name: Put both lanes in one site
         run: |
           mkdir -p site/staging
