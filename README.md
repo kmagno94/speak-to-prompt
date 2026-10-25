@@ -159,6 +159,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/lib/ideas.js` | The idea strip's ideas |
   | `app/app.css` | Styles and color tokens (light and dark) |
   | `ideas-done.json` | Idea ids closed by fix commits (no idea text); the Ideas tab marks them fixed, copied into the build |
+  | `releases.json`, `app/lib/releases.js`, `scripts/check-release.mjs` | Every staging build with its checks, the N/5 release limit, and the deploy's release check |
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
@@ -182,18 +183,23 @@ Staging first. Live only changes through a promote.
 
 | Step | What happens |
 |---|---|
-| **Build** | All work goes to the `staging` branch. Each push tests both versions and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version. Live stays as it is |
-| **Test** | Open staging on the iPhone and go through the promote checklist in the Control Hub |
-| **Promote** | A pull request from `staging` into `main`, merged, then tag `main` with the version (like `v2.0.1`). Nothing else ever changes `main` |
-| **Roll back** | Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted |
+| **Capture** | Bugs, ideas and faster ways go in the 💡 Ideas tab. Anything asked for in chat but not built comes back in a "Queued for my jar" table to drop in |
+| **Fix session** | Ideas tab > Copy fix session, paste into a fresh Claude chat. It checks the release limit before any code, then plans: small safe fixes in one batch, the rest one at a time |
+| **Build** | All work goes to the `staging` branch. Each session is one staging build: patch version bump plus a new entry at the top of `releases.json`. Each push checks the release list, tests both versions, and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version. Live stays as it is |
+| **Release limit** | Staging can be at most **5 builds** ahead of live (entries in `releases.json` newer than main's `package.json`). Past 5 the deploy stops with "Staging is 6 builds ahead of live": test and promote first. `npm run check:release` shows the count locally |
+| **Test** | Open staging on the iPhone and run each build's `checks` from `releases.json`, plus the promote checklist in the Control Hub |
+| **Promote** | Say "Pre-flight passed, promote": a pull request from `staging` into `main`, merged, then tag `main` with the version (like `v2.0.1`). Nothing else ever changes `main`. The count resets to 0/5 by itself. Ends with a ✅ table and a 🔁 Loop check (what slowed this round, did anything skip the process, one fix for the loop) |
+| **Roll back** | "Roll back to vX.Y.Z" = Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted. A manual run skips the release check, so a roll back is never blocked |
+| **Audit** | A full loop audit only after a roll back, the same check failing twice, or about once a month |
 
-- **Versions** are semver in `package.json`, shown on the staging badge. The version pill shows the commit each build came from.
+- **Versions** are semver in `package.json`, shown on the staging badge. The version pill shows the commit each build came from. The newest `releases.json` entry always matches `package.json` (the release check fails otherwise).
+- **`releases.json`** (repo root, copied into the build) lists every staging build, newest first: version, date, title, plain-English items, and `checks` (`say` what to do, `see` what should happen). Never anything a user typed. The logic lives in `app/lib/releases.js`; `scripts/check-release.mjs` runs it in the deploy. The loop is ported from B&B Daily's continuous improvement loop.
 - **Saved data is kept apart.** Staging and live share one web address, so the staging build prefixes every saved key with `stg:`. Testing never touches live settings, and staging asks for its own Gemini key.
 - **Only a normal push to `main`** deploys the report Worker, so staging work never changes the live relay.
 
 ## Tests
 
-`npm install && npm test` (from the repo root) builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, usage.json, lessons learned, and the quality grade.
+`npm install && npm test` (from the repo root) first runs the release list tests (`tests/releases.test.mjs`: version order, the N/5 count, and that `releases.json` matches `package.json`), then builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, usage.json, lessons learned, and the quality grade.
 
 **Fast check while working:** `ONLY=grade npm test` builds and runs only the checks whose name matches (any word or regex, case ignored, like `ONLY="grade|scorecard"`), in under a minute. It says how many it skipped. The plain `npm test` is still what ships: GitHub Actions always runs every check.
 

@@ -8,6 +8,8 @@
    - The trail lives in memory only and resets on reload, by design.
    - Fix session copies one prompt that hands every open idea to a fresh Claude chat. */
 
+import { RELEASE_LIMIT } from './releases.js';
+
 const LIST_KEY = 'stp-ideas';
 const ON_KEY = 'stp-ideas-on';
 const SEMVER = typeof __SEMVER__ !== 'undefined' ? __SEMVER__ : '';
@@ -201,11 +203,16 @@ Open ideas, oldest first:
 ${lines.join('\n') || '(none)'}
 
 Do this:
-1. Read README.md first.
-2. Plan: a table of every idea (#, what you'd change, size S/M/L, risk). Group the small safe ones into one batch, then the rest one at a time, most urgent first. Wait for my OK.
-3. Build on the staging branch only. Never push to main. Only a promote pull request touches main. Add a smoke test for each bug you fix.
-4. For each change: a messy voice-memo style "Try it" note (made-up details) plus a what-to-tap, what-I-should-see table.
-5. In the same commit as each fix, add the idea's id to ideas-done.json at the repo root ({ "id", "commit", "version", "note" }, where the note says what changed and never repeats the idea's text). My Ideas tab closes those ideas by itself once staging deploys, so the next Fix session only lists what's left. Tell me which numbers you closed so I can check them; if one isn't right I'll tap Reopen.
+1. Read README.md first (How releases work has the whole loop).
+2. Release limit, before any code: git fetch origin main, then npm run check:release. If staging is ${RELEASE_LIMIT}/${RELEASE_LIMIT} ahead of live or more, stop: tell me to run the promote checklist on staging and promote first, build nothing, and put every change I ask for in the backlog (step 8).
+3. Plan: a table of every idea (#, what you'd change, size S/M/L, risk). Group the small safe ones into one batch, then the rest one at a time, most urgent first, each with options and one recommendation. Wait for my OK.
+4. Build on the staging branch only. Never push to main. Only a promote pull request touches main. Add a smoke test for each bug you fix.
+5. For each change: a messy voice-memo style "Try it" note (made-up details) plus a what-to-tap, what-I-should-see table.
+6. In the same commit as each fix, add the idea's id to ideas-done.json at the repo root ({ "id", "commit", "version", "note" }, where the note says what changed and never repeats the idea's text). My Ideas tab closes those ideas by itself once staging deploys, so the next Fix session only lists what's left. Tell me which numbers you closed so I can check them; if one isn't right I'll tap Reopen.
+7. Finish the session as one staging build: bump the patch version in package.json and package-lock.json, and add a matching entry at the top of releases.json (version, date, title, plain-English items, and checks with "say" and "see" that I can do on staging today; if a check needs a state that isn't there yet, ship a preview or sample with it). npm test and npm run check:release must pass before you push. Confirm the Test and deploy run finished green before saying staging is updated. Then tell me "Staging is N/${RELEASE_LIMIT} ahead of live" and give me the staging link.
+8. Backlog, so nothing gets lost: anything I ask for that you don't build this session (limit reached, out of scope, or "later") goes in a "Queued for my jar" table at the end (kind, area, how soon, one line in my words), so I can drop each one in the 💡 jar.
+9. Promote, only when I say "Pre-flight passed, promote": open the pull request from staging into main and merge it, tag main with the version (like v2.1.1), and confirm the deploy run. Return a ✅ table, one row per step. Then a 🔁 Loop check table (Question | Answer): what slowed this round, did anything skip the process, and one fix for the loop (or "none"). A real fix goes in the Queued for my jar table. "Roll back to vX.Y.Z" means Actions > Test and deploy > Run workflow with that tag in live_tag.
+10. A full loop audit only after a roll back, the same check failing twice, or about once a month.
 
 How I work: casual like a friend, tables and lists, one clear recommendation. Start every reply with "STEP #: " and a one-line summary. Never say a push or deploy worked unless you confirmed it. Delete only when I say so. Never put my email on a public page. No em dashes. If Notion is connected, log each change in this project's Building Log with your full response.`;
 }

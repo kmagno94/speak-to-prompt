@@ -5,7 +5,9 @@
 # both lanes together. That way a staging push never wipes live, and a live push never
 # wipes staging. A failing test in either lane stops the deploy.
 #
-# Releases: work goes to staging. Promote = a pull request from staging into main, merged,
+# Releases: work goes to staging. Each staging build adds an entry to releases.json and bumps
+# package.json to match; the release check stops the deploy if staging gets more than 5 builds
+# ahead of live. Promote = a pull request from staging into main, merged,
 # then tag main with the version (like v2.0.1). Roll back = Actions > Test and deploy >
 # Run workflow, type a tag in "live_tag" (like v2.0.0). That pins live to the tag (a
 # live-hold tag) so later staging pushes keep it there. Type "main" to unpin.
@@ -88,6 +90,15 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
           env -u GITHUB_SHA npm test
+      # Release loop: releases.json matches package.json and staging is at most 5 builds
+      # ahead of live (main's package.json). Skipped on a manual run, so a roll back is never blocked.
+      - name: Staging lane, release check
+        if: github.event_name != 'workflow_dispatch'
+        working-directory: stg
+        env:
+          LIVE_PACKAGE: ${{ github.workspace }}/live/package.json
+        run: |
+          if [ -f scripts/check-release.mjs ]; then node scripts/check-release.mjs; else echo "No release check on this branch yet."; fi
       - name: Staging lane, smoke tests
         working-directory: stg
         run: |
