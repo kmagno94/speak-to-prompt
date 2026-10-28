@@ -55,7 +55,7 @@ test('the real releases.json is well formed and matches package.json', () => {
 });
 
 /* Test lab plan (app/lib/testlabPlan.js) */
-import { labPlan, runSteps, verdict, labReport, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
+import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
 
 test('test lab plan: builds newer than live, oldest first, then Before you promote', () => {
   const list = [rel('2.1.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] }), rel('2.1.1'), rel('2.1.0')];
@@ -103,6 +103,18 @@ test('test lab report: broken checks in full with the note, counts, and the ask;
   assert.match(r, /Fix these on staging/);
   const all = Object.fromEntries(plan.steps.map((s) => [s.key, { s: 'pass' }]));
   assert.match(labReport(plan, all, { staging: '1.0.2' }), /Everything works\. Pre-flight passed, promote v1\.0\.2/);
+});
+
+test('test lab rail: next unchecked after a check, wrapping to the top, skipping marked and skipped ones', () => {
+  const plan = labPlan([rel('1.0.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }, { say: 'e', see: 'f' }] })], '1.0.1');
+  const k = plan.steps.map((s) => s.key);
+  const res = { [k[1]]: { s: 'fail' }, [k[2]]: { s: 'pass' } };
+  assert.equal(unchecked(plan, res).length, plan.steps.length - 2);
+  assert.equal(nextOnRail(plan, res, k[1]).key, k[3], 'after a broken one, the next unchecked');
+  assert.equal(nextOnRail(plan, res, k[plan.steps.length - 1]).key, k[0], 'wraps to the top');
+  assert.equal(nextOnRail(plan, res, k[1], [k[3]]).key, k[4], 'skipped ones stay out');
+  const all = Object.fromEntries(plan.steps.map((s) => [s.key, { s: 'pass' }]));
+  assert.equal(nextOnRail(plan, all, k[0]), null, 'nothing left');
 });
 
 test('the real releases.json: every check in the Test lab plan has say and see', () => {

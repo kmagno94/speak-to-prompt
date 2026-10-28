@@ -69,3 +69,14 @@ export function labReport(plan, results = {}, meta = {}) {
   }
   return lines.join('\n');
 }
+
+/* The rail (v2.1.7): the checks not marked yet, in plan order. nextOnRail gives the next one
+   after `key` (wrapping to the top), leaving out `skip` (keys skipped this walk), so tapping any
+   check, or marking one ✗, can always carry on to what's left. */
+export function unchecked(plan, results = {}) { return plan.steps.filter((s) => !results[s.key]?.s); }
+export function nextOnRail(plan, results = {}, key = '', skip = []) {
+  const left = unchecked(plan, results).filter((s) => s.key !== key && !skip.includes(s.key));
+  if (!left.length) return null;
+  const at = plan.steps.findIndex((s) => s.key === key);
+  return left.find((s) => plan.steps.indexOf(s) > at) || left[0];
+}

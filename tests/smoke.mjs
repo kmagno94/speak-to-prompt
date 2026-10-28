@@ -2625,7 +2625,8 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(keys.length === 7 && keys[0] === '9.0.1#0' && keys[2] === '9.0.2#0' && keys[3] === 'x-0', 'plan should be 9.0.1 (2), 9.0.2 (1), then 4 Before you promote checks, got: ' + keys.join(', '));
     expect(!(await p.textContent('#labPanel')).includes('Old check'), 'a build that is already live must not be in the plan');
     expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'verdict should start at 0 of 7');
-    await p.click('#labRun');
+    expect(/Start · 7 not checked/.test(await p.textContent('#labQuick')), 'the quick start at the top should say Start · 7 not checked');
+    await p.click('#labQuick');
     expect(/Check one A/.test(await p.textContent('#labStep')) && /One A shows/.test(await p.textContent('#labStep')), 'first step should be the oldest build');
     await p.click('#labWorks');
     expect(/Check one B/.test(await p.textContent('#labStep')), 'Works should move to the next step');
@@ -2649,9 +2650,32 @@ if (process.env.APP_CHANNEL === 'staging') {
     await p.click('#labReport');
     expect(/What happened: Button did nothing/.test(await p.evaluate(() => navigator.clipboard.readText())), 'the verdict card should copy the same report');
     await p.click('#labRun');
-    expect(/Check one B/.test(await p.textContent('#labStep')) && /1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
+    expect(/Check one B/.test(await p.textContent('#labStep')) && /fix 1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
     await p.click('#labWorks');
-    expect(/Continue · 5 left/.test(await p.textContent('#labRun')), 'after the fix passes, Continue should walk only the 5 not checked');
+    expect(/Check two A/.test(await p.textContent('#labStep')) && /5 not checked/.test(await p.textContent('#labStep')), 'after the fix passes, it should carry on along the rail to what is not checked');
+    await p.keyboard.press('Escape');
+    expect(/Continue · 5 not checked/.test(await p.textContent('#labQuick')), 'the quick start should offer the 5 not checked');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+
+  await check('test lab rail: ✗ then Continue goes to the next check not marked; tapping any check rides the rail from there; Continue at the top even with broken ones', async () => {
+    const p = await labPage();
+    await p.waitForSelector('#labVerdict');
+    await p.click('#labPanel .stepbtn[data-key="9.0.1#1"]');
+    expect(/Check one B/.test(await p.textContent('#labStep')), 'tapping a check should open it');
+    await p.click('#labBroken'); await p.fill('#labNote', 'nope');
+    expect(/Continue to the next check/.test(await p.textContent('#labContinueStep')), 'after ✗ there should be a Continue button');
+    await p.click('#labContinueStep');
+    expect(/Check two A/.test(await p.textContent('#labStep')), 'Continue should go to the next check not marked, got: ' + await p.textContent('#labStep'));
+    await p.click('#labWorks');
+    expect(/On the iPhone, portrait/.test(await p.textContent('#labStep')), 'Works should carry on along the rail');
+    await p.click('#labNext');
+    expect(/On the iPad/.test(await p.textContent('#labStep')), 'Skip should move on');
+    await p.keyboard.press('Escape');
+    expect(/nope/.test(await p.textContent('#labPanel .stepbtn[data-key="9.0.1#1"]')), 'the note was kept');
+    expect(/Re-check 1 fix/.test(await p.textContent('#labRun')) && /Continue · 5 not checked/.test(await p.textContent('#labQuick')), 'with a broken one, both Re-check and the Continue quick start show');
+    await p.click('#labQuick');
+    expect(/Check one A/.test(await p.textContent('#labStep')), 'the quick start begins at the first check not marked');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   });
 
@@ -2660,7 +2684,7 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(!(await p.$('#labTab')), 'the 🧪 button should stay hidden until Show my Ideas tab is on');
     await ideasOn(p);
     await p.click('#labTab'); await p.waitForSelector('#labVerdict');
-    await p.click('#labRun');
+    await p.click('#labQuick');
     for (let i = 0; i < 7; i++) await p.click('#labWorks');
     expect(/All 7 work\. Ready to promote v9\.0\.2\./.test(await p.textContent('#labVerdict')), 'all passed should say Ready to promote v9.0.2');
     await p.click('#labPromote');

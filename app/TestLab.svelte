@@ -8,8 +8,12 @@
   import { lab } from './lib/testlab.svelte.js';
   import { SEMVER } from './lib/channel.js';
   import { releaseStatus } from './lib/releases.js';
+  import { unchecked, nextOnRail } from './lib/testlabPlan.js';
 
-  let walk = $state(null);        // { steps, i, title } while walking, else null
+  /* While walking: { mode, key, hist, skip, title } (+ steps, i for a Re-check), else null.
+     'rail' walks the checks not marked yet, from wherever you start; 'recheck' walks the broken
+     ones, then carries on along the rail. */
+  let walk = $state(null);
   let note = $state('');
   let resetArmed = $state(false);
   let copied = $state('');
@@ -18,10 +22,13 @@
   let panel = $state();
 
   const status = $derived(lab.live ? releaseStatus(lab.releases, lab.live) : null);
-  const step = $derived(walk ? walk.steps[walk.i] : null);
+  const step = $derived(walk ? lab.plan.steps.find((s) => s.key === walk.key) || null : null);
+  const left = $derived(unchecked(lab.plan, lab.results).length);
+  const upNext = $derived(walk && step ? (walk.mode === 'recheck' && walk.i + 1 < walk.steps.length ? walk.steps[walk.i + 1] : nextOnRail(lab.plan, lab.results, step.key, walk.skip)) : null);
   const res = $derived(step ? lab.results[step.key] : null);
   const tabLabel = $derived(!lab.loaded ? 'Test lab' : lab.verdict.fail ? `✗ ${lab.verdict.fail} broken` : lab.verdict.ready ? '✓ Ready' : lab.verdict.left ? `${lab.verdict.left} left` : 'Test lab');
-  const runLabel = $derived(lab.run.recheck ? `▶ Re-check ${lab.run.steps.length} fix${lab.run.steps.length === 1 ? '' : 'es'}` : lab.run.steps.length ? `▶ ${lab.verdict.pass ? 'Continue' : 'Start'} · ${lab.run.steps.length} left` : '');
+  const runLabel = $derived(lab.run.recheck ? `▶ Re-check ${lab.run.steps.length} fix${lab.run.steps.length === 1 ? '' : 'es'}` : '');
+  const railLabel = $derived(left ? `▶ ${lab.verdict.pass || lab.verdict.fail ? 'Continue' : 'Start'} · ${left} not checked` : '');
 
   onMount(() => { if (lab.enabled) lab.load(); });
   $effect(() => { if (lab.open) { lab.load(); tick().then(() => panel?.querySelector('.primary, button')?.focus()); } });
@@ -29,15 +36,23 @@
   function close() { lab.open = false; walk = null; resetArmed = false; reported = ''; showReport = false; }
   function onKey(e) { if (e.key === 'Escape' && lab.open) { if (walk) walk = null; else close(); } }
 
-  function start() { const r = lab.run; if (!r.steps.length) return; walk = { steps: r.steps, i: 0, title: r.recheck ? 'Re-check fixes' : 'Test lab' }; note = lab.results[r.steps[0].key]?.note || ''; }
-  function openOne(s) { walk = { steps: [s], i: 0, title: 'One check' }; note = lab.results[s.key]?.note || ''; }
-  function go(d) {
-    const i = walk.i + d;
-    if (i < 0) return;
-    if (i >= walk.steps.length) { walk = null; return; }
-    walk = { ...walk, i }; note = lab.results[walk.steps[i].key]?.note || ''; reported = ''; showReport = false;
+  function at(k) { note = lab.results[k]?.note || ''; reported = ''; showReport = false; }
+  /* ▶ Re-check: the broken ones first. */
+  function start() { const r = lab.run; if (!r.recheck || !r.steps.length) return; walk = { mode: 'recheck', steps: r.steps, i: 0, key: r.steps[0].key, hist: [], skip: [], title: 'Re-check fixes' }; at(walk.key); }
+  /* ▶ Continue (top of the lab): the rail, from the first check not marked yet. */
+  function startRail() { const first = unchecked(lab.plan, lab.results)[0]; if (!first) return; walk = { mode: 'rail', key: first.key, hist: [], skip: [], title: 'Test lab' }; at(first.key); }
+  /* Tapping any check opens it on the rail, so Continue carries on to what's left. */
+  function openOne(s) { walk = { mode: 'rail', key: s.key, hist: [], skip: [], title: 'Test lab' }; at(s.key); }
+  /* Next: the next broken one in a Re-check, else the next check not marked yet. */
+  function next(skipping = false) {
+    const n = upNext;
+    if (!n) { walk = null; return; }
+    const re = walk.mode === 'recheck' && walk.i + 1 < walk.steps.length;
+    walk = { ...walk, mode: re ? 'recheck' : 'rail', i: re ? walk.i + 1 : walk.i, key: n.key, hist: [...walk.hist, walk.key], skip: skipping ? [...walk.skip, walk.key] : walk.skip, title: re ? walk.title : 'Test lab' };
+    at(n.key);
   }
-  function works() { lab.mark(step.key, 'pass'); go(1); }
+  function back() { const h = walk.hist; if (!h.length) return; const k = h[h.length - 1]; walk = { ...walk, key: k, hist: h.slice(0, -1), i: Math.max(0, walk.i - (walk.mode === 'recheck' ? 1 : 0)) }; at(k); }
+  function works() { lab.mark(step.key, 'pass'); next(); }
   function broken() { lab.mark(step.key, 'fail', note); }
   function saveNote() { if (res?.s === 'fail') lab.mark(step.key, 'fail', note); }
   function toJar() { lab.mark(step.key, 'fail', note); lab.toJar(step); }
@@ -81,7 +96,7 @@
       <p class="sub" id="labError">Couldn’t load releases.json. Reload staging and try again.</p>
     {:else if walk && step}
       <section class="card" id="labStep">
-        <p class="lbl">{step.version ? `v${step.version} · ${step.title}` : step.title} · {walk.i + 1} of {walk.steps.length}</p>
+        <p class="lbl">{step.version ? `v${step.version} · ${step.title}` : step.title} · {walk.mode === 'recheck' ? `fix ${walk.i + 1} of ${walk.steps.length}` : `${left} not checked`}</p>
         <p class="do"><b>Do:</b> {step.say}</p>
         <p class="see"><b>You should see:</b> {step.see}</p>
         <div class="row">
@@ -99,14 +114,16 @@
           {:else}
             <button type="button" class="link" id="labJar" onclick={toJar}>💡 Add to Ideas jar instead</button>
           {/if}
+          <button type="button" id="labContinueStep" onclick={() => { saveNote(); next(); }}>{upNext ? 'Continue to the next check ›' : 'Back to the list'}</button>
         {/if}
         <div class="row nav">
-          <button type="button" class="link" onclick={() => go(-1)} disabled={walk.i === 0}>‹ Back</button>
-          <button type="button" class="link" id="labNext" onclick={() => go(1)}>{walk.i + 1 < walk.steps.length ? 'Skip ›' : 'Done'}</button>
+          <button type="button" class="link" onclick={back} disabled={!walk.hist.length}>‹ Back</button>
+          <button type="button" class="link" id="labNext" onclick={() => next(true)}>{upNext ? 'Skip ›' : 'Done'}</button>
           <button type="button" class="link" onclick={() => (walk = null)}>See all</button>
         </div>
       </section>
     {:else}
+      {#if railLabel}<button type="button" class="primary quick" id="labQuick" onclick={startRail}>{railLabel}</button>{/if}
       <section class="verdict" class:bad={lab.verdict.fail} class:good={lab.verdict.ready} id="labVerdict" role="status">
         <p class="vtext">{lab.verdict.text}</p>
         {#if lab.plan.newest}<p class="sub">{lab.verdict.pass} ✓ · {lab.verdict.fail} ✗ · {lab.verdict.left} not checked</p>{/if}
@@ -164,6 +181,7 @@
   .x { flex: none; width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%; }
   .lbl { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
   .card, .verdict { display: grid; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); }
+  .quick { min-height: 52px; font-size: 17px; }
   .verdict.bad { border-color: var(--danger); }
   .verdict.good { border-color: var(--ok); }
   .vtext { margin: 0; font-weight: 700; font-size: 17px; }
