@@ -35,13 +35,28 @@
     };
   });
 
-  /* Which parts wear the halo in each phase. */
+  /* Spotlight: the rest of the page dims a little so the white halo stands out (light
+     mode; dark mode's glow already does). It lives on <body> so nothing can trap it. */
+  let scrim;
+  onMount(() => {
+    scrim = document.createElement('div');
+    scrim.className = 'sh-scrim';
+    scrim.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(scrim);
+    return () => scrim.remove();
+  });
+
+  /* Which parts wear the halo (and sit above the spotlight) in each phase. */
   $effect(() => {
     const p = startHere.phase;
-    const set = (el, on) => el && el.classList.toggle('sh-halo', on);
+    const set = (el, on, cls = 'sh-halo') => el && el.classList.toggle(cls, on);
     set(document.querySelector('.wrap > header .intro'), p === 'title');
     set(document.getElementById('thoughts'), p === 'box');
     set(document.getElementById('talkLink'), p === 'box' && talk);
+    set(document.querySelector('.wrap > header'), p === 'title', 'sh-lift');
+    /* The whole input card lifts: its entrance animation keeps its insides from lifting on their own. */
+    set(document.getElementById('form'), p === 'box', 'sh-lift');
+    scrim?.classList.toggle('on', p === 'title' || p === 'box');
     /* Step two: bring Talk it out and the box into view, and let the pointer speak
        instead of the box's own hint (app.js puts the hint back when the ideas settle). */
     if (p === 'box') {

@@ -2371,6 +2371,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas wait from the start');
   await p.waitForTimeout(1700);
   expect(await p.$('.intro.sh-halo h1') && await p.$('.intro.sh-halo .lede') && await p.$('.intro.sh-halo .wave'), 'step 1: the title, waveform and description should wear one halo');
+  expect(await p.$('.sh-scrim.on') && await p.$('header.sh-lift'), 'step 1: the page dims around the title (spotlight)');
   const room = await p.$eval('.intro', el => parseFloat(getComputedStyle(el).paddingTop));
   expect(room >= 10, 'the halo panel needs room around the text, got ' + room + 'px');
   expect(!(await p.isVisible('#startHere')) && !(await p.$('#thoughts.sh-halo')), 'step 1: the box waits its turn');
@@ -2378,11 +2379,12 @@ await check('start here: title and description pulse first, then it scrolls to T
   await p.waitForTimeout(2400);
   expect(!(await p.$('.intro.sh-halo')), 'step 2: the title lets go');
   expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
+  expect(await p.$('#form.sh-lift') && await p.$('.sh-scrim.on') && !(await p.$('header.sh-lift')), 'step 2: the spotlight moves to the input card');
   const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
   expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
   expect(await p.getAttribute('#thoughts', 'placeholder') === '', 'the pointer speaks instead of the box hint');
   await p.waitForTimeout(4200);
-  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'Start here should end on its own');
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')) && !(await p.$('.sh-scrim.on')) && !(await p.$('.sh-lift')), 'Start here should end on its own, spotlight off');
   expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
   await p.reload(); await p.waitForTimeout(2000);

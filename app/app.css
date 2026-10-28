@@ -22,7 +22,7 @@
   --accent: #1d5c8c;
   --accent-ink: #ffffff;
   --accent-soft: #dbe8f3;
-  --halo-fill: rgba(255,255,255,0.8); --halo-edge: rgba(24,33,44,0.14); --halo-drop: rgba(24,33,44,0.2); --halo-glow: rgba(255,255,255,0.7);
+  --halo-fill: #ffffff; --halo-edge: rgba(24,33,44,0.14); --halo-drop: rgba(24,33,44,0.2); --halo-glow: rgba(255,255,255,0.9); --halo-scrim: rgba(24,33,44,0.32);
   --danger: #a3332b;
   --ok: #2f6b3f;
   --record: #d93a3f;
@@ -34,14 +34,14 @@
   :root:not([data-theme="light"]) {
     --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16);
+    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16); --halo-scrim: transparent;
     --warn: #f0bd5c; --warn-soft: #3a2c14;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16);
+  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16); --halo-scrim: transparent;
   --warn: #f0bd5c; --warn-soft: #3a2c14;
 }
 @media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
@@ -60,6 +60,10 @@ body {
 header { display: flex; flex-direction: column; gap: 8px; }
 .intro { display: flex; flex-direction: column; gap: 8px; }
 .wrap > header .toprow { position: relative; z-index: 2; }   /* the chips stay on top of the Start here panel */
+/* Start here spotlight: a dim layer over the page, with the haloed parts lifted above it. */
+.sh-scrim { position: fixed; inset: 0; z-index: 40; pointer-events: none; background: var(--halo-scrim); opacity: 0; transition: opacity 0.4s ease; }
+.sh-scrim.on { opacity: 1; }
+.sh-lift { position: relative; z-index: 41; }
 h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-height: 0.98; margin: 0; letter-spacing: -0.025em; text-wrap: balance; }
 /* The one signature: a voice waveform that settles into lines of text. */
 .wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; position: relative; z-index: 1; }   /* stays crisp over the Start here halo */
