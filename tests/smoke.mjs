@@ -51,6 +51,8 @@ async function check(name, fn) {
 }
 function expect(cond, msg) { if (!cond) throw new Error(msg); }
 
+/* Next step dock (#17): the ⋯ menu holds Open in, Quick version and New prompt. Opens it first when needed. */
+async function menuTap(p, sel) { if (!(await p.isVisible(sel))) await p.click('#dockMore'); await p.click(sel); }
 /* Gemini mock. opts: models, intake (object), write (string), fail (model -> status), finish (model -> reason) */
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
 
@@ -235,7 +237,7 @@ await check('run stats: logs numbers only, never words; 4 models listed', async 
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
   await p.waitForTimeout(300);
   expect(sentRuns.length === 0, 'runs must not be sent while run stats is off');
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await p.fill('#thoughts', 'my secret memo'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
@@ -243,7 +245,8 @@ await check('run stats: logs numbers only, never words; 4 models listed', async 
   await p.waitForTimeout(400);
   // Run stats on: the record waits until you do something with the prompt
   expect(sentRuns.length === 0, 'the run should wait for what happens next');
-  await p.click('#xrayBtn'); await p.click('#copy');
+  /* The dock tucks away while X-ray is open (#17): open it, tap Done, then Copy prompt. */
+  await p.click('#xrayBtn'); await p.click('#xrayBtn'); await p.click('#copy');
   await p.waitForTimeout(400);
   expect(sentRuns.length === 1, 'one run should be sent once you copy, got ' + sentRuns.length);
   const sent = JSON.parse(sentRuns[0]).run;
@@ -277,9 +280,10 @@ await check('AI app links: Gemini opens the app on iPhone, web on computers', as
 await check('first screen is simple; plain words; copy and open', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   for (const id of ['#statsToggle', '#memoGuide']) expect(!(await p.isVisible(id)), id + ' should be folded under More options');
-  expect(await p.isVisible('#quickMode'), 'Quick mode should sit next to Build my prompt');
-  const qRow = await p.evaluate(() => document.getElementById('quickMode').closest('.row') === document.getElementById('build').closest('.row'));
-  expect(qRow, 'Quick mode is not in the Build row');
+  expect(await p.isVisible('#quickMode'), 'Quick mode should show on the first screen');
+  /* Build my prompt lives in the Next step dock (#17); Quick and Normal stay in the Build row under the box. */
+  const qRow = await p.evaluate(() => !!document.getElementById('quickMode').closest('.buildrow') && !!document.getElementById('build').closest('#nextDock'));
+  expect(qRow, 'Quick mode should be in the Build row and Build my prompt in the dock');
   expect(await p.isVisible('#bannerPaste') && (await p.textContent('#bannerPaste')).includes('Paste') && !(await p.$('#pasteWrap.banner')), 'a small Paste button should sit on top of the box');
   const above = await p.evaluate(() => document.getElementById('pasteWrap').getBoundingClientRect().bottom <= document.getElementById('thoughts').getBoundingClientRect().top);
   expect(above, 'Paste should be above the text box');
@@ -287,7 +291,7 @@ await check('first screen is simple; plain words; copy and open', async () => {
   const made = await p.textContent('#madeBy');
   expect(/^Ready in \d+s/.test(made) && !/gemini/i.test(made), 'technical words showing: ' + made);
   await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
-  await p.click('.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  await menuTap(p, '.openrow a >> text=Claude'); await p.waitForTimeout(300);
   expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'Copy and open did not copy the prompt');
 });
 
@@ -320,6 +324,10 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   await p.click('#build', { trial: true }); await p.evaluate(() => document.activeElement.blur());
   await p.waitForTimeout(1900);
   expect(await p.isVisible('#ideas .ideas-track'), 'ideas did not come back to an empty box');
+  /* At the top of a phone screen the dock (#17) floats over the bottom of the box, where Try this
+     one and Show ideas sit. Scroll a little first, the way a person would, so the click doesn't
+     have to scroll the strip itself to reach them. */
+  await p.evaluate(() => window.scrollTo(0, 120));
   await p.click('#ideasTry');
   expect((await p.inputValue('#thoughts')).length > 20, 'Try this one did not fill the box');
   await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(1900);
@@ -327,7 +335,7 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
   expect(!(await p.isVisible('#ideasShow')), 'Show ideas button showing over text');
   await p.fill('#thoughts', ''); await p.focus('#thoughts'); await p.waitForTimeout(250);
   expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas showing while typing');
-  await p.click('#ideasShow'); await p.waitForTimeout(350);
+  await p.evaluate(() => window.scrollTo(0, 120)); await p.click('#ideasShow'); await p.waitForTimeout(350);
   expect(await p.isVisible('#ideas .ideas-track'), 'Show ideas button did not bring them back');
   expect(!(await p.isVisible('#ideasShow')), 'Show ideas button should hide once ideas are back');
   await p.click('#thoughts', { position: { x: 20, y: 12 } }); await p.waitForTimeout(250);
@@ -746,7 +754,7 @@ await check('something went wrong: quick report with run facts only, never your 
   expect(/- Core: (on|off)/.test(devText), 'dev reports should say whether the core was on');
   expect(!(await p.$('#reportIssue')), 'with the relay, no manual GitHub link');
   // A new prompt starts a fresh, closed report
-  await p.click('#reset'); await p.fill('#thoughts', 'another one'); await p.click('#build');
+  await menuTap(p, '#reset'); await p.fill('#thoughts', 'another one'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
   await p.waitForSelector('#reportBox', { state: 'detached', timeout: 15000 }).catch(() => { throw new Error('a new prompt should close the report'); });
   await done(p);
@@ -976,7 +984,7 @@ await check('busy models: a resting model is skipped next time, and a slow write
   expect(rest['gemini-3.8-flash'] && rest['gemini-3.8-flash'].until > Date.now() && rest['gemini-3.8-flash'].why === 'busy', 'busy model should be resting: ' + JSON.stringify(rest));
   expect(!/plan my week/.test(JSON.stringify(rest)), 'rest list must hold model names only');
   p.calls.length = 0;
-  await p.click('#reset'); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  await menuTap(p, '#reset'); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
   for (let i = 0; i < 100 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
   const second = p.calls.filter(c => !c.intake).map(c => c.model);
   expect(second[0] === 'gemini-3.7-flash', 'resting model should go to the back of the line: ' + second.join(', '));
@@ -1116,7 +1124,7 @@ await check('memory (Tailored to you): opt-in, only picked facts go in, nothing 
   await p.click('#reportBtn');
   // Export and import
   await p.evaluate(() => { window.__md = null; navigator.canShare = () => true; navigator.share = async (d) => { window.__md = { name: d.files[0].name, text: await d.files[0].text() }; }; });
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   if (!(await p.$('#starter'))) await p.evaluate(() => document.getElementById('starterBtn').click());
   await p.waitForSelector('#coreBtn');
   if (!(await p.$('#memoryPanel'))) await p.evaluate(() => document.getElementById('coreBtn').click());
@@ -1227,7 +1235,7 @@ await check('self-tuning estimates: shared times first, your own once learned, b
       await p.fill('#thoughts', 'plan my week'); await p.click('#build');
       await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo');
       await p.waitForFunction(() => /Ready|Built/.test(document.getElementById('madeBy').textContent), null, { timeout: 15000 });
-      await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset');
+      await p.click('#copy'); await p.waitForTimeout(300); await menuTap(p, '#reset');
     }
     return sent;
   }
@@ -1255,7 +1263,7 @@ await check('built-in complex estimate matches the Scorecard-calibrated default'
   });
   await withKey(p); await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
-  await p.click('#copy'); await p.waitForTimeout(300); await p.click('#reset'); await p.waitForTimeout(300);
+  await p.click('#copy'); await p.waitForTimeout(300); await menuTap(p, '#reset'); await p.waitForTimeout(300);
   expect(sent[0] && sent[0].depth === 'complex' && sent[0].est_from === 'built-in' && sent[0].est_s === 45, 'complex built-in estimate: ' + JSON.stringify(sent[0]));
 });
 
@@ -1533,13 +1541,13 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   await p.click('#srcLive');
   expect(/Using Live\. Live is g8/.test(await p.textContent('#srcInfo')), 'Live should show: ' + await p.textContent('#srcInfo'));
   p.calls.length = 0; p.grades.length = 0;
-  await p.click('#reset'); await p.fill('#thoughts', 'study plan again'); await p.click('#build'); await done(p);
+  await menuTap(p, '#reset'); await p.fill('#thoughts', 'study plan again'); await p.click('#build'); await done(p);
   await p.waitForFunction(() => / g8, /.test(document.getElementById('gradeNote').textContent), null, { timeout: 8000 }).catch(() => {});
   expect((await writeCall(p)).text.includes('Live writer rule.') && / g8, /.test(await p.textContent('#gradeNote')), 'Live should use lessons.json: ' + await p.textContent('#gradeNote'));
   // Dev tools off: always Live, even with Draft picked
   await p.click('#srcDraft'); await p.uncheck('#devTools'); await p.waitForTimeout(100);
   p.calls.length = 0;
-  await p.click('#reset'); await p.fill('#thoughts', 'study plan three'); await p.click('#build'); await done(p);
+  await menuTap(p, '#reset'); await p.fill('#thoughts', 'study plan three'); await p.click('#build'); await done(p);
   expect((await writeCall(p)).text.includes('Live writer rule.'), 'with dev tools off, everyone gets Live');
   // Paste draft link (Home Screen app, where a link opens Safari instead)
   const q = await page({ intake: noQ, lessons: LIVE });
@@ -1767,7 +1775,7 @@ await check('journey strip: Speak, then Answer while questions show, then Copy o
   expect(/Speak, done/.test(await p.textContent('.journey')), 'Speak should read as done for screen readers');
   await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
   await p.waitForFunction(() => /Copy/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   await p.waitForFunction(() => /Speak/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
   const q = await page();
   await q.fill('#thoughts', 'help me plan a 5k'); await q.click('#build'); await done(q);
@@ -1802,7 +1810,7 @@ await check('quality check: a glanceable score, a plain label, and one tip (neve
   expect(/Could be sharper/.test(t) && /2\.0\s*\/5/.test(t), 'label and score missing: ' + t);
   expect(/Tip: Say what you want done/.test(t), 'tip should give one next step: ' + t);
   expect(await p.getAttribute('#qualityCheck .meter', 'aria-label') === '2.0 out of 5', 'meter needs a text label');
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -1848,10 +1856,10 @@ await check('input hints: one word, a very long ramble, and another language eac
   const p = await page();
   await p.fill('#thoughts', 'budget'); await p.click('#build'); await done(p);
   expect(/Short works/.test(await p.textContent('#notice-form')), 'one word should get a gentle note');
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   await p.fill('#thoughts', Array.from({ length: 650 }, (_, i) => 'word' + (i % 40)).join(' ')); await p.click('#build'); await done(p);
   expect(/That's a lot/.test(await p.textContent('#notice-form')), 'very long input should get a reassuring note');
-  await p.click('#reset');
+  await menuTap(p, '#reset');
   await p.fill('#thoughts', 'quiero un plan para correr por las mañanas porque tengo poco tiempo'); await p.click('#build'); await done(p);
   expect(/another language/.test(await p.textContent('#notice-form')), 'Spanish should get the language note');
   expect((await p.inputValue('#output')).includes('quiero un plan'), 'the words go in as written');
@@ -2079,7 +2087,7 @@ await check('my context: budget chip shows %, past 100% one Flash-Lite squeeze f
   await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
   expect(/SQUEEZED/.test(p.calls.filter((c) => !c.intake).pop().text), 'the writer should get the squeezed version too');
   expect(JSON.parse(await p.evaluate(() => localStorage.getItem('stp-context')))[1].text === pieces[0].text, 'saved pieces never change');
-  await p.click('#reset'); await p.fill('#thoughts', 'again'); await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
+  await menuTap(p, '#reset'); await p.fill('#thoughts', 'again'); await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
   expect(p.squeezes.length === 1, 'same picks reuse the squeeze, no second call');
   await p.reload();
   expect(!(await p.$('#contextCount')) || !/squeezed/.test(await p.textContent('#contextCount')), 'a reload drops the squeeze (memory only)');
@@ -2201,15 +2209,15 @@ await check('intro text: each sentence on its own line with room to breathe, spa
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('copy and open: the status line sits right under the links and says what happened', async () => {
+await check('copy and open: the dock menu copies and opens, and the status line on the card says what happened', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
-  expect(await p.evaluate(() => document.querySelector('.openrow').nextElementSibling.id === 'status'), 'the status line should come right after Copy and open');
+  expect(await p.evaluate(() => !!document.getElementById('status').closest('#result')), 'the status line should stay on the prompt card, where Copy and open says what happened');
   await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
-  await p.click('.openrow a >> text=ChatGPT'); await p.waitForTimeout(300);
+  await menuTap(p, '.openrow a >> text=ChatGPT'); await p.waitForTimeout(300);
   expect(/Copied\. Opening ChatGPT/.test(await p.textContent('#status')), 'status should say it copied and is opening ChatGPT: ' + await p.textContent('#status'));
   await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('blocked')); });
-  await p.click('.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  await menuTap(p, '.openrow a >> text=Claude'); await p.waitForTimeout(300);
   expect(/Couldn't copy it\. Tap Copy prompt first, then open Claude/.test(await p.textContent('#status')), 'a failed copy should say what to do: ' + await p.textContent('#status'));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -2220,7 +2228,8 @@ await check('start over forgets the transcript, and Paste warns when the clipboa
   await p.click('#bannerPaste'); await p.waitForTimeout(200);
   await p.click('#build'); await done(p);
   await p.click('#xrayBtn');
-  await p.click('#reset'); await p.waitForTimeout(400);
+  /* The dock tucks away while X-ray is open, so press New prompt directly: Start over must still clear the X-ray. */
+  await p.evaluate(() => document.getElementById('reset').click()); await p.waitForTimeout(400);
   expect(await p.inputValue('#thoughts') === '' && await p.evaluate(() => !document.querySelector('#xray') && !document.querySelector('#xrayBtn')), 'Start over should clear the box and the X-ray');
   // Same transcript still on the clipboard: warn, keep the box empty
   await p.evaluate(() => navigator.clipboard.writeText('walk the dog then plan my week'));

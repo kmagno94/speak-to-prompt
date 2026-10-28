@@ -2,6 +2,30 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.8",
+      "date": "2026-10-28",
+      "title": "R1 build 1: Next step dock",
+      "items": [
+        "Next step dock: a floating pill at the bottom of every screen holds the one button you need right now, and it's the only place that button lives. Writing your thoughts: Build my prompt. Questions: Write my prompt (N of 3), which works even at 0 of 3. Result: Copy prompt.",
+        "The ⋯ next to it holds the rest: on the result, Open in ChatGPT, Claude, or Gemini (copies and opens, like before) and New prompt (was Start over); on the questions, Quick version (the faster, lighter write, was Quick prompt) and New prompt.",
+        "Change your words after a build and the dock switches back to Build my prompt, so you can rebuild without scrolling up.",
+        "The dock tucks away while the keyboard is up, while X-ray, the Tutorial, or a panel is open, and fades back in when they close. The page ends above it, and the 💡 Ideas and 🧪 Test lab buttons and the first-run Guide stack on the right just above it.",
+        "Motion kit: one set of speeds (150ms taps, 250ms reveals, about 400ms scrolls) and one easing curve, starting with the dock. With Reduce Motion on, the dock just appears and goes instead of sliding."
+      ],
+      "checks": [
+        { "say": "Open staging on your iPhone with an empty box and scroll all the way down.", "see": "A rounded pill floats near the bottom with Build my prompt and nothing else. The last thing on the page (the footer) stops above it, never behind it. The Build button is gone from under the box." },
+        { "say": "Tap into the box so the keyboard opens, then tap outside it.", "see": "The pill slides away while the keyboard is up, and fades back in quickly once it closes." },
+        { "say": "With your key, paste a messy note (keyboard closed) and tap Build my prompt in the pill.", "see": "It builds like before. When questions show, the pill says Write my prompt (0 of 3) (or however many), and the number goes up as you answer." },
+        { "say": "On the questions, tap ⋯ in the pill.", "see": "A small menu opens above it: Quick version (faster, lighter) and New prompt. Tapping outside closes it. Quick version writes the prompt the fast way." },
+        { "say": "Answer the questions and tap Write my prompt in the pill.", "see": "When the prompt is ready the pill says Copy prompt. Tapping it copies (it turns green for a moment) and the copied line shows on the card." },
+        { "say": "On the result, tap ⋯ and then Claude.", "see": "The menu shows Open in: ChatGPT, Claude, Gemini, then New prompt. Claude copies the prompt and opens Claude, and the menu closes." },
+        { "say": "Back on the result, type one more word into the thoughts box at the top and close the keyboard.", "see": "The pill switches to Build my prompt, so you can rebuild with your new words." },
+        { "say": "Tap 🩻 X-ray on the result, then Done.", "see": "The pill is gone while X-ray is open and comes back after Done." },
+        { "say": "Turn on Show my Ideas tab (and dev tools for the Test lab) and look at the bottom right.", "see": "💡 Ideas sits on the right just above the pill, with 🧪 Test lab stacked above it. Nothing overlaps the pill." },
+        { "say": "On an iPad or computer, open staging.", "see": "The pill is centered, not stretched edge to edge, and works the same way." }
+      ]
+    },
+    {
       "version": "2.1.7",
       "date": "2026-10-28",
       "title": "Build 4: floating Done, snap to the cooking, keyboard coach bar",

@@ -2,6 +2,7 @@
 class XrayState {
   prompt = $state('');
   run = $state(0);      // bumps on every new prompt, so X-ray starts closed
+  open = $state(false); // X-ray is showing (PromptXray sets it); the Next step dock tucks away
   raw = '';
   answers = [];
   core = '';

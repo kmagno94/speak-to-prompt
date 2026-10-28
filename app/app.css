@@ -10,6 +10,12 @@
   --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
   /* Motion: transform and opacity only, ease-out, never bouncy (Reduce Motion turns them off) */
   --dur-fast: 150ms; --dur: 220ms; --dur-slow: 300ms; --ease: cubic-bezier(.2, .8, .2, 1);
+  /* Motion kit (#28): taps 150ms (--dur-fast), reveals 250ms, scrolls about 400ms, one curve (--ease).
+     New animations use these; lib/motion.js has the same numbers for script (SPEED, EASE). */
+  --dur-reveal: 250ms; --dur-scroll: 400ms;
+  /* Next step dock (#17): how much room the floating dock takes at the bottom (16px gap +
+     64px pill), so the page, the floating buttons and the Guide can sit above it. */
+  --dock-lift: calc(80px + env(safe-area-inset-bottom, 0px));
   --tap: 44px;
   --warn: #8a5410; --warn-soft: #fbecd3;
   --bg: #e9edf2;
@@ -44,7 +50,7 @@
   --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16); --halo-scrim: transparent;
   --warn: #f0bd5c; --warn-soft: #3a2c14;
 }
-@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
+@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; --dur-reveal: 0ms; --dur-scroll: 0ms; } }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 /* Nothing (like the ideas strip's soft blobs) may push the page sideways on a phone. */
@@ -184,7 +190,7 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
 .finish { display: grid; gap: var(--sp-2); }
 button.copybig { width: 100%; min-height: 56px; font-size: var(--fs-lg); font-family: var(--display); border-radius: var(--r-md); }
 button.copybig.copied { background: var(--ok); border-color: var(--ok); color: var(--surface); }
-.finish .secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.finish .secondary { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 .finish .secondary button { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-3); }
 @media (prefers-reduced-motion: no-preference) {
   button.copybig.copied { animation: copied var(--dur-slow) var(--ease); }
@@ -294,8 +300,7 @@ button.getlink { color: var(--accent); font-weight: 700; text-decoration: underl
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
 /* Build and the mode picker each keep their share of the row, so a longer busy label
    (Reading your thoughts...) wraps inside the button instead of crushing the picker. */
-.buildrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(132px, 1fr); gap: 10px; align-items: stretch; }
-.buildrow #build { padding: 10px 10px; line-height: 1.2; text-wrap: balance; min-height: 64px; }   /* room for a 2-line label, so the row never jumps */
+.buildrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: stretch; }   /* Build my prompt lives in the dock (#17) */
 .buildrow .starterwrap { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
@@ -443,3 +448,12 @@ details.key[open] summary { margin-bottom: 10px; }
    the My context Done bar (ContextRow.svelte) and the keyboard coach bar (KeyboardCoach.svelte). */
 body:is(.fabs-away, .fabs-away-kb) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out; } }
+
+/* Next step dock (#17): while it shows, the page ends above it, and the floating buttons and
+   the first-run Guide stack on the right 12px above it (🧪 above 💡 when both show). */
+body.dock-on { padding-bottom: calc(48px + var(--dock-lift)); }
+body.dock-on #ideaTab { bottom: calc(var(--dock-lift) + 12px); }
+body.dock-on #labTab { left: auto; right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: calc(var(--dock-lift) + 12px); }
+body.dock-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 56px); }
+body.dock-on #guide { bottom: calc(var(--dock-lift) + 12px); }
+@media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab, #guide { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out, bottom var(--dur-reveal) var(--ease); } }
