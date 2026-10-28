@@ -12,8 +12,9 @@
      150ms when the keyboard closes), and while X-ray, the Tutorial, or a panel is open.
      These are the real buttons app.js wires up by id (build, copy, reset, the .openrow links),
      so they stay in the page the whole time; only the moment decides which ones show.
-     New prompt (#19) shows a 6 second Undo just above the dock (or the keyboard) that puts your
-     words back in the box, so a mis-tap never loses a transcript. In memory only.
+     New prompt (#19) shows a 6 second Undo just above the dock (or the keyboard) that brings
+     everything back: your words, and the questions or the finished prompt (app.js keeps that
+     snapshot and restores it on "stp-undo"). In memory only.
      Ctrl or ⌘ + Enter in the box builds (#27), for iPad keyboards and computers. */
   import { onMount } from 'svelte';
   import { kb } from './lib/keyboard.svelte.js';
@@ -27,7 +28,7 @@
   let menu = $state(false);       // the ⋯ menu
   let tutorial = $state(false);   // the First time? Start here sheet is open
   let more, sheet;
-  let undo = $state(null);        // { words } for 6 seconds after New prompt; never saved
+  let undo = $state(null);        // { at } for 6 seconds after New prompt; the snapshot itself lives in app.js
   let undoTimer = 0;
   const UNDO_MS = 6000;
 
@@ -62,13 +63,17 @@
        clears the box (a capture listener on the button itself). */
     const reset = el('reset');
     const snap = () => {
+      const had = !!box.value.trim() || !result.hidden || !qa.hidden;
       built = false; edited = false;   /* back to the start */
-      const words = box.value;
       clearTimeout(undoTimer);
-      undo = words.trim() ? { words, at: Date.now() } : null;
+      undo = had ? { at: Date.now() } : null;
       if (undo) undoTimer = setTimeout(() => { undo = null; }, UNDO_MS);
     };
     reset.addEventListener('click', snap, true);
+    /* After Undo the questions or prompt are back, so changing anything means build again. */
+    /* Deferred until app.js has finished putting things back (that fires its own box events). */
+    const undone = () => queueMicrotask(() => { built = true; edited = false; read(); });
+    window.addEventListener('stp-undo', undone);
     /* Typing something new means you meant it: the Undo goes away. */
     const typed = () => { if (undo && box.value.trim()) { clearTimeout(undoTimer); undo = null; } };
     box.addEventListener('input', typed);
@@ -80,7 +85,7 @@
     };
     document.addEventListener('keydown', keys);
     return () => {
-      reset.removeEventListener('click', snap, true); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
+      reset.removeEventListener('click', snap, true); window.removeEventListener('stp-undo', undone); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
       clearTimeout(undoTimer);
       watch.disconnect();
       form.removeEventListener('submit', onSubmit, true); form.removeEventListener('input', onChange, true); form.removeEventListener('change', onChange, true);
@@ -117,16 +122,12 @@
   const picked = () => setTimeout(() => { menu = false; }, 0);
   function quick() { menu = false; chat.finish(true); }
 
-  /* Undo puts the words back as if they were pasted (the coach and idea strip react). The old
-     prompt isn't brought back: build again from your words. */
+  /* Undo: app.js puts back your words and whatever was on screen (questions or the prompt). */
   function undoReset() {
     if (!undo) return;
-    const box = document.getElementById('thoughts'), words = undo.words;
     clearTimeout(undoTimer);
     undo = null;
-    box.value = words;
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.dispatchEvent(new Event('stp:changed'));
+    window.dispatchEvent(new Event('stp-undo'));
   }
   /* The 💡 / 🧪 buttons slide up while the Undo shows, so nothing overlaps it. */
   $effect(() => {

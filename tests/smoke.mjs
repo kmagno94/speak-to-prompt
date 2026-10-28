@@ -2255,15 +2255,21 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('new prompt: a 6 second Undo puts your words back, typing makes it go away; Copy prompt + my note sits right under the prompt', async () => {
+await check('new prompt: a 6 second Undo brings back your words and the prompt (or the questions), typing makes it go away; Copy prompt + my note sits right under the prompt', async () => {
   const p = await page();
   await p.fill('#thoughts', 'plan my garden for spring'); await p.click('#build'); await done(p);
   expect(await p.evaluate(() => { const o = document.getElementById('output'), c = document.getElementById('copyNote'), r = document.querySelector('#result .reportbtn'); return !!(o.compareDocumentPosition(c) & 4) && !!(c.compareDocumentPosition(r) & 4); }), 'Copy prompt + my note should come right after the prompt, before Report');
+  const before = { out: await p.inputValue('#output'), made: await p.textContent('#madeBy') };
   await menuTap(p, '#reset'); await p.waitForTimeout(150);
-  expect(await p.inputValue('#thoughts') === '' && await p.isVisible('#undoToast') && /Prompt cleared/.test(await p.textContent('#undoToast')), 'New prompt should clear the box and offer Undo');
-  await p.click('#undoReset'); await p.waitForTimeout(150);
+  expect(await p.inputValue('#thoughts') === '' && !(await p.isVisible('#result')) && await p.isVisible('#undoToast') && /Prompt cleared/.test(await p.textContent('#undoToast')), 'New prompt should clear everything and offer Undo');
+  await p.click('#undoReset'); await p.waitForTimeout(250);
   expect(await p.inputValue('#thoughts') === 'plan my garden for spring' && !(await p.isVisible('#undoToast')), 'Undo should put the words back: ' + await p.inputValue('#thoughts'));
-  expect(await p.isVisible('#build'), 'after Undo the next step is Build my prompt');
+  expect(await p.isVisible('#result') && await p.inputValue('#output') === before.out && await p.textContent('#madeBy') === before.made, 'Undo should bring the prompt back too');
+  expect(await p.isVisible('#copy') && !(await p.isVisible('#build')), 'after Undo the next step is Copy prompt again');
+  await p.click('#copy'); await p.waitForTimeout(300);
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === before.out, 'Copy prompt should copy the brought-back prompt');
+  await p.fill('#thoughts', 'plan my garden for spring and summer'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(100);
+  expect(await p.isVisible('#build'), 'changing your words after Undo should bring back Build my prompt');
   await p.click('#build'); await done(p);
   await menuTap(p, '#reset'); await p.waitForTimeout(150);
   await p.type('#thoughts', 'n'); await p.waitForTimeout(100);
@@ -2272,8 +2278,18 @@ await check('new prompt: a 6 second Undo puts your words back, typing makes it g
   await menuTap(p, '#reset'); await p.waitForTimeout(6300);
   expect(!(await p.isVisible('#undoToast')), 'the Undo should go away by itself after 6 seconds');
   await p.evaluate(() => document.getElementById('reset').click()); await p.waitForTimeout(150);   /* box already empty */
-  expect(!(await p.isVisible('#undoToast')), 'no Undo when the box was already empty');
-  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  expect(!(await p.isVisible('#undoToast')), 'no Undo when there was nothing to clear');
+  // On the questions: Undo brings back the questions with your answers
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] } });
+  await withKey(q); await q.fill('#thoughts', 'yard sale'); await q.click('#build'); await q.waitForSelector('#qaList .chips button');
+  await q.click('#qaList .chips button'); await q.waitForTimeout(700);
+  await menuTap(q, '#reset'); await q.waitForTimeout(150);
+  expect(!(await q.isVisible('#qa')), 'New prompt should close the questions');
+  await q.click('#undoReset'); await q.waitForTimeout(250);
+  expect(await q.isVisible('#qa') && await q.inputValue('#thoughts') === 'yard sale' && /\(1 of 2\)/.test(await q.textContent('#qaGo')) && /Saturday/.test(await q.textContent('#qaList')), 'Undo should bring back the questions with your answer');
+  await q.click('#qaGo'); await done(q);
+  expect(await q.isVisible('#copy'), 'the brought-back questions should still write the prompt');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('keyboard: Ctrl or Cmd + Enter in the box builds, plain Enter is a new line', async () => {

@@ -2,6 +2,19 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.10",
+      "date": "2026-10-28",
+      "title": "Undo brings back the prompt too",
+      "items": [
+        "Undo after New prompt now brings everything back, not just your words: the finished prompt with its notes, X-ray, and Quality check, or the questions with the answers you'd already given. Mid-build there's nothing finished yet, so only your words come back. Still memory only, never saved."
+      ],
+      "checks": [
+        { "say": "Build a prompt, tap ⋯ then New prompt, then tap Undo.", "see": "Your words and the whole prompt card come back, scrolled into view, and the dock says Copy prompt. Copy prompt copies that same prompt." },
+        { "say": "With your key, start a prompt, answer one question, tap ⋯ then New prompt, then Undo.", "see": "The questions come back with your answer, and the dock says Write my prompt (1 of 3)." },
+        { "say": "After an Undo, change a word in the box and close the keyboard.", "see": "The dock switches to Build my prompt." }
+      ]
+    },
+    {
       "version": "2.1.9",
       "date": "2026-10-28",
       "title": "R1 build 2: Copy under the prompt, New prompt with Undo, Ctrl or ⌘ + Enter",
