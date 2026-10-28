@@ -39,8 +39,7 @@
   $effect(() => {
     const p = startHere.phase;
     const set = (el, on) => el && el.classList.toggle('sh-halo', on);
-    set(document.querySelector('.wrap > header h1'), p === 'title');
-    set(document.querySelector('.wrap > header .lede'), p === 'title');
+    set(document.querySelector('.wrap > header .intro'), p === 'title');
     set(document.getElementById('thoughts'), p === 'box');
     set(document.getElementById('talkLink'), p === 'box' && talk);
     /* Step two: bring Talk it out and the box into view, and let the pointer speak

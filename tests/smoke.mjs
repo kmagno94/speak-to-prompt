@@ -2370,11 +2370,13 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.$('.sh-halo')) && !(await p.isVisible('#startHere')), 'step 0: the title entrance plays first, no halo yet');
   expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas wait from the start');
   await p.waitForTimeout(1700);
-  expect(await p.$('h1.sh-halo') && await p.$('.lede.sh-halo'), 'step 1: the title and description should wear the halo');
+  expect(await p.$('.intro.sh-halo h1') && await p.$('.intro.sh-halo .lede') && await p.$('.intro.sh-halo .wave'), 'step 1: the title, waveform and description should wear one halo');
+  const room = await p.$eval('.intro', el => parseFloat(getComputedStyle(el).paddingTop));
+  expect(room >= 10, 'the halo panel needs room around the text, got ' + room + 'px');
   expect(!(await p.isVisible('#startHere')) && !(await p.$('#thoughts.sh-halo')), 'step 1: the box waits its turn');
   expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
   await p.waitForTimeout(2400);
-  expect(!(await p.$('h1.sh-halo')), 'step 2: the title lets go');
+  expect(!(await p.$('.intro.sh-halo')), 'step 2: the title lets go');
   expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
   const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
   expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
@@ -2384,7 +2386,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
   await p.reload(); await p.waitForTimeout(2000);
-  expect(await p.$('h1.sh-halo'), 'no action yet, so it should play again on the next open');
+  expect(await p.$('.intro.sh-halo'), 'no action yet, so it should play again on the next open');
   await p.click('#thoughts'); await p.keyboard.type('hi'); await p.waitForTimeout(300);
   expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'tapping into the box should end it');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
@@ -2397,7 +2399,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
   const r = await page({ fresh: true, reduced: true });
   await r.waitForTimeout(300);
-  expect(await r.$('h1.sh-halo') && await r.$eval('h1', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');
+  expect(await r.$('.intro.sh-halo') && await r.$eval('.intro', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');
   for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 

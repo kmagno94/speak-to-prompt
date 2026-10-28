@@ -57,6 +57,8 @@
       <!-- Home Screen web apps have no browser bar, so this is the refresh button too. -->
       <button type="button" class="verpill" id="versionPill" data-state="checking" aria-live="polite"><span class="ic" aria-hidden="true">↻</span><span id="versionText">Checking...</span></button>
     </div>
+    <!-- .intro groups the title, waveform and description, so Start here can halo them as one. -->
+    <div class="intro">
     <h1>Speak to Prompt</h1>
     <svg class="wave" viewBox="0 0 340 30" aria-hidden="true" focusable="false">
       <g class="v">
@@ -75,6 +77,7 @@
       </g>
     </svg>
     <p class="lede"><span>Every great answer starts with a good first step.</span> <span>Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</span></p>
+    </div>
   </header>
 
   <JourneyStrip />
