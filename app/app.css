@@ -1,5 +1,17 @@
-/* Layout: one narrow column. Loose scratchpad in, clean index card out. */
+/* Layout: one narrow column. Loose scratchpad in, clean index card out.
+   Journey: every run is a short trip (Speak, Answer, Copy) from a messy thought to the
+   first step of whatever you're setting out to do. */
 :root {
+  /* Type scale: 5 sizes, used everywhere (the h1 has its own clamp). */
+  --fs-xs: 13px; --fs-sm: 15px; --fs-md: 17px; --fs-lg: 21px; --fs-xl: 26px;
+  /* Spacing scale */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  /* Corners */
+  --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+  /* Motion: transform and opacity only, ease-out, never bouncy (Reduce Motion turns them off) */
+  --dur-fast: 150ms; --dur: 220ms; --dur-slow: 300ms; --ease: cubic-bezier(.2, .8, .2, 1);
+  --tap: 44px;
+  --warn: #8a5410; --warn-soft: #fbecd3;
   --bg: #e9edf2;
   --bubble: #e9edf2;   /* question bubbles; a shade lighter than the card in dark mode */
   --surface: #ffffff;
@@ -22,13 +34,16 @@
     --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
     --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+    --warn: #f0bd5c; --warn-soft: #3a2c14;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
   --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+  --warn: #f0bd5c; --warn-soft: #3a2c14;
 }
+@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 /* Nothing (like the ideas strip's soft blobs) may push the page sideways on a phone. */
@@ -40,7 +55,7 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: max(28px, calc(env(safe-area-inset-top, 0px) + 12px)) 48px;
 }
-.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+.wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-5); }
 header { display: flex; flex-direction: column; gap: 8px; }
 h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-height: 0.98; margin: 0; letter-spacing: -0.025em; text-wrap: balance; }
 /* The one signature: a voice waveform that settles into lines of text. */
@@ -63,9 +78,20 @@ h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-heigh
 .steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--muted); }
 .steps b { display: block; font-family: var(--display); color: var(--accent); font-size: 15px; }
 @media (max-width: 460px) { .steps { grid-template-columns: 1fr; } }
-label { font-family: var(--display); font-weight: 600; font-size: 19px; }
-.field { display: flex; flex-direction: column; gap: 8px; }
-.hint { margin: 0; font-size: 14px; color: var(--muted); }
+label { font-family: var(--display); font-weight: 600; font-size: var(--fs-lg); }
+.field { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* The hero: one warm card owns the first screen. The thoughts box is the start of the trip;
+   Talk it out and Paste are the only two moves before you type. */
+.hero {
+  gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-lg); background: var(--surface);
+  border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line), 0 18px 40px -28px rgba(20, 40, 70, 0.45);
+}
+.herolabel { font-size: var(--fs-xl); letter-spacing: -0.01em; line-height: 1.15; }
+.hero .voice { align-items: stretch; }
+.hero .voice .pastewrap:not(.banner) { flex: 1 1 140px; }
+.hero .voice .pastewrap.banner { flex: 1 1 100%; }
+.helpers { margin: calc(var(--sp-2) * -1) 0 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+.hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
 textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; border: 1px solid var(--line); resize: vertical; }
 #thoughts {
   min-height: 190px; padding: 12px 14px; line-height: 32px;
@@ -112,13 +138,15 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 }
 textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-button { font: inherit; cursor: pointer; border-radius: 12px; padding: 12px 18px; min-height: 46px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button { font: inherit; cursor: pointer; border-radius: var(--r-sm); padding: var(--sp-3) 18px; min-height: var(--tap); border: 1px solid var(--line); background: var(--surface); color: var(--ink); transition: transform var(--dur-fast) var(--ease); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 25%, transparent); }
-button.primary:active, .btnlink:active { transform: translateY(1px); }
+/* Tap feedback: everything you can press gives a little under your finger. */
+button:active:not(:disabled), .btnlink:active, .filelink:active, .openrow a:active, .mode:active { transform: scale(0.97); }
+.btnlink, .filelink, .openrow a, .mode { transition: transform var(--dur-fast) var(--ease); }
 button.link { border: none; background: none; padding: 6px 2px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .error { color: var(--danger); font-size: 14px; margin: 0; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 0 var(--line), 0 10px 24px -18px rgba(20, 40, 70, 0.35); }
-.card h2 { font-family: var(--display); font-size: 23px; letter-spacing: -0.01em; margin: 0; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-4) 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 0 var(--line), 0 10px 24px -18px rgba(20, 40, 70, 0.35); }
+.card h2 { font-family: var(--display); font-size: var(--fs-xl); letter-spacing: -0.01em; margin: 0; }
 /* Scratchpad in, index card out: the prompt sits on a ruled card with the red top line. */
 #result h2 { padding-bottom: 10px; border-bottom: 2px solid var(--record); }
 #output {
@@ -127,7 +155,17 @@ button.link { border: none; background: none; padding: 6px 2px; color: var(--acc
   background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule) 27px 28px);
   background-position: 0 9px; background-attachment: local; border-color: var(--line);
 }
-.status { font-size: 14px; color: var(--ok); min-height: 1.2em; margin: 0; }
+.status { font-size: var(--fs-sm); font-weight: 600; color: var(--ok); min-height: 1.2em; margin: 0; }
+/* The finish line: one big Copy, the quieter moves under it. */
+.finish { display: grid; gap: var(--sp-2); }
+button.copybig { width: 100%; min-height: 56px; font-size: var(--fs-lg); font-family: var(--display); border-radius: var(--r-md); }
+button.copybig.copied { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.finish .secondary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.finish .secondary button { font-size: var(--fs-sm); padding: var(--sp-2) var(--sp-3); }
+@media (prefers-reduced-motion: no-preference) {
+  button.copybig.copied { animation: copied var(--dur-slow) var(--ease); }
+  @keyframes copied { from { transform: scale(0.96); } to { transform: none; } }
+}
 .paste { font-size: 15px; color: var(--muted); }
 .paste a { color: var(--accent); font-weight: 700; margin-right: 12px; }
 footer { font-size: 13px; color: var(--muted); }
@@ -209,8 +247,7 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .tracker li.active::before { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 5px, var(--accent-soft) 6px); }
 .tracker li.skip { opacity: 0.45; text-decoration: line-through; }
 @media (prefers-reduced-motion: no-preference) {
-  .tracker li.active::before { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+  .tracker li.active::before { box-shadow: 0 0 0 5px var(--accent-soft); transition: box-shadow var(--dur) var(--ease); }
 }
 .tracker .nums { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .tracker .nums b { font-family: var(--mono); font-weight: 400; font-size: 22px; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -235,7 +272,7 @@ button.getlink { color: var(--accent); font-weight: 700; text-decoration: underl
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
 .modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
-.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: 38px; line-height: 1.1; }
+.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: var(--tap); line-height: 1.1; }
 .mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
 .mode b, .mode small { position: relative; pointer-events: none; }
 .mode b { font-size: 13px; }
@@ -265,8 +302,16 @@ details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
-details.key { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
-details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: 17px; }
+/* Settings rows: quieter than the journey cards, with a chevron that turns when open. */
+details.key { background: transparent; border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
+details.key[open] { background: var(--surface); }
+details.key > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--tap); }
+details.key > summary::-webkit-details-marker { display: none; }
+details.key > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur) var(--ease); margin-right: 4px; }
+details.key[open] > summary::after { transform: rotate(-135deg); }
+#talkLink[hidden] ~ .nosc { display: none; }
+.voice .nosc { min-height: var(--tap); }
+details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: var(--fs-md); color: var(--ink); }
 details.key[open] summary { margin-bottom: 10px; }
 .statsbody { display: flex; flex-direction: column; gap: 12px; }
 .morebody { display: flex; flex-direction: column; gap: 14px; }
@@ -281,7 +326,6 @@ details.key[open] summary { margin-bottom: 10px; }
 .openrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .openrow span { font-size: 14px; color: var(--muted); flex-basis: 100%; }
 .openrow a { text-decoration: none; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid transparent; border-radius: 999px; padding: 9px 16px; min-height: 42px; display: inline-flex; align-items: center; }
-.openrow a:active { transform: translateY(1px); }
 .keybody { display: flex; flex-direction: column; gap: 10px; }
 .keybody p { margin: 0; font-size: 14px; color: var(--muted); }
 .keybody a { color: var(--accent); font-weight: 700; }
@@ -292,7 +336,15 @@ details.key[open] summary { margin-bottom: 10px; }
 #keyStatus { font-size: 14px; margin: 0; min-height: 1.2em; }
 #keyStatus.good { color: var(--ok); }
 #keyStatus.bad { color: var(--danger); }
-@media (prefers-reduced-motion: no-preference) { .card { animation: rise 220ms ease-out; } @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } } }
+@media (prefers-reduced-motion: no-preference) {
+  .card { animation: rise var(--dur) var(--ease); }
+  @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+  /* Welcome: the page settles in once, under a second, and never blocks typing. */
+  .wrap > header, .journey, .hero { animation: arrive var(--dur-slow) var(--ease) both; }
+  .journey { animation-delay: 90ms; }
+  .hero { animation-delay: 180ms; }
+  @keyframes arrive { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+}
 
 /* Chat look, shared by the follow-up questions (ChatBuilder) and the starter (StartHelper). */
 .thread { display: flex; flex-direction: column; gap: 8px; }
@@ -336,10 +388,19 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* File voice note: a quieter pill beside Talk it out (only with "Use my Notes shortcuts") */
 .filelink { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; border-radius: 999px; padding: 10px 16px; min-height: 44px; color: var(--ink); border: 1.5px dashed var(--line); background: transparent; }
-.filelink:active { transform: translateY(1px); }
 
 .brief li em.tapped { font-style: normal; font-weight: 500; }
 
 /* Auto-Repair note under "Ready in ..." */
 .repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }
 .gradenote { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* STAGING badge: only the staging build adds it (lib/channel.js). Amber with dark text
+   reads the same in light and dark mode, and it sits in the page flow so it never
+   covers a button. */
+.stg-badge {
+  max-width: 640px; margin: 0 auto 12px; padding: 6px 12px; border-radius: 8px;
+  background: #f2b33d; color: #2a1c00; border: 2px dashed #2a1c00;
+  font: 700 13px/1.35 var(--mono); letter-spacing: 0.03em; text-align: center;
+  overflow-wrap: anywhere;
+}

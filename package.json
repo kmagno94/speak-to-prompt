@@ -1,13 +1,14 @@
 {
   "name": "speak-to-prompt",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.3",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "VITE_REPORT_RELAY=https://relay.test/report vite build && node tests/smoke.mjs"
+    "test": "node --test tests/releases.test.mjs && VITE_REPORT_RELAY=https://relay.test/report vite build && node tests/smoke.mjs",
+    "check:release": "node scripts/check-release.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

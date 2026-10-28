@@ -44,6 +44,22 @@ export function withMemory(analyze, numbered) {
     'Also add "remember": up to 2 short lasting facts about the person, stated in the raw thoughts, that would save them re-explaining next time (their devices, school, job, tools, or ongoing situation). First person, under 15 words each. Never health, money amounts, passwords, IDs, addresses, or facts about other people. Skip anything already known above. Use an empty list if nothing fits.\n\nRAW THOUGHTS:');
 }
 
+/* My context (dev tools): the question step sees the picked pieces too, so it never asks
+   about something they already answer. */
+export function withContext(analyze, block) {
+  if (!block) return analyze;
+  return analyze.replace('RAW THOUGHTS:', 'CONTEXT THE PERSON PICKED FOR THIS REQUEST (already known; never ask a question it answers, and never ask them to repeat it):\n' + block + '\n\nRAW THOUGHTS:');
+}
+
+/* Rework (from the Quality check): before rewriting, see if ONE question to the person
+   would raise the grade. Only for facts only they know; otherwise no question. */
+export const REWORK_QUESTION = [
+  "REWORK QUESTION STEP. A prompt-building tool wrote a prompt from a person's raw thoughts and answers, and a quality check found it weak.",
+  "Decide if asking the person ONE more question would most raise the prompt's quality. Ask only for a fact only they know that the weak points need (for example what a great result looks like, a limit, how long it should be). If the weak points can be fixed from what they already said, ask nothing.",
+  "Reply with JSON only: {\"question\": \"\"} for no question, or {\"question\": \"one short question, under 14 words\", \"choices\": [\"up to 3 short likely answers, under 6 words each\"]}.",
+  "Never ask about something already answered below."
+].join("\n");
+
 export const ANALYZE = [
   "You are the intake step of a prompt-building tool for people who are new to AI.",
   "Read the person's raw thoughts below. They may be a messy voice transcript.",

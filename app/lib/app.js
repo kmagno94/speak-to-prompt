@@ -1,22 +1,27 @@
-import { buildPrompt, ANALYZE, WRITE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, withContext, REWORK_QUESTION, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze, mathOf, wordNums, conversions } from './xray.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
-import { ui } from './ui.svelte.js';
+import { ui, notify } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
+import { context } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
 export function startApp() {
+  /* What the page adds to the end of every finished prompt: picked context, then the core. */
+  function extras(p) { return core.apply(context.apply(p)); }
+  function extraBlock() { return [context.active ? context.block : "", core.active ? core.block : ""].filter(Boolean).join("\n\n"); }
+  /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
+  function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
   /* The deck shuffles in place, so each start works on its own copy. */
   var IDEAS = IDEA_LIST.slice();
   var form = document.getElementById("form");
   var thoughts = document.getElementById("thoughts");
-  var err = document.getElementById("err");
   var result = document.getElementById("result");
   var output = document.getElementById("output");
   var status = document.getElementById("status");
@@ -53,13 +58,14 @@ export function startApp() {
       if (!u || u.day !== pacificDay()) u = { day: pacificDay(), models: {} };
       return u;
     }
-    var COLS = ["when", "mode", "complexity", "depth", "est_s", "intake_model", "intake_s", "intake_tokens", "write_model", "thinking", "write_s", "write_tokens", "thinking_tokens", "detours", "words_in", "questions", "answered", "words_out", "outcome"];
+    var COLS = ["when", "mode", "complexity", "depth", "est_s", "intake_model", "intake_s", "intake_tokens", "write_model", "thinking", "write_s", "write_tokens", "thinking_tokens", "detours", "words_in", "questions", "answered", "words_out", "context", "context_tok", "outcome"];
     function n(x) { return x == null ? "?" : Number(x).toLocaleString(); }
     function fmt(r) {
       return r.when + "  " + r.mode + (r.complexity ? " (" + r.complexity + ")" : "") + "\n" +
         "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model + ", " + n(r.intake_tokens) + " tokens" : "-") + "\n" +
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
+        (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -209,7 +215,8 @@ export function startApp() {
       intake_model: session.intakeModel || "", intake_tokens: session.intakeTokens, est_intake_s: session.estIntake, intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
       words_in: words(session.raw),
       questions: (session.questions || []).length,
-      answered: (session.answers || []).length
+      answered: (session.answers || []).length,
+      context: context.active ? context.chosen.length : 0, context_tok: context.tokens   /* My context: counts only */
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -218,13 +225,36 @@ export function startApp() {
 
 
 
-  thoughts.addEventListener("input", function () { err.hidden = true; });
+  thoughts.addEventListener("input", function () { notify("form"); });
+
+  /* Gentle, non-blocking notes about the input itself. The build always goes ahead. */
+  function inputHint(raw) {
+    var n = words(raw);
+    var spanish = (raw.toLowerCase().match(/(^|\s)(que|para|por|una|los|las|del|est[aá]|quiero|tengo)(?=\s|$)/g) || []).length;
+    var letters = raw.replace(/[^\p{L}]/gu, ""), nonLatin = letters ? letters.replace(/[A-Za-z\u00C0-\u024F]/g, "").length / letters.length : 0;
+    if (n <= 2) return notify("form", "info", "Short works, a sentence works better", "Building now. Next time, add what you want to happen, like 'help me plan a 5k for a beginner', for a sharper prompt.");
+    if (n > 600) return notify("form", "info", "That's a lot, and that's fine", "Long, rambling notes are welcome. The prompt keeps the key details, so give it a moment.");
+    if (spanish >= 3 || nonLatin > 0.3) return notify("form", "info", "Writing in another language?", "Your words go in exactly as you wrote them. To get the answer in your language, add a line like 'Answer in Spanish'.");
+  }
+
+  /* Buttons on the shared messages (Notice.svelte) come back here. */
+  window.addEventListener("stp-act", function (e) {
+    var act = e.detail && e.detail.act;
+    if (act === "idea") { if (typeof ideasTry !== "undefined" && DECK.length) { ideasTry.click(); } thoughts.focus(); notify("form"); }
+    else if (act === "paste") pasteBtn.click();
+    else if (act === "retry") { notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "dismiss") notify(e.detail.where);
+    else if (act === "rework") startRework();
+  });
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var raw = thoughts.value.trim();
-    if (!raw) { err.textContent = "Type or paste something first."; err.hidden = false; thoughts.focus(); return; }
+    if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
+    inputHint(raw);
     var key = gemini.key || gkey.value.trim();
     if (key) { geminiFlow(raw, key); return; }
     session = { raw: raw, quick: true };
@@ -275,10 +305,23 @@ export function startApp() {
     document.getElementById("categoryLine").hidden = !name;
     document.getElementById("categoryName").textContent = name;
   }
+  /* When Gemini can't finish, the quick prompt still shows, and one message says what
+     happened and the next step (Try again, Fix my key, or just wait). */
+  function failNotice(e) {
+    var st = e && e.status, offline = navigator.onLine === false || st === "network";
+    var retry = { label: "Try again", act: "retry", primary: true };
+    if (offline) return notify("result", "error", "You look offline", "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
+    if (st === 429) return e.perMinute
+      ? notify("result", "warn", "Google needs a short breather", "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
+      : notify("result", "warn", "Today's free Gemini limit is used up", "Your quick prompt is below and ready to copy. Google's free limit refreshes overnight, so follow-up questions are back tomorrow.");
+    if (st === 400 || st === 403) return notify("result", "error", "Google didn't accept your key", "Your quick prompt is below. Copy your key again from Google AI Studio, paste it, and tap Check key.", [{ label: "Fix my key", act: "key", primary: true }]);
+    notify("result", "error", "Gemini didn't come through", "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+  }
   function showResult(text, madeBy, title) {
+    notify("result");
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
-    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: core.active ? core.block : '' });   /* Prompt X-ray */
+    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock() });   /* Prompt X-ray */
     setCategoryLine();
     setReady(true);
     output.value = text;
@@ -292,13 +335,23 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(core.apply(buildPrompt(raw)),   /* core */
+    showResult(extras(buildPrompt(raw)),   /* core */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
 
 
+  /* The finish line answers back: Copy turns into a check for a moment. */
+  function copiedFlash(btn) {
+    if (!btn) return;
+    if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+    btn.classList.remove("copied"); void btn.offsetWidth; btn.classList.add("copied");
+    btn.textContent = "\u2713 Copied";
+    clearTimeout(btn._flash);
+    btn._flash = setTimeout(function () { btn.classList.remove("copied"); btn.textContent = btn.dataset.label; }, 2200);
+  }
   function selectFallback() {
+    signal("copy-failed", "Copy prompt");
     output.focus();
     output.select();
     output.setSelectionRange(0, output.value.length);
@@ -330,7 +383,7 @@ export function startApp() {
     if (ans.length) { out.push("", "MY ANSWERS"); ans.forEach(function (a) { out.push("Q: " + a.question, "A: " + a.answer + (a.tapped ? " (tapped)" : "")); }); }
     var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
     if (shown.length) out.push("", "ON SCREEN", shown.join("\n"));
-    var x = analyze(output.value, raw, ans, core.active ? core.block : "");
+    var x = analyze(output.value, raw, ans, extraBlock());
     out.push("", "X-RAY", x.pct + "% your words, " + x.added + " parts added to help");
     x.sources.filter(function (z) { return !z.used; }).forEach(function (z) { out.push("Not in the prompt: " + z.text); });
     var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
@@ -367,7 +420,8 @@ export function startApp() {
     var text = output.value;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        status.textContent = "Copied. Now paste it into your AI.";
+        status.textContent = "Copied. Paste it into your AI and take the first step.";
+        copiedFlash(document.getElementById("copy"));
         promptCopied = true;
         if (!noteSaved) {
           keepStatus.textContent = "Want a note of this too? Save it now. Your prompt stays copied.";
@@ -384,7 +438,7 @@ export function startApp() {
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-    err.hidden = true;
+    notify("form");
     document.getElementById("handoff").hidden = true;
     output.value = "";
     status.textContent = "";
@@ -428,23 +482,22 @@ export function startApp() {
   var handoff = document.getElementById("handoff");
   function pasteFailed() {
     thoughts.focus();
-    err.textContent = "Press and hold inside the box, then tap Paste.";
-    err.hidden = false;
+    notify("form", "info", "Paste it in yourself", "Press and hold inside the box, then tap Paste.");
   }
   /* wrap (optional): turns the transcript into the box text, e.g. the Improve this app background. */
   function pasteFromClipboard(fromShortcut, wrap) {
     if (!navigator.clipboard || !navigator.clipboard.readText) { pasteFailed(); return; }
     navigator.clipboard.readText().then(function (text) {
       text = (text || "").trim();
-      if (!text) { err.textContent = "Your clipboard is empty. Copy the transcript in Voice Memos first."; err.hidden = false; return; }
-      if (text === "Speak to Prompt: waiting for your transcript") { err.textContent = "That's the shortcut's placeholder, not your transcript. In Voice Memos, choose Copy Transcript first."; err.hidden = false; return; }
+      if (!text) { notify("form", "warn", "Your clipboard is empty", "In Voice Memos, tap the three dots on your recording, then Copy Transcript. Then come back and tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
+      if (text === "Speak to Prompt: waiting for your transcript") { notify("form", "warn", "That's the shortcut's placeholder", "It isn't your transcript yet. In Voice Memos, choose Copy Transcript, then tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
       /* From the shortcut, the transcript replaces whatever was in the box
          (a fresh run). Tapped by hand, it adds to what's already typed. */
       var current = fromShortcut ? "" : thoughts.value.trim();
       if (wrap) text = wrap(text);
       thoughts.value = current ? current + "\n\n" + text : text;
       thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-      err.hidden = true;
+      notify("form");
       setShortcutMode(false);
       if (fromShortcut) handoff.hidden = false;
       ideasSync();
@@ -663,7 +716,7 @@ export function startApp() {
   ideasTry.addEventListener("click", function () {
     thoughts.value = DECK[ideasIdx][2];
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
-    err.hidden = true;
+    notify("form");
     handoff.hidden = true;
     ideasHide();
   });
@@ -816,7 +869,27 @@ export function startApp() {
     buildBtn.disabled = on;
     chat.busy = on;
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
+    if (on) wakeOn(); else wakeOff();
   }
+  /* Keep the screen awake while Gemini works, so the phone doesn't lock mid-build.
+     Only while busy: let go when it's done, fails, or the page is hidden; ask again if
+     you come back mid-build. Phones without it get a one-line tip instead. */
+  var wakeLock = null, wakeTip = document.getElementById("wakeTip");
+  function wakeOn() {
+    if (!navigator.wakeLock || !navigator.wakeLock.request) { if (wakeTip) wakeTip.hidden = false; return; }
+    if (wakeLock || document.visibilityState !== "visible") return;
+    navigator.wakeLock.request("screen").then(function (l) {
+      if (!busy) { l.release().catch(function () {}); return; }
+      wakeLock = l;
+      l.addEventListener && l.addEventListener("release", function () { if (wakeLock === l) wakeLock = null; });
+    }, function () { if (wakeTip) wakeTip.hidden = false; });
+  }
+  function wakeOff() {
+    if (wakeTip) wakeTip.hidden = true;
+    var l = wakeLock; wakeLock = null;
+    if (l) l.release().catch(function () {});
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && busy) wakeOn(); });
 
 
 
@@ -1369,6 +1442,7 @@ export function startApp() {
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
+    if (context.active) base = withContext(base, context.block);   /* My context */
     memory.suggestions = [];
     var intakeText = base + "\n" + raw + '\n"""';
     ensureModel(key).then(function () {
@@ -1401,7 +1475,9 @@ export function startApp() {
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
+      signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
+      failNotice(e);
       session.mode = "Intake";
       session.intakeError = e && e.message ? e.message : "unknown";
       logRun({ outcome: "intake failed: " + (e && e.message ? e.message : "unknown") });
@@ -1417,17 +1493,24 @@ export function startApp() {
   }
   chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
+  /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
+  function writerText() {
+    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
+    var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    /* core: the person's standing profile is attached to the finished prompt by the page.
+       The writer sees it so it doesn't repeat or contradict it. */
+    if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (added to the end of the prompt automatically, so don't repeat it; point to it by its titles where it helps):\n" + context.block;
+    if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
+    if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
+    return text;
+  }
   function writeFinal(answers, quick) {
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
     session.today = todayText();
-    var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
-    /* core: the person's standing profile is attached to the finished prompt by the page.
-       The writer sees it so it doesn't repeat or contradict it. */
-    if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
-    if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
+    var text = writerText();
     setBusy(true, "Writing your prompt...");
     hideGrade();
     setBuild("");
@@ -1481,7 +1564,8 @@ export function startApp() {
         if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
-        showResult(core.apply(prompt), techOn()   /* core */
+        session.basePrompt = prompt;
+        showResult(extras(prompt), techOn()   /* core */
           ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
           : "Ready in " + secs + ". Your AI can start working right away.", session.title);
         showRepairNote(rep);
@@ -1509,7 +1593,9 @@ export function startApp() {
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
+      signal("gemini-failed", "While writing");
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
+      failNotice(e);
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
@@ -1521,7 +1607,84 @@ export function startApp() {
      labels, and lesson ids go into the run, for the review's lessons learned.
      It never slows the prompt down; if it's late or fails, the run is sent
      without it. */
-  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; }
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; ui.rework = null; }
+
+  /* Rework (from the Quality check, when it's under the bar): first see if one more
+     question would raise the grade and ask it; then rewrite with everything the same
+     plus the first prompt as the starting point and what was weak. The new version is
+     graded and kept only if it scores higher. Once per prompt, so it can't loop. */
+  function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
+  function reworkNotes(g) {
+    var n = [];
+    if (g.rearranged) n.push("It reads like the person's words rearranged. Turn it into clear instructions for the AI.");
+    if (g.invented) n.push("It added something the person didn't say. Take it out.");
+    g.missing.forEach(function (m) { n.push("It's missing " + (LABEL_NAMES[m] || m) + "."); });
+    (g.broke || []).forEach(function (b) { n.push("It broke lesson " + b + "."); });
+    if (!n.length) n.push("Make it sharper and more specific, using only what the person said.");
+    return n;
+  }
+  function startRework() {
+    var g = lastGrade(), key = gemini.key || gkey.value.trim();
+    if (!g || g.pass || !session.basePrompt || busy || !key || !gemini.plan || session.reworked) return;
+    session.reworked = true;
+    notify("result");
+    ui.rework = { stage: "asking" };
+    setBusy(true, "Checking if one question would help...");
+    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
+    var ask = REWORK_QUESTION + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS SO FAR:\n" + (lines.length ? lines.join("\n\n") : "None.") +
+      "\n\nCURRENT PROMPT:\n\"\"\"\n" + session.basePrompt + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
+    askGemini(ask, true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      var j = null; try { j = JSON.parse(cleanPrompt(r.text)); } catch (e) {}
+      var q = j && typeof j.question === "string" ? j.question.trim().slice(0, 160) : "";
+      if (!q) return doRework();
+      setBusy(false);
+      ui.rework = { stage: "question", question: q, choices: (Array.isArray(j.choices) ? j.choices : []).filter(function (c) { return typeof c === "string" && c.trim(); }).slice(0, 3).map(function (c) { return c.trim().slice(0, 60); }) };
+    }, function () { doRework(); });
+  }
+  window.addEventListener("stp-rework-answer", function (e) {
+    if (!ui.rework || ui.rework.stage !== "question" || !session) return;
+    var d = e.detail || {};
+    if (d.answer && String(d.answer).trim()) session.answers = session.answers.concat([{ question: ui.rework.question, answer: String(d.answer).trim().slice(0, 500), tapped: !!d.tapped }]);
+    doRework();
+  });
+  function doRework() {
+    var g = lastGrade(), first = session.basePrompt, run = writeRun, fields = session.gradeFields || {};
+    ui.rework = { stage: "writing" };
+    setBusy(true, "Reworking your prompt...");
+    var text = writerText() + "\n\nFIRST DRAFT TO REWORK (keep what works, fix what's weak, follow every rule above):\n\"\"\"\n" + first + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
+    var t0 = Date.now();
+    askGemini(text, false, writeModels(false), depthOf(session.complexity).level, null, WRITE_LIMIT).then(function (r) {
+      var next = cleanPrompt(r.text);
+      return gradeConfirmed(gradeOnce(next, session.raw, session.answers, session.today, lessons.items, lessons.grader)).then(function (g2) {
+        if (run !== writeRun) { setBusy(false); return; }
+        setBusy(false);
+        var keep = g2.craft > g.craft;
+        var note = "\ud83d\udd01 Reworked: " + (Math.round(g.craft * 10) / 10).toFixed(1) + " to " + (Math.round(g2.craft * 10) / 10).toFixed(1) + ", kept the " + (keep ? "new one" : "first one");
+        if (keep) {
+          session.draftBefore = first;
+          session.basePrompt = next;
+          session.grades.push(g2);
+          output.value = extras(next);
+          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
+          var nc = showNumberCheck(next);
+          session.numFlags = nc.extra.length + nc.missing.length;
+          output.dispatchEvent(new Event("stp:changed"));
+        }
+        session.rework = { kept: keep, before: g.craft, after: g2.craft, secs: Math.round((Date.now() - t0) / 100) / 10 };
+        var el = document.getElementById("gradeNote");
+        el.textContent = gradeText(keep ? g2 : g, fields, note);
+        el.hidden = false;
+        ui.grade = Object.assign({}, ui.grade, { reworked: true, note: note.replace(/^\S+ /, "") });
+        ui.rework = { stage: "done" };
+      });
+    }).catch(function () {
+      if (run !== writeRun) return;
+      setBusy(false);
+      session.reworked = false;
+      ui.rework = null;
+      notify("result", "error", "The rework didn't come through", "Your first prompt is still here and ready to copy. You can try the rework again.", [{ label: "Try the rework again", act: "rework", primary: true }]);
+    });
+  }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
     var c = Number(j && j.craft);
@@ -1571,6 +1734,7 @@ export function startApp() {
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
       session.grades = [g];
+      session.gradeFields = fields;
       var el = document.getElementById("gradeNote");
       el.textContent = gradeText(g, fields, "");
       el.hidden = false;
@@ -1578,7 +1742,18 @@ export function startApp() {
     }, function () {});
     if (target) target._grade = job;
   }
+  /* The glanceable Quality check (QualityCheck.svelte): score, a plain label, one tip. */
+  function gradeView(g, extra) {
+    var tip = g.pass ? "Paste it as is. It covers what a great answer needs."
+      : g.invented ? "Check it didn't add anything you didn't say."
+      : g.rearranged ? "Say what you want done, not only what's on your mind."
+      : g.missing.length ? "It could say " + (LABEL_NAMES[g.missing[0]] || g.missing[0]) + ". Add that to your note and build again."
+      : "Add a detail or two about what you want, then build again.";
+    var score = Math.round(g.craft * 10) / 10;
+    return { score: score, pass: !!g.pass, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
+  }
   function gradeText(g, fields, extra) {
+    ui.grade = gradeView(g, extra);
     var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" + (g.confirm === "held" ? ", confirmed" : "") : "\u270b below the " + GRADE_PASS + " bar"];
     if (confirmNote(g)) notes.push(confirmNote(g));
     if (g.rearranged) notes.push("reads like your words rearranged");
@@ -1599,7 +1774,7 @@ export function startApp() {
   function fixLabel(prompt, run, target, g, fields, items, el) {
     var t0 = Date.now(), first = g, best = g, cur = prompt, tries = 0, added = [], last = "", lastStatus = "kept original";
     function secs() { return Math.round((Date.now() - t0) / 100) / 10; }
-    function used() { return run !== writeRun || pendingRun !== target || output.value !== core.apply(cur); }
+    function used() { return run !== writeRun || pendingRun !== target || output.value !== extras(cur); }
     function end(status, note) {
       var s = secs();
       if (target) { target.label_fix = status; target.label_fix_s = s; target.label_fix_tries = tries; }
@@ -1631,8 +1806,9 @@ export function startApp() {
           session.grades.push(g2);
           session.draftBefore = prompt;
           cur = fixed; best = g2;
-          output.value = core.apply(fixed);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: core.active ? core.block : '' });
+          session.basePrompt = fixed;
+          output.value = extras(fixed);
+          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
           var nc = showNumberCheck(fixed);
           session.numFlags = nc.extra.length + nc.missing.length;
           if (target) {

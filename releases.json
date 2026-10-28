@@ -1,0 +1,124 @@
+{
+  "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
+  "releases": [
+    {
+      "version": "2.1.3",
+      "date": "2026-10-25",
+      "title": "Test lab on staging",
+      "items": [
+        "🧪 Test lab on staging: every check for the builds that aren't live yet, oldest first, then the Before you promote checks.",
+        "Mark each one ✓ Works or ✗ Broken, add a note, and send a broken one to the 💡 Ideas jar as a 🔥 Now bug.",
+        "Re-check walks only the broken ones after a fix; Continue walks only what isn't ✓ yet.",
+        "When everything passes it says Ready to promote and copies the promote message for your Claude chat.",
+        "Opens from the 🧪 button bottom left (with Show my Ideas tab on) or straight from the staging link ending in #testlab. Never on live. Results are saved on this phone only."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging link ending in #testlab on the iPhone.",
+          "see": "The Test lab opens on its own and the top line says Live v2.0.0, staging v2.1.3, 5/5 ahead."
+        },
+        {
+          "say": "Tap Start, mark this step ✓ Works, then on the next one tap ✗ Broken and type a short note.",
+          "see": "The note box shows under the buttons and the 🧪 button bottom left says ✗ 1 broken after you close the panel."
+        },
+        {
+          "say": "Open that broken step again and tap 💡 Add to Ideas jar.",
+          "see": "It says it's in the Ideas jar as a 🔥 Now bug, and the 💡 Ideas tab lists it."
+        },
+        {
+          "say": "Close and reopen staging, then open the Test lab.",
+          "see": "Your ✓ and ✗ are still there, and the button says ▶ Re-check 1 fix."
+        },
+        {
+          "say": "Open the live site.",
+          "see": "No 🧪 button, even with Show my Ideas tab on."
+        }
+      ]
+    },
+    {
+      "version": "2.1.2",
+      "date": "2026-10-25",
+      "title": "Two-speed tests: quick staging, full suite for promote and live",
+      "items": [
+        "Staging pushes deploy after the release check and a quick core set of 22 smoke tests, instead of the full suite on both versions.",
+        "Live is only re-tested on a staging push when main hasn't passed its own full run.",
+        "The full suite still runs on every staging push, in the background, and turns the run red if anything fails.",
+        "A pull request from staging into main runs the full suite on what goes live (Promote check), and the main deploy runs it again on both versions."
+      ],
+      "checks": [
+        {
+          "say": "Open the newest Test and deploy run for staging in the Actions tab.",
+          "see": "\"Live not re-tested\" note, the staging smoke step says (quick), and build plus deploy finish in a few minutes. \"Full tests (staging, background)\" finishes after and is green."
+        },
+        {
+          "say": "Open staging on the iPhone after that run.",
+          "see": "The STAGING badge says v2.1.2."
+        }
+      ]
+    },
+    {
+      "version": "2.1.1",
+      "date": "2026-10-25",
+      "title": "Release loop: N/5 limit and the full fix session",
+      "items": [
+        "releases.json lists every staging build with the checks to run before promote.",
+        "Each staging deploy checks the list and stops if staging is more than 5 builds ahead of live.",
+        "Copy fix session now starts with the release limit check, ends with the N/5 count, and carries the promote steps and the 3-question loop check."
+      ],
+      "checks": [
+        {
+          "say": "Open the latest Test and deploy run on GitHub (Actions tab) and look at the Release check step.",
+          "see": "A Release limit note like \"Staging is 3/5 ahead of live\" and \"Release check passed.\""
+        },
+        {
+          "say": "On staging, turn on More options > Show my Ideas tab, log a test idea, then tap Copy fix session and paste it into Notes.",
+          "see": "It has a Release limit step before any code, a Queued for my jar table rule, releases.json, the Pre-flight passed, promote steps, and a Loop check. Delete the test idea after."
+        }
+      ]
+    },
+    {
+      "version": "2.1.0",
+      "date": "2026-10-24",
+      "title": "Ideas tab, the journey pass, My context, Rework",
+      "items": [
+        "Owner-only Ideas tab: log bugs, ideas and faster ways, Copy fix session, fixes close their own ideas through ideas-done.json.",
+        "Experience pass: Speak, Answer, Copy strip, one message style, Copy as the finish line, Quality check at a glance, motion.",
+        "My context (dev tools): reusable background picked per prompt.",
+        "Screen stays awake while Gemini works, and Rework from this prompt."
+      ],
+      "checks": [
+        {
+          "say": "On the iPhone, open staging fresh and build one prompt in Quick.",
+          "see": "Speak, Answer, Copy at the top, Answer says Skipped in Quick, and Copy turns into a check when tapped."
+        },
+        {
+          "say": "Turn on More options > Show my Ideas tab, tap the 💡, log a test bug, then Delete it.",
+          "see": "The idea shows in the list, stays after a reload, and Delete removes it."
+        },
+        {
+          "say": "Show my dev tools on, open My context under Build, add a piece, tap its chip, build a prompt.",
+          "see": "The prompt points to the piece by its title. Delete the test piece after (asks twice)."
+        },
+        {
+          "say": "Build a Normal prompt and don't touch the phone while it works.",
+          "see": "The screen stays on until the prompt is ready."
+        }
+      ]
+    },
+    {
+      "version": "2.0.1",
+      "date": "2026-10-23",
+      "title": "Staging lane",
+      "items": [
+        "Staging publishes at /speak-to-prompt/staging/ next to live, with a STAGING badge and its own saved data (stg: keys).",
+        "Roll back by tag from the Actions tab."
+      ],
+      "checks": [
+        {
+          "say": "Open staging and live side by side.",
+          "see": "Only staging shows the STAGING badge with its version. A Gemini key saved on staging doesn't show up on live."
+        }
+      ]
+    }
+  ]
+}

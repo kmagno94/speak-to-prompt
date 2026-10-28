@@ -13,7 +13,23 @@
   import { core } from './lib/core.svelte.js';
   import { memory } from './lib/memory.svelte.js';
   import MemorySuggest from './MemorySuggest.svelte';
+  import IdeasTab from './IdeasTab.svelte';
+  import TestLab from './TestLab.svelte';
+  import { lab } from './lib/testlab.svelte.js';
+  import Notice from './Notice.svelte';
+  import JourneyStrip from './JourneyStrip.svelte';
+  import OutputMore from './OutputMore.svelte';
+  import QualityCheck from './QualityCheck.svelte';
+  import ContextRow from './ContextRow.svelte';
+  import { context } from './lib/context.svelte.js';
+  import { ideas } from './lib/ideas.svelte.js';
   let tutorial;
+  /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
+  function noShortcut() {
+    const more = document.getElementById('moreOpts'), memo = document.getElementById('memoGuide');
+    more.open = true; memo.open = true;
+    memo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => { startApp(); });
 </script>
@@ -46,20 +62,22 @@
         <rect style="--i:2" x="112" y="22" width="140" height="4" rx="2"/>
       </g>
     </svg>
-    <p class="lede">Say what's on your mind, messy is fine. Get back a prompt you can paste into any AI to get a great answer.</p>
+    <p class="lede">Every great answer starts with a good first step. Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</p>
   </header>
 
-  <form id="form" class="field" novalidate>
-    <label for="thoughts">What's on your mind?</label>
+  <JourneyStrip />
+
+  <form id="form" class="field hero" novalidate>
+    <label for="thoughts" class="herolabel">What's on your mind?</label>
     <div class="voice" id="voiceRow">
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
+      <button type="button" class="getlink nosc" id="noShortcut" onclick={noShortcut}>No shortcut?</button>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
-      <button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button>
-    </div>
-    <div id="pasteWrap" class="pastewrap" hidden>
-      <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
-      {#if core.dev}<button type="button" class="pastebtn devpaste" id="pasteImprove">🛠️ Paste for Improve this app</button>{/if}
-      <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
+      <div id="pasteWrap" class="pastewrap" hidden>
+        <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
+        {#if core.dev}<button type="button" class="pastebtn devpaste" id="pasteImprove">🛠️ Paste for Improve this app</button>{/if}
+        <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
+      </div>
     </div>
     <div class="ideabox">
       <textarea id="thoughts" autocomplete="off" placeholder="Type or paste your thoughts. Messy is fine."></textarea>
@@ -75,13 +93,15 @@
     </div>
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
-    <p id="err" class="error" hidden>Type or paste something first.</p>
+    <Notice where="form" />
     <div class="row buildrow">
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
+      <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
+    <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
@@ -89,6 +109,7 @@
       <p class="detail"></p>
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
+    <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
     <ReportIssue place="front" />
   </form>
 
@@ -106,19 +127,24 @@
       <p class="detail"></p>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
+    <QualityCheck />
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
+    <OutputMore />
     <ReportIssue />
     <MemorySuggest />
-    <div class="row">
-      <button type="button" class="primary" id="copy">Copy prompt</button>
-      <button type="button" id="copyNote">Copy prompt + my note</button>
-      <button type="button" id="reset">Start over</button>
+    <div class="finish">
+      <button type="button" class="primary copybig" id="copy">Copy prompt</button>
+      <div class="row secondary">
+        <button type="button" id="copyNote">Copy prompt + my note</button>
+        <button type="button" id="reset">Start over</button>
+      </div>
     </div>
     <div class="openrow">
       <span>Copy and open in:</span>
@@ -196,6 +222,10 @@
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
         <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
       </div>
+      <div class="stats">
+        <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
+        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
+      </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>
         <div class="seg" role="group" aria-label="Grader source">
@@ -245,7 +275,9 @@
   </details>
 
   <Tutorial bind:this={tutorial} />
+  <IdeasTab />
+  <TestLab />
   <Guide />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

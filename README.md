@@ -3,6 +3,7 @@
 Turn messy thoughts, typed or spoken, into one ready-to-paste prompt for any AI. Stateless: nothing is saved. Built for AI beginners.
 
 **Live:** https://kmagno94.github.io/speak-to-prompt/
+**Staging (test copy):** https://kmagno94.github.io/speak-to-prompt/staging/
 
 ## Why it exists
 
@@ -40,6 +41,35 @@ Set up once in **Not sure where to start? > Set up your core**, then every promp
 
 Tap premade options or type your own. A **Use my core** switch under Build my prompt turns it on or off. The writer sees it too, so the prompt doesn't repeat or contradict it.
 
+### My context (testing)
+
+Also behind **Show my dev tools**. Under Build, **My context** keeps reusable pieces of background, each a title and a big text box (like "Bean N Bean roasting" or "My WGU class"). Tap a chip to add that piece to this prompt; the picked pieces go at the end (before Your core) and the writer sees them, so the prompt can point to them by title instead of repeating them. **+ New** or **Edit** opens the editor (Delete asks twice). Saved on this phone only (`stp-context`); picks are never saved.
+
+### 💡 Ideas tab (just for me)
+
+Hidden unless **More options > Show my Ideas tab** is on. A 💡 button at the bottom right opens a side panel to log what I notice while using the app:
+
+1. **What is it?** 🐞 Bug, 💡 Idea, or ⚡ Faster way.
+2. **Looks like it might be…** up to 3 guesses from where I just tapped and what just went wrong (Gemini failed, copy failed, fast repeat taps, a page error). Tapping one fills in the spot, topic, and a starter sentence.
+3. **Where?** 12 areas of the app, grouped Before, During, After, Setup, Anywhere. Then **About what?** a few topics per area, and **Say it**.
+4. **How soon?** 🔥 Now, 🗓️ Soon, or 🌱 Someday. Then **Drop it in the jar**.
+
+Each idea can be marked fixed (it records the version), won't do, reopened, or deleted. **Copy fix session** copies one prompt with every open idea, oldest first, plus the repo and the staging rules, ready to paste into a new Claude chat.
+
+**Fixes close their own ideas:** each fix commit adds the idea's id to `ideas-done.json` (id, commit, version, and a short note about the fix, never the idea's text). When the tab opens, matching open ideas move to done ("Fixed in v2.1.0 (b1db256)") with a line saying how many closed, so the next Fix session lists only what's left. **Reopen** keeps an idea open even though a fix lists it. **Clear done** (asks twice) removes all done ideas from the phone.
+
+**Privacy:** ideas are saved on this phone only (`stp-ideas`, and under `stg:` on staging). Only what's typed in the panel is kept. The "where I just was" trail holds area names and problem signals, in memory only, and never anything from the prompt box, questions, or results. Nothing is sent anywhere.
+
+### 🧪 Test lab (staging only)
+
+On the staging build only, a 🧪 button at the bottom left (with **Show my Ideas tab** on) opens the Test lab. The link `kmagno94.github.io/speak-to-prompt/staging/#testlab` opens it straight away. It lists every check from `releases.json` for the builds that aren't live yet, oldest first, then four **Before you promote** checks (iPhone, iPad, Reduce Motion, Dark Mode).
+
+- **Start / Continue** walks the checks one at a time: what to do, what you should see, then **✓ Works** or **✗ Broken** with a note. Steps you passed don't come back.
+- **Re-check** walks only the broken ones once there are any, after a fix.
+- **💡 Add to Ideas jar** turns a broken check into a 🔥 Now bug, so it rides the next Fix session.
+- The verdict: "Don't promote: 2 broken", or "All 14 work. Ready to promote v2.1.3" with a button that copies **Pre-flight passed, promote v2.1.3** for the Claude chat.
+- Live's version is passed in by the deploy, so the plan always matches what's actually live. Results are saved on this phone only (`stp-testlab` under `stg:`). The live build never shows it.
+
 ### Two modes (next to Build my prompt)
 
 | Mode | What it does | Time |
@@ -48,6 +78,17 @@ Tap premade options or type your own. A **Use my core** switch under Build my pr
 | **Normal** | Asks a few questions, then writes on the newest Flash. | usually 1 to 2 minutes |
 
 You can also tap **Quick prompt** on the questions card to write right away with whatever you've answered.
+
+The app starts in **Quick** when there's no key, so nobody hits a "needs a key" wall, and moves to **Normal** once a key is added, unless you picked a mode yourself.
+
+### The journey (what the page looks like)
+
+- **Speak › Answer › Copy** at the top shows where you are: numbered, labeled, a check when done, and "Skipped in Quick" when there are no questions.
+- **One message style** for empty, error, warning, and success notes (`Message.svelte`): an icon and a plain title, one line on what to do next, and a button. Gemini failing still gives the quick prompt, with Try again, Fix my key, or when the limit comes back.
+- **Copy is the finish line:** one big button that turns into a check. Long prompts get Show the whole prompt.
+- **Quality check** (when the grader runs): a 5-step meter, the score, a plain label, and one tip.
+- **Gentle input notes** for one word, very long notes, and other languages. The build always goes ahead.
+- **Motion** is small and uses shared tokens (150 to 300 ms, ease-out, transform and opacity only), with a welcome under a second. Reduce Motion turns it all off.
 
 **Number check (free).** Every prompt is checked by the page itself, with no extra Gemini request: if it mentions a number you never said (like iOS 18 when you said iOS 27, or a made-up 400-word limit) or leaves out one you did, a "Heads up" note shows above the prompt. The writer is also told to keep every number, version, and product name exactly as you said it, even ones it doesn't recognize.
 
@@ -100,6 +141,8 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 - **Your core (testing only):** saved in Safari on your phone while the app is being built, and only ever sent inside prompts you build. Delete it any time from the core screen. Plan: keep it as a dev tool behind Show my dev tools rather than delete it; decide about shipping after a real user test.
 - **Lessons learned (lessons.json):** short, general prompt-writing rules (never anyone's words) that the twice-daily review keeps from graded runs and stress tests. Every prompt build adds them to the writing step, and the quality grade checks every prompt against them as the list of what not to do. It also holds grader rules: calibration Claude writes when its own grade of a pasted result disagrees with the app's. At most 6 of each, versioned, and every change is a commit you can undo.
 - **Quality grade (run stats on only):** after the prompt shows, Flash-Lite grades it in the background with a strict rubric, scored to the hundredth (1.00 to 5.00) and shown to the tenth, with the exact score next to it when they differ (4.5 of 5 (4.47)). **The pass bar is 4.5:** the line says ✅ passes or ✋ below the 4.5 bar. Each missing part costs a point (one missing tops out at 4.00), each lesson from lessons.json the prompt breaks caps it at 4.40 (half a point more per extra lesson), rearranged caps at 2, invented at 3. Only the score, pass yes or no, the fixed labels, and lesson ids (like L2) go into the run log, never your words. The Scorecard shows the pass rate and which lessons get broken most. Parts that don't apply (your limits when you gave none, how-to steps when none are needed) never count as missing.
+- **🔁 Rework from this prompt:** when the Quality check is under the bar, a button in its card first checks if one more question would raise the grade (a fact only you know) and asks it, with tap answers, your own answer, or Skip. Then the writer runs again with everything the same plus your first prompt as the starting point and what was weak. The rework is graded and kept only if it scores higher ("Reworked: 3.2 to 4.6, kept the new one"). Once per prompt. Uses Flash-Lite for the question and Flash for the rewrite on your key.
+- **Screen stays awake while it works:** building asks Safari for a screen wake lock and lets it go when the prompt is ready, fails, or you leave. Phones without it see a tip to keep the tab open.
 - **Label fix:** when a prompt is under the bar and something missing is a part the app can add on its own (how long, what a great result looks like, your limits, how-to steps, a start-now ending), one small Flash-Lite call adds just those lines, the grader looks again, and the new version is kept only if it scores higher. Up to two tries, so a prompt that improves but is still under the bar gets a second pass. If it still can't reach 4.5, you get the best version with a note saying what's still weak, in plain words.
 - **usage.json** holds daily Gemini request and token counts read from AI Studio screenshots (no prompts, no words, no key). Run stats shows it next to the runs counted on your device.
 - **Lock your key to this site** (optional): in Google Cloud Credentials, restrict it to the website `https://kmagno94.github.io/*` and to the Generative Language API, so a leaked key is useless anywhere else.
@@ -107,12 +150,14 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 ## How it's built
 
 - **Svelte 5 + Vite.** It builds to plain static files (about 30 KB of script, gzipped) and is tuned for Safari on iPhone, iPad, and Mac.
-- **Hosted free on GitHub Pages**, published by GitHub Actions. Every push to `main` runs the smoke tests first, so the live site only gets builds that passed.
+- **Hosted free on GitHub Pages**, published by GitHub Actions. Every push to `main` or `staging` runs the smoke tests for both versions first, so neither site gets a build that failed. See How releases work below.
 - **Where things live:**
 
   | Path | What it is |
   |---|---|
   | `app/App.svelte` | The page markup |
+  | `app/Message.svelte`, `app/Notice.svelte` | The one look for empty, error, warning, and success messages, and where each shows |
+  | `app/JourneyStrip.svelte`, `app/QualityCheck.svelte`, `app/OutputMore.svelte` | Speak › Answer › Copy, the glanceable Quality check, and Show the whole prompt |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
   | `app/lib/rotate.js` | Picks which 5 starter answers show, from the current 3-hour window (no storage) |
@@ -123,9 +168,15 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/lib/prompts.js` | What gets sent to Gemini, and the no-key quick version |
   | `app/lib/ideas.js` | The idea strip's ideas |
   | `app/app.css` | Styles and color tokens (light and dark) |
+  | `ideas-done.json` | Idea ids closed by fix commits (no idea text); the Ideas tab marks them fixed, copied into the build |
+  | `releases.json`, `app/lib/releases.js`, `scripts/check-release.mjs` | Every staging build with its checks, the N/5 release limit, and the deploy's release check |
   | `usage.json` | Daily Gemini usage from AI Studio screenshots, copied into the build |
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
-  | `.github/workflows/deploy.yml` | Test, build, and publish (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
+  | `app/ContextRow.svelte`, `app/lib/context.svelte.js` | My context (dev tools): reusable background picked per prompt |
+  | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
+  | `app/TestLab.svelte`, `app/lib/testlab.svelte.js`, `app/lib/testlabPlan.js` | Staging only: the 🧪 Test lab, a walkthrough of every `releases.json` check not live yet, with ✓ / ✗, notes, and the promote verdict |
+  | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |
   | `worker/report-relay.js`, `worker/wrangler.toml` | The report and run log relay on Cloudflare, and its deploy settings |
 
 - **Run it locally:** `npm install`, then `npm run dev` and open the Network address on your iPhone (same Wi-Fi). Changes show up as you save.
@@ -137,11 +188,42 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   - **Backups:** each model has its own daily limit, so when one runs out the page moves to the next. Only when every model is used up does it switch to the quick version.
 - The prompt logic comes from my Prompt Optimization Engine: a short chat title, working out what the person actually needs, clarifying questions, then a prompt built from role, context, task, example, format, and tone.
 
+## How releases work
+
+Staging first. Live only changes through a promote.
+
+| Step | What happens |
+|---|---|
+| **Capture** | Bugs, ideas and faster ways go in the 💡 Ideas tab. Anything asked for in chat but not built comes back in a "Queued for my jar" table to drop in |
+| **Fix session** | Ideas tab > Copy fix session, paste into a fresh Claude chat. It checks the release limit before any code, then plans: small safe fixes in one batch, the rest one at a time |
+| **Build** | All work goes to the `staging` branch. Each session is one staging build: patch version bump plus a new entry at the top of `releases.json`. Each push checks the release list, runs the quick core tests, and publishes staging at `/speak-to-prompt/staging/` with a STAGING badge and its version, in a few minutes. Live stays as it is. The full suite runs in the background on the same push (see Two test speeds below) |
+| **Release limit** | Staging can be at most **5 builds** ahead of live (entries in `releases.json` newer than main's `package.json`). Past 5 the deploy stops with "Staging is 6 builds ahead of live": test and promote first. `npm run check:release` shows the count locally |
+| **Test** | Open the staging Test lab on the iPhone (`/speak-to-prompt/staging/#testlab`) and walk every check: ✓ Works or ✗ Broken. A broken one can go straight to the 💡 Ideas jar. When everything passes it says Ready to promote and copies the promote phrase |
+| **Promote** | Say "Pre-flight passed, promote": a pull request from `staging` into `main`. Its Promote check runs the full suite on what goes live; merge only when it's green, then tag `main` with the version (like `v2.0.1`). The main deploy runs the full suite on both versions again before live changes. Nothing else ever changes `main`. The count resets to 0/5 by itself. Ends with a ✅ table and a 🔁 Loop check (what slowed this round, did anything skip the process, one fix for the loop) |
+| **Roll back** | "Roll back to vX.Y.Z" = Actions > Test and deploy > Run workflow, type the tag to go back to (like `v2.0.0`) in live_tag. That pins live to it (a `live-hold` tag) without touching `main`, and later staging pushes keep it pinned. Run it again with `main` to unpin once a fix is promoted. A manual run skips the release check, so a roll back is never blocked |
+| **Audit** | A full loop audit only after a roll back, the same check failing twice, or about once a month |
+
+- **Versions** are semver in `package.json`, shown on the staging badge. The version pill shows the commit each build came from. The newest `releases.json` entry always matches `package.json` (the release check fails otherwise).
+- **`releases.json`** (repo root, copied into the build) lists every staging build, newest first: version, date, title, plain-English items, and `checks` (`say` what to do, `see` what should happen). Never anything a user typed. The logic lives in `app/lib/releases.js`; `scripts/check-release.mjs` runs it in the deploy. The loop is ported from B&B Daily's continuous improvement loop.
+- **Saved data is kept apart.** Staging and live share one web address, so the staging build prefixes every saved key with `stg:`. Testing never touches live settings, and staging asks for its own Gemini key.
+- **Only a normal push to `main`** deploys the report Worker, so staging work never changes the live relay.
+
 ## Tests
 
-`npm install && npm test` (from the repo root) builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, usage.json, lessons learned, and the quality grade.
+`npm install && npm test` (from the repo root) first runs the release list tests (`tests/releases.test.mjs`: version order, the N/5 count, and that `releases.json` matches `package.json`), then builds the app and runs smoke tests against a mocked Gemini: quick version, full flow, Quick mode, model fallback, cut-off answers, the number check, repeat shortcut runs, run stats privacy, the Talk it out link, the Copy and open app links, the simple first screen, the mode picker, the idea strip, usage.json, lessons learned, and the quality grade.
 
-**Fast check while working:** `ONLY=grade npm test` builds and runs only the checks whose name matches (any word or regex, case ignored, like `ONLY="grade|scorecard"`), in under a minute. It says how many it skipped. The plain `npm test` is still what ships: GitHub Actions always runs every check.
+**Two test speeds.** Staging stays quick, live stays safe:
+
+| When | What runs | Gates |
+|---|---|---|
+| Push to `staging` | Release check, release tests, `QUICK=1` core smoke tests (22 checks: the main journey, Gemini failures, privacy rules, Ideas tab, staging/live split). Live is rebuilt without re-testing when main's commit already passed its full run | The staging deploy (a few minutes) |
+| Same push, in the background | "Full tests (staging, background)": every check | Nothing, but a failure turns the run red. Fix it before the next session |
+| Pull request `staging` into `main` | "Promote check" (`.github/workflows/promote-check.yml`): release check plus every check on the live build. Fails if the pull request isn't from `staging` | The merge |
+| Push to `main`, or a roll back | Every check on both versions | The live deploy |
+
+`QUICK=1 npm test` runs the core set locally in about a minute. The core list is `CORE` in `tests/smoke.mjs`; it fails if a core check is renamed or removed, so keep the list in step.
+
+**Fast check while working:** `ONLY=grade npm test` builds and runs only the checks whose name matches (any word or regex, case ignored, like `ONLY="grade|scorecard"`), in under a minute. It says how many it skipped. The plain `npm test` is still what ships: GitHub Actions runs every check in the background on staging, and before every promote and live deploy.
 
 ## Status
 

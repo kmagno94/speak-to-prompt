@@ -1,7 +1,19 @@
 /* Shared, reactive app state. Svelte components read it directly; the original
    page code (app.js) updates it, and the components redraw on their own. */
 export const ui = $state({
-  mode: 'normal',     // 'quick' or 'normal'
+  mode: 'quick',      // 'quick' or 'normal'. Quick until a key exists (ModePicker), unless picked
+  modePicked: false,  // the person chose a mode themselves, so it no longer follows the key
   hasKey: false,      // a Gemini key is typed in or saved
-  quickSecs: 15       // Quick mode's usual time, learned from run stats when on
+  quickSecs: 15,      // Quick mode's usual time, learned from run stats when on
+  /* One message per place ('form' under the thoughts box, 'result' on the prompt card),
+     shown by Notice.svelte with the shared Message look. app.js sets them with
+     notify(); a button's `act` comes back to app.js as a window 'stp-act' event. */
+  notices: { form: null, result: null },
+  rework: null,       // Rework from the Quality check: { stage: asking | question | writing | done, question, choices }
+  grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
+
+/* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }] */
+export function notify(where, kind, title, text, actions) {
+  ui.notices[where] = kind ? { kind, title, text: text || '', actions: actions || [], at: Date.now() } : null;
+}

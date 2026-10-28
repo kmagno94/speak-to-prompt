@@ -27,9 +27,24 @@ const browser = await chromium.launch({ executablePath: browserPath() });
 
 const results = [];
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
+/* QUICK=1: the core set that gates every staging deploy, about 20 checks in under a minute:
+   the main journey (build, questions, copy), Gemini failures and fallback, the privacy rules,
+   the Ideas tab fix session, and the staging/live split. Everything else runs in the full
+   suite: in the background on every staging push, and as the gate for a promote and for main.
+   Match is on the start of each check's name. */
+const CORE = [
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash',
+  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
+  'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
+  'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
+  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:',
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:'
+];
+const QUICK = process.env.QUICK === '1';
 let skipped = 0;
 async function check(name, fn) {
   if (ONLY && !ONLY.test(name)) { skipped++; return; }
+  if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
 }
@@ -78,6 +93,15 @@ async function page(opts = {}) {
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
+    }
+    if (/REWORK QUESTION STEP/.test(ask)) {
+      (p.reworkQs = p.reworkQs || []).push({ model, text: ask });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 90 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(opts.reworkQ || { question: '' }) }] } }] }) });
+    }
+    if (/FIRST DRAFT TO REWORK/.test(ask)) {
+      (p.reworks = p.reworks || []).push({ model, text: ask });
+      if (opts.reworkFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 600 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.rework || 'REWORKED PROMPT' }] } }] }) });
     }
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
@@ -312,9 +336,11 @@ await check('idea strip: fits the box, clears on tap, fills on Try, returns when
 
 await check('mode picker (Svelte component): hint follows the mode and the key', async () => {
   const p = await page();
+  expect(await p.isChecked('#quickMode') && /^Quick: writes right away/.test(await p.textContent('#modeHint')), 'without a key the app should start in Quick: ' + await p.textContent('#modeHint'));
+  await p.check('#normalMode');
   expect(/Normal: .*Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'Normal without a key should say it needs one');
   await p.check('#quickMode');
-  expect(/^Quick: skips/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
+  expect(/^Quick:/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
   await p.check('#normalMode'); await withKey(p);
   expect(!/Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'hint still asks for a key after one was typed');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
@@ -1713,12 +1739,501 @@ await check('usage.json is valid', async () => {
   expect(j.day && j.updated && j.models && j.limits, 'usage.json missing day, updated, models, or limits');
 });
 
+/* Experience pass: shared messages, first screen, journey strip, copy, quality check, errors. */
+await check('messages: a blank Build shows a friendly empty message with a next step, and typing clears it', async () => {
+  const p = await page();
+  await p.evaluate(() => document.getElementById('build').click());
+  await p.waitForSelector('#notice-form');
+  const t = await p.textContent('#notice-form');
+  expect(/Start with a thought/.test(t) && /Messy|messy/.test(t), 'empty message wrong: ' + t);
+  expect(await p.isVisible('#notice-form button:has-text("Give me an idea")'), 'empty message should offer an idea');
+  await p.click('#notice-form button:has-text("Give me an idea")');
+  expect((await p.inputValue('#thoughts')).length > 10, 'Give me an idea should fill the box');
+  expect(!(await p.$('#notice-form')), 'the message should clear once there is text');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('journey strip: Speak, then Answer while questions show, then Copy on the result, back to Speak on Start over', async () => {
+  const p = await page();
+  const here = () => p.textContent('.journey li[aria-current="step"] .word');
+  expect(/Speak/.test(await here()), 'should start on Speak');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(/Answer/.test(await here()), 'questions should put you on Answer, got ' + await here());
+  expect(/Speak, done/.test(await p.textContent('.journey')), 'Speak should read as done for screen readers');
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForFunction(() => /Copy/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
+  await p.click('#reset');
+  await p.waitForFunction(() => /Speak/.test(document.querySelector('.journey li[aria-current="step"] .word')?.textContent || ''), null, { timeout: 3000 });
+  const q = await page();
+  await q.fill('#thoughts', 'help me plan a 5k'); await q.click('#build'); await done(q);
+  expect(/Skipped in Quick/.test(await q.textContent('.journey')), 'Quick should mark Answer as skipped');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('finish line: a long prompt can open in full, and Copy turns into a check', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'ok so I want to start running again but my knees hurt and I only have mornings before work and I hate treadmills, also my dog needs walks');
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#outputMore');
+  const before = await p.evaluate(() => document.getElementById('output').clientHeight);
+  await p.click('#outputMore');
+  const after = await p.evaluate(() => { const o = document.getElementById('output'); return { h: o.clientHeight, sh: o.scrollHeight }; });
+  expect(after.h > before && after.h >= after.sh - 4, 'Show the whole prompt should open the box to full length: ' + JSON.stringify({ before, after }));
+  expect(/Show less/.test(await p.textContent('#outputMore')), 'the button should flip to Show less');
+  await p.click('#copy');
+  await p.waitForFunction(() => /Copied/.test(document.getElementById('copy').textContent), null, { timeout: 2000 });
+  expect(/first step/.test(await p.textContent('#status')), 'status should say what to do next');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('quality check: a glanceable score, a plain label, and one tip (never color alone)', async () => {
+  const noQ = { questions: [] };
+  const p = await page({ intake: noQ, write: 'Plant swap prompt', grade: { craft: 2, rearranged: true, invented: false, missing: [] } });
+  await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'plant swap at the garden first Sunday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#qualityCheck', { timeout: 5000 });
+  const t = await p.textContent('#qualityCheck');
+  expect(/Could be sharper/.test(t) && /2\.0\s*\/5/.test(t), 'label and score missing: ' + t);
+  expect(/Tip: Say what you want done/.test(t), 'tip should give one next step: ' + t);
+  expect(await p.getAttribute('#qualityCheck .meter', 'aria-label') === '2.0 out of 5', 'meter needs a text label');
+  await p.click('#reset');
+  expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('errors: Gemini failing still gives a prompt, plus a plain message with Try again; a used-up limit says when it comes back', async () => {
+  const all = (code) => ({ 'gemini-3.8-flash': code, 'gemini-3.7-flash': code, 'gemini-3.6-flash': code, 'gemini-3.5-flash-lite': code });
+  const p = await page({ fail: all(500) });
+  await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#notice-result');
+  let t = await p.textContent('#notice-result');
+  expect(/didn't come through/.test(t) && /quick prompt is below/.test(t), 'failure message wrong: ' + t);
+  expect((await p.inputValue('#output')).length > 50, 'the quick prompt should still be there');
+  await p.click('#notice-result button:has-text("Try again")');
+  await p.waitForSelector('#notice-result');
+  const q = await page({ fail: all(429) });
+  await withKey(q); await q.fill('#thoughts', 'plan a road trip'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#notice-result');
+  t = await q.textContent('#notice-result');
+  expect(/limit|breather/.test(t) && /quick prompt is below/.test(t), 'rate limit message wrong: ' + t);
+  const r = await page({ fail: all(400) });
+  await withKey(r); await r.fill('#thoughts', 'plan a road trip'); await r.click('#build'); await done(r);
+  await r.waitForSelector('#notice-result');
+  expect(/didn't accept your key/.test(await r.textContent('#notice-result')), 'bad key message missing: ' + await r.textContent('#notice-result'));
+  await r.click('#notice-result button:has-text("Fix my key")');
+  expect(await r.evaluate(() => document.getElementById('keyPanel').open), 'Fix my key should open the key panel');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
+});
+
+await check('motion and touch: welcome entrance under a second, none with Reduce Motion, main controls at least 44px', async () => {
+  const p = await page();
+  const total = await p.evaluate(() => Math.max(...['.wrap > header', '.journey', '.hero'].map(s => { const c = getComputedStyle(document.querySelector(s)); return (parseFloat(c.animationDuration) + parseFloat(c.animationDelay)) * (c.animationDuration.endsWith('ms') ? 1 : 1000); })));
+  expect(total > 0 && total < 1000, 'entrance should finish under 1s, got ' + total + 'ms');
+  const small = await p.evaluate(() => ['#build', '#bannerPaste', '#quickMode', '#starterBtn'].map(s => { const el = document.querySelector(s); if (!el || el.closest('[hidden]')) return null; const r = (el.closest('.mode') || el).getBoundingClientRect(); return r.height < 44 ? s + ' ' + r.height : null; }).filter(Boolean));
+  expect(!small.length, 'touch targets under 44px: ' + small.join(', '));
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  const q = await ctx.newPage(); await q.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort()); await q.goto(BASE);
+  const anim = await q.evaluate(() => getComputedStyle(document.querySelector('.hero')).animationName);
+  expect(anim === 'none', 'Reduce Motion should turn the entrance off, got ' + anim);
+  await ctx.close();
+});
+
+await check('input hints: one word, a very long ramble, and another language each get a gentle note, and the build still runs', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'budget'); await p.click('#build'); await done(p);
+  expect(/Short works/.test(await p.textContent('#notice-form')), 'one word should get a gentle note');
+  await p.click('#reset');
+  await p.fill('#thoughts', Array.from({ length: 650 }, (_, i) => 'word' + (i % 40)).join(' ')); await p.click('#build'); await done(p);
+  expect(/That's a lot/.test(await p.textContent('#notice-form')), 'very long input should get a reassuring note');
+  await p.click('#reset');
+  await p.fill('#thoughts', 'quiero un plan para correr por las mañanas porque tengo poco tiempo'); await p.click('#build'); await done(p);
+  expect(/another language/.test(await p.textContent('#notice-form')), 'Spanish should get the language note');
+  expect((await p.inputValue('#output')).includes('quiero un plan'), 'the words go in as written');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('voice help: on iPhone, No shortcut? opens the Voice Memos steps; elsewhere it stays hidden', async () => {
+  const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'iPhone should show Talk it out and No shortcut?');
+  await p.click('#noShortcut');
+  expect(await p.evaluate(() => document.getElementById('memoGuide').open && document.getElementById('moreOpts').open), 'No shortcut? should open the by-hand steps');
+  const q = await page();
+  expect(!(await q.isVisible('#noShortcut')), 'No shortcut? should hide where Talk it out is hidden');
+});
+
+async function reworkPage(opts) {
+  const p = await page({ intake: { questions: [] }, write: 'First prompt', ...opts });
+  await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan a bake sale for the robotics club, friday, gym lobby'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#reworkBtn', { timeout: 5000 });
+  return p;
+}
+await check('rework: under the bar, it asks one question, rewrites from the first prompt, and keeps the higher score', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), reworkQ: { question: 'How much should each item cost?', choices: ['$1', '$2 to $3', '$5'] } });
+  await p.click('#reworkBtn');
+  await p.waitForSelector('#reworkQ');
+  expect(/How much should each item cost/.test(await p.textContent('#reworkQ')), 'the clarifying question should show');
+  await p.click('#reworkQ .chips button:has-text("$2 to $3")');
+  await p.waitForSelector('#reworkNote', { timeout: 5000 });
+  const w = p.reworks[0].text;
+  expect(/FIRST DRAFT TO REWORK[\s\S]*First prompt/.test(w) && /words rearranged/.test(w), 'rewrite should start from the first prompt with what was weak');
+  expect(/Q: How much should each item cost\?\nA: \$2 to \$3/.test(w), 'the new answer should reach the writer');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT', 'the higher-scoring rework should replace the prompt');
+  expect(/Reworked: 2\.0 to 5\.0, kept the new one/.test(await p.textContent('#reworkNote')), 'note wrong: ' + await p.textContent('#reworkNote'));
+  expect(!(await p.$('#reworkBtn')), 'only one rework per prompt');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: no question needed goes straight to the rewrite; a worse rework keeps the first prompt; a failed one says so', async () => {
+  const low = { craft: 3, rearranged: true, invented: false, missing: [] }, lower = { craft: 2, rearranged: true, invented: false, missing: [] };
+  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? lower : low) });
+  await p.click('#reworkBtn');
+  await p.waitForSelector('#reworkNote', { timeout: 5000 });
+  expect(!(await p.$('#reworkQ')), 'no question should show when none is needed');
+  expect(await p.inputValue('#output') === 'First prompt', 'a lower-scoring rework must not replace the prompt');
+  expect(/kept the first one/.test(await p.textContent('#reworkNote')), 'note should say the first was kept');
+  const q = await reworkPage({ grade: low, reworkFail: true });
+  await q.click('#reworkBtn');
+  await q.waitForSelector('#notice-result', { timeout: 5000 });
+  expect(/rework didn't come through/.test(await q.textContent('#notice-result')) && await q.inputValue('#output') === 'First prompt', 'a failed rework should keep the prompt and say so');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
+  const p = await page();
+  expect(await p.isChecked('#quickMode'), 'should start in Quick with no key');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.waitForFunction(() => document.getElementById('normalMode').checked, null, { timeout: 2000 }).catch(() => { throw new Error('adding a key should switch to Normal'); });
+  const q = await page();
+  await q.check('#normalMode'); await q.check('#quickMode'); await withKey(q); await q.dispatchEvent('#gkey', 'input'); await q.waitForTimeout(200);
+  expect(await q.isChecked('#quickMode'), 'a mode you picked should stay picked');
+});
+
+await check('wake lock: the screen stays awake only while Gemini works, and phones without it get a tip', async () => {
+  const p = await page({ intake: { questions: [] } });
+  await p.addInitScript(() => {
+    window.__wl = { req: 0, rel: 0, held: 0 };
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: () => { window.__wl.req++; window.__wl.held++; return Promise.resolve({ release: () => { window.__wl.rel++; window.__wl.held--; return Promise.resolve(); }, addEventListener() {} }); } } });
+  });
+  await p.reload();
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  await p.waitForFunction(() => window.__wl.req >= 1, null, { timeout: 3000 }).catch(() => { throw new Error('building should ask for a wake lock'); });
+  await done(p); await p.waitForTimeout(200);
+  const wl = await p.evaluate(() => window.__wl);
+  expect(wl.held === 0 && wl.rel >= 1, 'the wake lock should be let go once the prompt is ready: ' + JSON.stringify(wl));
+  expect(await p.isHidden('#wakeTip'), 'no tip when the phone supports it');
+  const q = await page({ intake: { questions: [] } });
+  await q.addInitScript(() => Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined }));
+  await q.reload();
+  await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.fill('#thoughts', 'plan my week'); await q.click('#build');
+  await q.waitForSelector('#wakeTip:not([hidden])', { timeout: 3000 });
+  await done(q); await q.waitForTimeout(200);
+  expect(await q.isHidden('#wakeTip'), 'the tip should go away when the build is done');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+/* My context (dev tools): reusable background picked per prompt. */
+await check('my context: hidden without dev tools; write, edit, delete, and it survives a reload', async () => {
+  const p = await page();
+  expect(!(await p.$('#contextRow')), 'My context should be hidden without dev tools');
+  await devOn(p);
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
+  await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.reload();
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'saved context should come back as a chip');
+  await p.click('#contextEdit');
+  await p.fill('#contextEditor .ctxtitle', 'Roastery');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
+  await p.click('#contextEdit');
+  await p.click('#contextEditor button:text-is("Delete")');
+  await p.click('#contextEditor button:text-is("Tap again to delete")');
+  await p.reload();
+  expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('my context: only picked pieces reach the prompt and the writer, the X-ray labels them, and the thoughts box is never saved', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }, { id: 'b', title: 'WGU', text: 'Taking D522 Python.' }])));
+  await devOn(p);
+  await p.fill('#thoughts', 'SECRET-NOTE plan my roast week');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  expect(/1 added to this prompt/.test(await p.textContent('#contextRow')), 'count should show 1 picked');
+  await p.click('#build'); await done(p);
+  let out = await p.inputValue('#output');
+  expect(/MY CONTEXT/.test(out) && /\[Roastery\]/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be added: ' + out.slice(-300));
+  await p.click('#xrayBtn');
+  expect(await p.$('#xray [aria-label^="Your context"]'), 'X-ray should label the context part as Your context');
+  expect(!/SECRET-NOTE/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the thoughts box must never be saved');
+  const q = await page();
+  await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Roastery")');
+  await q.fill('#thoughts', 'memo'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])'); await q.click('#qaList .chips button'); await q.click('#qaGo'); await done(q);
+  const write = q.calls.find(c => !c.intake);
+  expect(/CONTEXT THE PERSON PICKED/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context');
+  const r = await page();
+  await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
+  await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
+  expect(!/MY CONTEXT/.test(await r.inputValue('#output')), 'dev tools off should add no context');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
+});
+
+await check('my context: the question step sees picked context so it can skip what it already answers', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Harbor Bean roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am.' }])));
+  await devOn(p); await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  let intake = p.calls.find(c => c.intake);
+  expect(!/CONTEXT THE PERSON PICKED/.test(intake.text), 'unpicked context must not reach the question step');
+  const q = await page();
+  await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Harbor Bean roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am.' }])));
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Harbor Bean")');
+  await q.fill('#thoughts', 'memo'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  intake = q.calls.find(c => c.intake);
+  expect(/CONTEXT THE PERSON PICKED[\s\S]*never ask a question it answers[\s\S]*Tuesday and Friday[\s\S]*RAW THOUGHTS:/.test(intake.text), 'picked context should sit before the raw thoughts with the never-ask rule');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('my context: shows about how many tokens picking adds, and run stats log it', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am. Two blends.' }])));
+  await devOn(p);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  const label = await p.textContent('#contextCount');
+  const m = label.match(/about (\d+) tokens/);
+  expect(m && +m[1] > 10 && +m[1] < 60, 'token estimate missing or off: ' + label);
+  await p.fill('#thoughts', 'plan my roast week'); await p.click('#build'); await done(p);
+  await p.click('#testLog summary').catch(() => {});
+  expect(new RegExp('context: 1 picked, about ' + m[1] + ' tokens added').test(await p.textContent('#testRuns')), 'run stats should log the context size: ' + await p.textContent('#testRuns'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* 💡 Ideas tab (owner only): toggle, capture, suggestions, statuses, fix session, privacy. */
+async function ideasOn(p) { await p.click('#moreOpts summary'); await p.check('#ideasToggle'); }
+async function logIdea(p, kind, area, text) {
+  await p.click('#ideaKind-' + kind); await p.click('#ideaArea-' + area);
+  await p.fill('#ideaText', text); await p.click('#ideaSave');
+  await p.waitForSelector('#ideaSaved');
+}
+
+await check('ideas tab: hidden by default, the More options toggle shows it and remembers', async () => {
+  const p = await page();
+  expect(!(await p.$('#ideaTab')), 'Ideas tab should be hidden until turned on');
+  await ideasOn(p);
+  await p.waitForSelector('#ideaTab');
+  await p.reload(); await p.waitForSelector('#ideaTab');
+  await p.click('#moreOpts summary'); await p.uncheck('#ideasToggle');
+  expect(!(await p.$('#ideaTab')), 'turning it off should hide the tab');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, Delete', async () => {
+  const p = await page();
+  await ideasOn(p); await p.click('#ideaTab'); await p.waitForSelector('#ideaPanel');
+  await logIdea(p, 'bug', 'copy', 'Copy button did nothing on my iPad');
+  expect(/1 open/.test(await p.textContent('#ideaSaved')), 'saved line should count 1 open');
+  expect(/1/.test(await p.textContent('#ideaTab .count')), 'tab badge should show 1');
+  await p.reload(); await p.click('#ideaTab'); await p.waitForSelector('#ideaPanel');
+  expect(/Copy button did nothing/.test(await p.textContent('#ideaPanel .list')), 'idea should survive a reload');
+  await p.click('#ideaPanel .list button:text-is("Mark fixed")');
+  expect(!(await p.$('#ideaTab .count')), 'no open ideas after Mark fixed');
+  await p.click('#ideaPanel .list button:has-text("Show done")');
+  expect(/Fixed in v\d/.test(await p.textContent('#ideaPanel .list')), 'fixed idea should show its version');
+  await p.click('#ideaPanel .list button:text-is("Reopen")');
+  await p.click('#ideaPanel .list button:text-is("Delete")');
+  await p.click('#ideaPanel .list button:text-is("Tap again to delete")');
+  expect(!(await p.evaluate(() => localStorage.getItem('stp-ideas'))), 'deleting the last idea should clear storage');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#ideaPanel', { state: 'detached', timeout: 2000 }).catch(() => { throw new Error('Escape should close the panel'); });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: never saves the prompt box, sends nothing, and the fix session lists open ideas with the staging rules', async () => {
+  const p = await page();
+  const sent = []; p.on('request', r => { if (!/localhost|generativelanguage|fonts\./.test(r.url())) sent.push(r.url()); });
+  await p.fill('#thoughts', 'SECRET-THOUGHTS plan my sister surprise party');
+  await p.click('#build'); await done(p);
+  await ideasOn(p); await p.click('#ideaTab');
+  await logIdea(p, 'idea', 'result', 'Show the word count under the prompt');
+  await logIdea(p, 'faster', 'input', 'Paste should happen in one tap');
+  const stored = await p.evaluate(() => localStorage.getItem('stp-ideas') || '');
+  expect(!/SECRET-THOUGHTS|sister/.test(stored), 'Ideas tab must never store the prompt box text');
+  expect(!sent.length, 'Ideas tab sent requests: ' + sent.join(', '));
+  await p.click('#ideaFix');
+  const clip = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/2 open ideas/.test(clip), 'fix session should count 2 open ideas');
+  expect(/Show the word count/.test(clip) && /Paste should happen/.test(clip), 'fix session should list both ideas');
+  expect(/staging branch only/i.test(clip) && /Never push to main/.test(clip), 'fix session should carry the staging rules');
+  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /5\/5 ahead of live/.test(clip), 'fix session should check the release limit before any code');
+  expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
+  expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
+  expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
+  expect(/staging\/#testlab/.test(clip), 'fix session should hand over the Test lab link');
+  expect(/QUICK=1 npm test/.test(clip) && /Full tests \(staging, background\)/.test(clip) && /Promote check/.test(clip), 'fix session should carry the two test speeds');
+  expect(!/SECRET-THOUGHTS/.test(clip), 'fix session must not include the prompt box text');
+  expect(/saved on this phone only/i.test(await p.textContent('#footer')), 'footer should say ideas are saved on this phone');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: a Gemini failure becomes a "Looks like it might be" suggestion', async () => {
+  const fail = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
+  const p = await page({ fail });
+  await withKey(p);
+  await p.fill('#thoughts', 'plan a road trip'); await p.click('#build'); await done(p);
+  await ideasOn(p); await p.click('#ideaTab'); await p.click('#ideaKind-bug');
+  await p.waitForSelector('#ideaPicks');
+  const picks = await p.textContent('#ideaPicks');
+  expect(/Building › Fell back to quick version/.test(picks) && /Gemini failed/.test(picks), 'expected a Gemini failed suggestion, got: ' + picks);
+  await p.click('#ideaPicks .pick');
+  expect(/switched to the quick version/.test(await p.inputValue('#ideaText')), 'picking it should prefill the starter sentence');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen keeps one open, Clear done empties the done list', async () => {
+  const p = await page();
+  await p.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: 'fixme1', commit: 'abc1234', version: '2.1.0', note: 'Copy now works on iPad' }] }) }));
+  const item = (id, text) => ({ id, kind: 'bug', area: 'copy', where: 'Copy and open', topic: '', topicLabel: '', text, soon: 'now', context: { trail: [], signals: [] }, at: '2026-10-23T10:00:00Z', date: '2026-10-23', version: '2.1.0', status: 'open' });
+  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
+  await p.reload(); await p.click('#ideaTab');
+  await p.waitForSelector('#ideaClosed');
+  expect(/1 idea closed by the latest fixes/.test(await p.textContent('#ideaClosed')), 'should say one idea was closed');
+  expect(/Open 1/.test(await p.textContent('#ideaPanel .list')) && /1/.test(await p.textContent('#ideaTab .count')), 'only the unfixed idea should stay open');
+  await p.click('#ideaFix');
+  const clip = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/1 open idea/.test(clip) && /Paste is slow/.test(clip) && !/Copy did nothing/.test(clip), 'fix session should list only what is left');
+  expect(/ideas-done\.json/.test(clip), 'fix session should tell Claude to close ideas in ideas-done.json');
+  await p.click('#ideaPanel .list button:has-text("Show done")');
+  expect(/Fixed in v2\.1\.0 \(abc1234\)/.test(await p.textContent('#ideaPanel .list')) && /Copy now works on iPad/.test(await p.textContent('#ideaPanel .list')), 'done item should show the commit and the fix note');
+  await p.click('#ideaPanel .list .done button:text-is("Reopen")');
+  await p.keyboard.press('Escape'); await p.waitForSelector('#ideaPanel', { state: 'detached' });
+  await p.click('#ideaTab');
+  expect(/Open 2/.test(await p.textContent('#ideaPanel .list')), 'a reopened idea must not be closed again by the same fix');
+  await p.click('#ideaPanel .list button:text-is("Mark fixed") >> nth=0');
+  if (await p.$('#ideaPanel .list button:has-text("Show done")')) await p.click('#ideaPanel .list button:has-text("Show done")');
+  await p.click('#ideaClearDone'); await p.click('#ideaClearDone');
+  expect(!(await p.$('#ideaPanel .list .done')) && JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas'))).length === 1, 'Clear done should remove the done ideas only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
+   live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
+if (process.env.APP_CHANNEL === 'staging') {
+  await check('staging build: shows the STAGING badge and keeps its saved data under stg: keys', async () => {
+    const p = await page();
+    const badge = await p.textContent('#stgBadge').catch(() => '');
+    expect(/STAGING · v\d+\.\d+\.\d+/.test(badge || ''), 'STAGING badge with version missing, got: ' + badge);
+    expect(/^STAGING/.test(await p.title()), 'tab title should start with STAGING');
+    const keys = await p.evaluate(() => {
+      localStorage.setItem('stp-probe', '1');
+      const raw = []; for (let i = 0; i < localStorage.length; i++) raw.push(localStorage.key(i));
+      const back = localStorage.getItem('stp-probe');
+      localStorage.removeItem('stp-probe');
+      return { raw, back };
+    });
+    expect(keys.back === '1', 'reading back a saved key failed on staging');
+    expect(keys.raw.length && keys.raw.every(k => k.startsWith('stg:')), 'every stored key should start with stg:, got: ' + keys.raw.join(', '));
+  });
+
+  /* 🧪 Test lab (staging only). releases.json is mocked; ?live= sets the live version. */
+  const LAB = { releases: [
+    { version: '9.0.2', title: 'Two', items: ['x'], checks: [{ say: 'Check two A', see: 'Two A shows' }] },
+    { version: '9.0.1', title: 'One', items: ['x'], checks: [{ say: 'Check one A', see: 'One A shows' }, { say: 'Check one B', see: 'One B shows' }] },
+    { version: '9.0.0', title: 'Live already', items: ['x'], checks: [{ say: 'Old check', see: 'old' }] }
+  ] };
+  async function labPage(url = '?live=9.0.0#testlab') {
+    const p = await page();
+    await p.route(/releases\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LAB) }));
+    await p.goto(BASE + url);
+    return p;
+  }
+
+  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Ideas jar, kept on reload, Re-check', async () => {
+    const p = await labPage();
+    await p.waitForSelector('#labVerdict');
+    expect(/Live v9\.0\.0/.test(await p.textContent('#labLive')), 'top line should name live v9.0.0');
+    const keys = await p.$$eval('#labPanel .stepbtn', els => els.map(e => e.dataset.key));
+    expect(keys.length === 7 && keys[0] === '9.0.1#0' && keys[2] === '9.0.2#0' && keys[3] === 'x-0', 'plan should be 9.0.1 (2), 9.0.2 (1), then 4 Before you promote checks, got: ' + keys.join(', '));
+    expect(!(await p.textContent('#labPanel')).includes('Old check'), 'a build that is already live must not be in the plan');
+    expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'verdict should start at 0 of 7');
+    await p.click('#labRun');
+    expect(/Check one A/.test(await p.textContent('#labStep')) && /One A shows/.test(await p.textContent('#labStep')), 'first step should be the oldest build');
+    await p.click('#labWorks');
+    expect(/Check one B/.test(await p.textContent('#labStep')), 'Works should move to the next step');
+    await p.click('#labBroken');
+    await p.fill('#labNote', 'Button did nothing'); await p.click('#labJar');
+    await p.waitForSelector('#labJarMsg');
+    const jar = JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')) || '[]');
+    expect(jar.length === 1 && jar[0].kind === 'bug' && jar[0].soon === 'now' && /Check one B/.test(jar[0].text) && /Button did nothing/.test(jar[0].text), 'a broken step should become a Now bug in the Ideas jar with the check and the note');
+    await p.keyboard.press('Escape'); await p.keyboard.press('Escape');
+    await p.waitForSelector('#labPanel', { state: 'detached' });
+    expect(/1 broken/.test(await p.textContent('#labTab')), 'the 🧪 button should say 1 broken');
+    await p.reload(); await p.waitForSelector('#labVerdict');
+    expect(/Don't promote: 1 broken/.test(await p.textContent('#labVerdict')), 'results should survive a reload');
+    expect(/Re-check 1 fix/.test(await p.textContent('#labRun')), 'with a broken step, the run should be a Re-check');
+    await p.click('#labRun');
+    expect(/Check one B/.test(await p.textContent('#labStep')) && /1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
+    await p.click('#labWorks');
+    expect(/Continue · 5 left/.test(await p.textContent('#labRun')), 'after the fix passes, Continue should walk only the 5 not checked');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+
+  await check('test lab: all pass says Ready and copies the promote phrase; Clear results asks twice; hidden without the Ideas toggle unless opened from #testlab', async () => {
+    const p = await labPage('?live=9.0.0');
+    expect(!(await p.$('#labTab')), 'the 🧪 button should stay hidden until Show my Ideas tab is on');
+    await ideasOn(p);
+    await p.click('#labTab'); await p.waitForSelector('#labVerdict');
+    await p.click('#labRun');
+    for (let i = 0; i < 7; i++) await p.click('#labWorks');
+    expect(/All 7 work\. Ready to promote v9\.0\.2\./.test(await p.textContent('#labVerdict')), 'all passed should say Ready to promote v9.0.2');
+    await p.click('#labPromote');
+    expect((await p.evaluate(() => navigator.clipboard.readText())) === 'Pre-flight passed, promote v9.0.2', 'Copy should put the exact promote phrase on the clipboard');
+    await p.click('#labReset');
+    expect(/All 7 work/.test(await p.textContent('#labVerdict')), 'one tap must not clear results');
+    await p.click('#labReset');
+    expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'second tap should clear every result');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+} else {
+  await check('live build: no Test lab, even with #testlab and the Ideas tab on', async () => {
+    const p = await page();
+    await ideasOn(p);
+    await p.goto(BASE + '?live=1.0.0#testlab');
+    await p.waitForSelector('#ideaTab');
+    expect(!(await p.$('#labTab')) && !(await p.$('#labPanel')), 'the live build must never show the Test lab');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+  await check('live build: no STAGING badge and saved keys stay unprefixed', async () => {
+    const p = await page();
+    expect(!(await p.$('#stgBadge')), 'live build must not show the STAGING badge');
+    const raw = await p.evaluate(() => { localStorage.setItem('stp-probe', '1'); const r = []; for (let i = 0; i < localStorage.length; i++) r.push(localStorage.key(i)); localStorage.removeItem('stp-probe'); return r; });
+    expect(raw.includes('stp-probe') && !raw.some(k => k.startsWith('stg:')), 'live keys should be unprefixed, got: ' + raw.join(', '));
+  });
+}
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
 /* On GitHub Actions, each failure also becomes an annotation on the run page. */
 if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
-console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : ''));
+console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : ''));
+if (QUICK && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
 if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
 process.exit(failed ? 1 : 0);
