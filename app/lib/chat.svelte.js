@@ -13,7 +13,7 @@ class ChatSession {
   questions = $state([]);   // [{ question, choices }]
   answers = $state([]);     // per question: null = not asked yet, '' = skipped, text = answer
   tapped = $state([]);      // per question: true when the answer was a suggested option, not typed
-  messages = $state([]);    // [{ id, from: 'ai' | 'me', text, q }]
+  messages = $state([]);    // [{ id, from: 'ai' | 'me', text, q, kind }]; kind 'q' = a question (bold), 'help' = a helper line (small and gray)
   current = $state(-1);     // question being asked; questions.length when all are done
   typing = $state(false);   // the "..." bubble before the next question
   busy = $state(false);     // a prompt is being written
@@ -37,7 +37,7 @@ class ChatSession {
     this.questions = intake.questions;
     this.answers = intake.questions.map(() => null);
     this.tapped = intake.questions.map(() => false);
-    this.#say('ai', 'Got it. ' + (intake.questions.length === 1 ? 'One quick question' : intake.questions.length + ' quick questions') + ' so your prompt gets it right. Tap an answer, type your own, or skip.');
+    this.#say('ai', 'Got it. ' + (intake.questions.length === 1 ? 'One quick question' : intake.questions.length + ' quick questions') + ' so your prompt gets it right. Tap an answer, type your own, or skip.', null, 'help');
     this.#ask(0);
   }
 
@@ -73,7 +73,8 @@ class ChatSession {
     clearTimeout(this.#timer);
     this.typing = false;
     this.current = i;
-    this.#say('ai', 'Sure, let\'s change that. ' + this.questions[i].question, i);
+    this.#say('ai', 'Sure, let\'s change that.', null, 'help');
+    this.#say('ai', this.questions[i].question, i, 'q');
   }
 
   finish(quick) {
@@ -97,14 +98,14 @@ class ChatSession {
         const n = this.answers.filter((a, k) => a && this.tapped[k]).length;
         this.#say('ai', n
           ? 'That\'s everything I need. Quick check: you tapped ' + (n === 1 ? 'a suggested answer' : n + ' suggested answers') + '. If one is only close, tap it below and say it your way. Otherwise, tap Write my prompt.'
-          : 'That\'s everything I need. Tap Write my prompt when you\'re ready, or tap any answer to change it.');
+          : 'That\'s everything I need. Tap Write my prompt when you\'re ready, or tap any answer to change it.', null, 'help');
       }
-      else this.#say('ai', this.questions[i].question, i);
+      else this.#say('ai', this.questions[i].question, i, 'q');
     }, ms(450));
   }
 
-  #say(from, text, q = null) {
-    this.messages.push({ id: nextId++, from, text, q });
+  #say(from, text, q = null, kind = '') {
+    this.messages.push({ id: nextId++, from, text, q, kind });
   }
 }
 

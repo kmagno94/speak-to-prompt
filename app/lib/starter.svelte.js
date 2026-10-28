@@ -63,7 +63,8 @@ class StarterSession {
     this.current = -1; this.typing = false;
     const t = savedTune();
     SLIDERS.forEach((s) => { this.tune[s.key] = t[s.key]; });
-    this.#say('ai', 'No problem. What do you want help with? Pick one, or describe it in your own words.');
+    this.#say('ai', 'No problem. What do you want help with?', 'q');
+    this.#say('ai', 'Pick one, or describe it in your own words.', 'help');
   }
 
   saveTune() {
@@ -139,11 +140,13 @@ class StarterSession {
     this.typing = true;
     this.#timer = setTimeout(() => {
       this.typing = false;
-      this.#say('ai', i >= this.questions.length ? 'Here\'s your starting point. Slide to dial anything up or down, then build your prompt or put it in the box to add more.' : this.questions[i].q);
+      if (i >= this.questions.length) this.#say('ai', 'Here\'s your starting point. Slide to dial anything up or down, then build your prompt or put it in the box to add more.', 'help');
+      else this.#say('ai', this.questions[i].q, 'q');
     }, ms(400));
   }
 
-  #say(from, text) { this.messages.push({ id: nextId++, from, text }); }
+  /* kind: 'q' = a question (bold), 'help' = a helper line (small and gray). */
+  #say(from, text, kind = '') { this.messages.push({ id: nextId++, from, text, kind }); }
 }
 
 export const starter = new StarterSession();

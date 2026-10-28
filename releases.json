@@ -2,6 +2,126 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.7",
+      "date": "2026-10-28",
+      "title": "Build 4: floating Done, snap to the cooking, keyboard coach bar",
+      "items": [
+        "My context: the + Add another and Done bar floats at the bottom of the screen while the editor is open, and sits on top of the keyboard while you type, so Done is always one tap away. The floating 💡 Ideas and 🧪 Test lab buttons tuck away while it's open (and while the keyboard coach bar is up), so they never cover it.",
+        "Snap to the cooking: Build closes the keyboard and scrolls straight to the cooking ring, the one under Build while it reads your thoughts, then the prompt card's ring while it writes.",
+        "Keyboard coach bar: while you type with the keyboard up, a slim bar rides on top of it with the Prompt strength meter and one tap-to-add chip (the Stuck? nudge when it shows, else the coach's top tip). Taps keep the keyboard up. Close the keyboard and they're back under the box.",
+        "Test lab rail: ▶ Continue at the top always walks the checks you haven't marked yet, even when something's broken (Re-check still walks the broken ones). After ✗ Broken there's a Continue to the next check button, and tapping any check carries on along the rail from there."
+      ],
+      "checks": [
+        { "say": "Dev tools on: My context > + New, then + Add another 3 times, and scroll up and down through the pieces.", "see": "The + Add another and Done bar floats at the bottom of the screen the whole time, and the 💡 Ideas and 🧪 Test lab buttons tuck away so nothing covers it. Tapping Done closes the editor and the two buttons come back." },
+        { "say": "In My context, tap into one of the big text boxes so the keyboard opens.", "see": "The + Add another and Done bar sits right on top of the keyboard, not behind it." },
+        { "say": "With your key, type a short note, and with the keyboard still open tap Build my prompt.", "see": "The keyboard closes and the page snaps to the cooking ring under Build while it says Reading your thoughts, then to the ring on the prompt card while it writes." },
+        { "say": "Tap the thoughts box and type help me plan a yard sale (keyboard up).", "see": "A slim bar sits on top of the keyboard: 👻 with the strength meter and a + tip chip. Tapping the tip adds a new line and the keyboard stays up." },
+        { "say": "Keep the keyboard up, type a few more words, then stop for about 6 seconds.", "see": "✍️ Stuck? sentence shows in the bar on top of the keyboard (not under the box). 🎲 swaps it, tapping it adds the line, and the keyboard stays up." },
+        { "say": "Close the keyboard (tap outside the box).", "see": "The bar is gone, and Prompt strength and the nudge are back under the box." },
+        { "say": "In this Test lab, tap any check you haven't done, mark it ✗ Broken, type test, then tap Continue to the next check. Go back to it and tap ✓ Works when you're done.", "see": "Continue opens the next check you haven't marked. Back at the list, ▶ Continue · N not checked sits at the top and picks up where you left off." }
+      ]
+    },
+    {
+      "version": "2.1.6",
+      "date": "2026-10-28",
+      "title": "Build 3: Start here, stuck nudge, leaving mid-build, prompt cooking",
+      "items": [
+        "Start here: when the app opens, the title's waveform entrance plays first, then one white halo panel pulses around the title, waveform and description, then the page scrolls down to Talk it out and the box, which pulse with ✍️ Start here, then the idea strip comes in. It plays on every open until your first tap, type, paste or Talk it out, then never again. Only a yes/no flag is kept, never anything typed.",
+        "Stuck? After the box sits still for about 6 seconds with some words in it, one sentence to finish shows under it, aimed at what your thoughts are missing. Tap it to start that line, 🎲 for another. There's no ✕, so a stray tap can't switch them off: they come back after every quiet stretch.",
+        "Leaving mid-build: if a step drops while you're in another app, it tries the same model again when you're back instead of spending a backup. Back before it finishes: it says Picked back up. Finished while you were away: the tab title says Prompt ready and coming back says Ready while you were away.",
+        "Prompt cooking: a big ring wraps the timer with a kitchen inside. Your pieces fly in as chips and splash into the pot, the spoon stirs, it bubbles and steams, and the chef talk changes every few seconds. Slow? The lid goes on and rattles. A model handing off: the pot shakes, foam spills, the flames flare and it slides to a new burner. Done: the cloche lifts on your plated prompt with sparkles and the ring turns green. Reduce Motion keeps it still.",
+        "Build row: while it works, a longer label like Reading your thoughts... wraps inside the Build button, so Quick and Normal keep their full size and the row doesn't jump.",
+        "Test lab: 📋 Copy report for Claude. Mark a check ✗ Broken, type what happened, tap it, and every broken check (Do, Expected, What happened) is on your clipboard, ready to paste into the chat. The Ideas jar is still there as the other option."
+      ],
+      "checks": [
+        { "say": "Open staging in a new Private tab in Safari (a fresh visit).", "see": "First the waveform under the title plays and settles into lines. Then one roomy white halo panel wraps the title, waveform and description, and in light mode the rest of the page dims like a spotlight. Nothing on the page moves. After about 2 seconds the page scrolls down so Talk it out and the box sit at the top, both with the white halo, the spotlight moves to that card, and ✍️ Start here shows in the box. About 4 seconds later it fades and the idea strip comes in." },
+        { "say": "In that Private tab, reload without touching anything.", "see": "The waveform, the title halo and the scroll to the box play again, because you haven't done anything yet." },
+        { "say": "Still in the Private tab: tap into the box, type a word, then reload.", "see": "Start here is gone for good and the ideas show right away. Your word is not kept." },
+        { "say": "Type help me plan a yard sale, then stop and wait about 6 seconds.", "see": "✍️ Stuck? Finish this: shows one sentence. 🎲 swaps it. Tapping it starts a new line with that sentence and the cursor after it." },
+        { "say": "Wait for the nudge to come back, then type a few more words and wait 6 seconds again.", "see": "There's no ✕. Typing tucks it away, and a new nudge shows after the next quiet stretch." },
+        { "say": "With your key and Quick mode, build, and as soon as the pot shows, switch to another app for about 5 seconds, then come back.", "see": "The pot says 👋 Welcome back, still simmering, and when the prompt shows, the card says Picked back up." },
+        { "say": "With your key, build any prompt and watch the ring.", "see": "A big ring wraps the timer with a pot inside. Chips (Your thoughts, plus any answers or context) fly in and splash, the spoon stirs, the chef line changes every few seconds, then the cloche lifts on a plated prompt with sparkles and the ring turns green." },
+        { "say": "Open the staging link with #cookdemo on the end (kmagno94.github.io/speak-to-prompt/staging/#cookdemo).", "see": "A preview cook plays with no Gemini call: chips fly in, around 6 seconds the lid goes on and rattles, around 10 seconds the pot shakes, foams over and slides to a new burner (💥 Boiled over!), then 🍽️ Order up! with the cloche lifting." },
+        { "say": "With your key, tap Build my prompt and watch the Build row while it says Reading your thoughts...", "see": "The label wraps onto 2 lines inside the button. Quick and Normal stay full size with room around them, and nothing jumps." },
+        { "say": "In this Test lab, open any check, tap ✗ Broken, type test note, tap 📋 Copy report for Claude, and paste it into Notes. Then tap ✓ Works on that check.", "see": "It says Copied. The paste starts with Test lab report, staging v2.1.6, and lists that check with Do, Expected, and What happened: test note." }
+      ]
+    },
+    {
+      "version": "2.1.5",
+      "date": "2026-10-27",
+      "title": "Build 2: context budget, Rework as round 2",
+      "items": [
+        "My context has a budget: the chip shows about how many tokens your picks add and the % of 1,500.",
+        "Past 100%, a build with your key squeezes the picks once with Flash-Lite: every fact stays, filler goes. The chip shows before and after. The short version is memory only, so your saved pieces never change.",
+        "Rework is now round 2: your prompt goes back in the box with one What was weak line on top. Change anything, then Build. Round 2 uses your original thoughts and answers plus your edits, with no new questions.",
+        "Round 2 shows on the timer with the running total for both rounds, and the card shows the score before and after.",
+        "Save to Notes after round 2 keeps your original words with the new prompt. Back to round 1 puts everything back. The old one-question rework in the card is gone."
+      ],
+      "checks": [
+        { "say": "Dev tools on, no key: pick one short My context piece.", "see": "The chip next to My context says about N tokens and a small %, like · 3%." },
+        { "say": "With your key, pick My context pieces that add up past 100% (or paste a long piece), then build.", "see": "Before: the chip is orange and says squeezes to fit when you build. The button says Squeezing your context to fit, then the chip says squeezed (before) → (after) tokens with a % near or under 100." },
+        { "say": "After that squeeze, open My context > Edit and look at the long piece.", "see": "Your saved words are exactly as you wrote them. Reload the page and pick them again: the chip is back to the full size." },
+        { "say": "With run stats on, build a prompt that lands under the 4.5 bar, then tap 🔁 Rework from this prompt.", "see": "The card steps aside. The box holds one line starting What was weak, a blank line, then your prompt. A Round 2 banner sits above the box with Back to round 1." },
+        { "say": "Add a line to the box (like a budget), then tap Build my prompt.", "see": "No new questions. The timer says Round 2 and total, both rounds. The ready line says Round 2 ready in Ns (Ms total, both rounds). The banner on the card shows Quality check before → after." },
+        { "say": "Tap Save to Notes, then look at the note.", "see": "Your original words (summary and transcript) with the new prompt under Prompt Built. No What was weak line anywhere." },
+        { "say": "Tap ← Back to round 1 on the card.", "see": "The first prompt, its grade, and your original words in the box are back, and 🔁 Rework from this prompt shows again." }
+      ]
+    },
+    {
+      "version": "2.1.4",
+      "date": "2026-10-27",
+      "title": "Build 1: Batch A, honest dates, prompt-only copy",
+      "items": [
+        "Copy and open: a status line right under ChatGPT, Claude, Gemini says it copied (or what to do if it couldn't).",
+        "Start over forgets your transcript. If Paste finds the same one still on the clipboard, it warns you instead of bringing it back (Use it anyway if you mean it).",
+        "Ideas tab: Edit on any open idea.",
+        "Questions read clearer: the question is bold, the helper lines around it are small and gray.",
+        "The intro text on the first screen has room to breathe: each sentence on its own line, open spacing.",
+        "My context: the editor opens at its top with the cursor in a title, and a new piece goes first.",
+        "Dates stay as you said them: the writer keeps maybe and I think, adds no year, weekday, or month, and doesn't make a preference stronger (no strictly you didn't say). If your own weekday and date don't match, the prompt asks the AI to check instead of picking one. The Heads up note now also catches a weekday that doesn't match its date (Saturday the 30th when the 30th is a Friday).",
+        "The Quality check is docked below the bar whenever the number check flags something, and the grader bench runs the real Saturday example (B9) first.",
+        "Copy gives the prompt only: My context is no longer tacked on as a block. The writer works in just the facts the request needs, and your core stays at the end."
+      ],
+      "checks": [
+        {
+          "say": "Build any prompt, then tap ChatGPT under Copy and open.",
+          "see": "A green line right under the three links says \"Copied. Opening ChatGPT: paste it there.\""
+        },
+        {
+          "say": "Paste a transcript with 📋 Paste, build it, tap Start over, then tap 📋 Paste again without copying anything new.",
+          "see": "The box stays empty and a note says \"That's the transcript you already used\". Use it anyway pastes it."
+        },
+        {
+          "say": "Open the 💡 Ideas tab, tap Edit on an open idea, change a word, tap Save. Then Edit again, type something, tap Cancel.",
+          "see": "Save keeps the new words. Cancel leaves it as it was."
+        },
+        {
+          "say": "With your key, build a Normal prompt that asks a question.",
+          "see": "The question is bold. The \"Got it\" line above it and the \"That's everything I need\" line after are small and gray."
+        },
+        {
+          "say": "Open staging fresh and read the intro under Speak to Prompt.",
+          "see": "Each sentence sits on its own line with more space around it, the first one a little darker. No emojis."
+        },
+        {
+          "say": "With dev tools on and at least one My context piece saved, tap + New under My context.",
+          "see": "The editor scrolls to its top, the new empty piece is first, and the cursor is in its title."
+        },
+        {
+          "say": "With your key, build from: \"potluck at my place, a saturday I think? my friend is gluten free, like 8 people\".",
+          "see": "The prompt keeps \"I think\", adds no month, day, or year, and says gluten free without \"strictly\". If it ever adds a date, a Heads up note names it (and the weekday if it is wrong)."
+        },
+        {
+          "say": "More options > Grader bench > Run grader bench (dev tools on).",
+          "see": "B9 Potluck is the first row, and its grader score is under 4.5."
+        },
+        {
+          "say": "Dev tools on: pick a My context chip, build with your key, tap Copy prompt, and paste into Notes.",
+          "see": "No MY CONTEXT block at the end. Only the facts it needed are worked into the prompt, and Your core (if on) is still last."
+        }
+      ]
+    },
+    {
       "version": "2.1.3",
       "date": "2026-10-25",
       "title": "Test lab on staging",

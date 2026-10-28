@@ -71,7 +71,7 @@
 
     <div class="thread" bind:this={thread} role="log" aria-live="polite">
       {#each starter.messages as m (m.id)}
-        <div class="msg {m.from}" in:fly={{ y: 10, duration: ms(220) }}><p>{m.text}</p></div>
+        <div class="msg {m.from}" in:fly={{ y: 10, duration: ms(220) }}><p class:q={m.kind === 'q'} class:help={m.kind === 'help'}>{m.text}</p></div>
       {/each}
       {#if starter.typing}
         <div class="msg ai typing" aria-label="Writing the next question"><span></span><span></span><span></span></div>

@@ -22,6 +22,7 @@
   --accent: #1d5c8c;
   --accent-ink: #ffffff;
   --accent-soft: #dbe8f3;
+  --halo-fill: #ffffff; --halo-edge: rgba(24,33,44,0.14); --halo-drop: rgba(24,33,44,0.2); --halo-glow: rgba(255,255,255,0.9); --halo-scrim: rgba(24,33,44,0.32);
   --danger: #a3332b;
   --ok: #2f6b3f;
   --record: #d93a3f;
@@ -33,14 +34,14 @@
   :root:not([data-theme="light"]) {
     --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16); --halo-scrim: transparent;
     --warn: #f0bd5c; --warn-soft: #3a2c14;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45); --halo-glow: rgba(255,255,255,0.16); --halo-scrim: transparent;
   --warn: #f0bd5c; --warn-soft: #3a2c14;
 }
 @media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
@@ -57,9 +58,15 @@ body {
 }
 .wrap { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-5); }
 header { display: flex; flex-direction: column; gap: 8px; }
+.intro { display: flex; flex-direction: column; gap: 8px; }
+.wrap > header .toprow { position: relative; z-index: 2; }   /* the chips stay on top of the Start here panel */
+/* Start here spotlight: a dim layer over the page, with the haloed parts lifted above it. */
+.sh-scrim { position: fixed; inset: 0; z-index: 40; pointer-events: none; background: var(--halo-scrim); opacity: 0; transition: opacity 0.4s ease; }
+.sh-scrim.on { opacity: 1; }
+.sh-lift { position: relative; z-index: 41; }
 h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-height: 0.98; margin: 0; letter-spacing: -0.025em; text-wrap: balance; }
 /* The one signature: a voice waveform that settles into lines of text. */
-.wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; }
+.wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; position: relative; z-index: 1; }   /* stays crisp over the Start here halo */
 .wave .v rect { fill: var(--record); transform-box: fill-box; transform-origin: center; }
 .wave .t rect { fill: var(--accent); opacity: 0.85; }
 @media (prefers-reduced-motion: no-preference) {
@@ -68,7 +75,10 @@ h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-heigh
   @keyframes speak { from { transform: scaleY(0.1); } }
   @keyframes settle { from { transform: scaleX(0); } }
 }
-.lede { margin: 0; color: var(--muted); max-width: 52ch; }
+/* The intro text gets room to breathe: each sentence on its own line, open line height,
+   a touch of space after the waveform. Spacing only, no emojis (Build 1, #15). */
+.lede { margin: 6px 0 4px; color: var(--muted); max-width: 46ch; font-size: 17px; line-height: 1.65; letter-spacing: 0.005em; display: grid; gap: 10px; text-wrap: pretty; }
+.lede span:first-child { color: var(--ink); font-weight: 600; }
 .chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-radius: 999px; padding: 4px 11px; }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 /* Memory on: say so up front, in the accent color instead of the "nothing saved" green. */
@@ -130,6 +140,20 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 }
 .idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
 .idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
+/* Start here (StartHere.svelte): a white halo walks you in. A white ring and glow, with a
+   faint edge and drop shadow so white still reads on a white card in light mode.
+   Title and description get a soft white panel around them (no layout shift). */
+.sh-halo:is(textarea, a) { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 28px 10px rgba(255,255,255,0.7), 0 12px 30px var(--halo-drop); }
+/* Title, waveform and description: one panel with room inside. The negative margin
+   matches the padding, so nothing on the page moves. */
+.intro.sh-halo { border-radius: 20px; background: var(--halo-fill); padding: 12px 12px 16px; margin: -12px -12px -16px;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--halo-edge), 0 0 30px 8px var(--halo-glow), 0 14px 34px var(--halo-drop); }
+@media (prefers-reduced-motion: no-preference) {
+  .sh-halo { transition: box-shadow 0.3s ease, background 0.3s ease; animation: sh-pulse 1.4s ease-in-out infinite; }
+  @keyframes sh-pulse { 50% { scale: 1.02; filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)); } }
+  .intro.sh-halo { animation-name: sh-panel; }
+  @keyframes sh-panel { 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 44px 14px var(--halo-glow), 0 16px 38px var(--halo-drop); } }
+}
 .ideabox .ideas-show {
   position: absolute; right: 22px; bottom: 12px; min-height: 40px; padding: 8px 14px; border-radius: 999px;
   font-size: 14px; font-weight: 700; color: var(--accent); border: 1px solid var(--line);
@@ -254,6 +278,8 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .tracker .nums small { display: block; font-size: 12px; color: var(--muted); }
 .tracker .nums .right { text-align: right; }
 .tracker .nums .over b { font-size: 15px; font-family: var(--body); color: var(--muted); }
+/* Prompt cooking (CookPot.svelte) wraps the timer in its ring, so the plain timer and bar step aside. */
+.tracker:has(.cook) .nums, .tracker:has(.cook) .progress { display: none; }
 .tracker .detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
@@ -266,13 +292,15 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 button.getlink { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; background: none; border: 0; padding: 6px 2px; min-height: 44px; border-radius: 6px; }
 .voicehint { margin: 0; font-size: 13px; color: var(--muted); }
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
-.buildrow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
-.buildrow #build { padding: 12px 14px; }
+/* Build and the mode picker each keep their share of the row, so a longer busy label
+   (Reading your thoughts...) wraps inside the button instead of crushing the picker. */
+.buildrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(132px, 1fr); gap: 10px; align-items: stretch; }
+.buildrow #build { padding: 10px 10px; line-height: 1.2; text-wrap: balance; min-height: 64px; }   /* room for a 2-line label, so the row never jumps */
 .buildrow .starterwrap { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */
-.modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
-.mode { position: relative; display: grid; place-items: center; align-content: center; text-align: center; border-radius: 9px; padding: 4px 2px; min-height: var(--tap); line-height: 1.1; }
+.modes { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.mode { position: relative; display: grid; place-items: center; align-content: center; gap: 2px; text-align: center; border-radius: 9px; padding: 4px 6px; min-height: var(--tap); line-height: 1.1; }
 .mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; -webkit-appearance: none; background: transparent; border: 0; border-radius: inherit; cursor: pointer; }
 .mode b, .mode small { position: relative; pointer-events: none; }
 .mode b { font-size: 13px; }
@@ -352,6 +380,9 @@ details.key[open] summary { margin-bottom: 10px; }
 .msg.ai { align-self: flex-start; }
 .msg.me { align-self: flex-end; }
 .msg p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: var(--bubble); line-height: 1.4; }
+/* The question is what to answer, so it reads bold; the helper lines around it step back, small and gray. */
+.msg p.q { font-weight: 700; color: var(--ink); }
+.msg p.help { background: transparent; padding: 2px 4px; font-size: var(--fs-sm); color: var(--muted); }
 .mine {
   padding: 10px 14px; min-height: 0; border: 0; border-radius: 18px 18px 6px 18px;
   background: var(--accent); color: var(--accent-ink); font-weight: 700; text-align: left;
@@ -404,3 +435,11 @@ details.key[open] summary { margin-bottom: 10px; }
   font: 700 13px/1.35 var(--mono); letter-spacing: 0.03em; text-align: center;
   overflow-wrap: anywhere;
 }
+
+/* Start here scrolls the form into view with a little room above it. */
+#form { scroll-margin-top: 14px; }
+
+/* The floating 💡 Ideas and 🧪 Test lab buttons tuck away while a bottom bar needs the space:
+   the My context Done bar (ContextRow.svelte) and the keyboard coach bar (KeyboardCoach.svelte). */
+body:is(.fabs-away, .fabs-away-kb) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
+@media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out; } }

@@ -17,8 +17,9 @@ function browserPath() {
   const dir = '/opt/pw-browsers';
   if (!existsSync(dir)) return undefined;
   const shell = readdirSync(dir).find(d => d.startsWith('chromium_headless_shell'));
-  if (shell) return `${dir}/${shell}/chrome-linux/headless_shell`;
-  return undefined;
+  if (!shell) return undefined;
+  /* Newer Playwright builds name the folder chrome-headless-shell-linux64. */
+  return [`${dir}/${shell}/chrome-linux/headless_shell`, `${dir}/${shell}/chrome-headless-shell-linux64/chrome-headless-shell`].find(existsSync);
 }
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
@@ -54,7 +55,9 @@ function expect(cond, msg) { if (!cond) throw new Error(msg); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
 
 async function page(opts = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}) });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
+  /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
+  if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
@@ -72,11 +75,12 @@ async function page(opts = {}) {
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
     const intake = /intake step/.test(ask);
+    if (intake && opts.intakeDelay) await new Promise(res => setTimeout(res, opts.intakeDelay));
     if (/PROMPT TO FIX:/.test(ask)) {
       p.repairs.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
       if (opts.repairDelay) await new Promise(res => setTimeout(res, opts.repairDelay));
       if (opts.repairFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
+      const fixed = opts.repair != null ? opts.repair : opts.writeFn ? opts.writeFn(ask) : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
     }
     if (/PROMPT TO FINISH:/.test(ask)) {
@@ -94,21 +98,19 @@ async function page(opts = {}) {
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
-    if (/REWORK QUESTION STEP/.test(ask)) {
-      (p.reworkQs = p.reworkQs || []).push({ model, text: ask });
-      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 90 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(opts.reworkQ || { question: '' }) }] } }] }) });
+    if (/CONTEXT SQUEEZE STEP/.test(ask)) {
+      (p.squeezes = p.squeezes || []).push({ model, text: ask });
+      if (opts.squeezeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 300 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.squeeze || '[Roastery]\nSQUEEZED: roast Tuesday and Friday.' }] } }] }) });
     }
-    if (/FIRST DRAFT TO REWORK/.test(ask)) {
-      (p.reworks = p.reworks || []).push({ model, text: ask });
-      if (opts.reworkFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 600 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.rework || 'REWORKED PROMPT' }] } }] }) });
-    }
+    if (opts.failRound2 && /ROUND 2: THE PERSON REWORKED/.test(ask)) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
+    if (opts.dropOnce === model && !p.droppedOnce) { p.droppedOnce = true; await new Promise(res => setTimeout(res, opts.dropDelay || 0)); return r.abort('failed'); }   // drops once, like leaving for another app
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
-      : (opts.write || 'THE PROMPT');
+      : (opts.writeFn ? opts.writeFn(ask) : opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
@@ -1440,7 +1442,7 @@ await check('label fix: below the bar with a label the app can add, small calls 
       sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
     });
     await p.click('#moreOpts summary'); await p.check('#statsToggle');
-    await withKey(p); await p.fill('#thoughts', 'meal prep for me and my roommate'); await p.click('#build'); await done(p);
+    await withKey(p); await p.fill('#thoughts', 'meal prep for me and my roommate, $80 a week, 10 vegetarian lunches'); await p.click('#build'); await done(p);
     await p.waitForFunction(() => /\u{1F527} (added|tried|couldn|skipped)/u.test(document.getElementById('gradeNote').textContent), null, { timeout: 8000 });
     return { p, sent, note: await p.textContent('#gradeNote') };
   }
@@ -1558,10 +1560,11 @@ await check('grader bench: one tap grades every bench.json case with the current
   expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');
   expect(bench.cases.some((c) => c.key.score >= 4.5) && bench.cases.some((c) => c.key.score < 4.5) && bench.cases.some((c) => c.holdout), 'bench needs passes, fails, and holdouts');
   expect(!/\u2014/.test(JSON.stringify(bench)), 'no em dashes in bench.json');
-  // The grader agrees with the key on every case except the first, which it overrates
-  const first = bench.cases[0];
+  // The grader agrees with the key on every case except the second, which it overrates.
+  // (The first, the Saturday case, is overrated too, but the number check docks it below the bar.)
+  const first = bench.cases[1], sat = bench.cases[0];
   const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
-    return c === first ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
+    return c === first || c === sat ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
   const p = await page({ gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
@@ -1570,9 +1573,9 @@ await check('grader bench: one tap grades every bench.json case with the current
   const passes = bench.cases.filter((c) => c === first || c.key.score >= 4.5).length;
   expect(p.grades.length === n + passes, 'one grade per case plus a second look for each pass: ' + p.grades.length + ' vs ' + (n + passes));
   expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
-  expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(first.today), 'each case is graded with its own date');
+  expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(sat.today), 'each case is graded with its own date');
   expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
-  expect(/\u274c/.test(await p.textContent('.benchout tbody tr:first-child')), 'the overrated case shows a miss');
+  expect(/\u274c/.test(await p.textContent('.benchout tbody tr:nth-child(2)')), 'the overrated case shows a miss');
   await p.click('#benchCopy'); await p.waitForTimeout(200);
   const t = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^bench results\n\nGRADER BENCH\n/.test(t) && t.includes(first.id + ': Claude ' + first.key.score.toFixed(2) + ' / grader 4.80'), 'bench copy wrong: ' + t.slice(0, 300));
@@ -1621,7 +1624,7 @@ await check('confirm passes: a pass gets a second look and the lower grade wins;
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
   const L = { version: 2, lessons: [{ id: 'L1', text: 'Write the Task as a clear instruction.' }, { id: 'L2', text: 'State leftover money as exact math.' }], grader_version: 4, grader: [] };
   async function run(grade) {
-    const p = await page({ intake: noQ, write: 'Garden prompt', grade, lessons: L }); const sent = [];
+    const p = await page({ intake: noQ, write: 'Garden prompt: budget 200, spent 35.50.', grade, lessons: L }); const sent = [];
     await relayRun(p, sent);
     await p.click('#moreOpts summary'); await p.check('#statsToggle');
     await withKey(p); await p.fill('#thoughts', 'garden budget is 200 and i spent 35.50 already'); await p.click('#build'); await done(p);
@@ -1873,36 +1876,53 @@ async function reworkPage(opts) {
   await p.waitForSelector('#reworkBtn', { timeout: 5000 });
   return p;
 }
-await check('rework: under the bar, it asks one question, rewrites from the first prompt, and keeps the higher score', async () => {
+const RAW_BAKE = 'plan a bake sale for the robotics club, friday, gym lobby';
+const round2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT with a $40 budget' : 'First prompt');
+await check('rework: round 2 puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
-  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), reworkQ: { question: 'How much should each item cost?', choices: ['$1', '$2 to $3', '$5'] } });
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
   await p.click('#reworkBtn');
-  await p.waitForSelector('#reworkQ');
-  expect(/How much should each item cost/.test(await p.textContent('#reworkQ')), 'the clarifying question should show');
-  await p.click('#reworkQ .chips button:has-text("$2 to $3")');
-  await p.waitForSelector('#reworkNote', { timeout: 5000 });
-  const w = p.reworks[0].text;
-  expect(/FIRST DRAFT TO REWORK[\s\S]*First prompt/.test(w) && /words rearranged/.test(w), 'rewrite should start from the first prompt with what was weak');
-  expect(/Q: How much should each item cost\?\nA: \$2 to \$3/.test(w), 'the new answer should reach the writer');
-  expect(await p.inputValue('#output') === 'REWORKED PROMPT', 'the higher-scoring rework should replace the prompt');
-  expect(/Reworked: 2\.0 to 5\.0, kept the new one/.test(await p.textContent('#reworkNote')), 'note wrong: ' + await p.textContent('#reworkNote'));
-  expect(!(await p.$('#reworkBtn')), 'only one rework per prompt');
+  await p.waitForSelector('#roundForm');
+  const box = await p.inputValue('#thoughts');
+  const lines = box.split('\n');
+  expect(/^What was weak: It reads like your words rearranged/.test(lines[0]) && lines[1] === '' && /First prompt/.test(box), 'the box should hold one weak line, then the prompt: ' + box);
+  expect(await p.isHidden('#result'), 'the old prompt card should step aside while you edit');
+  expect(!(await p.$('#reworkQ')), 'the old side flow (one question in the card) is gone');
+  await p.fill('#thoughts', box + '\nBudget is $40 total.');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget', 'round 2 should show the new prompt');
+  const w = p.calls.filter((c) => !c.intake).pop().text;
+  expect(/ROUND 2: THE PERSON REWORKED[\s\S]*EDITED PROMPT:[\s\S]*What was weak[\s\S]*First prompt/.test(w), 'the writer should get the edited prompt with the weak line');
+  expect(w.includes(RAW_BAKE) && /Q: What I changed when reworking\nA: Budget is \$40 total\./.test(w), 'the original words and the new line should reach the writer');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'round 2 asks no new questions');
+  expect(/Round 2 (ready|built).* in \d+s \(\d+s total, both rounds\)/.test(await p.textContent('#madeBy')), 'made-by line should show Round 2 and the total: ' + await p.textContent('#madeBy'));
+  expect(/total, both rounds/.test(await p.textContent('#resultTrack .nums')), 'the timer should read as a running total');
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(!(await p.$('#reworkBtn')), 'no Rework button inside round 2');
+  await p.click('#saveNote');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(note.includes(RAW_BAKE) && /REWORKED PROMPT/.test(note) && !/What was weak/.test(note), 'Save to Notes should be the original words plus the new prompt: ' + note.slice(-300));
+  await p.click('#round1Result');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should bring back the first prompt and your words');
+  await p.waitForSelector('#roundResult', { state: 'detached' });
+  expect(!/Round 2/.test(await p.textContent('#madeBy')) && await p.isVisible('#reworkBtn'), 'round 1 should look like it did, Rework ready again');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('rework: no question needed goes straight to the rewrite; a worse rework keeps the first prompt; a failed one says so', async () => {
-  const low = { craft: 3, rearranged: true, invented: false, missing: [] }, lower = { craft: 2, rearranged: true, invented: false, missing: [] };
-  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? lower : low) });
-  await p.click('#reworkBtn');
-  await p.waitForSelector('#reworkNote', { timeout: 5000 });
-  expect(!(await p.$('#reworkQ')), 'no question should show when none is needed');
-  expect(await p.inputValue('#output') === 'First prompt', 'a lower-scoring rework must not replace the prompt');
-  expect(/kept the first one/.test(await p.textContent('#reworkNote')), 'note should say the first was kept');
-  const q = await reworkPage({ grade: low, reworkFail: true });
-  await q.click('#reworkBtn');
-  await q.waitForSelector('#notice-result', { timeout: 5000 });
-  expect(/rework didn't come through/.test(await q.textContent('#notice-result')) && await q.inputValue('#output') === 'First prompt', 'a failed rework should keep the prompt and say so');
-  expect(!p.errors.length && !q.errors.length, 'page errors');
+await check('rework: Back to round 1 from the box, and a failed round 2 brings round 1 back and says so', async () => {
+  const low = { craft: 3, rearranged: true, invented: false, missing: [] };
+  const p = await reworkPage({ grade: low });
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#round1Form');
+  await p.waitForSelector('#roundForm', { state: 'detached' });
+  expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
+  const q = await reworkPage({ grade: low, failRound2: true });
+  await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
+  await q.click('#build');
+  await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
+  expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
@@ -1963,7 +1983,7 @@ await check('my context: hidden without dev tools; write, edit, delete, and it s
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('my context: only picked pieces reach the prompt and the writer, the X-ray labels them, and the thoughts box is never saved', async () => {
+await check('my context: only picked pieces reach the prompt and the writer, nothing is tacked on after the prompt, the X-ray labels them, and the thoughts box is never saved', async () => {
   const p = await page();
   await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }, { id: 'b', title: 'WGU', text: 'Taking D522 Python.' }])));
   await devOn(p);
@@ -1972,9 +1992,11 @@ await check('my context: only picked pieces reach the prompt and the writer, the
   expect(/1 added to this prompt/.test(await p.textContent('#contextRow')), 'count should show 1 picked');
   await p.click('#build'); await done(p);
   let out = await p.inputValue('#output');
-  expect(/MY CONTEXT/.test(out) && /\[Roastery\]/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be added: ' + out.slice(-300));
+  /* No key: the picked piece goes inside the quick prompt, before the thoughts, never tacked on after it. */
+  expect(!/MY CONTEXT/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be used: ' + out.slice(-300));
+  expect(out.indexOf('Tuesday and Friday') < out.indexOf('MY RAW THOUGHTS:') && out.trim().endsWith('"'.repeat(3)), 'the copied prompt should end with the prompt itself: ' + out.slice(-200));
   await p.click('#xrayBtn');
-  expect(await p.$('#xray [aria-label^="Your context"]'), 'X-ray should label the context part as Your context');
+  expect(await p.$('#xray [aria-label^="Added to help: Your context"]'), 'X-ray should label the context part as Your context');
   expect(!/SECRET-NOTE/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the thoughts box must never be saved');
   const q = await page();
   await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
@@ -1983,7 +2005,8 @@ await check('my context: only picked pieces reach the prompt and the writer, the
   await q.fill('#thoughts', 'memo'); await q.click('#build');
   await q.waitForSelector('#qa:not([hidden])'); await q.click('#qaList .chips button'); await q.click('#qaGo'); await done(q);
   const write = q.calls.find(c => !c.intake);
-  expect(/CONTEXT THE PERSON PICKED/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context');
+  expect(/CONTEXT THE PERSON PICKED[\s\S]*NOT attached to the prompt[\s\S]*Work in only the facts/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context and fold in what it needs');
+  expect(!/MY CONTEXT|Tuesday and Friday/.test(await q.inputValue('#output')), 'with a key, Copy gives the prompt only (no context block after it)');
   const r = await page();
   await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
   await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
@@ -2032,6 +2055,43 @@ async function logIdea(p, kind, area, text) {
   await p.fill('#ideaText', text); await p.click('#ideaSave');
   await p.waitForSelector('#ideaSaved');
 }
+
+
+const LONG = (k) => Array.from({ length: 45 }, (_, i) => 'Note ' + k + i + ': roast Tuesday and Friday, two blends, check the green coffee bins first.').join(' ').slice(0, 3600);
+await check('my context: budget chip shows %, past 100% one Flash-Lite squeeze fits it (memory only, before and after shown)', async () => {
+  const pieces = [{ id: 'a', title: 'Roastery', text: LONG('A') }, { id: 'b', title: 'Roastery two', text: LONG('B') }];
+  const p = await page();
+  await p.evaluate((v) => localStorage.setItem('stp-context', JSON.stringify(v)), [{ id: 's', title: 'Short', text: 'Roast days are Tuesday and Friday.' }, ...pieces]);
+  await devOn(p);
+  await p.click('#contextRow .ctxchip:has-text("Short")');
+  expect(/about \d+ tokens · \d%$/.test((await p.textContent('#contextCount')).trim()), 'under budget should show tokens and %: ' + await p.textContent('#contextCount'));
+  await p.click('#contextRow .ctxchip:has-text("Short")');
+  await p.click('#contextRow .ctxchip:text-is("Roastery")'); await p.click('#contextRow .ctxchip:has-text("Roastery two")');
+  expect(/1\d\d% · over budget, used in full/.test(await p.textContent('#contextCount')) && await p.$('#contextCount.over'), 'no key: over budget is flagged and used in full: ' + await p.textContent('#contextCount'));
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  expect(/squeezes to fit when you build/.test(await p.textContent('#contextCount')), 'with a key it should say a squeeze is coming');
+  await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect((p.squeezes || []).length === 1 && /lite/.test(p.squeezes[0].model) && p.squeezes[0].text.includes('Note A0'), 'one squeeze call, Flash-Lite first, with the picked text');
+  const intake = p.calls.find((c) => c.intake).text;
+  expect(/SQUEEZED: roast Tuesday and Friday/.test(intake) && !intake.includes('Note A0'), 'the question step should get the squeezed version');
+  expect(/squeezed [\d,]+ → \d+ tokens · \d+%/.test(await p.textContent('#contextCount')) && !(await p.$('#contextCount.over')), 'chip should show before and after: ' + await p.textContent('#contextCount'));
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  expect(/SQUEEZED/.test(p.calls.filter((c) => !c.intake).pop().text), 'the writer should get the squeezed version too');
+  expect(JSON.parse(await p.evaluate(() => localStorage.getItem('stp-context')))[1].text === pieces[0].text, 'saved pieces never change');
+  await p.click('#reset'); await p.fill('#thoughts', 'again'); await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
+  expect(p.squeezes.length === 1, 'same picks reuse the squeeze, no second call');
+  await p.reload();
+  expect(!(await p.$('#contextCount')) || !/squeezed/.test(await p.textContent('#contextCount')), 'a reload drops the squeeze (memory only)');
+  const q = await page({ squeezeFail: true });
+  await q.evaluate((v) => localStorage.setItem('stp-context', JSON.stringify(v)), pieces);
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:text-is("Roastery")'); await q.click('#contextRow .ctxchip:has-text("Roastery two")');
+  await q.fill('#thoughts', 'plan my roast week'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  expect(q.squeezes.length === 1 && q.calls.find((c) => c.intake).text.includes('Note A0'), 'a failed squeeze is tried once, then the full pieces are used');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
 
 await check('ideas tab: hidden by default, the More options toggle shows it and remembers', async () => {
   const p = await page();
@@ -2132,9 +2192,402 @@ await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* Build 1 (v2.1.4): Batch A, the number and date check, and prompt-only copy. */
+await check('intro text: each sentence on its own line with room to breathe, spacing only, no emojis', async () => {
+  const p = await page();
+  const st = await p.$eval('header .lede', (e) => { const cs = getComputedStyle(e), spans = e.querySelectorAll('span'); return { lh: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize), gap: parseFloat(cs.rowGap), n: spans.length, stacked: spans.length === 2 && spans[1].getBoundingClientRect().top > spans[0].getBoundingClientRect().bottom, text: e.textContent }; });
+  expect(st.n === 2 && st.stacked && st.lh >= 1.6 && st.gap >= 8, 'the intro should have each sentence on its own line with open spacing: ' + JSON.stringify(st));
+  expect(!/\p{Extended_Pictographic}/u.test(st.text), 'no emojis in the intro text');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('copy and open: the status line sits right under the links and says what happened', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  expect(await p.evaluate(() => document.querySelector('.openrow').nextElementSibling.id === 'status'), 'the status line should come right after Copy and open');
+  await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
+  await p.click('.openrow a >> text=ChatGPT'); await p.waitForTimeout(300);
+  expect(/Copied\. Opening ChatGPT/.test(await p.textContent('#status')), 'status should say it copied and is opening ChatGPT: ' + await p.textContent('#status'));
+  await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('blocked')); });
+  await p.click('.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  expect(/Couldn't copy it\. Tap Copy prompt first, then open Claude/.test(await p.textContent('#status')), 'a failed copy should say what to do: ' + await p.textContent('#status'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('start over forgets the transcript, and Paste warns when the clipboard still has the one you used', async () => {
+  const p = await page();
+  await p.evaluate(() => navigator.clipboard.writeText('walk the dog then plan my week'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  await p.click('#build'); await done(p);
+  await p.click('#xrayBtn');
+  await p.click('#reset'); await p.waitForTimeout(400);
+  expect(await p.inputValue('#thoughts') === '' && await p.evaluate(() => !document.querySelector('#xray') && !document.querySelector('#xrayBtn')), 'Start over should clear the box and the X-ray');
+  // Same transcript still on the clipboard: warn, keep the box empty
+  await p.evaluate(() => navigator.clipboard.writeText('walk the dog then plan my week'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === '' && /already used/.test(await p.textContent('#notice-form')), 'Paste should warn instead of bringing the old transcript back');
+  // Use it anyway pastes it
+  await p.click('#notice-form button:text-is("Use it anyway")'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === 'walk the dog then plan my week', 'Use it anyway should paste it');
+  // A new transcript pastes with no warning
+  await p.fill('#thoughts', '');
+  await p.evaluate(() => navigator.clipboard.writeText('a brand new memo about groceries'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === 'a brand new memo about groceries', 'a new transcript should paste right away');
+  // The shortcut path warns too
+  await p.click('#build'); await done(p);
+  await p.evaluate(() => { location.href = location.pathname + '#paste'; }); await p.waitForTimeout(300);
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === '' && /already used/.test(await p.textContent('#notice-form')), 'coming back from the shortcut with the old transcript should warn');
+  expect(!(await p.evaluate(() => JSON.stringify(localStorage))).includes('groceries'), 'nothing about the transcript is saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: Edit changes an open idea\'s text, Cancel keeps it as it was', async () => {
+  const p = await page();
+  await ideasOn(p); await p.click('#ideaTab');
+  await logIdea(p, 'bug', 'copy', 'Copy did nothng on iPad');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  expect(await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('editbox')), 'Edit should put the cursor in the text');
+  await p.fill('#ideaPanel .editbox', 'Copy did nothing on iPad');
+  await p.click('#ideaPanel .list button:text-is("Save")');
+  expect(/Copy did nothing on iPad/.test(await p.textContent('#ideaPanel .list')) && JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')))[0].text === 'Copy did nothing on iPad', 'Save should keep the new text');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  await p.fill('#ideaPanel .editbox', 'oops');
+  await p.click('#ideaPanel .list button:text-is("Cancel")');
+  expect(/Copy did nothing on iPad/.test(await p.textContent('#ideaPanel .list')) && !/oops/.test(await p.textContent('#ideaPanel .list')), 'Cancel should leave it as it was');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  await p.fill('#ideaPanel .editbox', '  ');
+  expect(await p.isDisabled('#ideaPanel .list button:text-is("Save")'), 'an empty edit cannot be saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('chat questions: the question is bold, the helper lines are small and gray', async () => {
+  const p = await page({ intake: { title: 'Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['A weekend', 'A week'] }] } });
+  await withKey(p); await p.fill('#thoughts', 'plan a trip'); await p.click('#build');
+  await p.waitForSelector('#qaList .msg.ai >> text=How long?');
+  const q = await p.$eval('#qaList .msg.ai p.q', (e) => ({ text: e.textContent, w: getComputedStyle(e).fontWeight }));
+  const h = await p.$eval('#qaList .msg.ai p.help', (e) => ({ text: e.textContent, size: parseFloat(getComputedStyle(e).fontSize), color: getComputedStyle(e).color, ink: getComputedStyle(document.body).color }));
+  expect(q.text === 'How long?' && Number(q.w) >= 700, 'the question should be bold: ' + JSON.stringify(q));
+  expect(/quick question/.test(h.text) && h.size < 16 && h.color !== h.ink, 'the helper line should be small and gray: ' + JSON.stringify(h));
+  await p.click('#qaList .chips button'); await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  expect(await p.$('#qaList .msg.ai p.help >> text=everything I need'), 'the closing line is a helper line too');
+  await p.click('#qaList .mine');
+  await p.waitForSelector('#qaList .msg.ai p.help >> text=Sure, let\'s change that.');
+  expect(await p.$$eval('#qaList .msg.ai p.q', (l) => l.filter((e) => e.textContent === 'How long?').length) === 2, 'changing an answer asks the question again, bold, on its own line');
+  const s = await page();
+  await s.click('#starterBtn');
+  await s.waitForSelector('#starter .msg.ai p.q >> text=What do you want help with?');
+  expect(await s.$('#starter .msg.ai p.help >> text=Pick one'), 'Not sure where to start? uses the same bold question and gray helper');
+  expect(!p.errors.length && !s.errors.length, 'page errors');
+});
+
+await check('my context: the editor opens at its top with the cursor in a title (new piece first)', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'x '.repeat(900) }, { id: 'b', title: 'WGU', text: 'y '.repeat(900) }])));
+  await devOn(p);
+  await p.click('#contextNew');
+  await p.waitForSelector('#contextEditor');
+  const st = await p.evaluate(() => { const ed = document.getElementById('contextEditor'), first = ed.querySelector('.ctxitem input'); return { focused: document.activeElement === first, empty: first.value === '', top: ed.getBoundingClientRect().top }; });
+  expect(st.focused && st.empty, 'the new piece should be first, with the cursor in its title: ' + JSON.stringify(st));
+  await p.waitForTimeout(900);
+  const top = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().top);
+  expect(top >= -2 && top < 120, 'the editor should be scrolled to its top: ' + top);
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.click('#contextEdit'); await p.waitForTimeout(400);
+  expect(await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxitem input')), 'Edit should open with the cursor in the first title');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('number check: flags a weekday that doesn\'t match its date, and a year nobody said', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Plan a chill game night on Saturday, October 30, 2026 for my cousins.' });
+  await p.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await withKey(p); await p.fill('#thoughts', 'maybe saturday the 30th? game night for my cousins'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#numWarn:not([hidden])');
+  const w = await p.textContent('#numWarn');
+  expect(/mentions 2026, which you never said/.test(w) && /says Saturday, October 30, 2026, but October 30 is a Friday/.test(w), 'Heads up should name the year and the wrong weekday: ' + w);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Plan a chill game night, maybe Saturday the 31st, for my cousins.' });
+  await q.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await withKey(q); await q.fill('#thoughts', 'maybe saturday the 31st? game night for my cousins'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#numWarn', (e) => e.hidden), 'a weekday that matches its date should not be flagged');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('writer: keeps hedges and adds no year, weekday, or extra words to a date', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'maybe saturday?'); await p.click('#build'); await done(p);
+  const w = p.calls.find((c) => !c.intake).text;
+  expect(/Keep their hedges\. If they said maybe, probably, I think/.test(w) && /Never add a year, a weekday, a month, or a time they didn't say/.test(w), 'the writer should be told to keep hedges and add nothing to dates');
+  expect(/Never copy its year, weekday, or month onto a date the person gave/.test(w), "today's date is only for counting days");
+  expect(/don't match, keep both as they said them and ask the AI to check/.test(w) && /No strictly, absolutely, always, or must unless they used that word/.test(w), 'a mismatch is flagged, not picked, and preferences are not made stronger');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('quality grade: docked below the bar when the number check flags', async () => {
+  const L = { version: 2, lessons: [], grader_version: 4, grader: [] };
+  const p = await page({ intake: noQ, write: 'Plan my game night on Saturday, October 30, 2026.', grade: { craft: 4.8, broke: [], rearranged: false, invented: false, missing: [] }, lessons: L }); const sent = [];
+  await relayRun(p, sent);
+  await p.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'game night saturday the 30th'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  const note = await p.textContent('#gradeNote');
+  expect(/Quality check: 3\.5 of 5 · ✋ below the 4\.5 bar/.test(note) && /docked from 4\.80: the number check flagged it/.test(note), 'a year and a wrong weekday should dock two half points off the bar: ' + note);
+  expect(p.grades.length === 1, 'a docked grade is a fail, so it gets no second look');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent[0] && sent[0].grade === 3.5 && sent[0].grade_pass === false && sent[0].grade_numcheck === 'extra+dates', 'run log should show the dock: ' + JSON.stringify(sent[0]));
+  const q = await page({ intake: noQ, write: 'Plan my game night, maybe Saturday the 31st.', grade: { craft: 4.8, broke: [], rearranged: false, invented: false, missing: [] }, lessons: L });
+  await q.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'game night maybe saturday the 31st'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  expect(/4\.8 of 5/.test(await q.textContent('#gradeNote')) && !/docked/.test(await q.textContent('#gradeNote')), 'a clean number check leaves the grade alone');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('grader bench: the Saturday example runs first, and the number check docks it like a live run', async () => {
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const sat = bench.cases[0];
+  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
+  const p = await page({ gradeFn: (ask) => (ask.includes(sat.prompt) ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : null) });
+  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [sat] }) }));
+  await devOn(p); await withKey(p); await p.click('#moreOpts summary');
+  await p.click('#benchRun');
+  await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
+  expect(/1 of 1 pass\/fail agree/.test(await p.textContent('.benchsum')) && /number check docked it from 4\.80/.test(await p.textContent('#benchOut')), 'the dock should bring an overrated 4.8 under the bar: ' + await p.textContent('#benchOut'));
+  await p.click('#benchCopy'); await p.waitForTimeout(200);
+  expect(/B9: Claude 3\.00 \/ grader 3\.50[\s\S]*number check docked 4\.80 to 3\.50 \(extra\+dates\)/.test(await p.evaluate(() => navigator.clipboard.readText())), 'bench copy should show the dock');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Build 3 (v2.1.6): Start here, the writer's block nudge, leaving mid-build, and prompt cooking. */
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const setVis = (p, v) => p.evaluate((v) => { Object.defineProperty(document, 'visibilityState', { get: () => v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, v);
+
+await check('start here: title and description pulse first, then it scrolls to Talk it out and the box, holds the ideas, shows each open until the first action, then never again', async () => {
+  const p = await page({ fresh: true, ua: IPHONE });
+  await p.waitForTimeout(300);
+  expect(!(await p.$('.sh-halo')) && !(await p.isVisible('#startHere')), 'step 0: the title entrance plays first, no halo yet');
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas wait from the start');
+  await p.waitForTimeout(1700);
+  expect(await p.$('.intro.sh-halo h1') && await p.$('.intro.sh-halo .lede') && await p.$('.intro.sh-halo .wave'), 'step 1: the title, waveform and description should wear one halo');
+  expect(await p.$('.sh-scrim.on') && await p.$('header.sh-lift'), 'step 1: the page dims around the title (spotlight)');
+  const room = await p.$eval('.intro', el => parseFloat(getComputedStyle(el).paddingTop));
+  expect(room >= 10, 'the halo panel needs room around the text, got ' + room + 'px');
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('#thoughts.sh-halo')), 'step 1: the box waits its turn');
+  expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
+  await p.waitForTimeout(2400);
+  expect(!(await p.$('.intro.sh-halo')), 'step 2: the title lets go');
+  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
+  expect(await p.$('#form.sh-lift') && await p.$('.sh-scrim.on') && !(await p.$('header.sh-lift')), 'step 2: the spotlight moves to the input card');
+  const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
+  expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
+  expect(await p.getAttribute('#thoughts', 'placeholder') === '', 'the pointer speaks instead of the box hint');
+  await p.waitForTimeout(4200);
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')) && !(await p.$('.sh-scrim.on')) && !(await p.$('.sh-lift')), 'Start here should end on its own, spotlight off');
+  expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
+  expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
+  await p.reload(); await p.waitForTimeout(2000);
+  expect(await p.$('.intro.sh-halo'), 'no action yet, so it should play again on the next open');
+  await p.click('#thoughts'); await p.keyboard.type('hi'); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'tapping into the box should end it');
+  expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
+  const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
+  expect(!/\bhi\b/.test(saved), 'nothing typed may be saved');
+  await p.reload(); await p.waitForTimeout(300);
+  expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
+  const q = await page({ fresh: true });
+  await q.waitForTimeout(4100);
+  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
+  const r = await page({ fresh: true, reduced: true });
+  await r.waitForTimeout(300);
+  expect(await r.$('.intro.sh-halo') && await r.$eval('.intro', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');
+  for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('build row: a long busy label wraps inside Build and never squeezes Quick and Normal', async () => {
+  const p = await page();
+  const m = () => p.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return { build: Math.round(r('#build').width), modes: Math.round(r('.modes').width), h: Math.round(r('#build').height), fit: [...document.querySelectorAll('.mode b, .mode small')].every(e => e.scrollWidth <= e.parentElement.clientWidth) }; });
+  const rest = await m();
+  for (const label of ['Reading your thoughts...', 'Squeezing your context to fit...', 'Writing your prompt...']) {
+    await p.evaluate((l) => { document.getElementById('build').textContent = l; }, label);
+    const busy = await m();
+    expect(busy.modes === rest.modes && busy.build === rest.build && busy.h === rest.h, `"${label}" moved the row: ${JSON.stringify(rest)} to ${JSON.stringify(busy)}`);
+    expect(busy.fit && busy.modes >= 130, `"${label}" squeezed Quick and Normal: ${JSON.stringify(busy)}`);
+  }
+});
+
+await check('start here: a shortcut hand-off skips it', async () => {
+  const p = await page({ fresh: true });
+  await p.goto('about:blank'); await p.goto(BASE + '#t=' + encodeURIComponent('from the shortcut')); await p.waitForTimeout(300);
+  expect(await p.inputValue('#thoughts') === 'from the shortcut', 'the hand-off text should land in the box');
+  expect(!(await p.isVisible('#startHere')), 'a hand-off already knows where to go');
+});
+
+await check('stuck nudge: a quiet box gets one sentence to finish; tap starts that line, dice swaps it, typing hides it, and it keeps coming back (no X)', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'help me plan a yard sale');
+  await p.waitForTimeout(3000);
+  expect(!(await p.isVisible('#stuck')), 'too soon for a nudge');
+  await p.waitForTimeout(3600);
+  expect(await p.isVisible('#stuck'), 'a nudge should show after about 6 quiet seconds');
+  const first = (await p.textContent('#stuckLine')).replace(/\s*…$/, '');
+  await p.click('#stuckNext');
+  const second = (await p.textContent('#stuckLine')).replace(/\s*…$/, '');
+  expect(first && second && first !== second, 'the dice should swap the sentence');
+  await p.click('#stuckLine'); await p.waitForTimeout(300);
+  const v = await p.inputValue('#thoughts');
+  expect(v.startsWith('help me plan a yard sale\n') && v.trimEnd().endsWith(second.trim()), 'the sentence should start a new line: ' + JSON.stringify(v));
+  expect(!(await p.isVisible('#stuck')), 'using it should tuck it away');
+  await p.waitForTimeout(6600);
+  expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
+  expect(!(await p.$('#stuckClose')), 'no ✕: a stray tap must not switch the nudges off');
+  await p.type('#thoughts', ' more'); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#stuck')), 'typing should tuck it away');
+  await p.waitForTimeout(6600);
+  expect(await p.isVisible('#stuck'), 'nudges stay: it comes back after every quiet stretch');
+  await p.fill('#thoughts', ''); await p.click('#build');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('come back: a request dropped while away retries the same model, finishing away flips the tab title and says so on return', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, dropOnce: 'gemini-3.5-flash-lite', dropDelay: 1500 });
+  await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
+  const title = await p.title();
+  await setVis(p, 'hidden');
+  await p.click('#build'); await done(p);
+  const intake = p.calls.filter(c => c.intake).map(c => c.model);
+  expect(intake.length === 2 && intake.every(m => m === 'gemini-3.5-flash-lite'), 'the dropped step should retry the same model, got: ' + intake.join(', '));
+  expect((await p.title()).startsWith('✅ Prompt ready'), 'tab title should say the prompt is ready, got: ' + await p.title());
+  await setVis(p, 'visible'); await p.waitForTimeout(200);
+  expect(await p.title() === title, 'title should go back on return');
+  expect(/Ready while you were away/.test(await p.textContent('#notice-result')), 'coming back should say it finished while away');
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, dropOnce: 'gemini-3.5-flash-lite', dropDelay: 3500 });
+  await withKey(q); await q.fill('#thoughts', 'plan a yard sale saturday');
+  await setVis(q, 'hidden'); await q.click('#build');
+  await q.waitForTimeout(3200); await setVis(q, 'visible');
+  await done(q);
+  expect(/Picked back up/.test(await q.textContent('#notice-result')), 'back before it finished: it should say it picked back up');
+  expect(!(await q.title()).includes('Prompt ready'), 'no title flip when it finished in view');
+  for (const x of [p, q]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('prompt cooking: the pot ring fills, shows what went in, boils over when a model hands off, plates when done', async () => {
+  const p = await page({ hold: 'gemini-3.8-flash', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#resultTrack .cook', { timeout: 8000 });
+  await p.waitForTimeout(1200);
+  const mid = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, ing: [...c.querySelectorAll('.ing i')].map(i => i.textContent), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset'), len: +c.querySelector('.ring').getAttribute('stroke-dasharray') }; });
+  expect(/Simmering/.test(mid.cap), 'writing should simmer, got: ' + mid.cap);
+  expect(/Your thoughts/.test(mid.ing[0]), 'ingredients should list what went in, got: ' + mid.ing.join(', '));
+  expect(await p.$('#resultTrack .cook .fly span') && !(await p.isVisible('#resultTrack .nums')), 'chips fly in, and the ring wraps the timer instead of the plain one');
+  expect(/^0:0\d$/.test(await p.textContent('#resultTrack .cook .clock')), 'the clock sits inside the ring');
+  expect(mid.off < mid.len && mid.off > 0, 'ring should be part way');
+  await setVis(p, 'hidden'); await setVis(p, 'visible'); await p.waitForTimeout(150);
+  expect(/Welcome back/.test(await p.textContent('#resultTrack .cook .cap')), 'coming back mid-build should say welcome back');
+  p.release(); await done(p);
+  const end = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, boil: c.classList.contains('boil'), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset') }; });
+  expect(end.boil, 'a model handing off should boil over');
+  expect(/plated/i.test(end.cap) && end.off < 0.5, 'done should plate with a full ring, got: ' + JSON.stringify(end));
+  expect(await p.textContent('#resultTrack .cook .clock') === await p.textContent('#resultTrack .el'), 'the ring clock matches the timer');
+  const words = await p.$eval('#resultTrack .cook', el => el.textContent);
+  expect(!/memo/.test(words), 'the pot shows labels, never your words');
+  const r = await page({ reduced: true, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(r); await r.fill('#thoughts', 'memo'); await r.click('#build'); await done(r);
+  expect(await r.$eval('#resultTrack .cook .steam path', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: the pot holds still');
+  for (const x of [p, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+/* Build 4 (v2.1.7): floating Done, snap to the cooking, coach bar on top of the keyboard. */
+/* A pretend on-screen keyboard: visualViewport shrinks by inset px, like iPhone's keyboard. */
+const fakeKeyboard = (p, inset) => p.evaluate((inset) => {
+  const vv = window.visualViewport, h = innerHeight - inset;
+  Object.defineProperty(vv, 'height', { get: () => h, configurable: true });
+  Object.defineProperty(vv, 'offsetTop', { get: () => 0, configurable: true });
+  vv.dispatchEvent(new Event('resize'));
+}, inset);
+const inView = (p, sel) => p.evaluate((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1; }, sel);
+
+await check('my context: Done floats at the bottom of the screen (and on top of the keyboard) while you scroll the pieces, and the 💡 / 🧪 buttons tuck away', async () => {
+  const p = await page();
+  await devOn(p);
+  await ideasOn(p);
+  const fabs = process.env.APP_CHANNEL === 'staging' ? ['#ideaTab', '#labTab'] : ['#ideaTab'];
+  for (const f of fabs) expect(await p.isVisible(f), f + ' should show before the editor opens');
+  for (let i = 0; i < 4; i++) { await p.click(i ? '#contextBar button:text-is("+ Add another")' : '#contextNew'); await p.waitForTimeout(150); }
+  await p.evaluate(() => document.getElementById('contextEditor').scrollIntoView({ block: 'start' })); await p.waitForTimeout(200);
+  const tall = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().height > innerHeight);
+  expect(tall, 'need a list taller than the screen for this check');
+  expect(await inView(p, '#contextDone'), 'Done should float in view at the top of a long list');
+  await p.waitForTimeout(250);
+  const hit = await p.evaluate(() => [...document.querySelectorAll('#contextBar button')].every(b => { const r = b.getBoundingClientRect(); const pts = [[r.left + 6, r.top + r.height / 2], [r.right - 6, r.top + r.height / 2], [r.left + r.width / 2, r.top + r.height / 2]]; return pts.every(([x, y]) => b.contains(document.elementFromPoint(x, y))); }));
+  expect(hit, 'nothing may sit on top of the + Add another / Done bar (Test lab, v2.1.7)');
+  for (const f of fabs) expect(await p.$eval(f, el => getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el).opacity === '0'), f + ' should tuck away while the editor is open');
+  await fakeKeyboard(p, 300); await p.waitForTimeout(150);
+  const bottom = await p.$eval('#contextDone', el => el.getBoundingClientRect().bottom);
+  expect(bottom <= 844 - 300 + 2, 'with the keyboard up, Done should sit on top of it, bottom at ' + bottom);
+  await fakeKeyboard(p, 0);
+  await p.click('#contextDone');
+  await p.waitForSelector('#contextEditor', { state: 'detached', timeout: 2000 }).catch(() => {});
+  expect(!(await p.$('#contextEditor')), 'the floating Done should close the editor');
+  await p.waitForTimeout(300);
+  for (const f of fabs) expect(await p.$eval(f, el => getComputedStyle(el).pointerEvents !== 'none' && getComputedStyle(el).opacity === '1'), f + ' should come back after Done');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('snap to cooking: Build closes the keyboard and brings the cooking ring into view, reading then writing', async () => {
+  const p = await page({ intakeDelay: 1500, hold: 'gemini-3.8-flash', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
+  await p.evaluate(() => scrollTo(0, 0)); await p.focus('#thoughts');
+  await p.evaluate(() => document.getElementById('form').requestSubmit());
+  await p.waitForTimeout(900);
+  expect(await p.evaluate(() => document.activeElement.id !== 'thoughts'), 'Build should close the keyboard');
+  expect(await inView(p, '#buildTrack'), 'while it reads, the cooking ring under Build should be on screen');
+  await p.waitForTimeout(1600);
+  expect(await inView(p, '#resultTrack .cook'), 'while it writes, the prompt card cooking ring should be on screen');
+  p.release(); await done(p);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('keyboard coach: while typing with the keyboard up, the meter and one chip ride on top of it; taps keep the keyboard; gone when it closes', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'help me plan a yard sale');
+  await p.focus('#thoughts'); await p.waitForTimeout(200);
+  expect(!(await p.isVisible('#kbCoach')), 'no keyboard, no bar');
+  await fakeKeyboard(p, 320); await p.waitForTimeout(300);
+  expect(await p.isVisible('#kbCoach'), 'the bar should show on top of the keyboard');
+  const b = await p.$eval('#kbCoach', el => Math.round(el.getBoundingClientRect().bottom));
+  expect(Math.abs(b - (844 - 320)) <= 2, 'the bar should sit right on the keyboard, bottom at ' + b);
+  expect(await p.$('#coach.kbaway'), 'the coach under the box steps aside while the bar has it');
+  expect(await p.evaluate(() => document.body.classList.contains('fabs-away-kb')), 'the floating 💡 / 🧪 buttons tuck away while the bar is up');
+  const before = await p.inputValue('#thoughts');
+  await p.click('#kbTip');
+  expect((await p.inputValue('#thoughts')).length > before.length && await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the tip should add a line and keep the cursor in the box');
+  await p.keyboard.type('mostly old toys'); await p.waitForTimeout(6600);
+  expect(await p.isVisible('#kbNudge'), 'after a quiet stretch, the nudge shows in the bar');
+  expect(!(await p.isVisible('#stuck')), 'and not under the box (that spot is under the keyboard)');
+  await p.click('#kbNudge');
+  expect(await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the nudge keeps the cursor in the box');
+  await fakeKeyboard(p, 0); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#kbCoach')) && !(await p.$('#coach.kbaway')), 'keyboard down: bar gone, coach back under the box');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 /* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
    live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
 if (process.env.APP_CHANNEL === 'staging') {
+  await check('cook demo (staging): #cookdemo plays one full cook with a boil-over and no Gemini call', async () => {
+    const p = await page();
+    await p.goto(BASE + '#cookdemo'); await p.waitForSelector('#buildTrack .cook', { timeout: 3000 });
+    await p.waitForTimeout(7000);
+    expect(await p.$('#buildTrack .cook.over') && /Lid on|picky|a minute|plates/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should stall with the lid on');
+    await p.waitForTimeout(3400);
+    expect(await p.$('#buildTrack .cook.boil') && /Boiled over/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should boil over');
+    await p.waitForTimeout(4600);
+    expect(/plated/i.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should plate');
+    expect(!p.calls.length && !p.errors.length, 'no Gemini calls or errors: ' + p.errors.join('; '));
+  });
   await check('staging build: shows the STAGING badge and keeps its saved data under stg: keys', async () => {
     const p = await page();
     const badge = await p.textContent('#stgBadge').catch(() => '');
@@ -2164,7 +2617,7 @@ if (process.env.APP_CHANNEL === 'staging') {
     return p;
   }
 
-  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Ideas jar, kept on reload, Re-check', async () => {
+  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Copy report, Ideas jar, kept on reload, Re-check', async () => {
     const p = await labPage();
     await p.waitForSelector('#labVerdict');
     expect(/Live v9\.0\.0/.test(await p.textContent('#labLive')), 'top line should name live v9.0.0');
@@ -2172,12 +2625,18 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(keys.length === 7 && keys[0] === '9.0.1#0' && keys[2] === '9.0.2#0' && keys[3] === 'x-0', 'plan should be 9.0.1 (2), 9.0.2 (1), then 4 Before you promote checks, got: ' + keys.join(', '));
     expect(!(await p.textContent('#labPanel')).includes('Old check'), 'a build that is already live must not be in the plan');
     expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'verdict should start at 0 of 7');
-    await p.click('#labRun');
+    expect(/Start · 7 not checked/.test(await p.textContent('#labQuick')), 'the quick start at the top should say Start · 7 not checked');
+    await p.click('#labQuick');
     expect(/Check one A/.test(await p.textContent('#labStep')) && /One A shows/.test(await p.textContent('#labStep')), 'first step should be the oldest build');
     await p.click('#labWorks');
     expect(/Check one B/.test(await p.textContent('#labStep')), 'Works should move to the next step');
     await p.click('#labBroken');
-    await p.fill('#labNote', 'Button did nothing'); await p.click('#labJar');
+    await p.fill('#labNote', 'Button did nothing');
+    await p.click('#labReportStep');
+    const rep = await p.evaluate(() => navigator.clipboard.readText());
+    expect(/^Test lab report · staging v/.test(rep) && /Do: Check one B/.test(rep) && /What happened: Button did nothing/.test(rep) && /1 broken/.test(rep), 'Copy report should put the broken check and the note on the clipboard, got: ' + rep);
+    expect(/Copied/.test(await p.textContent('#labReportMsg')), 'Copy report should say it copied');
+    await p.click('#labJar');
     await p.waitForSelector('#labJarMsg');
     const jar = JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')) || '[]');
     expect(jar.length === 1 && jar[0].kind === 'bug' && jar[0].soon === 'now' && /Check one B/.test(jar[0].text) && /Button did nothing/.test(jar[0].text), 'a broken step should become a Now bug in the Ideas jar with the check and the note');
@@ -2187,10 +2646,36 @@ if (process.env.APP_CHANNEL === 'staging') {
     await p.reload(); await p.waitForSelector('#labVerdict');
     expect(/Don't promote: 1 broken/.test(await p.textContent('#labVerdict')), 'results should survive a reload');
     expect(/Re-check 1 fix/.test(await p.textContent('#labRun')), 'with a broken step, the run should be a Re-check');
+    await p.evaluate(() => navigator.clipboard.writeText(''));
+    await p.click('#labReport');
+    expect(/What happened: Button did nothing/.test(await p.evaluate(() => navigator.clipboard.readText())), 'the verdict card should copy the same report');
     await p.click('#labRun');
-    expect(/Check one B/.test(await p.textContent('#labStep')) && /1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
+    expect(/Check one B/.test(await p.textContent('#labStep')) && /fix 1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
     await p.click('#labWorks');
-    expect(/Continue · 5 left/.test(await p.textContent('#labRun')), 'after the fix passes, Continue should walk only the 5 not checked');
+    expect(/Check two A/.test(await p.textContent('#labStep')) && /5 not checked/.test(await p.textContent('#labStep')), 'after the fix passes, it should carry on along the rail to what is not checked');
+    await p.keyboard.press('Escape');
+    expect(/Continue · 5 not checked/.test(await p.textContent('#labQuick')), 'the quick start should offer the 5 not checked');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+
+  await check('test lab rail: ✗ then Continue goes to the next check not marked; tapping any check rides the rail from there; Continue at the top even with broken ones', async () => {
+    const p = await labPage();
+    await p.waitForSelector('#labVerdict');
+    await p.click('#labPanel .stepbtn[data-key="9.0.1#1"]');
+    expect(/Check one B/.test(await p.textContent('#labStep')), 'tapping a check should open it');
+    await p.click('#labBroken'); await p.fill('#labNote', 'nope');
+    expect(/Continue to the next check/.test(await p.textContent('#labContinueStep')), 'after ✗ there should be a Continue button');
+    await p.click('#labContinueStep');
+    expect(/Check two A/.test(await p.textContent('#labStep')), 'Continue should go to the next check not marked, got: ' + await p.textContent('#labStep'));
+    await p.click('#labWorks');
+    expect(/On the iPhone, portrait/.test(await p.textContent('#labStep')), 'Works should carry on along the rail');
+    await p.click('#labNext');
+    expect(/On the iPad/.test(await p.textContent('#labStep')), 'Skip should move on');
+    await p.keyboard.press('Escape');
+    expect(/nope/.test(await p.textContent('#labPanel .stepbtn[data-key="9.0.1#1"]')), 'the note was kept');
+    expect(/Re-check 1 fix/.test(await p.textContent('#labRun')) && /Continue · 5 not checked/.test(await p.textContent('#labQuick')), 'with a broken one, both Re-check and the Continue quick start show');
+    await p.click('#labQuick');
+    expect(/Check one A/.test(await p.textContent('#labStep')), 'the quick start begins at the first check not marked');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   });
 
@@ -2199,7 +2684,7 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(!(await p.$('#labTab')), 'the 🧪 button should stay hidden until Show my Ideas tab is on');
     await ideasOn(p);
     await p.click('#labTab'); await p.waitForSelector('#labVerdict');
-    await p.click('#labRun');
+    await p.click('#labQuick');
     for (let i = 0; i < 7; i++) await p.click('#labWorks');
     expect(/All 7 work\. Ready to promote v9\.0\.2\./.test(await p.textContent('#labVerdict')), 'all passed should say Ready to promote v9.0.2');
     await p.click('#labPromote');

@@ -45,3 +45,38 @@ export function verdict(plan, results = {}) {
   else text = `All ${total} work. Ready to promote v${plan.newest}.`;
   return { total, pass, fail, left, ready, text, promote: ready ? `Pre-flight passed, promote v${plan.newest}` : '' };
 }
+
+/* 📋 Copy report: everything a Claude chat needs to fix what broke, ready to paste. Broken
+   checks in full (Do, Expected, What happened), then a count of what's left. meta: { staging, live, ahead }. */
+export function labReport(plan, results = {}, meta = {}) {
+  const v = verdict(plan, results);
+  const where = (s) => (s.version ? `v${s.version} · ${s.title}` : 'Before you promote');
+  const head = [`Test lab report · staging v${meta.staging || '?'}${meta.live ? ` · live v${meta.live}` : ''}${meta.ahead ? ` · ${meta.ahead} ahead` : ''}`,
+    `Result: ${v.fail} broken · ${v.pass} work · ${v.left} not checked`];
+  const fails = plan.steps.filter((s) => results[s.key]?.s === 'fail');
+  const lines = [...head, ''];
+  if (fails.length) {
+    lines.push('Broken:');
+    fails.forEach((s, i) => {
+      const note = String(results[s.key]?.note || '').trim();
+      lines.push(`${i + 1}. ${where(s)}`, `   Do: ${s.say}`, `   Expected: ${s.see}`, `   What happened: ${note || '(no note)'}`);
+    });
+    lines.push('', 'Fix these on staging, add a smoke test for each, then tell me what to re-check in the Test lab.');
+  } else if (v.ready) {
+    lines.push(`Everything works. ${v.promote}`);
+  } else {
+    lines.push(`Nothing broken so far. ${v.left} still to check.`);
+  }
+  return lines.join('\n');
+}
+
+/* The rail (v2.1.7): the checks not marked yet, in plan order. nextOnRail gives the next one
+   after `key` (wrapping to the top), leaving out `skip` (keys skipped this walk), so tapping any
+   check, or marking one ✗, can always carry on to what's left. */
+export function unchecked(plan, results = {}) { return plan.steps.filter((s) => !results[s.key]?.s); }
+export function nextOnRail(plan, results = {}, key = '', skip = []) {
+  const left = unchecked(plan, results).filter((s) => s.key !== key && !skip.includes(s.key));
+  if (!left.length) return null;
+  const at = plan.steps.findIndex((s) => s.key === key);
+  return left.find((s) => plan.steps.indexOf(s) > at) || left[0];
+}

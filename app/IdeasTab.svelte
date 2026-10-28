@@ -67,6 +67,18 @@
     ideas.remove(id); armed = '';
   }
 
+  /* Edit an open idea's text in place: Save keeps it, Cancel leaves it as it was. */
+  let editing = $state('');
+  let editText = $state('');
+  async function startEdit(it) {
+    editing = it.id; editText = it.text; armed = '';
+    await tick();
+    const box = panel?.querySelector(`.item[data-id="${it.id}"] textarea`);
+    if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  }
+  function saveEdit() { if (ideas.edit(editing, editText)) { editing = ''; editText = ''; } }
+  function cancelEdit() { editing = ''; editText = ''; }
+
   const kindOf = (k) => KINDS.find((x) => x.key === k) || KINDS[0];
   const soonOf = (k) => SOON.find((x) => x.key === k) || SOON[1];
 </script>
@@ -165,13 +177,23 @@
         <div class="item" data-id={it.id}>
           <span class="ic" aria-hidden="true">{kindOf(it.kind).icon}</span>
           <div class="body">
+            {#if editing === it.id}
+              <label class="sr" for="ideaEdit-{it.id}">Edit this idea</label>
+              <textarea id="ideaEdit-{it.id}" class="editbox" rows="3" maxlength="1000" bind:value={editText}></textarea>
+              <div class="acts">
+                <button type="button" class="link save" disabled={!editText.trim()} onclick={saveEdit}>Save</button>
+                <button type="button" class="link" onclick={cancelEdit}>Cancel</button>
+              </div>
+            {:else}
             <p class="txt">{it.text}</p>
             <p class="meta">{it.where}{it.topicLabel ? ' › ' + it.topicLabel : ''} · {soonOf(it.soon).icon} {soonOf(it.soon).label} · {it.date}</p>
             <div class="acts">
+              <button type="button" class="link" onclick={() => startEdit(it)}>Edit</button>
               <button type="button" class="link" onclick={() => ideas.setStatus(it.id, 'fixed')}>Mark fixed</button>
               <button type="button" class="link" onclick={() => ideas.setStatus(it.id, 'dismissed')}>Won’t do</button>
               <button type="button" class="link del" onclick={() => del(it.id)}>{armed === it.id ? 'Tap again to delete' : 'Delete'}</button>
             </div>
+            {/if}
           </div>
         </div>
       {/each}
@@ -253,6 +275,8 @@
   .acts { display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .acts .link { min-height: 40px; }
   .del { color: var(--danger) !important; }
+  .save { font-weight: 700; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .closed { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 14%, var(--surface)); color: var(--ok); font-weight: 700; font-size: 14px; }
   .privacy { margin: 0; font-size: 13px; color: var(--muted); }
   @media (prefers-reduced-motion: reduce) { .ideatab, .ichip, .pick { transition: none; } }

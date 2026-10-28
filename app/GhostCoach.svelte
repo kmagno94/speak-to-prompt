@@ -5,6 +5,8 @@
   import { slide } from 'svelte/transition';
   import { assess, LEVELS } from './lib/coach.js';
   import { ms } from './lib/motion.js';
+  import { kb } from './lib/keyboard.svelte.js';
+  import { addLine } from './lib/stuck.svelte.js';
 
   let text = $state('');
   let box;
@@ -24,17 +26,11 @@
   });
 
   /* Tap a note: start a new line with its phrase and put the cursor after it. */
-  function add(c) {
-    const v = box.value.replace(/\s+$/, '');
-    box.value = (v ? v + '\n' : '') + c.starter;
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
-  }
+  function add(c) { addLine(box, c.starter); }
 </script>
 
 {#if show}
-  <div class="coach" id="coach" transition:slide={{ duration: ms(200) }}>
+  <div class="coach" id="coach" class:kbaway={kb.open && kb.typing} transition:slide={{ duration: ms(200) }}>
     <div class="top">
       <span class="name"><span aria-hidden="true">👻</span> Prompt strength</span>
       <span class="level" id="coachLevel" class:max={a.score === 5}>{LEVELS[a.score]}{a.score === 5 ? ' ✨' : ''}</span>
@@ -55,6 +51,7 @@
 
 <style>
   .coach { display: grid; gap: 8px; margin-top: 10px; }
+  .coach.kbaway { visibility: hidden; }   /* the keyboard coach bar has it while you type */
   .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; }
   .name { color: var(--muted); font-weight: 600; }
   .level { font-weight: 700; color: var(--ink); transition: color 0.2s ease; }

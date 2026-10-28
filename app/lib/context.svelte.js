@@ -3,13 +3,22 @@
 
    DEVELOPMENT ONLY, like Your core: shown only with "Show my dev tools" on, saved in this
    browser (localStorage) on this phone only. Picks are per visit and never saved.
-   The picked pieces are added to the end of the prompt (before the core), and the writer
-   sees them so it can refer to them by title instead of repeating them. */
+   The picked pieces are never tacked onto the prompt: the writer sees them and works in only
+   the facts the request needs, so Copy gives the prompt alone (then the core at the end).
+   The no-key quick version puts them inside the prompt, before the raw thoughts.
+   Budget: picks should stay under BUDGET tokens. Past 100%, a build with a key runs one
+   Flash-Lite squeeze (app.js) and keeps the shorter version here in memory only, for these
+   exact picks: the saved pieces never change, and a reload or a new pick drops it. */
 import { core } from './core.svelte.js';
 
 const KEY = 'stp-context';
 const MAX_TITLE = 60;
 const MAX_TEXT = 4000;
+export const BUDGET = 1500;   /* tokens; about 4 characters per token */
+const HEAD = '---\nMY CONTEXT (background I picked for this request; use it and refer to it by title)';
+export const tokensOf = (t) => (t ? Math.ceil((t.length + 2) / 4) : 0);
+/* What a block with this body would cost, header included (same count as the chip). */
+export const blockTokens = (body) => tokensOf(HEAD + '\n\n' + body);
 
 function read() { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
 function write(v) { try { if (v.length) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch (e) {} }
@@ -24,15 +33,20 @@ class Context {
   chosen = $derived(this.usable.filter((c) => this.picked.includes(c.id)));
   active = $derived(core.dev && this.chosen.length > 0);
 
-  block = $derived.by(() => {
-    const parts = ['---', 'MY CONTEXT (background I picked for this request; use it and refer to it by title)'];
-    for (const c of this.chosen) parts.push('', '[' + (c.title.trim() || 'Context') + ']', c.text.trim());
-    return parts.join('\n');
-  });
+  /* Changes whenever the picks or their words change, so an old squeeze can't be reused. */
+  sig = $derived(this.chosen.map((c) => c.id + '\u0001' + c.title.trim() + '\u0001' + c.text.trim()).join('\u0002'));
+  /* The picked pieces as written: [Title] then the text, one after another. */
+  body = $derived(this.chosen.map((c) => '[' + (c.title.trim() || 'Context') + ']\n' + c.text.trim()).join('\n\n'));
+  squeeze = $state(null);   // { sig, text, before, after }, memory only, never saved
+  squeezed = $derived(this.squeeze && this.squeeze.sig === this.sig ? this.squeeze : null);
+  block = $derived(HEAD + '\n\n' + (this.squeezed ? this.squeezed.text : this.body));
 
   /* Rough size of what picking adds (about 4 characters per token), shown under Build and
-     logged in run stats, so you can see what context costs. */
-  tokens = $derived(this.active ? Math.ceil((this.block.length + 2) / 4) : 0);
+     logged in run stats, so you can see what context costs. rawTokens is before any squeeze. */
+  rawTokens = $derived(this.active ? blockTokens(this.body) : 0);
+  tokens = $derived(this.active ? tokensOf(this.block) : 0);
+  pct = $derived(Math.round((this.tokens / BUDGET) * 100));
+  over = $derived(this.active && !this.squeezed && this.rawTokens > BUDGET);
 
   constructor() { this.list = read(); }
 
@@ -40,7 +54,7 @@ class Context {
 
   add() {
     const c = { id: newId(), title: '', text: '' };
-    this.list = [...this.list, c];
+    this.list = [c, ...this.list];   /* newest first, so the editor opens on it at the top */
     return c.id;
   }
   update(id, field, value) {
@@ -55,8 +69,6 @@ class Context {
   }
   toggle(id) { this.picked = this.picked.includes(id) ? this.picked.filter((p) => p !== id) : [...this.picked, id]; }
 
-  /* Used by app.js on every finished prompt (before the core is added). */
-  apply(prompt) { return this.active ? prompt + '\n\n' + this.block : prompt; }
 }
 
 export const context = new Context();

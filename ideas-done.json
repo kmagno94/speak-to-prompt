@@ -3,6 +3,25 @@
   "done": [
     { "id": "mvkn9z1mlw4n", "commit": "9728d58", "version": "2.1.0", "note": "My context: reusable pieces picked under Build (questions see them too, 38477b0)" },
     { "id": "mvkv67pecul3", "commit": "b1db256", "version": "2.1.0", "note": "Screen stays awake while Gemini works" },
-    { "id": "mvkv7qsjgbv7", "commit": "9246c45", "version": "2.1.0", "note": "Rework from this prompt, asking one question first if it helps" }
+    { "id": "mvkv7qsjgbv7", "commit": "9246c45", "version": "2.1.0", "note": "Rework from this prompt, asking one question first if it helps" },
+    { "id": "mvlcl4crx4i8", "commit": "1b55f17", "version": "2.1.4", "note": "Writer keeps hedges, adds no date parts or stronger wording; weekday check; grade docked when the number check flags; bench B9 first (cbf5765)" },
+    { "id": "mvlpo0ne97hi", "commit": "cbf5765", "version": "2.1.4", "note": "Copy and open status line moved right under the links, with a failed-copy message" },
+    { "id": "mvlqtwula9bc", "commit": "cbf5765", "version": "2.1.4", "note": "Start over clears the transcript everywhere; Paste warns when the clipboard holds the one already used" },
+    { "id": "mvnda0z3gtah", "commit": "cbf5765", "version": "2.1.4", "note": "Edit with Save and Cancel on open ideas" },
+    { "id": "mvo9oi00jsl6", "commit": "cbf5765", "version": "2.1.4", "note": "Copy gives the prompt only; the writer works in the context facts it needs, core stays last" },
+    { "id": "mvptkvu2upic", "commit": "cbf5765", "version": "2.1.4", "note": "Questions bold, helper lines small and gray, in both chats" },
+    { "id": "mvpxckagv1jr", "commit": "1b55f17", "version": "2.1.4", "note": "Front page intro: each sentence on its own line with open spacing" },
+    { "id": "mvr7vbp842db", "commit": "cbf5765", "version": "2.1.4", "note": "My context editor opens at its top, cursor in a title, new piece first" },
+    { "id": "mvlc1dk0zf5v", "commit": "753d9b2", "version": "2.1.5", "note": "My context budget: chip shows tokens and % of 1,500" },
+    { "id": "mvo9leuwkgl9", "commit": "753d9b2", "version": "2.1.5", "note": "Past 100%, one Flash-Lite squeeze (memory only), chip shows before and after" },
+    { "id": "mvncgnd04n93", "commit": "753d9b2", "version": "2.1.5", "note": "Rework is round 2: prompt back in the box with one What was weak line, originals kept in memory, Save to Notes original words + new prompt" },
+    { "id": "mvlcgojd9rhz", "commit": "753d9b2", "version": "2.1.5", "note": "Back to round 1; timer shows Round 2 with the running total; old one-question side flow removed" },
+    { "id": "mvlbzn3ivv4q", "commit": "df58af4", "version": "2.1.6", "note": "Start here: pointer to the box and Talk it out on open until the first action, then the idea strip" },
+    { "id": "mvlhezlg09c9", "commit": "df58af4", "version": "2.1.6", "note": "Prompt cooking: pot and progress ring by the timer, boil-over on a model hand-off, plated when done" },
+    { "id": "mvni8bq6ecec", "commit": "df58af4", "version": "2.1.6", "note": "Stuck? nudge: a sentence to finish after the box sits still, dice for another, X to stop" },
+    { "id": "mvojarxehejm", "commit": "df58af4", "version": "2.1.6", "note": "Leaving mid-build: dropped step retries the same model, tab title and return message say when it's ready" },
+    { "id": "mvs5smwzv42r", "commit": "627ed17", "version": "2.1.7", "note": "My context: + Add another / Done bar floats at the bottom of the screen and on top of the keyboard" },
+    { "id": "mvs5ulj14ain", "commit": "627ed17", "version": "2.1.7", "note": "Build closes the keyboard and scrolls to the cooking ring, reading then writing" },
+    { "id": "mvs6n2ke5751", "commit": "627ed17", "version": "2.1.7", "note": "Keyboard coach bar: strength meter and one chip (nudge or top tip) ride on top of the keyboard while typing" }
   ]
 }

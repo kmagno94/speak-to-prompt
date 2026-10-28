@@ -2,11 +2,14 @@
    live yet, mark each ✓ Works or ✗ Broken, and get a promote verdict. Ported from B&B Daily.
    - Staging build only. Shown with the Ideas tab toggle, or opened straight from #testlab.
    - Results are saved on this phone only ("stp-testlab", under stg: like everything on staging).
-   - A ✗ can go straight into the 💡 Ideas jar, so it rides the next Fix session.
+   - A ✗ can go straight into the 💡 Ideas jar, so it rides the next Fix session, or
+     📋 Copy report puts every broken check (with your notes) on the clipboard for the chat.
    - Live's version is baked into the staging build by the deploy (LIVE_SEMVER). Staging only,
      ?live=2.0.0 in the address overrides it, to preview a plan. */
 import { IS_STAGING } from './channel.js';
-import { labPlan, runSteps, verdict } from './testlabPlan.js';
+import { labPlan, runSteps, verdict, labReport } from './testlabPlan.js';
+import { releaseStatus } from './releases.js';
+import { SEMVER } from './channel.js';
 import { ideas } from './ideas.svelte.js';
 
 const KEY = 'stp-testlab';
@@ -29,6 +32,7 @@ class TestLab {
   verdict = $derived(verdict(this.plan, this.results));
   run = $derived(runSteps(this.plan, this.results));
   visible = $derived(this.enabled && (ideas.on || this.fromHash));
+  report = $derived.by(() => { const st = this.live ? releaseStatus(this.releases, this.live) : null; return labReport(this.plan, this.results, { staging: SEMVER, live: this.live, ahead: st ? `${st.count}/${st.limit}` : '' }); });
 
   constructor() {
     if (!this.enabled) return;

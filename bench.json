@@ -1,7 +1,28 @@
 {
   "note": "Grader bench: fixed prompts with Claude's answer key. The dev tools bench grades each one with the current grader (Live or Draft) and compares. Edit keys only after Kevin agrees. holdout cases are the final check: don't tune rules to them.",
-  "updated": "2026-10-21",
+  "updated": "2026-10-27",
   "cases": [
+    {
+      "id": "B9",
+      "name": "Potluck, a Saturday I think (real run, rewritten)",
+      "today": "Friday, October 23, 2026",
+      "raw": "ok so potluck at my place, a saturday I think? my friend Dana is gluten free so I need a few dishes she can eat, like 8 people total, easy stuff I can make the night before",
+      "answers": [
+        {
+          "question": "How many dishes do you want to make yourself?",
+          "answer": "Three"
+        }
+      ],
+      "prompt": "You are a home cook who plans easy, make-ahead potluck menus.\n\nContext: I'm hosting a potluck at my place on Saturday, November 15, 2026 for 8 people. My friend Dana is strictly gluten-free, so the dishes I make need to be safe for her.\n\nTask: Suggest three easy dishes I can make the night before that are gluten-free and work for a group of 8.\n\nA great answer is a menu I could shop for and prep the night before without looking anything else up.\n\nFormat: A short list of the three dishes, each with a one-line description, a short ingredient list, and the night-before steps. Keep it to about one screen.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 3.0,
+        "missing": [],
+        "invented": true,
+        "rearranged": false,
+        "broke": [],
+        "why": "Turned \"a Saturday I think\" into a sure date with a month, a day, and a year nobody said, and November 15, 2026 is a Sunday. Also made gluten free \"strictly\". The number check flags 15, 2026, and the weekday, so it can't pass."
+      }
+    },
     {
       "id": "B1",
       "name": "Notion playbook (real run)",

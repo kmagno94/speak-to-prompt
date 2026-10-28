@@ -7,6 +7,13 @@
   import CoreToggle from './CoreToggle.svelte';
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
+  import StartHere from './StartHere.svelte';
+  import StuckNudge from './StuckNudge.svelte';
+  import KeyboardCoach from './KeyboardCoach.svelte';
+  import CookPot from './CookPot.svelte';
+  import { cookDemo } from './lib/cook.svelte.js';
+  import { IS_STAGING } from './lib/channel.js';
+  import { watchKeyboard } from './lib/keyboard.svelte.js';
   import PromptXray from './PromptXray.svelte';
   import Tutorial from './Tutorial.svelte';
   import Guide from './Guide.svelte';
@@ -20,6 +27,7 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import QualityCheck from './QualityCheck.svelte';
+  import RoundBanner from './RoundBanner.svelte';
   import ContextRow from './ContextRow.svelte';
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
@@ -31,7 +39,14 @@
     memo.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
-  onMount(() => { startApp(); });
+  onMount(() => {
+    startApp();
+    watchKeyboard();   /* lib/keyboard.svelte.js: --kb, so bars can sit on top of the keyboard */
+    /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
+    const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
+    demo();
+    window.addEventListener('hashchange', demo);
+  });
 </script>
 
 <div class="wrap">
@@ -45,6 +60,8 @@
       <!-- Home Screen web apps have no browser bar, so this is the refresh button too. -->
       <button type="button" class="verpill" id="versionPill" data-state="checking" aria-live="polite"><span class="ic" aria-hidden="true">↻</span><span id="versionText">Checking...</span></button>
     </div>
+    <!-- .intro groups the title, waveform and description, so Start here can halo them as one. -->
+    <div class="intro">
     <h1>Speak to Prompt</h1>
     <svg class="wave" viewBox="0 0 340 30" aria-hidden="true" focusable="false">
       <g class="v">
@@ -62,7 +79,8 @@
         <rect style="--i:2" x="112" y="22" width="140" height="4" rx="2"/>
       </g>
     </svg>
-    <p class="lede">Every great answer starts with a good first step. Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</p>
+    <p class="lede"><span>Every great answer starts with a good first step.</span> <span>Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</span></p>
+    </div>
   </header>
 
   <JourneyStrip />
@@ -79,6 +97,7 @@
         <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
       </div>
     </div>
+    <RoundBanner place="form" />
     <div class="ideabox">
       <textarea id="thoughts" autocomplete="off" placeholder="Type or paste your thoughts. Messy is fine."></textarea>
       <div class="ideas gone" id="ideas">
@@ -90,7 +109,9 @@
         </div>
       </div>
       <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
+      <StartHere />
     </div>
+    <StuckNudge />
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <Notice where="form" />
@@ -105,6 +126,7 @@
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
+      <div class="cookslot" data-keep><CookPot place="build" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
     </div>
@@ -123,6 +145,7 @@
     <div class="tracker" id="resultTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>
+      <div class="cookslot" data-keep><CookPot place="result" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
     </div>
@@ -130,6 +153,7 @@
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
+    <RoundBanner place="result" />
     <QualityCheck />
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
@@ -152,6 +176,7 @@
       <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
       <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
     </div>
+    <p id="status" class="status openstatus" role="status"></p>
     <div class="devrow" id="devRow" hidden={!core.dev}>
       <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
       <div class="row">
@@ -159,7 +184,6 @@
         <button type="button" id="copyAll">Copy full result</button>
       </div>
     </div>
-    <p id="status" class="status"></p>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
       <div class="row">
@@ -278,6 +302,7 @@
   <IdeasTab />
   <TestLab />
   <Guide />
+  <KeyboardCoach />
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

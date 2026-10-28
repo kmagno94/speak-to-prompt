@@ -1,12 +1,15 @@
-import { buildPrompt, ANALYZE, WRITE, withContext, REWORK_QUESTION, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
-import { analyze, mathOf, wordNums, conversions } from './xray.js';
+import { analyze } from './xray.js';
+import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify } from './ui.svelte.js';
+import { startHere } from './starthere.svelte.js';
+import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
-import { context } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
+import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
@@ -14,8 +17,14 @@ import { SLIDERS } from './starters.js';
 
 export function startApp() {
   /* What the page adds to the end of every finished prompt: picked context, then the core. */
-  function extras(p) { return core.apply(context.apply(p)); }
-  function extraBlock() { return [context.active ? context.block : "", core.active ? core.block : ""].filter(Boolean).join("\n\n"); }
+  /* What you copy is the prompt only, then your core at the very end. My context is never
+     tacked on as a block any more: the writer works in just the facts this request needs
+     (the no-key quick version puts the picked pieces inside the prompt, before your thoughts). */
+  function extras(p) { return core.apply(p); }
+  function extraBlock() { return core.active ? core.block : ""; }
+  /* The picked context as plain text: counts as things you said (number check, X-ray). */
+  function knownText() { return context.active ? context.chosen.map(function (c) { return c.text.trim(); }).join("\n") : ""; }
+  function sessionKnown() { return (session && session.known) || ""; }
   /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
   function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
   /* The deck shuffles in place, so each start works on its own copy. */
@@ -65,7 +74,7 @@ export function startApp() {
         "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model + ", " + n(r.intake_tokens) + " tokens" : "-") + "\n" +
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
-        (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" : "") +
+        (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -216,7 +225,8 @@ export function startApp() {
       words_in: words(session.raw),
       questions: (session.questions || []).length,
       answered: (session.answers || []).length,
-      context: context.active ? context.chosen.length : 0, context_tok: context.tokens   /* My context: counts only */
+      context: context.active ? context.chosen.length : 0, context_tok: context.tokens,   /* My context: counts only */
+      context_raw_tok: context.active && context.rawTokens !== context.tokens ? context.rawTokens : null, squeeze: session.squeeze || null
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -242,11 +252,13 @@ export function startApp() {
     var act = e.detail && e.detail.act;
     if (act === "idea") { if (typeof ideasTry !== "undefined" && DECK.length) { ideasTry.click(); } thoughts.focus(); notify("form"); }
     else if (act === "paste") pasteBtn.click();
+    else if (act === "pasteanyway" && pendingPaste) pasteFromClipboard(pendingPaste.fromShortcut, pendingPaste.wrap, true);
     else if (act === "retry") { notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
+    else if (act === "round1") backToRound1();
   });
 
   form.addEventListener("submit", function (e) {
@@ -254,10 +266,13 @@ export function startApp() {
     var raw = thoughts.value.trim();
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
-    inputHint(raw);
     var key = gemini.key || gkey.value.trim();
+    if (ui.round && round1 && key) { roundTwo(raw); return; }   /* Rework round 2 */
+    if (ui.round) { round1 = null; ui.round = null; }
+    rememberUsed(raw);
+    inputHint(raw);
     if (key) { geminiFlow(raw, key); return; }
-    session = { raw: raw, quick: true };
+    session = { raw: raw, quick: true, known: knownText() };
     showQuick(raw, "");
     logRun({ outcome: "ok", words_out: words(output.value) });
   });
@@ -296,8 +311,7 @@ export function startApp() {
     setChatName(title);
     setReady(false);
     qa.hidden = true;
-    result.hidden = false;
-    result.scrollIntoView({ behavior: "smooth", block: "start" });
+    result.hidden = false;   /* writeFinal snaps to its cooking ring once the tracker shows */
   }
   try { localStorage.removeItem("stp-folder"); } catch (e) {} /* retired setting */
   function setCategoryLine() {
@@ -321,7 +335,7 @@ export function startApp() {
     notify("result");
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
-    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock() });   /* Prompt X-ray */
+    xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock(), known: sessionKnown() });   /* Prompt X-ray */
     setCategoryLine();
     setReady(true);
     output.value = text;
@@ -335,7 +349,7 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(extras(buildPrompt(raw)),   /* core */
+    showResult(extras(buildPrompt(raw, context.active ? context.block.replace(/^---\n[^\n]*\n\n?/, "") : "")),   /* core; My context goes inside */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
@@ -363,12 +377,14 @@ export function startApp() {
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
     a.addEventListener("click", function () {
       if (!output.value) return;
+      /* The status line sits right under these links, so the answer shows where you tapped. */
+      var cant = "Couldn't copy it. Tap Copy prompt first, then open " + a.textContent + ".";
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(output.value).then(function () {
           promptCopied = true;
-          status.textContent = "Copied. Paste it into " + a.textContent + ".";
-        }, function () {});
-      }
+          status.textContent = "Copied. Opening " + a.textContent + ": paste it there.";
+        }, function () { signal("copy-failed", "Copy and open"); status.textContent = cant; });
+      } else status.textContent = cant;
     });
   });
   /* Dev tools row (Show my dev tools on), kept apart from the everyday buttons.
@@ -383,16 +399,17 @@ export function startApp() {
     if (ans.length) { out.push("", "MY ANSWERS"); ans.forEach(function (a) { out.push("Q: " + a.question, "A: " + a.answer + (a.tapped ? " (tapped)" : "")); }); }
     var shown = ["madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"].map(function (id) { var el = document.getElementById(id); return el && !el.hidden ? el.textContent.trim() : ""; }).filter(Boolean);
     if (shown.length) out.push("", "ON SCREEN", shown.join("\n"));
-    var x = analyze(output.value, raw, ans, extraBlock());
+    var x = analyze(output.value, raw, ans, extraBlock(), sessionKnown());
     out.push("", "X-RAY", x.pct + "% your words, " + x.added + " parts added to help");
     x.sources.filter(function (z) { return !z.used; }).forEach(function (z) { out.push("Not in the prompt: " + z.text); });
     var stray = [].concat.apply([], x.segments.map(function (g) { return g.stray; }));
     if (stray.length) out.push("Numbers you never said: " + stray.join(", "));
     if (s.grades && s.grades.length) {
       out.push("", "GRADER DETAILS (" + (lessons.gv ? "g" + lessons.gv : "g1") + ", lessons v" + (lessons.v || 0) + (lessons.src === "draft" ? ", draft " + lessons.id : ", live") + ")");
-      s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + (g.secondCraft != null ? " (" + g.firstCraft.toFixed(2) + " then " + g.secondCraft.toFixed(2) + ")" : "") : "")); });
+      s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "") + (g.confirm ? " \u00b7 pass check " + g.confirm + (g.secondCraft != null ? " (" + g.firstCraft.toFixed(2) + " then " + g.secondCraft.toFixed(2) + ")" : "") : "")); });
     } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
     if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
+    if (s.reworkText) { out.push("", "ROUND 2 EDITS (what went back in the box)", s.reworkText); if (round1) out.push("", "ROUND 1 PROMPT", round1.output); }
     out.push("", "PROMPT", output.value);
     return out.join("\n");
   }
@@ -433,8 +450,25 @@ export function startApp() {
     }
   });
 
+  /* Start over forgets the transcript. All that stays is a short fingerprint (a length
+     and a hash, never the words) of what you built from, in memory only, so Paste can
+     warn when the clipboard still holds that same transcript. */
+  var usedPrints = [], pastedPrint = "", pendingPaste = null;
+  function printOf(t) {
+    var s = String(t || "").toLowerCase().replace(/\s+/g, " ").trim(), h = 5381;
+    for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return s ? s.length + ":" + h.toString(36) : "";
+  }
+  function rememberUsed(raw) {
+    [printOf(raw), pastedPrint].forEach(function (p) { if (p && usedPrints.indexOf(p) === -1) usedPrints.push(p); });
+    if (usedPrints.length > 5) usedPrints = usedPrints.slice(-5);
+  }
   function startOver() {
     memory.suggestions = [];
+    pastedPrint = ""; pendingPaste = null;
+    xray.clear();
+    round1 = null;
+    ui.round = null;
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
@@ -485,12 +519,20 @@ export function startApp() {
     notify("form", "info", "Paste it in yourself", "Press and hold inside the box, then tap Paste.");
   }
   /* wrap (optional): turns the transcript into the box text, e.g. the Improve this app background. */
-  function pasteFromClipboard(fromShortcut, wrap) {
+  /* anyway: the person saw the "same transcript" warning and wants it pasted regardless. */
+  function pasteFromClipboard(fromShortcut, wrap, anyway) {
     if (!navigator.clipboard || !navigator.clipboard.readText) { pasteFailed(); return; }
+    pendingPaste = null;
     navigator.clipboard.readText().then(function (text) {
       text = (text || "").trim();
       if (!text) { notify("form", "warn", "Your clipboard is empty", "In Voice Memos, tap the three dots on your recording, then Copy Transcript. Then come back and tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
       if (text === "Speak to Prompt: waiting for your transcript") { notify("form", "warn", "That's the shortcut's placeholder", "It isn't your transcript yet. In Voice Memos, choose Copy Transcript, then tap Paste.", [{ label: "Paste again", act: "paste", primary: true }]); return; }
+      if (!anyway && usedPrints.indexOf(printOf(text)) !== -1) {
+        pendingPaste = { fromShortcut: fromShortcut, wrap: wrap };
+        notify("form", "warn", "That's the transcript you already used", "Your clipboard still has the last one. In Voice Memos, tap the three dots on your new recording, then Copy Transcript, and paste again.", [{ label: "Paste again", act: "paste", primary: true }, { label: "Use it anyway", act: "pasteanyway" }]);
+        return;
+      }
+      pastedPrint = printOf(text);
       /* From the shortcut, the transcript replaces whatever was in the box
          (a fresh run). Tapped by hand, it adds to what's already typed. */
       var current = fromShortcut ? "" : thoughts.value.trim();
@@ -628,12 +670,13 @@ export function startApp() {
   function ideasBtnSync() {
     /* The box's own hint would peek through the glass, so it waits until the ideas clear. */
     thoughts.placeholder = ideasEl.classList.contains("gone") ? thoughtsHint : "";
-    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && !shortcutMode());
+    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && !shortcutMode() && !startHere.active);
   }
   function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); ideasBtnSync(); }
   function ideasSync() {
     if (!ideasEl) return;
-    if (thoughts.value.trim() || document.activeElement === thoughts || shortcutMode()) { ideasHide(); return; }
+    /* Start here (StartHere.svelte) shows first; the ideas come in when it ends. */
+    if (thoughts.value.trim() || document.activeElement === thoughts || shortcutMode() || startHere.active) { ideasHide(); return; }
     var wasGone = ideasEl.classList.contains("gone");
     ideasEl.classList.remove("gone");
     ideasBtnSync();
@@ -651,6 +694,7 @@ export function startApp() {
     thoughts.style.minHeight = Math.max(240, need) + "px";
     ideasGo(ideasIdx, false);
   }
+  window.addEventListener("stp-starthere-end", function () { ideasSync(); });
   thoughts.addEventListener("pointerdown", ideasHide);
   thoughts.addEventListener("focus", ideasHide);
   thoughts.addEventListener("input", ideasSync);
@@ -863,6 +907,17 @@ export function startApp() {
     el.classList.toggle("indeterminate", mode === "busy");
     el.firstElementChild.style.width = mode === "pct" ? pct + "%" : "";
   }
+  /* Snap to the cooking (Build 4): Build closes the keyboard and brings the tracker with the
+     cooking ring to the middle of the screen. The keyboard needs a moment to get out of
+     the way first, or the scroll lands short. */
+  function snapTo(el) {
+    if (!el) return;
+    var a = document.activeElement, typed = a && /^(TEXTAREA|INPUT)$/.test(a.tagName);
+    if (typed) a.blur();
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var go = function () { if (!el.hidden) el.scrollIntoView({ block: "center", behavior: calm ? "auto" : "smooth" }); };
+    if (typed) setTimeout(go, 320); else requestAnimationFrame(go);
+  }
   function setBuild(text, bad) { stopTicker(); setProgress(document.getElementById("buildProg"), "off"); buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
   function setBusy(on, label) {
     busy = on;
@@ -987,8 +1042,29 @@ export function startApp() {
   var awaySpans = [], awayAt = document.visibilityState === "hidden" ? Date.now() : 0;
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") { if (!awayAt) awayAt = Date.now(); }
-    else if (awayAt) { awaySpans.push([awayAt, Date.now()]); awayAt = 0; if (awaySpans.length > 50) awaySpans.shift(); }
+    else {
+      if (awayAt) { awaySpans.push([awayAt, Date.now()]); awayAt = 0; if (awaySpans.length > 50) awaySpans.shift(); }
+      comeBack();
+    }
   });
+  /* Leaving mid-build (idea mvojarxehejm). iPhone pauses the page in another app and
+     web notifications only work for Home Screen apps, so instead: a request that drops
+     while you're away gets one more try on the same model (askGemini), the tab title
+     says when it's ready if it finishes while you're gone, and coming back says so. */
+  var titleBase = "", readyAway = "";
+  function doneAway(what) {
+    if (document.visibilityState !== "hidden") return false;
+    if (!titleBase) titleBase = document.title;
+    document.title = (what === "questions" ? "\u2753 Questions ready \u00b7 " : "\u2705 Prompt ready \u00b7 ") + titleBase;
+    readyAway = what;
+    return true;
+  }
+  function comeBack() {
+    if (titleBase) { document.title = titleBase; titleBase = ""; }
+    if (readyAway === "prompt" && !result.hidden) notify("result", "success", "Ready while you were away", "Your prompt finished while you were in another app. It's below, ready to copy.");
+    readyAway = "";
+    if (busy) cook.back = Date.now();
+  }
   function awayMs(t0) {
     var now = Date.now(), ms = awayAt ? now - Math.max(awayAt, t0) : 0;
     awaySpans.forEach(function (s) { if (s[1] > t0) ms += s[1] - Math.max(s[0], t0); });
@@ -1011,7 +1087,7 @@ export function startApp() {
       return JSON.stringify(p);
     }
     return new Promise(function (resolve, reject) {
-      var next = 0, running = 0, done = false, lastErr = null, live = [];
+      var next = 0, running = 0, done = false, lastErr = null, live = [], awayTried = {};
       function finish(ok, value) {
         if (done) return;
         done = true;
@@ -1048,6 +1124,7 @@ export function startApp() {
         var hedge = hedgeAfter && i < list.length - 1 ? setTimeout(function () {
           if (done || next !== i + 1) return;
           history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt) / 1000) + "s");
+          cookSwitch();
           startNext();
         }, hedgeAfter) : null;
         var settled = false;
@@ -1075,6 +1152,13 @@ export function startApp() {
           settle();
           if (done) return;   // another model already won; this one was stopped on purpose
           var secs = Math.round((Date.now() - tAttempt) / 1000);
+          /* Dropped or timed out while you were in another app: not the model's fault, so the
+             same model gets one more try (no rest, no backup spent) now that you're back. */
+          if ((e.status === "network" || e.status === "timeout") && !awayTried[i] && awayMs(tAttempt) >= 1000) {
+            awayTried[i] = true;
+            history.push(model + " dropped while you were away, so it tried again");
+            return run(i, withThinking);
+          }
           /* "after Ns" shows how long a model made you wait before the next one took over */
           if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY, "busy"); }
           else if (e.status === 429) {
@@ -1094,7 +1178,7 @@ export function startApp() {
           else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY, "busy"); }
           /* A model that rejects the thinking setting gets one more try without it. */
           if (e.status === 400 && withThinking) return run(i, false);
-          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) startNext(); return; }
+          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
           finish(false, e);
         });
       }
@@ -1225,7 +1309,9 @@ export function startApp() {
             return new Promise(function (res) { setTimeout(res, BENCH_RETRY_MS); }).then(function () { return ask(c, true); });
           });
         }
-        function once(c) { return function () { return ask(c, false).then(function (r) { var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g.model = r.model; return g; }); }; }
+        /* Same dock as a live run: the phone's number check on the case's own note and answers. */
+        function caseFlags(c) { return numberFlags(c.prompt, [c.raw].concat((c.answers || []).map(function (a) { return a.answer; })).join("\n"), c.today); }
+        function once(c) { return function () { return ask(c, false).then(function (r) { var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g = numberDock(g, caseFlags(c)); g.model = r.model; return g; }); }; }
         function one(c, i) {
           return gradeConfirmed(once(c)).then(function (g) {
             out[i] = { c: c, g: g, model: g.model };
@@ -1264,6 +1350,7 @@ export function startApp() {
       if (g.invented !== !!k.invented) diff.push("invented " + (g.invented ? "yes" : "no") + " vs " + (k.invented ? "yes" : "no"));
       if (g.rearranged !== !!k.rearranged) diff.push("rearranged " + (g.rearranged ? "yes" : "no") + " vs " + (k.rearranged ? "yes" : "no"));
       if (confirmNote(g)) diff.push(confirmNote(g));
+      if (g.numCheck) diff.push("number check docked it from " + g.numBefore.toFixed(2));
       return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "</td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
     }).join("");
     var el = document.getElementById("benchOut");
@@ -1274,7 +1361,7 @@ export function startApp() {
     benchText = ["GRADER BENCH", sum].concat(prev.length ? ["Last runs: " + prev.join(" \u00b7 ")] : []).concat(out.map(function (o) {
       var k = o.c.key, g = o.g;
       if (!g) return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": error " + o.err;
-      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + " (" + g.firstCraft.toFixed(2) + " then " + (g.secondCraft != null ? g.secondCraft.toFixed(2) : "none") + ")" : "");
+      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + " (" + g.firstCraft.toFixed(2) + " then " + (g.secondCraft != null ? g.secondCraft.toFixed(2) : "none") + ")" : "") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " to " + g.craft.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "");
     })).join("\n");
     document.getElementById("benchCopy").disabled = false;
   }
@@ -1341,31 +1428,52 @@ export function startApp() {
       if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
   }
-  function startEstimate(bar, label, usual, step, skipAsk) {
+  /* offset: seconds already spent (Rework round 1), so elapsed shows the running total. */
+  function startEstimate(bar, label, usual, step, skipAsk, offset) {
     var track = bar.closest(".tracker");
+    offset = offset || 0;
+    track.querySelector(".nums small").textContent = offset ? "total, both rounds" : "elapsed";
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
     setProgress(bar, "pct", 2);
+    cookStart(track.id === "buildTrack" ? "build" : "result", step === "write" ? "write" : "read", cookIngredients(step));
     function draw() {
       var secs = (Date.now() - t0) / 1000, since = (Date.now() - tModel) / 1000;
-      setProgress(bar, "pct", Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))))));
+      var pct = Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6))))));
+      setProgress(bar, "pct", pct);
+      cook.pct = pct;
       var left = usual - since;
-      elEl.textContent = clock(secs);
+      elEl.textContent = clock(secs + offset);
       var over = left <= 1;
+      cook.over = over;
       right.classList.toggle("over", over);
       leftEl.textContent = over ? "Almost there" : clock(left);
       leftLbl.textContent = over ? "taking a bit longer than usual" : "estimated left";
       detail.textContent = label + (model && techOn() ? " · " + model : "");
+      cookClock(track);
     }
     stopTicker();
     draw();
     ticker = setInterval(draw, 1000);
     return function (m) { model = m; tModel = Date.now(); draw(); };
   }
-  function finishTrack(bar, secs, skipAsk) {
+  /* Prompt cooking: plain labels for what went into the pot, never the words themselves. */
+  function cookIngredients(step) {
+    var list = ["Your thoughts"];
+    if (step === "write" && session && session.round === 2) list.push("Your edits");
+    if (step === "write" && session && session.answers && session.answers.length) list.push("Your answers");
+    if (context.active) list.push("Your context");
+    if (step === "write" && lessons.list.length) list.push("Lessons learned");
+    return list;
+  }
+  /* A model stalled or ran out and the next one took over: the pot boils over. */
+  function cookSwitch() { if (cook.place && !cook.done) cook.switches++; }
+  function finishTrack(bar, secs, skipAsk, offset) {
     var track = bar.closest(".tracker");
+    secs += offset || 0;
     stopTicker();
+    cook.done = true;
     setSteps(track, "ready", skipAsk);
     track.querySelector("li[data-step='ready']").className = "done";
     setProgress(bar, "pct", 100);
@@ -1374,6 +1482,7 @@ export function startApp() {
     right.classList.add("over");
     track.querySelector(".left").textContent = "Done";
     track.querySelector(".leftlbl").textContent = "";
+    cookClock(track);
   }
 
   var ticker = null;
@@ -1433,19 +1542,40 @@ export function startApp() {
     return verifyKey(key);
   }
 
+  /* My context budget: past 1,500 tokens, one Flash-Lite call (the question models, Lite
+     first) makes the picks shorter for this build. Kept in memory only for these exact picks;
+     if it fails or doesn't come out shorter, the full pieces are used. Never retried. */
+  function squeezeContext(onModel) {
+    if (!context.over) return Promise.resolve();
+    var sig = context.sig, before = context.rawTokens;
+    setBusy(true, "Squeezing your context to fit...");
+    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, gemini.plan.intake.slice(0, 1), "auto", onModel, 45000).then(function (r) {
+      var text = cleanPrompt(r.text);
+      if (context.sig !== sig) return;
+      var after = blockTokens(text);
+      if (!text || after >= before) { if (session) session.squeeze = "no gain"; return; }
+      context.squeeze = { sig: sig, text: text, before: before, after: after };
+      if (session) session.squeeze = before + " to " + after;
+    }, function () { if (session) session.squeeze = "failed"; }).then(function () { setBusy(true, "Reading your thoughts..."); });
+  }
+
   function geminiFlow(raw, key) {
-    session = { raw: raw };
+    session = { raw: raw, known: knownText() };
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
     buildStatus.textContent = "";
     session.estIntake = intakeEstimate();
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
+    snapTo(document.getElementById("buildTrack"));
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
-    if (context.active) base = withContext(base, context.block);   /* My context */
     memory.suggestions = [];
-    var intakeText = base + "\n" + raw + '\n"""';
+    var intakeText = "";
     ensureModel(key).then(function () {
+      return squeezeContext(onIntakeModel);
+    }).then(function () {
+      /* My context goes in after any squeeze, so the question step sees the same version the writer will. */
+      intakeText = (context.active ? withContext(base, context.block) : base) + "\n" + raw + '\n"""';
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
       session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeAway = r.away || 0; session.intakeTokens = r.tokens;
@@ -1475,6 +1605,7 @@ export function startApp() {
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
+      cookStop();
       signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
@@ -1490,6 +1621,7 @@ export function startApp() {
     qaStatus.textContent = "";
     qa.hidden = false;
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    doneAway("questions");
   }
   chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
@@ -1499,8 +1631,10 @@ export function startApp() {
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile is attached to the finished prompt by the page.
        The writer sees it so it doesn't repeat or contradict it. */
-    if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (added to the end of the prompt automatically, so don't repeat it; point to it by its titles where it helps):\n" + context.block;
+    /* My context is not attached to the prompt: the writer works in only what this request needs. */
+    if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
+    if (session.reworkText) text += "\n\nROUND 2: THE PERSON REWORKED THE FIRST PROMPT. Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     return text;
   }
@@ -1521,12 +1655,14 @@ export function startApp() {
     var depth = quick ? DEPTH.quick : depthOf(session.complexity);
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
-    var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
+    var skipAsk = session.mode === "Quick mode" || session.round === 2 || !(session.questions && session.questions.length);
+    var offset = session.round === 2 ? session.round1Secs || 0 : 0;   /* Rework round 2: running total */
     var busyP = quick ? null : busyNow();
     var models = busyP ? busyOrder(writeModels(quick), busyP.start) : writeModels(quick);
     var movedStart = busyP && models[0] !== writeModels(quick)[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
-    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk);
+    var eta = startEstimate(resultProg, (session.round === 2 ? "Round 2 \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
+    snapTo(document.getElementById("resultTrack"));
     /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
        a backup starts too and the first good prompt wins. */
     var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
@@ -1535,7 +1671,7 @@ export function startApp() {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT, hedgeAfter).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
-      finishTrack(resultProg, r.ms / 1000, skipAsk);
+      finishTrack(resultProg, r.ms / 1000, skipAsk, offset);
       var draft = cleanPrompt(r.text);
       /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
       var before = qualityCheck(draft);
@@ -1561,13 +1697,18 @@ export function startApp() {
         qaStatus.textContent = "";
         var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
         /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
-        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
+        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; cookClock(resultProg.closest(".tracker")); }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         session.basePrompt = prompt;
+        session.workSecs = (offset || (session.intakeMs || 0) / 1000) + r.ms / 1000 + (rep.secs || 0);
+        var total = offset ? " (" + Math.max(1, Math.round(session.workSecs)) + "s total, both rounds)" : "";
         showResult(extras(prompt), techOn()   /* core */
-          ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
-          : "Ready in " + secs + ". Your AI can start working right away.", session.title);
+          ? (offset ? "Round 2 built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
+          : (offset ? "Round 2 ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+        if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built" });
+        /* Left mid-build and came back before it finished: say it picked back up. */
+        if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
         if (memory.active) {
@@ -1578,22 +1719,30 @@ export function startApp() {
           memory.suggestions = offer.slice(0, 4);
         }
         var nc = showNumberCheck(prompt);
-        session.numFlags = nc.extra.length + nc.missing.length;
+        session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
-          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null });
+          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
+          round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null });
         gradeRun(prompt, run);
       }
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
+      cookStop();
       setProgress(resultProg, "off");
       setBusy(false);
       setBuild("");
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
+      if (session.round === 2 && round1) {   /* Rework round 2 failed: round 1 comes back, nothing lost */
+        var why = e && e.message ? e.message : "unknown";
+        logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: 2 });
+        backToRound1();
+        return notify("result", "error", "Round 2 didn't come through", "Your round 1 prompt is back and ready to copy. Tap Rework from this prompt to try again.");
+      }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
       session.writeError = e && e.message ? e.message : "unknown";
@@ -1607,83 +1756,101 @@ export function startApp() {
      labels, and lesson ids go into the run, for the review's lessons learned.
      It never slows the prompt down; if it's late or fails, the run is sent
      without it. */
-  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; ui.rework = null; }
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; }
 
-  /* Rework (from the Quality check, when it's under the bar): first see if one more
-     question would raise the grade and ask it; then rewrite with everything the same
-     plus the first prompt as the starting point and what was weak. The new version is
-     graded and kept only if it scores higher. Once per prompt, so it can't loop. */
+  /* Rework = round 2 (from the Quality check, when it's under the bar). The prompt goes back
+     in the box with one "What was weak" line on top, for the person to change as they like.
+     Their original thoughts and answers stay in memory (never saved): round 2 writes from
+     them plus the edited prompt, with no questions, and Save to Notes keeps the original
+     words with the new prompt. Back to round 1 puts the first prompt and its grade back. */
+  var round1 = null;
+  var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
     var n = [];
-    if (g.rearranged) n.push("It reads like the person's words rearranged. Turn it into clear instructions for the AI.");
-    if (g.invented) n.push("It added something the person didn't say. Take it out.");
+    if (g.rearranged) n.push("It reads like your words rearranged, not clear instructions for the AI.");
+    if (g.invented) n.push("It added something you didn't say.");
     g.missing.forEach(function (m) { n.push("It's missing " + (LABEL_NAMES[m] || m) + "."); });
     (g.broke || []).forEach(function (b) { n.push("It broke lesson " + b + "."); });
-    if (!n.length) n.push("Make it sharper and more specific, using only what the person said.");
+    if (g.numCheck) n.push("The number check flagged a number or date.");
+    if (!n.length) n.push("It could be sharper and more specific.");
     return n;
+  }
+  function snapResult() {
+    var snap = {};
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el) { var k = keepOut(el); snap[id] = { html: el.innerHTML, hidden: el.hidden }; keepIn(el, k); } });
+    return snap;
+  }
+  function restoreResult(snap) {
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el && snap[id]) { var k = keepOut(el); el.innerHTML = snap[id].html; keepIn(el, k); el.hidden = snap[id].hidden; } });
+  }
+  /* A part drawn by Svelte (marked data-keep, like the cooking pot) must never be rebuilt
+     from saved HTML, or Svelte loses track of it. It steps out for the copy and goes back
+     into the same spot. */
+  function keepOut(el) {
+    var k = el.querySelector("[data-keep]");
+    if (!k) return null;
+    var mark = document.createComment("keep");
+    k.replaceWith(mark);
+    return k;
+  }
+  function keepIn(el, k) {
+    if (!k) return;
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_COMMENT), n;
+    while ((n = w.nextNode())) if (n.data === "keep") { n.replaceWith(k); return; }
+    el.appendChild(k);
   }
   function startRework() {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
-    if (!g || g.pass || !session.basePrompt || busy || !key || !gemini.plan || session.reworked) return;
-    session.reworked = true;
-    notify("result");
-    ui.rework = { stage: "asking" };
-    setBusy(true, "Checking if one question would help...");
-    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
-    var ask = REWORK_QUESTION + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS SO FAR:\n" + (lines.length ? lines.join("\n\n") : "None.") +
-      "\n\nCURRENT PROMPT:\n\"\"\"\n" + session.basePrompt + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
-    askGemini(ask, true, gemini.plan.intake, "low", null, 30000).then(function (r) {
-      var j = null; try { j = JSON.parse(cleanPrompt(r.text)); } catch (e) {}
-      var q = j && typeof j.question === "string" ? j.question.trim().slice(0, 160) : "";
-      if (!q) return doRework();
-      setBusy(false);
-      ui.rework = { stage: "question", question: q, choices: (Array.isArray(j.choices) ? j.choices : []).filter(function (c) { return typeof c === "string" && c.trim(); }).slice(0, 3).map(function (c) { return c.trim().slice(0, 60); }) };
-    }, function () { doRework(); });
+    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan || session.round === 2) return;
+    var seed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
+    round1 = { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value, seed: seed };
+    notify("result"); notify("form");
+    thoughts.value = seed;
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
+    ideasSync();
+    ui.round = { n: 2, stage: "edit", before: ui.grade ? ui.grade.score : null };
+    result.hidden = true;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    try { thoughts.focus({ preventScroll: true }); thoughts.setSelectionRange(0, 0); } catch (e) {}
   }
-  window.addEventListener("stp-rework-answer", function (e) {
-    if (!ui.rework || ui.rework.stage !== "question" || !session) return;
-    var d = e.detail || {};
-    if (d.answer && String(d.answer).trim()) session.answers = session.answers.concat([{ question: ui.rework.question, answer: String(d.answer).trim().slice(0, 500), tapped: !!d.tapped }]);
-    doRework();
-  });
-  function doRework() {
-    var g = lastGrade(), first = session.basePrompt, run = writeRun, fields = session.gradeFields || {};
-    ui.rework = { stage: "writing" };
-    setBusy(true, "Reworking your prompt...");
-    var text = writerText() + "\n\nFIRST DRAFT TO REWORK (keep what works, fix what's weak, follow every rule above):\n\"\"\"\n" + first + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
-    var t0 = Date.now();
-    askGemini(text, false, writeModels(false), depthOf(session.complexity).level, null, WRITE_LIMIT).then(function (r) {
-      var next = cleanPrompt(r.text);
-      return gradeConfirmed(gradeOnce(next, session.raw, session.answers, session.today, lessons.items, lessons.grader)).then(function (g2) {
-        if (run !== writeRun) { setBusy(false); return; }
-        setBusy(false);
-        var keep = g2.craft > g.craft;
-        var note = "\ud83d\udd01 Reworked: " + (Math.round(g.craft * 10) / 10).toFixed(1) + " to " + (Math.round(g2.craft * 10) / 10).toFixed(1) + ", kept the " + (keep ? "new one" : "first one");
-        if (keep) {
-          session.draftBefore = first;
-          session.basePrompt = next;
-          session.grades.push(g2);
-          output.value = extras(next);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
-          var nc = showNumberCheck(next);
-          session.numFlags = nc.extra.length + nc.missing.length;
-          output.dispatchEvent(new Event("stp:changed"));
-        }
-        session.rework = { kept: keep, before: g.craft, after: g2.craft, secs: Math.round((Date.now() - t0) / 100) / 10 };
-        var el = document.getElementById("gradeNote");
-        el.textContent = gradeText(keep ? g2 : g, fields, note);
-        el.hidden = false;
-        ui.grade = Object.assign({}, ui.grade, { reworked: true, note: note.replace(/^\S+ /, "") });
-        ui.rework = { stage: "done" };
-      });
-    }).catch(function () {
-      if (run !== writeRun) return;
-      setBusy(false);
-      session.reworked = false;
-      ui.rework = null;
-      notify("result", "error", "The rework didn't come through", "Your first prompt is still here and ready to copy. You can try the rework again.", [{ label: "Try the rework again", act: "rework", primary: true }]);
-    });
+  function roundTwo(text) {
+    var s1 = round1.session, seedLines = round1.seed.split(/\n+/).map(function (l) { return l.trim(); });
+    /* Lines the person typed or changed count as their own words, like an answer, so the
+       number check and the grader don't treat them as made up. */
+    var added = text.split(/\n+/).map(function (l) { return l.trim(); }).filter(function (l) {
+      return l && seedLines.indexOf(l) === -1 && !/^what was weak:/i.test(l);
+    }).join("\n").slice(0, 2000);
+    session = Object.assign({}, s1, { answers: (s1.answers || []).slice(), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
+      round: 2, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round 2" });
+    if (added) session.answers.push({ question: "What I changed when reworking", answer: added, tapped: false });
+    ui.round = Object.assign({}, ui.round, { stage: "writing" });
+    notify("form");
+    writeFinal(session.answers, false);
+  }
+  function backToRound1() {
+    if (!round1) return;
+    writeRun++;
+    setBusy(false);
+    stopTicker();
+    setBuild("");
+    session = round1.session;
+    thoughts.value = round1.box;
+    thoughts.dispatchEvent(new Event("stp:changed"));
+    output.value = round1.output;
+    restoreResult(round1.dom);
+    if (typeof resetKeep === "function") resetKeep();
+    setReady(true);
+    document.getElementById("resultHead").textContent = "Your prompt is ready";
+    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+    ui.grade = round1.grade;
+    round1 = null;
+    ui.round = null;
+    notify("form"); notify("result");
+    qa.hidden = true;
+    result.hidden = false;
+    output.dispatchEvent(new Event("stp:changed"));
+    result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
@@ -1701,7 +1868,9 @@ export function startApp() {
   function gradeOnce(prompt, raw, answers, today, items, grader) {
     return function () {
       return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
-        var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g.model = r.model; return g;
+        var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade.");
+        g = numberDock(g, session ? promptFlags(prompt) : null);   /* the number check flagged: docked */
+        g.model = r.model; return g;
       });
     };
   }
@@ -1729,7 +1898,7 @@ export function startApp() {
     var job = gradeConfirmed(gradeOnce(prompt, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g) {
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
-        grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none",
+        grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
       if (target) for (var k in fields) target[k] = fields[k];
       if (run !== writeRun) return;
@@ -1745,6 +1914,7 @@ export function startApp() {
   /* The glanceable Quality check (QualityCheck.svelte): score, a plain label, one tip. */
   function gradeView(g, extra) {
     var tip = g.pass ? "Paste it as is. It covers what a great answer needs."
+      : g.numCheck ? "Check the numbers and dates in the Heads up note before you paste it."
       : g.invented ? "Check it didn't add anything you didn't say."
       : g.rearranged ? "Say what you want done, not only what's on your mind."
       : g.missing.length ? "It could say " + (LABEL_NAMES[g.missing[0]] || g.missing[0]) + ". Add that to your note and build again."
@@ -1760,6 +1930,7 @@ export function startApp() {
     if (g.invented) notes.push("added something you didn't say");
     if (g.missing.length) notes.push("could add: " + g.missing.map(function (m) { return m + (LABEL_NAMES[m] ? " (" + LABEL_NAMES[m] + ")" : ""); }).join(", "));
     if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
+    if (g.numCheck) notes.push("docked from " + g.numBefore.toFixed(2) + ": the number check flagged it");
     if (extra) notes.push(extra);
     return "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (" + fields.grade_model + ", " + fields.grade_s + "s" + (fields.fix_s != null ? " + " + fields.fix_s + "s fix" : "") + ")";
   }
@@ -1808,12 +1979,12 @@ export function startApp() {
           cur = fixed; best = g2;
           session.basePrompt = fixed;
           output.value = extras(fixed);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock() });
+          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
           var nc = showNumberCheck(fixed);
-          session.numFlags = nc.extra.length + nc.missing.length;
+          session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
           if (target) {
             target.grade_before = first.craft; target.grade = g2.craft; target.grade_pass = g2.pass; target.grade_missing = g2.missing.join("+") || "none";
-            target.grade_broke = g2.broke.join("+") || "none"; target.grade_rearranged = g2.rearranged; target.grade_invented = g2.invented; target.grade_confirm = g2.confirm || "none";
+            target.grade_broke = g2.broke.join("+") || "none"; target.grade_rearranged = g2.rearranged; target.grade_invented = g2.invented; target.grade_confirm = g2.confirm || "none"; target.grade_numcheck = g2.numCheck ? g2.numCheck.join("+") : "none";
             target.words_out = words(fixed); target.num_flags = session.numFlags;
           }
           return tries < 2 && canFix(g2) ? attempt() : finish();
@@ -1873,55 +2044,23 @@ export function startApp() {
      that "corrects" a version it doesn't know (iOS 27 to iOS 18), drops a number, or
      invents one (a 400-word limit) gets flagged before the prompt is pasted anywhere.
      Small counts like "3 tips" are fine unless they follow a version word. */
-  var VERSION_WORD = /(ios|ipados|macos|watchos|tvos|visionos|android|windows|version|v)\s*$/i;
-  function numberTokens(text, keepSmall) {
-    var out = {}, t = String(text || "");
-    var re = /(\d{1,2}:\d{2})|\$?(\d[\d,]*(?:\.\d+)?)/g, m;
-    while ((m = re.exec(t))) {
-      var before = t.slice(Math.max(0, m.index - 12), m.index);
-      var lineStart = /(^|\n)\s*$/.test(t.slice(Math.max(0, m.index - 4), m.index)) && /^[.)]/.test(t.slice(re.lastIndex, re.lastIndex + 1));
-      if (lineStart) continue; /* list numbering like "1." */
-      /* "10:00 AM" is the same number as "10am", so on-the-hour times count as the hour */
-      var tok = m[1] ? m[1].replace(/^0?(\d{1,2}):00$/, "$1") : m[2].replace(/,/g, "").replace(/\.0+$/, "");
-      if (!tok) continue;
-      var small = !m[1] && Number(tok) <= 10 && !VERSION_WORD.test(before);
-      if (small && !keepSmall) continue;
-      out[tok] = true;
-    }
-    return out;
-  }
-  /* Numbers that plain words already say: "two weeks" is 14 days, "half an hour" is 30 minutes. */
-  var IMPLIED = [[/\btwo weeks?\b/i, ["14"]], [/\bthree weeks?\b/i, ["21"]], [/\b(a|one) week\b/i, ["7"]], [/\bhalf (an )?hour\b/i, ["30"]], [/\b(an|one) hour\b/i, ["60"]], [/\b(a|one) year\b/i, ["12", "365"]]];
-  /* "October 30th, wait no, the 31st": the part before the correction isn't something to keep. */
-  var CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|correction|or rather|actually it'?s|actually make it)\b/gi;
   /* Your saved memory facts that went into this prompt count as things you said
      (so "iOS 27" from memory isn't a made-up number). */
   function withMem(answers) {
     var mem = (session && session.memFacts) || [];
     return (answers || []).concat(mem.map(function (f) { return { question: "Your saved memory", answer: f }; }));
   }
-  function saidText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n"); }
-  function numberIssues(promptText) {
-    var said = saidText();
-    var have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
-    IMPLIED.forEach(function (x) { if (x[0].test(said)) x[1].forEach(function (n) { have[n] = true; }); });
-    var got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(said)));
-    conversions(promptText, Object.keys(have)).forEach(function (n) { have[n] = true; });   /* 140 miles is about 225 km */
-    var money = {}; (String(promptText).match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach(function (m) { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
-    return {
-      missing: Object.keys(given).filter(function (n) { return !got[n]; }),
-      extra: Object.keys(gotBig).filter(function (n) { return !have[n] && !(money[n] && math(n)); })   /* correct money math isn't made up */
-    };
-  }
-  function listWords(a) { return a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]; }
+  function saidText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n") + (session.known ? "\n" + session.known : ""); }
+  /* Number check: lib/numcheck.js (shared with the grader bench). */
+  function numberIssues(promptText) { return numberIssuesFor(promptText, saidText()); }
+  function promptFlags(promptText) { return numberFlags(promptText, saidText(), session.today || new Date()); }
+  /* The Heads up note: made-up or missing numbers, and a weekday that doesn't match its date. */
   function showNumberCheck(promptText) {
     var el = document.getElementById("numWarn");
-    var g = numberIssues(promptText), parts = [];
-    if (g.extra.length) parts.push("mentions " + listWords(g.extra) + ", which you never said");
-    if (g.missing.length) parts.push("leaves out " + listWords(g.missing) + ", which you did");
-    el.hidden = !parts.length;
-    el.textContent = parts.length ? "Heads up: this prompt " + parts.join(", and ") + ". Check those numbers before you paste it." : "";
-    return g;
+    var f = promptFlags(promptText), msg = flagText(f);
+    el.hidden = !msg;
+    el.textContent = msg ? "Heads up: this prompt " + msg + ". Check " + (f.dates.length && !f.extra.length && !f.missing.length ? "that date" : f.dates.length ? "those numbers and dates" : "those numbers") + " before you paste it." : "";
+    return f;
   }
 
   /* Notes: built on demand from this tab's session only. Nothing is stored by the page. */

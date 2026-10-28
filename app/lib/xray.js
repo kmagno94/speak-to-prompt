@@ -68,7 +68,8 @@ const WHY_TEXT = {
   'Tone': 'Sets how the answer should sound.',
   'Extra coverage': 'Asks the AI to cover steps, limits, or troubleshooting so nothing trips you up.',
   'Example': 'Gives the AI an example of a good result.',
-  'Guidance': 'Extra direction that helps the AI do a better job.'
+  'Guidance': 'Extra direction that helps the AI do a better job.',
+  'Your context': 'A fact from the context you picked under Build, worked in so the prompt stands on its own.'
 };
 export function whyText(label) { return WHY_TEXT[label] || WHY_TEXT.Guidance; }
 
@@ -114,8 +115,11 @@ export function mathOf(said) {
 }
 
 /* prompt: the finished prompt. raw: your thoughts. answers: [{question, answer}].
-   core: your core block if it was added (shown as its own part). */
-export function analyze(prompt, raw, answers = [], core = '') {
+   core: your core block if it was added (shown as its own part).
+   known: the context you picked (My context). It isn't attached to the prompt any more:
+   the writer works in only the facts it needs. Those parts are labeled Your context and
+   their numbers count as yours, but a piece left out is never flagged (it's optional). */
+export function analyze(prompt, raw, answers = [], core = '', known = '') {
   let body = String(prompt || '');
   let coreText = '';
   if (core && body.trimEnd().endsWith(core.trim())) {
@@ -128,7 +132,8 @@ export function analyze(prompt, raw, answers = [], core = '') {
     .slice(0, 60)
     .map((s, i) => ({ ...s, i, color: i % COLORS, stems: stems(s.text), used: false }))
     .filter((s) => s.stems.size);
-  const said = [raw].concat((answers || []).map((a) => a && a.answer)).join('\n');
+  const said = [raw].concat((answers || []).map((a) => a && a.answer), known || '').join('\n');
+  const knownStems = stems(known || '');
 
   const segments = [];
   let totalWords = 0, fromWords = 0;
@@ -153,7 +158,8 @@ export function analyze(prompt, raw, answers = [], core = '') {
       const hits = new Set([...p].filter((x) => sources.some((s) => s.stems.has(x))));
       segments.push({ text, kind: 'from', src: best.i, color: best.color, hits, stray });
     } else {
-      const label = whyAdded(text);
+      const fromKnown = knownStems.size ? [...p].filter((x) => knownStems.has(x)).length : 0;
+      const label = fromKnown >= 2 && fromKnown / p.size >= 0.2 ? 'Your context' : whyAdded(text);
       segments.push({ text, kind: 'added', why: label, hits: new Set(), stray });
     }
   }
