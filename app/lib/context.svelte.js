@@ -3,8 +3,9 @@
 
    DEVELOPMENT ONLY, like Your core: shown only with "Show my dev tools" on, saved in this
    browser (localStorage) on this phone only. Picks are per visit and never saved.
-   The picked pieces are added to the end of the prompt (before the core), and the writer
-   sees them so it can refer to them by title instead of repeating them. */
+   The picked pieces are never tacked onto the prompt: the writer sees them and works in only
+   the facts the request needs, so Copy gives the prompt alone (then the core at the end).
+   The no-key quick version puts them inside the prompt, before the raw thoughts. */
 import { core } from './core.svelte.js';
 
 const KEY = 'stp-context';
@@ -40,7 +41,7 @@ class Context {
 
   add() {
     const c = { id: newId(), title: '', text: '' };
-    this.list = [...this.list, c];
+    this.list = [c, ...this.list];   /* newest first, so the editor opens on it at the top */
     return c.id;
   }
   update(id, field, value) {
@@ -55,8 +56,6 @@ class Context {
   }
   toggle(id) { this.picked = this.picked.includes(id) ? this.picked.filter((p) => p !== id) : [...this.picked, id]; }
 
-  /* Used by app.js on every finished prompt (before the core is added). */
-  apply(prompt) { return this.active ? prompt + '\n\n' + this.block : prompt; }
 }
 
 export const context = new Context();

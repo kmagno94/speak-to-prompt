@@ -2,6 +2,60 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.4",
+      "date": "2026-10-27",
+      "title": "Build 1: Batch A, honest dates, prompt-only copy",
+      "items": [
+        "Copy and open: a status line right under ChatGPT, Claude, Gemini says it copied (or what to do if it couldn't).",
+        "Start over forgets your transcript. If Paste finds the same one still on the clipboard, it warns you instead of bringing it back (Use it anyway if you mean it).",
+        "Ideas tab: Edit on any open idea.",
+        "Questions read clearer: the question is bold, the helper lines around it are small and gray.",
+        "First time? Start here: more room between the parts and no emojis.",
+        "My context: the editor opens at its top with the cursor in a title, and a new piece goes first.",
+        "Dates stay as you said them: the writer keeps maybe and I think, and adds no year, weekday, or month. The Heads up note now also catches a weekday that doesn't match its date (Saturday the 30th when the 30th is a Friday).",
+        "The Quality check is docked below the bar whenever the number check flags something, and the grader bench runs the Saturday example first.",
+        "Copy gives the prompt only: My context is no longer tacked on as a block. The writer works in just the facts the request needs, and your core stays at the end."
+      ],
+      "checks": [
+        {
+          "say": "Build any prompt, then tap ChatGPT under Copy and open.",
+          "see": "A green line right under the three links says \"Copied. Opening ChatGPT: paste it there.\""
+        },
+        {
+          "say": "Paste a transcript with 📋 Paste, build it, tap Start over, then tap 📋 Paste again without copying anything new.",
+          "see": "The box stays empty and a note says \"That's the transcript you already used\". Use it anyway pastes it."
+        },
+        {
+          "say": "Open the 💡 Ideas tab, tap Edit on an open idea, change a word, tap Save. Then Edit again, type something, tap Cancel.",
+          "see": "Save keeps the new words. Cancel leaves it as it was."
+        },
+        {
+          "say": "With your key, build a Normal prompt that asks a question.",
+          "see": "The question is bold. The \"Got it\" line above it and the \"That's everything I need\" line after are small and gray."
+        },
+        {
+          "say": "Tap First time? Start here.",
+          "see": "No emojis anywhere in the sheet, and more space between the intro and each step."
+        },
+        {
+          "say": "With dev tools on and at least one My context piece saved, tap + New under My context.",
+          "see": "The editor scrolls to its top, the new empty piece is first, and the cursor is in its title."
+        },
+        {
+          "say": "With your key, build from: \"ok maybe saturday the 30th? want a chill game night for my cousins, snack ideas\".",
+          "see": "The prompt keeps the maybe and has no 2026, no month, and no weekday you didn't say. If it ever adds one, a Heads up note names it (and says the 30th is a Friday)."
+        },
+        {
+          "say": "More options > Grader bench > Run grader bench (dev tools on).",
+          "see": "B9 Game night is the first row, and its grader score is under 4.5."
+        },
+        {
+          "say": "Dev tools on: pick a My context chip, build with your key, tap Copy prompt, and paste into Notes.",
+          "see": "No MY CONTEXT block at the end. Only the facts it needed are worked into the prompt, and Your core (if on) is still last."
+        }
+      ]
+    },
+    {
       "version": "2.1.3",
       "date": "2026-10-25",
       "title": "Test lab on staging",

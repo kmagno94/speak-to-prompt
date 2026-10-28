@@ -35,7 +35,7 @@
     <button type="button" class="mine" class:skipped={m.text === 'Skip'} disabled={chat.busy}
             onclick={() => change(m.q)} aria-label="Your answer: {m.text}. Tap to change it">{m.text}</button>
   {:else}
-    <p>{m.text}</p>
+    <p class:q={m.kind === 'q'} class:help={m.kind === 'help'}>{m.text}</p>
   {/if}
 {/snippet}
 

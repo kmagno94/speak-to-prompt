@@ -1,7 +1,28 @@
 {
   "note": "Grader bench: fixed prompts with Claude's answer key. The dev tools bench grades each one with the current grader (Live or Draft) and compares. Edit keys only after Kevin agrees. holdout cases are the final check: don't tune rules to them.",
-  "updated": "2026-10-21",
+  "updated": "2026-10-27",
   "cases": [
+    {
+      "id": "B9",
+      "name": "Game night, Saturday made sure (written)",
+      "today": "Tuesday, October 27, 2026",
+      "raw": "ok so maybe saturday the 30th? i think. want to do a chill game night at my place for my cousins, like 6 of us. need snack ideas and a couple games that work for a big group, nothing too competitive, my one cousin gets heated lol",
+      "answers": [
+        {
+          "question": "What's your snack budget?",
+          "answer": "Under $40"
+        }
+      ],
+      "prompt": "You are a laid-back party planner who knows great group games and easy snacks.\n\nContext: I'm hosting a chill game night at my place on Saturday, October 30, 2026 for my cousins, 6 of us total. My snack budget is under $40. One cousin gets heated, so I want games that keep things friendly.\n\nTask: Suggest snacks and a couple of games that work well for a group of 6 and aren't too competitive.\n\nA great answer is a plan I could shop for and set up the same afternoon without looking anything else up.\n\nFormat: Two short lists, Snacks (about 5 ideas with rough costs that stay under $40) and Games (2 or 3, each with one line on why it stays friendly). Keep it to about one screen.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "key": {
+        "score": 3.0,
+        "missing": [],
+        "invented": true,
+        "rearranged": false,
+        "broke": [],
+        "why": "Turned \"maybe Saturday the 30th, I think\" into a sure date, added the month and a year nobody said, and October 30, 2026 is a Friday. The number check flags 2026 and the weekday, so it can't pass."
+      }
+    },
     {
       "id": "B1",
       "name": "Notion playbook (real run)",

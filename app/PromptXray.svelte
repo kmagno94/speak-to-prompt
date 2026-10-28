@@ -17,7 +17,7 @@
   /* X-ray takes the prompt box's place while it's open. */
   $effect(() => { const out = document.getElementById('output'); if (out) out.style.display = on ? 'none' : ''; });
 
-  const r = $derived(on && xray.prompt ? analyze(xray.prompt, xray.raw, xray.answers, xray.core) : null);
+  const r = $derived(on && xray.prompt ? analyze(xray.prompt, xray.raw, xray.answers, xray.core, xray.known) : null);
   const seg = $derived(r && picked >= 0 ? r.segments[picked] : null);
   const src = (i) => r.sources.find((s) => s.i === i);
 

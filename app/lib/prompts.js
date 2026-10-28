@@ -1,6 +1,9 @@
 /* The words Speak to Prompt sends to Gemini, and the no-key quick version. */
 
-export function buildPrompt(raw) {
+/* background (My context, dev tools): picked pieces go inside the prompt, just before the
+   raw thoughts, so what you copy is one prompt with nothing tacked on after it. */
+export function buildPrompt(raw, background) {
+  const bg = background ? ["BACKGROUND I PICKED FOR THIS (use what helps, ignore the rest):", background, ""] : [];
   return [
     "I want help with something, but I'm not sure how to ask for it well. My raw thoughts are below, exactly as they came out. Please be my guide.",
     "",
@@ -18,6 +21,7 @@ export function buildPrompt(raw) {
     "",
     "Use plain, friendly language. Keep it practical.",
     "",
+    ...bg,
     "MY RAW THOUGHTS:",
     "\"\"\"",
     raw,
@@ -84,6 +88,8 @@ export const WRITE = [
   "Never add devices, people, facts, or requirements they did not mention or confirm.",
   "An answer marked (tapped from suggested options) is the closest of a few preset choices, not their own words, so treat it as approximate. If it conflicts with, narrows, or shifts the goal stated in the raw thoughts, follow the raw thoughts and use the tapped answer only where it fits. Typed answers are their own words.",
   "Keep every number, version, and product name exactly as they said it, even if you don't recognize it. Newer versions may exist that you don't know about, so never swap in a different version or round a number.",
+  "Keep their hedges. If they said maybe, probably, I think, around, or not sure, keep that doubt in the prompt instead of turning it into a fact.",
+  "Write dates and times the way they said them. Never add a year, a weekday, a month, or a time they didn't say, and add no extra words to them.",
   "Keep the full scope of what they want. Do not narrow it. When it helps them succeed, ask the AI to also cover how it works, the steps, and known limits or troubleshooting.",
   "Write it in first person, as the person talking to the AI. If the thoughts are a note or a meeting recap, the task is a clean summary with action items.",
   "Only if the person raised several separate goals or ideas and it is unclear which to pursue first, end the prompt by asking the AI to lay those goals out as numbered options, each with 2 to 4 sentences on what it would produce, then wait for the person to choose. Different ways to reach one goal are not separate goals: in that case, ask the AI to recommend the best approach, briefly say why, and carry it out. Otherwise, end the prompt by telling the AI to start right away, and to ask at most one short question only if something essential is still missing.",
@@ -101,7 +107,7 @@ export function todayText(d) {
 }
 export function withToday(write, today) {
   if (!today) return write;
-  return write + "\n\nTODAY: " + today + " (the person's own date). Use it to work out which days are left or how far away a date is. Never guess a different day. Only say what day it is if the plan depends on it.";
+  return write + "\n\nTODAY: " + today + " (the person's own date). Use it only to work out which days are left or how far away a date is. Never guess a different day. Never copy its year, weekday, or month onto a date the person gave. Only say what day it is if the plan depends on it.";
 }
 export function withLessons(write, lessons) {
   if (!lessons || !lessons.length) return write;

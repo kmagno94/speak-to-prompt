@@ -352,6 +352,9 @@ details.key[open] summary { margin-bottom: 10px; }
 .msg.ai { align-self: flex-start; }
 .msg.me { align-self: flex-end; }
 .msg p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 18px 6px; background: var(--bubble); line-height: 1.4; }
+/* The question is what to answer, so it reads bold; the helper lines around it step back, small and gray. */
+.msg p.q { font-weight: 700; color: var(--ink); }
+.msg p.help { background: transparent; padding: 2px 4px; font-size: var(--fs-sm); color: var(--muted); }
 .mine {
   padding: 10px 14px; min-height: 0; border: 0; border-radius: 18px 18px 6px 18px;
   background: var(--accent); color: var(--accent-ink); font-weight: 700; text-align: left;

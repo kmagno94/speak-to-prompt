@@ -1440,7 +1440,7 @@ await check('label fix: below the bar with a label the app can add, small calls 
       sent.push(JSON.parse(r.request().postData()).run); return r.fulfill({ status: 201, headers: h, body: '{"ok":true}' });
     });
     await p.click('#moreOpts summary'); await p.check('#statsToggle');
-    await withKey(p); await p.fill('#thoughts', 'meal prep for me and my roommate'); await p.click('#build'); await done(p);
+    await withKey(p); await p.fill('#thoughts', 'meal prep for me and my roommate, $80 a week, 10 vegetarian lunches'); await p.click('#build'); await done(p);
     await p.waitForFunction(() => /\u{1F527} (added|tried|couldn|skipped)/u.test(document.getElementById('gradeNote').textContent), null, { timeout: 8000 });
     return { p, sent, note: await p.textContent('#gradeNote') };
   }
@@ -1558,10 +1558,11 @@ await check('grader bench: one tap grades every bench.json case with the current
   expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');
   expect(bench.cases.some((c) => c.key.score >= 4.5) && bench.cases.some((c) => c.key.score < 4.5) && bench.cases.some((c) => c.holdout), 'bench needs passes, fails, and holdouts');
   expect(!/\u2014/.test(JSON.stringify(bench)), 'no em dashes in bench.json');
-  // The grader agrees with the key on every case except the first, which it overrates
-  const first = bench.cases[0];
+  // The grader agrees with the key on every case except the second, which it overrates.
+  // (The first, the Saturday case, is overrated too, but the number check docks it below the bar.)
+  const first = bench.cases[1], sat = bench.cases[0];
   const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
-    return c === first ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
+    return c === first || c === sat ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
   const p = await page({ gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
@@ -1570,9 +1571,9 @@ await check('grader bench: one tap grades every bench.json case with the current
   const passes = bench.cases.filter((c) => c === first || c.key.score >= 4.5).length;
   expect(p.grades.length === n + passes, 'one grade per case plus a second look for each pass: ' + p.grades.length + ' vs ' + (n + passes));
   expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
-  expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(first.today), 'each case is graded with its own date');
+  expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(sat.today), 'each case is graded with its own date');
   expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
-  expect(/\u274c/.test(await p.textContent('.benchout tbody tr:first-child')), 'the overrated case shows a miss');
+  expect(/\u274c/.test(await p.textContent('.benchout tbody tr:nth-child(2)')), 'the overrated case shows a miss');
   await p.click('#benchCopy'); await p.waitForTimeout(200);
   const t = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^bench results\n\nGRADER BENCH\n/.test(t) && t.includes(first.id + ': Claude ' + first.key.score.toFixed(2) + ' / grader 4.80'), 'bench copy wrong: ' + t.slice(0, 300));
@@ -1621,7 +1622,7 @@ await check('confirm passes: a pass gets a second look and the lower grade wins;
 await check('quality grade: hundredths, a 4.5 pass bar, and lessons learned as the rubric (broken lessons cost points)', async () => {
   const L = { version: 2, lessons: [{ id: 'L1', text: 'Write the Task as a clear instruction.' }, { id: 'L2', text: 'State leftover money as exact math.' }], grader_version: 4, grader: [] };
   async function run(grade) {
-    const p = await page({ intake: noQ, write: 'Garden prompt', grade, lessons: L }); const sent = [];
+    const p = await page({ intake: noQ, write: 'Garden prompt: budget 200, spent 35.50.', grade, lessons: L }); const sent = [];
     await relayRun(p, sent);
     await p.click('#moreOpts summary'); await p.check('#statsToggle');
     await withKey(p); await p.fill('#thoughts', 'garden budget is 200 and i spent 35.50 already'); await p.click('#build'); await done(p);
@@ -1963,7 +1964,7 @@ await check('my context: hidden without dev tools; write, edit, delete, and it s
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('my context: only picked pieces reach the prompt and the writer, the X-ray labels them, and the thoughts box is never saved', async () => {
+await check('my context: only picked pieces reach the prompt and the writer, nothing is tacked on after the prompt, the X-ray labels them, and the thoughts box is never saved', async () => {
   const p = await page();
   await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }, { id: 'b', title: 'WGU', text: 'Taking D522 Python.' }])));
   await devOn(p);
@@ -1972,9 +1973,11 @@ await check('my context: only picked pieces reach the prompt and the writer, the
   expect(/1 added to this prompt/.test(await p.textContent('#contextRow')), 'count should show 1 picked');
   await p.click('#build'); await done(p);
   let out = await p.inputValue('#output');
-  expect(/MY CONTEXT/.test(out) && /\[Roastery\]/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be added: ' + out.slice(-300));
+  /* No key: the picked piece goes inside the quick prompt, before the thoughts, never tacked on after it. */
+  expect(!/MY CONTEXT/.test(out) && /Tuesday and Friday/.test(out) && !/D522/.test(out), 'only the picked context should be used: ' + out.slice(-300));
+  expect(out.indexOf('Tuesday and Friday') < out.indexOf('MY RAW THOUGHTS:') && out.trim().endsWith('"'.repeat(3)), 'the copied prompt should end with the prompt itself: ' + out.slice(-200));
   await p.click('#xrayBtn');
-  expect(await p.$('#xray [aria-label^="Your context"]'), 'X-ray should label the context part as Your context');
+  expect(await p.$('#xray [aria-label^="Added to help: Your context"]'), 'X-ray should label the context part as Your context');
   expect(!/SECRET-NOTE/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the thoughts box must never be saved');
   const q = await page();
   await q.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
@@ -1983,7 +1986,8 @@ await check('my context: only picked pieces reach the prompt and the writer, the
   await q.fill('#thoughts', 'memo'); await q.click('#build');
   await q.waitForSelector('#qa:not([hidden])'); await q.click('#qaList .chips button'); await q.click('#qaGo'); await done(q);
   const write = q.calls.find(c => !c.intake);
-  expect(/CONTEXT THE PERSON PICKED/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context');
+  expect(/CONTEXT THE PERSON PICKED[\s\S]*NOT attached to the prompt[\s\S]*Work in only the facts/.test(write.text) && /Tuesday and Friday/.test(write.text), 'the writer should see the picked context and fold in what it needs');
+  expect(!/MY CONTEXT|Tuesday and Friday/.test(await q.inputValue('#output')), 'with a key, Copy gives the prompt only (no context block after it)');
   const r = await page();
   await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
   await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
@@ -2129,6 +2133,176 @@ await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen
   if (await p.$('#ideaPanel .list button:has-text("Show done")')) await p.click('#ideaPanel .list button:has-text("Show done")');
   await p.click('#ideaClearDone'); await p.click('#ideaClearDone');
   expect(!(await p.$('#ideaPanel .list .done')) && JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas'))).length === 1, 'Clear done should remove the done ideas only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Build 1 (v2.1.4): Batch A, the number and date check, and prompt-only copy. */
+await check('first time intro: no emojis, and room between the parts', async () => {
+  const p = await page();
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  const text = await p.$eval('#tutorial .sheet', (e) => { const c = e.cloneNode(true); c.querySelector('#tutClose')?.remove(); return c.textContent; });
+  expect(!/[\p{Extended_Pictographic}\u2713\u21bb]/u.test(text), 'the intro should have no emojis or icon characters: ' + (text.match(/[\p{Extended_Pictographic}\u2713\u21bb]/gu) || []).join(' '));
+  const gaps = await p.evaluate(() => ({ sheet: parseFloat(getComputedStyle(document.querySelector('#tutorial .sheet')).rowGap), flow: parseFloat(getComputedStyle(document.querySelector('#tutorial .flow')).rowGap) }));
+  expect(gaps.sheet >= 20 && gaps.flow >= 24, 'parts of the intro need more room: ' + JSON.stringify(gaps));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('copy and open: the status line sits right under the links and says what happened', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  expect(await p.evaluate(() => document.querySelector('.openrow').nextElementSibling.id === 'status'), 'the status line should come right after Copy and open');
+  await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
+  await p.click('.openrow a >> text=ChatGPT'); await p.waitForTimeout(300);
+  expect(/Copied\. Opening ChatGPT/.test(await p.textContent('#status')), 'status should say it copied and is opening ChatGPT: ' + await p.textContent('#status'));
+  await p.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('blocked')); });
+  await p.click('.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  expect(/Couldn't copy it\. Tap Copy prompt first, then open Claude/.test(await p.textContent('#status')), 'a failed copy should say what to do: ' + await p.textContent('#status'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('start over forgets the transcript, and Paste warns when the clipboard still has the one you used', async () => {
+  const p = await page();
+  await p.evaluate(() => navigator.clipboard.writeText('walk the dog then plan my week'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  await p.click('#build'); await done(p);
+  await p.click('#xrayBtn');
+  await p.click('#reset'); await p.waitForTimeout(400);
+  expect(await p.inputValue('#thoughts') === '' && await p.evaluate(() => !document.querySelector('#xray') && !document.querySelector('#xrayBtn')), 'Start over should clear the box and the X-ray');
+  // Same transcript still on the clipboard: warn, keep the box empty
+  await p.evaluate(() => navigator.clipboard.writeText('walk the dog then plan my week'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === '' && /already used/.test(await p.textContent('#notice-form')), 'Paste should warn instead of bringing the old transcript back');
+  // Use it anyway pastes it
+  await p.click('#notice-form button:text-is("Use it anyway")'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === 'walk the dog then plan my week', 'Use it anyway should paste it');
+  // A new transcript pastes with no warning
+  await p.fill('#thoughts', '');
+  await p.evaluate(() => navigator.clipboard.writeText('a brand new memo about groceries'));
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === 'a brand new memo about groceries', 'a new transcript should paste right away');
+  // The shortcut path warns too
+  await p.click('#build'); await done(p);
+  await p.evaluate(() => { location.href = location.pathname + '#paste'; }); await p.waitForTimeout(300);
+  await p.click('#bannerPaste'); await p.waitForTimeout(200);
+  expect(await p.inputValue('#thoughts') === '' && /already used/.test(await p.textContent('#notice-form')), 'coming back from the shortcut with the old transcript should warn');
+  expect(!(await p.evaluate(() => JSON.stringify(localStorage))).includes('groceries'), 'nothing about the transcript is saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ideas tab: Edit changes an open idea\'s text, Cancel keeps it as it was', async () => {
+  const p = await page();
+  await ideasOn(p); await p.click('#ideaTab');
+  await logIdea(p, 'bug', 'copy', 'Copy did nothng on iPad');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  expect(await p.evaluate(() => document.activeElement && document.activeElement.classList.contains('editbox')), 'Edit should put the cursor in the text');
+  await p.fill('#ideaPanel .editbox', 'Copy did nothing on iPad');
+  await p.click('#ideaPanel .list button:text-is("Save")');
+  expect(/Copy did nothing on iPad/.test(await p.textContent('#ideaPanel .list')) && JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')))[0].text === 'Copy did nothing on iPad', 'Save should keep the new text');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  await p.fill('#ideaPanel .editbox', 'oops');
+  await p.click('#ideaPanel .list button:text-is("Cancel")');
+  expect(/Copy did nothing on iPad/.test(await p.textContent('#ideaPanel .list')) && !/oops/.test(await p.textContent('#ideaPanel .list')), 'Cancel should leave it as it was');
+  await p.click('#ideaPanel .list button:text-is("Edit")');
+  await p.fill('#ideaPanel .editbox', '  ');
+  expect(await p.isDisabled('#ideaPanel .list button:text-is("Save")'), 'an empty edit cannot be saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('chat questions: the question is bold, the helper lines are small and gray', async () => {
+  const p = await page({ intake: { title: 'Trip', need: 'N', category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['A weekend', 'A week'] }] } });
+  await withKey(p); await p.fill('#thoughts', 'plan a trip'); await p.click('#build');
+  await p.waitForSelector('#qaList .msg.ai >> text=How long?');
+  const q = await p.$eval('#qaList .msg.ai p.q', (e) => ({ text: e.textContent, w: getComputedStyle(e).fontWeight }));
+  const h = await p.$eval('#qaList .msg.ai p.help', (e) => ({ text: e.textContent, size: parseFloat(getComputedStyle(e).fontSize), color: getComputedStyle(e).color, ink: getComputedStyle(document.body).color }));
+  expect(q.text === 'How long?' && Number(q.w) >= 700, 'the question should be bold: ' + JSON.stringify(q));
+  expect(/quick question/.test(h.text) && h.size < 16 && h.color !== h.ink, 'the helper line should be small and gray: ' + JSON.stringify(h));
+  await p.click('#qaList .chips button'); await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  expect(await p.$('#qaList .msg.ai p.help >> text=everything I need'), 'the closing line is a helper line too');
+  await p.click('#qaList .mine');
+  await p.waitForSelector('#qaList .msg.ai p.help >> text=Sure, let\'s change that.');
+  expect(await p.$$eval('#qaList .msg.ai p.q', (l) => l.filter((e) => e.textContent === 'How long?').length) === 2, 'changing an answer asks the question again, bold, on its own line');
+  const s = await page();
+  await s.click('#starterBtn');
+  await s.waitForSelector('#starter .msg.ai p.q >> text=What do you want help with?');
+  expect(await s.$('#starter .msg.ai p.help >> text=Pick one'), 'Not sure where to start? uses the same bold question and gray helper');
+  expect(!p.errors.length && !s.errors.length, 'page errors');
+});
+
+await check('my context: the editor opens at its top with the cursor in a title (new piece first)', async () => {
+  const p = await page();
+  await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'x '.repeat(900) }, { id: 'b', title: 'WGU', text: 'y '.repeat(900) }])));
+  await devOn(p);
+  await p.click('#contextNew');
+  await p.waitForSelector('#contextEditor');
+  const st = await p.evaluate(() => { const ed = document.getElementById('contextEditor'), first = ed.querySelector('.ctxitem input'); return { focused: document.activeElement === first, empty: first.value === '', top: ed.getBoundingClientRect().top }; });
+  expect(st.focused && st.empty, 'the new piece should be first, with the cursor in its title: ' + JSON.stringify(st));
+  await p.waitForTimeout(900);
+  const top = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().top);
+  expect(top >= -2 && top < 120, 'the editor should be scrolled to its top: ' + top);
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await p.click('#contextEdit'); await p.waitForTimeout(400);
+  expect(await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxitem input')), 'Edit should open with the cursor in the first title');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('number check: flags a weekday that doesn\'t match its date, and a year nobody said', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Plan a chill game night on Saturday, October 30, 2026 for my cousins.' });
+  await p.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await withKey(p); await p.fill('#thoughts', 'maybe saturday the 30th? game night for my cousins'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#numWarn:not([hidden])');
+  const w = await p.textContent('#numWarn');
+  expect(/mentions 2026, which you never said/.test(w) && /says Saturday, October 30, 2026, but October 30 is a Friday/.test(w), 'Heads up should name the year and the wrong weekday: ' + w);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Plan a chill game night, maybe Saturday the 31st, for my cousins.' });
+  await q.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await withKey(q); await q.fill('#thoughts', 'maybe saturday the 31st? game night for my cousins'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#numWarn', (e) => e.hidden), 'a weekday that matches its date should not be flagged');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('writer: keeps hedges and adds no year, weekday, or extra words to a date', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'maybe saturday?'); await p.click('#build'); await done(p);
+  const w = p.calls.find((c) => !c.intake).text;
+  expect(/Keep their hedges\. If they said maybe, probably, I think/.test(w) && /Never add a year, a weekday, a month, or a time they didn't say/.test(w), 'the writer should be told to keep hedges and add nothing to dates');
+  expect(/Never copy its year, weekday, or month onto a date the person gave/.test(w), "today's date is only for counting days");
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('quality grade: docked below the bar when the number check flags', async () => {
+  const L = { version: 2, lessons: [], grader_version: 4, grader: [] };
+  const p = await page({ intake: noQ, write: 'Plan my game night on Saturday, October 30, 2026.', grade: { craft: 4.8, broke: [], rearranged: false, invented: false, missing: [] }, lessons: L }); const sent = [];
+  await relayRun(p, sent);
+  await p.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', 'game night saturday the 30th'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  const note = await p.textContent('#gradeNote');
+  expect(/Quality check: 3\.5 of 5 · ✋ below the 4\.5 bar/.test(note) && /docked from 4\.80: the number check flagged it/.test(note), 'a year and a wrong weekday should dock two half points off the bar: ' + note);
+  expect(p.grades.length === 1, 'a docked grade is a fail, so it gets no second look');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent[0] && sent[0].grade === 3.5 && sent[0].grade_pass === false && sent[0].grade_numcheck === 'extra+dates', 'run log should show the dock: ' + JSON.stringify(sent[0]));
+  const q = await page({ intake: noQ, write: 'Plan my game night, maybe Saturday the 31st.', grade: { craft: 4.8, broke: [], rearranged: false, invented: false, missing: [] }, lessons: L });
+  await q.clock.setFixedTime(new Date('2026-10-27T20:00:00-04:00'));
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'game night maybe saturday the 31st'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 5000 });
+  expect(/4\.8 of 5/.test(await q.textContent('#gradeNote')) && !/docked/.test(await q.textContent('#gradeNote')), 'a clean number check leaves the grade alone');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('grader bench: the Saturday example runs first, and the number check docks it like a live run', async () => {
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const sat = bench.cases[0];
+  expect(/saturday the 30th/i.test(sat.raw) && /Saturday, October 30, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
+  const p = await page({ gradeFn: (ask) => (ask.includes(sat.prompt) ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : null) });
+  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [sat] }) }));
+  await devOn(p); await withKey(p); await p.click('#moreOpts summary');
+  await p.click('#benchRun');
+  await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
+  expect(/1 of 1 pass\/fail agree/.test(await p.textContent('.benchsum')) && /number check docked it from 4\.80/.test(await p.textContent('#benchOut')), 'the dock should bring an overrated 4.8 under the bar: ' + await p.textContent('#benchOut'));
+  await p.click('#benchCopy'); await p.waitForTimeout(200);
+  expect(/B9: Claude 3\.00 \/ grader 3\.50[\s\S]*number check docked 4\.80 to 3\.50 \(extra\+dates\)/.test(await p.evaluate(() => navigator.clipboard.readText())), 'bench copy should show the dock');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

@@ -152,6 +152,7 @@
       <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
       <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
     </div>
+    <p id="status" class="status openstatus" role="status"></p>
     <div class="devrow" id="devRow" hidden={!core.dev}>
       <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
       <div class="row">
@@ -159,7 +160,6 @@
         <button type="button" id="copyAll">Copy full result</button>
       </div>
     </div>
-    <p id="status" class="status"></p>
     <div class="keep">
       <p class="keephead">Want a record of this?</p>
       <div class="row">

@@ -103,6 +103,15 @@ class Ideas {
     writeList(this.list);
   }
 
+  /* Edit: change what an idea says. Same 1,000 character cap as a new one; empty keeps the old text. */
+  edit(id, text) {
+    const t = String(text || '').trim().slice(0, 1000);
+    if (!t) return false;
+    this.list = this.list.map((i) => (i.id !== id ? i : { ...i, text: t, editedAt: new Date().toISOString() }));
+    writeList(this.list);
+    return true;
+  }
+
   remove(id) { this.list = this.list.filter((i) => i.id !== id); writeList(this.list); }
 
   /* Clear done: removes every fixed and won't-do idea from this phone. */

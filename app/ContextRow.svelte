@@ -10,12 +10,17 @@
   let armed = $state('');
   let editor = $state();
 
-  async function addNew() {
-    const id = context.add();
+  /* The editor always opens at its top with the cursor in a title: the new piece (which
+     goes first) for + New, the first piece for Edit. */
+  async function openAt(id) {
     context.open = true;
     await tick();
-    editor?.querySelector(`[data-id="${id}"] input`)?.focus();
+    const input = editor?.querySelector(id ? `[data-id="${id}"] input` : '.ctxitem input');
+    input?.focus({ preventScroll: true });
+    /* After it slides open, so the page is tall enough to bring its top into view. */
+    setTimeout(() => editor?.scrollIntoView({ block: 'start', behavior: ms(1) ? 'smooth' : 'auto' }), ms(230));
   }
+  function addNew() { openAt(context.add()); }
   function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
   function done() { context.save(); context.open = false; armed = ''; }
 </script>
@@ -25,7 +30,7 @@
     <div class="ctxhead">
       <span class="ctxlabel">My context</span>
       {#if context.chosen.length}<span class="ctxcount" id="contextCount">{context.chosen.length} added to this prompt · about {context.tokens} tokens</span>{/if}
-      <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : (context.open = true))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
+      <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
     </div>
     <div class="chips" role="group" aria-label="Context to add to this prompt">
       {#each context.usable as c (c.id)}
@@ -36,7 +41,7 @@
 
     {#if context.open}
       <div class="ctxeditor" id="contextEditor" bind:this={editor} transition:slide={{ duration: ms(220) }}>
-        <p class="hint">Each piece is saved on this phone only. Tap its chip above to add it to a prompt; the AI can then refer to it by its title.</p>
+        <p class="hint">Each piece is saved on this phone only. Tap its chip above to use it for this prompt: the facts this request needs get worked into the prompt, nothing tacked on.</p>
         {#each context.list as c, i (c.id)}
           <div class="ctxitem" data-id={c.id}>
             <label class="sr" for="ctxTitle-{i}">Title</label>
@@ -64,7 +69,7 @@
   .ctxedit:empty { display: none; }
   .ctxchip { min-height: var(--tap); }
   .ctxnew { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); border: 1.5px dashed var(--line); background: transparent; color: var(--accent); font-weight: 700; font-size: var(--fs-sm); }
-  .ctxeditor { display: grid; gap: var(--sp-3); }
+  .ctxeditor { display: grid; gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
   .ctxitem { display: grid; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   .ctxtitle { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
   .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); min-height: 150px; }
