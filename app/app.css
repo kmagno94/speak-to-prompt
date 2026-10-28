@@ -300,7 +300,9 @@ button.getlink { color: var(--accent); font-weight: 700; text-decoration: underl
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
 /* Build and the mode picker each keep their share of the row, so a longer busy label
    (Reading your thoughts...) wraps inside the button instead of crushing the picker. */
-.buildrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: stretch; }   /* Build my prompt lives in the dock (#17) */
+.buildrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(132px, 1fr); gap: 10px; align-items: stretch; }
+.buildrow #build { padding: 10px 10px; line-height: 1.2; text-wrap: balance; min-height: 64px; }   /* room for a 2-line label, so the row never jumps */
+.buildrow:has(> #build[hidden]) { grid-template-columns: minmax(0, 1fr); }   /* questions or a finished prompt: the dock holds the next step (#17) */
 .buildrow .starterwrap { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
 @media (max-width: 379px) { .buildrow { grid-template-columns: minmax(0, 1fr); } }
 /* Mode picker beside Build: Quick or Normal. Each radio fills its segment so a tap anywhere picks it. */

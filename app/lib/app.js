@@ -2299,7 +2299,7 @@ export function startApp() {
     if (t.closest("#xrayBtn")) { pendingRun.xray_opened = true; return; }
     var ai = t.closest(".openai");
     var a = t.closest("#copy") ? "copied" : t.closest("#copyNote") ? "copied with note" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note" : t.closest("#glowSave") ? "saved glow-up"
-      : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build") ? "rebuilt" : "";
+      : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build, #dockBuild") ? "rebuilt" : "";
     if (a) flushRun(a);
   }, true);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushRun("left the page"); });

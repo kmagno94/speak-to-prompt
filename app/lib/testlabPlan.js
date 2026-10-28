@@ -12,6 +12,10 @@ export const BEFORE_PROMOTE = [
   { say: 'Turn on Dark Mode and look at the first screen and a result.', see: 'All text is readable, no white boxes.' }
 ];
 
+/* A check that asks you to paste a note carries one (paste), so you never have to make one up.
+   The Test lab shows it with a Copy test note button. */
+export const asksForNote = (say) => /\bpaste (a|this|the|any)\b|\bmessy note\b|\btype a note\b/i.test(String(say || ''));
+
 export const stepKey = (version, i) => `${version}#${i}`;
 
 export function labPlan(releases = [], live = '') {
@@ -19,7 +23,7 @@ export function labPlan(releases = [], live = '') {
     version: r.version,
     title: r.title || '',
     steps: (Array.isArray(r.checks) ? r.checks : []).filter((c) => c && c.say && c.see)
-      .map((c, i) => ({ key: stepKey(r.version, i), say: String(c.say), see: String(c.see), version: r.version, title: r.title || '' }))
+      .map((c, i) => ({ key: stepKey(r.version, i), say: String(c.say), see: String(c.see), ...(c.paste ? { paste: String(c.paste) } : {}), version: r.version, title: r.title || '' }))
   })).filter((b) => b.steps.length);
   builds.push({ version: '', title: 'Before you promote', steps: BEFORE_PROMOTE.map((c, i) => ({ key: `x-${i}`, ...c, version: '', title: 'Before you promote' })) });
   return { builds, steps: builds.flatMap((b) => b.steps), newest: aheadOf(releases, live)[0]?.version || '' };

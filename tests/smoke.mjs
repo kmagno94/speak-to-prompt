@@ -281,9 +281,9 @@ await check('first screen is simple; plain words; copy and open', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   for (const id of ['#statsToggle', '#memoGuide']) expect(!(await p.isVisible(id)), id + ' should be folded under More options');
   expect(await p.isVisible('#quickMode'), 'Quick mode should show on the first screen');
-  /* Build my prompt lives in the Next step dock (#17); Quick and Normal stay in the Build row under the box. */
-  const qRow = await p.evaluate(() => !!document.getElementById('quickMode').closest('.buildrow') && !!document.getElementById('build').closest('#nextDock'));
-  expect(qRow, 'Quick mode should be in the Build row and Build my prompt in the dock');
+  /* Build my prompt sits under the box with Quick and Normal; the dock (#17) has its own copy for when you scroll past. */
+  const qRow = await p.evaluate(() => !!document.getElementById('quickMode').closest('.buildrow') && !!document.getElementById('build').closest('.buildrow') && !!document.getElementById('dockBuild').closest('#nextDock'));
+  expect(qRow, 'Quick mode and Build my prompt should be in the Build row, with the dock\'s Build in the dock');
   expect(await p.isVisible('#bannerPaste') && (await p.textContent('#bannerPaste')).includes('Paste') && !(await p.$('#pasteWrap.banner')), 'a small Paste button should sit on top of the box');
   const above = await p.evaluate(() => document.getElementById('pasteWrap').getBoundingClientRect().bottom <= document.getElementById('thoughts').getBoundingClientRect().top);
   expect(above, 'Paste should be above the text box');
@@ -2226,7 +2226,7 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] } });
   await withKey(p); await p.fill('#thoughts', 'yard sale this weekend');
   expect(await p.isVisible('#build') && !(await p.isVisible('#dockMore')) && !(await p.isVisible('#copy')), 'writing your thoughts: only Build my prompt, no ⋯');
-  expect(await p.evaluate(() => !!document.getElementById('build').closest('#nextDock') && !document.querySelector('#form #build')), 'Build my prompt should live only in the dock');
+  expect(await p.evaluate(() => !!document.querySelector('#form .buildrow #build') && !!document.querySelector('#nextDock #dockBuild')), 'Build my prompt should sit under the box, with a copy in the dock');
   await p.click('#build'); await p.waitForSelector('#qaList .chips button');
   expect((await p.textContent('#qaGo')).trim() === 'Write my prompt (0 of 2)' && !(await p.isVisible('#build')), 'questions: Write my prompt (0 of 2), got ' + await p.textContent('#qaGo'));
   await p.click('#qaList .chips button'); await p.waitForTimeout(700);
@@ -2243,7 +2243,7 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   await p.keyboard.press('Escape'); await p.waitForTimeout(100);
   expect(!(await p.isVisible('#dockMenu')), 'Escape should close the menu');
   await p.fill('#thoughts', 'yard sale this weekend, and a bake sale'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(100);
-  expect(await p.isVisible('#build') && !(await p.isVisible('#copy')), 'changing your words after a build should bring back Build my prompt');
+  expect(await p.isVisible('#build') && await p.isVisible('#copy'), 'changing your words after a build should bring back Build my prompt and keep Copy prompt');
   await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button'); await p.click('#qaGo'); await done(p);
   await p.check('#quickMode'); await p.waitForTimeout(100);
   expect(await p.isVisible('#build'), 'changing Quick or Normal after a build should bring back Build my prompt too');
@@ -2252,6 +2252,51 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   expect(await p.evaluate(() => document.getElementById('nextDock').classList.contains('away')) && !(await p.evaluate(() => document.body.classList.contains('dock-on'))), 'the dock should tuck away while X-ray is open');
   await p.click('#xrayBtn'); await p.waitForTimeout(100);
   expect(!(await p.evaluate(() => document.getElementById('nextDock').classList.contains('away'))), 'the dock should come back after X-ray Done');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Kevin's Test lab report, 10/28: Build under the box, and the dock's Build only once you scroll past it. */
+await check('next step dock: Build my prompt sits under the box, and the dock shows its own only once you scroll past it', async () => {
+  const p = await page({ intakeDelay: 1500, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await p.setViewportSize({ width: 390, height: 640 });   /* about what Safari leaves on an iPhone */
+  await withKey(p);
+  await p.fill('#thoughts', 'plan my week: gym monday, quiz thursday'); await p.evaluate(() => { document.activeElement.blur(); window.scrollTo(0, 0); }); await p.waitForTimeout(400);
+  const under = await p.evaluate(() => { const b = document.getElementById('build'), t = document.getElementById('thoughts'); return !!b.closest('#form') && b.getBoundingClientRect().top >= t.getBoundingClientRect().bottom; });
+  expect(under, 'Build my prompt should sit under the box');
+  expect(!(await p.isVisible('#dockBuild')) && await p.evaluate(() => document.getElementById('nextDock').classList.contains('idle')), 'at the box (even with its Build below the fold), the pill should step aside');
+  await p.evaluate(() => window.scrollTo(0, document.getElementById('build').getBoundingClientRect().top + scrollY - 200)); await p.waitForTimeout(400);
+  expect(!(await p.isVisible('#dockBuild')), 'with the Build under the box on screen, no second Build in the pill');
+  await p.evaluate(() => window.scrollTo(0, document.getElementById('build').getBoundingClientRect().bottom + scrollY + 40)); await p.waitForTimeout(400);
+  expect(await p.isVisible('#dockBuild') && (await p.textContent('#dockBuild')).trim() === 'Build my prompt' && !(await p.evaluate(() => document.getElementById('nextDock').classList.contains('idle'))), 'scrolled past the box, the pill should show Build my prompt');
+  expect(await p.evaluate(() => document.body.classList.contains('dock-on')), 'the page keeps its bottom room either way, so nothing jumps');
+  await p.click('#dockBuild');
+  await p.waitForFunction(() => document.getElementById('build').disabled);
+  expect(await p.evaluate(() => { const d = document.getElementById('dockBuild'), b = document.getElementById('build'); return d.disabled && d.textContent.trim() === b.textContent.trim(); }), 'while it works, the dock Build mirrors the one under the box (disabled, same label)');
+  await done(p);
+  expect(await p.isVisible('#copy') && !(await p.isVisible('#build')) && !(await p.isVisible('#dockBuild')), 'on the result Copy prompt is the one button');
+  await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(300);
+  expect(await p.isVisible('#copy'), 'Copy prompt stays in the pill on the result even at the top');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('next step dock: changing your words on a finished prompt keeps Copy prompt next to Rebuild, with Open in and New prompt in ⋯', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'plan a small birthday dinner for my sister'); await p.click('#build'); await done(p);
+  const before = await p.inputValue('#output');
+  await p.type('#thoughts', ' saturday'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(150);
+  expect(await p.isVisible('#build') && await p.isVisible('#copy'), 'a change keeps Copy prompt in the pill, with Build my prompt under the box');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(400);
+  expect(await p.isVisible('#copy') && await p.isVisible('#dockBuild') && (await p.textContent('#dockBuild')).trim() === 'Rebuild' && await p.isVisible('#dockMore'), 'scrolled down: Copy prompt, Rebuild and ⋯');
+  expect(await p.evaluate(() => document.getElementById('copy').classList.contains('alt') && document.getElementById('copy').compareDocumentPosition(document.getElementById('dockBuild')) & 4), 'Copy prompt is the lighter button, before Rebuild');
+  const fit = await p.evaluate(() => { const bar = document.querySelector('#nextDock .bar').getBoundingClientRect(); return [...document.querySelectorAll('#nextDock .bar button:not([hidden])')].every((b) => { const r = b.getBoundingClientRect(); return r.right <= bar.right + 1 && r.left >= bar.left - 1 && b.scrollWidth <= b.clientWidth + 1; }); });
+  expect(fit, 'all three fit in the pill on a phone with nothing cut off');
+  await p.click('#dockMore');
+  expect(await p.isVisible('.openrow a >> text=Claude') && await p.isVisible('#reset'), 'the ⋯ menu keeps Open in and New prompt');
+  await p.keyboard.press('Escape');
+  await p.click('#copy'); await p.waitForTimeout(300);
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === before, 'Copy prompt copies the prompt you already had');
+  await p.click('#dockBuild'); await done(p); await p.waitForTimeout(200);
+  expect(await p.isVisible('#copy') && !(await p.isVisible('#dockBuild')) && !(await p.isVisible('#build')) && !(await p.evaluate(() => document.getElementById('copy').classList.contains('alt'))), 'after Rebuild the pill goes back to just Copy prompt');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2746,6 +2791,22 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(/Check two A/.test(await p.textContent('#labStep')) && /5 not checked/.test(await p.textContent('#labStep')), 'after the fix passes, it should carry on along the rail to what is not checked');
     await p.keyboard.press('Escape');
     expect(/Continue · 5 not checked/.test(await p.textContent('#labQuick')), 'the quick start should offer the 5 not checked');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+
+  await check('test lab: a check with a test note shows it with Copy test note, and the copy lands on the clipboard', async () => {
+    const p = await page();
+    const NOTE = 'ok so me and a few friends want to do a trip somewhere warm sometime soon, help us plan';
+    await p.route(/releases\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ releases: [
+      { version: '9.0.1', title: 'One', items: ['x'], checks: [{ say: 'Tap Copy test note and paste it in the box', see: 'It builds', paste: NOTE }, { say: 'Check plain', see: 'shows' }] },
+      { version: '9.0.0', title: 'Live', items: ['x'], checks: [{ say: 'Old', see: 'old' }] }] }) }));
+    await p.goto(BASE + '?live=9.0.0#testlab');
+    await p.waitForSelector('#labVerdict'); await p.click('#labQuick');
+    expect(await p.isVisible('#labPaste') && (await p.textContent('#labPaste')).includes(NOTE), 'the note should show on the step');
+    await p.click('#labPasteCopy');
+    expect(await p.evaluate(() => navigator.clipboard.readText()) === NOTE && /Copied/.test(await p.textContent('#labPasteCopy')), 'Copy test note should copy it and say so');
+    await p.click('#labWorks');
+    expect(/Check plain/.test(await p.textContent('#labStep')) && !(await p.isVisible('#labPaste')), 'a check without a note shows no note box');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   });
 

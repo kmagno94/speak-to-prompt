@@ -2,12 +2,16 @@
   /* Next step dock (#17, spec locked 10/28, with the #28 motion kit). A floating pill at the
      bottom that holds the one button you need right now, and it's the only place that button
      lives:
-       - Writing your thoughts: Build my prompt (no ⋯, nothing to start over yet).
+       - Writing your thoughts: Build my prompt sits right under the box (#build, in the form),
+         and joins the dock (#dockBuild) only once you scroll past it, so it's never on screen
+         twice (Kevin, 10/28). No ⋯ here, nothing to start over yet.
        - Questions: Write my prompt (N of 3), which works at 0 of 3. ⋯ has Quick version
          (the faster, lighter write) and New prompt.
        - Result: Copy prompt. ⋯ has Open in ChatGPT, Claude, Gemini, and New prompt.
-     Change your words (or Quick or Normal, Use my core, My context) after a build and the dock
-     goes back to Build my prompt.
+     Change your words (or Quick or Normal, Use my core, My context) after a build and the next
+     step is to build again. On a finished prompt that's the 'redo' moment: Copy prompt stays
+     (so an accidental word never takes it away) next to Rebuild, and ⋯ still has Open in and
+     New prompt (Kevin, 10/28).
      Always on, on every screen. It tucks away while the keyboard is up (it fades back in at
      150ms when the keyboard closes), and while X-ray, the Tutorial, or a panel is open.
      These are the real buttons app.js wires up by id (build, copy, reset, the .openrow links),
@@ -24,7 +28,9 @@
   import { lab } from './lib/testlab.svelte.js';
   import { context } from './lib/context.svelte.js';
 
-  let moment = $state('input');   // 'input' | 'qa' | 'result'
+  let moment = $state('input');   // 'input' | 'qa' | 'result' | 'redo' (words changed on a finished prompt)
+  let inlineSeen = $state(true);  // the Build my prompt under the box isn't scrolled past yet
+  let busy = $state(false), busyLabel = $state('');   // mirrors the inline Build (app.js sets its text and disabled)
   let menu = $state(false);       // the ⋯ menu
   let tutorial = $state(false);   // the First time? Start here sheet is open
   let more, sheet;
@@ -33,6 +39,12 @@
   const UNDO_MS = 6000;
 
   const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open);
+  const building = $derived(moment === 'input' || moment === 'redo');   // the next step is Build
+  const showBuild = $derived(building && !inlineSeen);
+  const showCopy = $derived(moment === 'result' || moment === 'redo');
+  /* Nothing to show: the box is in view with its own Build under it. The pill steps aside but the
+     page keeps its bottom room, so nothing jumps while you scroll. */
+  const idle = $derived(!showBuild && !showCopy && moment !== 'qa');
   const total = $derived(chat.questions.length);
   const answered = $derived(chat.answers.filter((a) => a).length);
 
@@ -43,7 +55,7 @@
        My context) means the next step is to build again, even with the same words. */
     let built = false, edited = false;
     const read = () => {
-      moment = !edited && !result.hidden ? 'result' : !edited && !qa.hidden ? 'qa' : 'input';
+      moment = !result.hidden ? (edited ? 'redo' : 'result') : !edited && !qa.hidden ? 'qa' : 'input';
       tutorial = !!(tut && tut.open);
     };
     const onSubmit = () => { built = true; edited = false; queueMicrotask(read); };
@@ -57,6 +69,19 @@
     [result, qa].forEach((n) => watch.observe(n, { attributes: true, attributeFilter: ['hidden'] }));
     if (tut) watch.observe(tut, { attributes: true, attributeFilter: ['open'] });
     read();
+
+    /* Build my prompt under the box: shows only while Build is the next step, and the dock's
+       copy of it shows only once you've scrolled past that one. */
+    const inline = el('build');
+    /* "Past" = scrolled up and out of view (its middle above the top edge). Below the fold at the
+       start doesn't count: that's where you are, right at the box (Kevin, 10/28). */
+    const seen = new IntersectionObserver(([e]) => { const r = e.boundingClientRect; inlineSeen = !(r.height && r.top + r.height / 2 < (e.rootBounds?.top || 0)); }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+    seen.observe(inline);
+    inlineEl = inline;
+    const mirror = () => { busy = inline.disabled; busyLabel = inline.textContent.trim(); };
+    const mo = new MutationObserver(mirror);
+    mo.observe(inline, { attributes: true, attributeFilter: ['disabled'], childList: true, characterData: true, subtree: true });
+    mirror();
     stopContext = () => { if (built) { edited = true; queueMicrotask(read); } };
 
     /* New prompt: keep the words for 6 seconds, in memory only. This runs before app.js
@@ -85,6 +110,7 @@
     };
     document.addEventListener('keydown', keys);
     return () => {
+      seen.disconnect(); mo.disconnect();
       reset.removeEventListener('click', snap, true); window.removeEventListener('stp-undo', undone); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
       clearTimeout(undoTimer);
       watch.disconnect();
@@ -94,6 +120,8 @@
   });
   /* Picking a My context chip changes what goes in too. */
   let stopContext = null, lastPicks = null;
+  let inlineEl = $state(null);
+  $effect(() => { if (inlineEl) inlineEl.hidden = !building; });
   $effect(() => {
     const picks = context.picked.join(',');
     if (lastPicks !== null && picks !== lastPicks) stopContext?.();
@@ -148,9 +176,9 @@
   {/key}
 {/if}
 
-<div class="dock" id="nextDock" class:away data-moment={moment} role="group" aria-label="Next step" aria-hidden={away} inert={away}>
+<div class="dock" id="nextDock" class:away class:idle={idle && !away} data-moment={moment} role="group" aria-label="Next step" aria-hidden={away} inert={away}>
   <div class="sheet" id="dockMenu" bind:this={sheet} hidden={!menu || moment === 'input'} role="menu" aria-label="More">
-    <div class="openrow" hidden={moment !== 'result'}>
+    <div class="openrow" hidden={!showCopy}>
       <span class="ghead" id="dockOpenHead">Open in</span>
       <a class="openai" href="https://chatgpt.com/" target="_blank" rel="noopener" role="menuitem" onclick={picked}>ChatGPT</a>
       <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener" role="menuitem" onclick={picked}>Claude</a>
@@ -167,9 +195,9 @@
   </div>
 
   <div class="bar">
-    <button type="submit" form="form" class="primary main" id="build" hidden={moment !== 'input'}>Build my prompt</button>
+    <button type="button" class="primary main copybig" class:alt={showBuild} id="copy" hidden={!showCopy}>Copy prompt</button>
+    <button type="submit" form="form" class="primary main" id="dockBuild" hidden={!showBuild} disabled={busy}>{busy ? busyLabel : moment === 'redo' ? 'Rebuild' : 'Build my prompt'}</button>
     <button type="button" class="primary main" id="qaGo" hidden={moment !== 'qa'} disabled={chat.busy} onclick={() => chat.finish(false)}>Write my prompt{total ? ` (${answered} of ${total})` : ''}</button>
-    <button type="button" class="primary main copybig" id="copy" hidden={moment !== 'result'}>Copy prompt</button>
     <button type="button" class="more" id="dockMore" hidden={moment === 'input'} aria-haspopup="menu" aria-expanded={menu} aria-controls="dockMenu" aria-label="More" bind:this={more} onclick={() => (menu = !menu)}>⋯</button>
   </div>
 </div>
@@ -191,6 +219,9 @@
     border: 1px solid var(--line);
     box-shadow: 0 14px 34px -16px color-mix(in srgb, var(--ink) 55%, transparent), 0 2px 8px -4px color-mix(in srgb, var(--ink) 25%, transparent);
   }
+  /* Idle: the box and its Build are in view, so the pill steps aside (the page keeps its room). */
+  .dock.idle { opacity: 0; translate: 0 calc(100% + 24px); pointer-events: none; visibility: hidden;
+    transition: opacity var(--dur-fast) var(--ease), translate var(--dur-fast) var(--ease), visibility 0s linear var(--dur-fast); }
   /* Tucked away: slides down and fades out (Reduce Motion: it just goes). */
   .dock.away { opacity: 0; translate: 0 calc(100% + 24px); pointer-events: none; visibility: hidden;
     transition: opacity var(--dur-reveal) var(--ease), translate var(--dur-reveal) var(--ease), visibility 0s linear var(--dur-reveal); }
@@ -199,6 +230,9 @@
   .bar button.main { flex: 1 1 auto; min-width: 0; padding: 8px 18px; font-size: var(--fs-md); font-family: var(--display); font-weight: 700; line-height: 1.2;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: auto; }
   .bar button.main:disabled { opacity: 0.7; }
+  /* Redo: Copy prompt (the prompt you already have) sits beside Rebuild as the lighter button. */
+  .bar button.alt { flex: 0 1 auto; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); box-shadow: none; padding: 8px 14px; }
+  .bar button.alt + button.main { padding: 8px 14px; }
   .more { flex: none; width: 48px; padding: 0; font-size: 22px; line-height: 1; font-weight: 700; color: var(--ink); }
   .more[aria-expanded='true'] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
 

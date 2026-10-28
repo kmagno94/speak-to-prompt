@@ -17,6 +17,7 @@
   let note = $state('');
   let resetArmed = $state(false);
   let copied = $state('');
+  let pasteMsg = $state('');   // Copy test note feedback, cleared on the next step
   let reported = $state('');     // 📋 Copy report feedback
   let showReport = $state(false); // clipboard blocked: show the report to copy by hand
   let panel = $state();
@@ -36,7 +37,11 @@
   function close() { lab.open = false; walk = null; resetArmed = false; reported = ''; showReport = false; }
   function onKey(e) { if (e.key === 'Escape' && lab.open) { if (walk) walk = null; else close(); } }
 
-  function at(k) { note = lab.results[k]?.note || ''; reported = ''; showReport = false; }
+  function at(k) { note = lab.results[k]?.note || ''; reported = ''; showReport = false; pasteMsg = ''; }
+  async function copyPaste() {
+    try { await navigator.clipboard.writeText(step.paste); pasteMsg = '✓ Copied. Paste it in the box.'; }
+    catch (e) { pasteMsg = 'Couldn’t copy. Press and hold the note to copy it.'; }
+  }
   /* ▶ Re-check: the broken ones first. */
   function start() { const r = lab.run; if (!r.recheck || !r.steps.length) return; walk = { mode: 'recheck', steps: r.steps, i: 0, key: r.steps[0].key, hist: [], skip: [], title: 'Re-check fixes' }; at(walk.key); }
   /* ▶ Continue (top of the lab): the rail, from the first check not marked yet. */
@@ -99,6 +104,12 @@
         <p class="lbl">{step.version ? `v${step.version} · ${step.title}` : step.title} · {walk.mode === 'recheck' ? `fix ${walk.i + 1} of ${walk.steps.length}` : `${left} not checked`}</p>
         <p class="do"><b>Do:</b> {step.say}</p>
         <p class="see"><b>You should see:</b> {step.see}</p>
+        {#if step.paste}
+          <div class="paste" id="labPaste">
+            <p class="pnote">{step.paste}</p>
+            <button type="button" id="labPasteCopy" onclick={copyPaste}>{pasteMsg || '📋 Copy test note'}</button>
+          </div>
+        {/if}
         <div class="row">
           <button type="button" class="primary" id="labWorks" onclick={works}>✓ Works</button>
           <button type="button" class="bad" id="labBroken" class:on={res?.s === 'fail'} onclick={broken}>✗ Broken</button>
@@ -188,6 +199,9 @@
   .verdict.bad .vtext { color: var(--danger); }
   .verdict.good .vtext { color: var(--ok); }
   .do, .see { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+  .paste { display: grid; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); background: color-mix(in srgb, var(--accent-soft) 40%, var(--surface)); }
+  .pnote { margin: 0; font-size: 15px; line-height: 1.45; user-select: text; -webkit-user-select: text; overflow-wrap: anywhere; }
+  .paste button { min-height: 44px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .row > button:not(.link) { flex: 1 1 0; min-height: 48px; }
   button.bad { color: var(--danger); border-color: var(--danger); }

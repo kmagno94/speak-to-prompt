@@ -117,7 +117,8 @@
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <Notice where="form" />
     <div class="row buildrow">
-      <!-- Build my prompt lives in the Next step dock (NextDock.svelte, #17). -->
+      <!-- Build my prompt sits right under the box; the Next step dock (NextDock.svelte, #17) shows its own copy only once this one is out of view. -->
+      <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
       <ContextRow />
