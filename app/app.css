@@ -456,4 +456,8 @@ body.dock-on #ideaTab { bottom: calc(var(--dock-lift) + 12px); }
 body.dock-on #labTab { left: auto; right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: calc(var(--dock-lift) + 12px); }
 body.dock-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 56px); }
 body.dock-on #guide { bottom: calc(var(--dock-lift) + 12px); }
+/* While the 6 second Undo (#19) shows above the dock, the floating buttons sit above it too. */
+body.dock-on.undo-on #ideaTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
+body.dock-on.undo-on #labTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
+body.dock-on.undo-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 60px + 56px); }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab, #guide { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out, bottom var(--dur-reveal) var(--ease); } }

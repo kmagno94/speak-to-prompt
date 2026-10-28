@@ -11,7 +11,10 @@
      Always on, on every screen. It tucks away while the keyboard is up (it fades back in at
      150ms when the keyboard closes), and while X-ray, the Tutorial, or a panel is open.
      These are the real buttons app.js wires up by id (build, copy, reset, the .openrow links),
-     so they stay in the page the whole time; only the moment decides which ones show. */
+     so they stay in the page the whole time; only the moment decides which ones show.
+     New prompt (#19) shows a 6 second Undo just above the dock (or the keyboard) that puts your
+     words back in the box, so a mis-tap never loses a transcript. In memory only.
+     Ctrl or ⌘ + Enter in the box builds (#27), for iPad keyboards and computers. */
   import { onMount } from 'svelte';
   import { kb } from './lib/keyboard.svelte.js';
   import { chat } from './lib/chat.svelte.js';
@@ -24,6 +27,9 @@
   let menu = $state(false);       // the ⋯ menu
   let tutorial = $state(false);   // the First time? Start here sheet is open
   let more, sheet;
+  let undo = $state(null);        // { words } for 6 seconds after New prompt; never saved
+  let undoTimer = 0;
+  const UNDO_MS = 6000;
 
   const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open);
   const total = $derived(chat.questions.length);
@@ -34,15 +40,12 @@
     const box = el('thoughts'), form = el('form'), result = el('result'), qa = el('qa'), tut = el('tutorial');
     /* After a Build, any change to what goes in (your words, Quick or Normal, Use my core,
        My context) means the next step is to build again, even with the same words. */
-    let built = false, edited = false, shown = false;
+    let built = false, edited = false;
     const read = () => {
-      /* Back to the start (New prompt) once the questions or result have shown and closed again. */
-      if (!result.hidden || !qa.hidden) shown = true;
-      else if (shown) { shown = false; built = false; edited = false; }
       moment = !edited && !result.hidden ? 'result' : !edited && !qa.hidden ? 'qa' : 'input';
       tutorial = !!(tut && tut.open);
     };
-    const onSubmit = () => { built = true; edited = false; shown = !result.hidden || !qa.hidden; queueMicrotask(read); };
+    const onSubmit = () => { built = true; edited = false; queueMicrotask(read); };
     /* Deferred: a field removed while it has the cursor fires "change" in the middle of a redraw. */
     const onChange = (e) => { if (e.target === box || form.contains(e.target)) { if (built) edited = true; queueMicrotask(read); } };
     form.addEventListener('submit', onSubmit, true);
@@ -54,7 +57,31 @@
     if (tut) watch.observe(tut, { attributes: true, attributeFilter: ['open'] });
     read();
     stopContext = () => { if (built) { edited = true; queueMicrotask(read); } };
+
+    /* New prompt: keep the words for 6 seconds, in memory only. This runs before app.js
+       clears the box (a capture listener on the button itself). */
+    const reset = el('reset');
+    const snap = () => {
+      built = false; edited = false;   /* back to the start */
+      const words = box.value;
+      clearTimeout(undoTimer);
+      undo = words.trim() ? { words, at: Date.now() } : null;
+      if (undo) undoTimer = setTimeout(() => { undo = null; }, UNDO_MS);
+    };
+    reset.addEventListener('click', snap, true);
+    /* Typing something new means you meant it: the Undo goes away. */
+    const typed = () => { if (undo && box.value.trim()) { clearTimeout(undoTimer); undo = null; } };
+    box.addEventListener('input', typed);
+    /* Ctrl or ⌘ + Enter in the box builds, same as tapping Build my prompt. */
+    const keys = (e) => {
+      if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey) || e.isComposing || e.target !== box) return;
+      e.preventDefault();
+      if (!el('build').disabled) form.requestSubmit();
+    };
+    document.addEventListener('keydown', keys);
     return () => {
+      reset.removeEventListener('click', snap, true); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
+      clearTimeout(undoTimer);
       watch.disconnect();
       form.removeEventListener('submit', onSubmit, true); form.removeEventListener('input', onChange, true); form.removeEventListener('change', onChange, true);
       box.removeEventListener('stp:changed', onChange);
@@ -89,7 +116,36 @@
      the link opens first). */
   const picked = () => setTimeout(() => { menu = false; }, 0);
   function quick() { menu = false; chat.finish(true); }
+
+  /* Undo puts the words back as if they were pasted (the coach and idea strip react). The old
+     prompt isn't brought back: build again from your words. */
+  function undoReset() {
+    if (!undo) return;
+    const box = document.getElementById('thoughts'), words = undo.words;
+    clearTimeout(undoTimer);
+    undo = null;
+    box.value = words;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.dispatchEvent(new Event('stp:changed'));
+  }
+  /* The 💡 / 🧪 buttons slide up while the Undo shows, so nothing overlaps it. */
+  $effect(() => {
+    document.body.classList.toggle('undo-on', !!undo);
+    return () => document.body.classList.remove('undo-on');
+  });
+  /* Above the keyboard when it's up, else above the dock (or the bottom edge when the dock is away). */
+  const undoBottom = $derived(kb.open ? kb.inset + 12 + 'px' : away ? 'calc(16px + env(safe-area-inset-bottom, 0px))' : 'calc(var(--dock-lift) + 12px)');
 </script>
+
+{#if undo}
+  {#key undo.at}
+    <div class="undo" id="undoToast" role="status" aria-live="polite" style="bottom: {undoBottom}">
+      <span>Prompt cleared</span>
+      <button type="button" id="undoReset" onpointerdown={(e) => e.preventDefault()} onclick={undoReset}>Undo</button>
+      <i class="tick" aria-hidden="true" style="animation-duration: {UNDO_MS}ms"></i>
+    </div>
+  {/key}
+{/if}
 
 <div class="dock" id="nextDock" class:away data-moment={moment} role="group" aria-label="Next step" aria-hidden={away} inert={away}>
   <div class="sheet" id="dockMenu" bind:this={sheet} hidden={!menu || moment === 'input'} role="menu" aria-label="More">
@@ -166,4 +222,22 @@
   }
   .sheet a:hover, .sheet button:hover:not(:disabled) { background: var(--accent-soft); }
   .sheet small { font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
+
+  /* The 6 second Undo after New prompt (#19): a small dark pill above the dock, centered. */
+  .undo {
+    position: fixed; z-index: 36; left: 50%; translate: -50% 0;
+    display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 18px; border-radius: 999px; overflow: hidden;
+    background: var(--ink); color: var(--surface); font-weight: 700; font-size: var(--fs-sm); white-space: nowrap;
+    box-shadow: 0 14px 34px -14px color-mix(in srgb, var(--ink) 70%, transparent);
+    transition: bottom var(--dur-reveal) var(--ease);
+  }
+  .undo button { min-height: 44px; padding: 6px 16px; border: 0; border-radius: 999px; background: transparent; color: var(--accent-soft); font-weight: 800; }
+  .undo button:hover { background: color-mix(in srgb, var(--surface) 15%, transparent); }
+  .undo .tick { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--accent-soft); transform-origin: left; opacity: 0.7; }
+  @media (prefers-reduced-motion: no-preference) {
+    .undo { animation: undoin var(--dur-reveal) var(--ease); }
+    @keyframes undoin { from { opacity: 0; translate: -50% 12px; } }
+    .undo .tick { animation: undotick linear forwards; }
+    @keyframes undotick { to { transform: scaleX(0); } }
+  }
 </style>

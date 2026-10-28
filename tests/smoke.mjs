@@ -715,8 +715,8 @@ await check('something went wrong: quick report with run facts only, never your 
   await p.fill('#qaOwn', 'five lazy days'); await p.press('#qaOwn', 'Enter');
   await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
   await p.click('#qaGo'); await done(p);
-  // Sits right under the prompt, closed until tapped
-  expect(await p.evaluate(() => document.getElementById('output').nextElementSibling.classList.contains('report')), 'report should sit right below the prompt');
+  // Sits under the prompt's copy row (#18: Copy prompt + my note comes first), closed until tapped
+  expect(await p.evaluate(() => { const f = document.querySelector('#result .finish'), r = document.querySelector('#result .report'); return !!r && !!(f.compareDocumentPosition(r) & 4) && r.previousElementSibling.id === 'status'; }), 'report should sit right below the copy row under the prompt');
   expect(!(await p.$('#reportBox')), 'report form should start closed');
   await p.click('#reportBtn');
   expect(await p.isDisabled('#reportSend'), 'Send should wait for a pick or a note');
@@ -2220,6 +2220,72 @@ await check('copy and open: the dock menu copies and opens, and the status line 
   await menuTap(p, '.openrow a >> text=Claude'); await p.waitForTimeout(300);
   expect(/Couldn't copy it\. Tap Copy prompt first, then open Claude/.test(await p.textContent('#status')), 'a failed copy should say what to do: ' + await p.textContent('#status'));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('next step dock: one main button per moment, the ⋯ menu, back to Build after a change, away during X-ray', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] } });
+  await withKey(p); await p.fill('#thoughts', 'yard sale this weekend');
+  expect(await p.isVisible('#build') && !(await p.isVisible('#dockMore')) && !(await p.isVisible('#copy')), 'writing your thoughts: only Build my prompt, no ⋯');
+  expect(await p.evaluate(() => !!document.getElementById('build').closest('#nextDock') && !document.querySelector('#form #build')), 'Build my prompt should live only in the dock');
+  await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  expect((await p.textContent('#qaGo')).trim() === 'Write my prompt (0 of 2)' && !(await p.isVisible('#build')), 'questions: Write my prompt (0 of 2), got ' + await p.textContent('#qaGo'));
+  await p.click('#qaList .chips button'); await p.waitForTimeout(700);
+  expect(/\(1 of 2\)/.test(await p.textContent('#qaGo')), 'the count should go up as you answer');
+  await p.click('#dockMore');
+  expect(await p.isVisible('#qaSkip') && await p.isVisible('#reset') && !(await p.isVisible('.openrow')), 'questions menu: Quick version and New prompt only');
+  expect(/Quick version/.test(await p.textContent('#qaSkip')) && !(await p.$('#qa #qaSkip')), 'Quick version lives in the dock menu, not on the card');
+  await p.click('h1'); await p.waitForTimeout(150);
+  expect(!(await p.isVisible('#dockMenu')), 'a tap outside should close the menu');
+  await p.click('#qaGo'); await done(p);
+  expect(await p.isVisible('#copy') && !(await p.isVisible('#qaGo')) && !(await p.isVisible('#build')), 'result: Copy prompt is the main button');
+  await p.click('#dockMore');
+  expect(await p.isVisible('.openrow a >> text=Claude') && await p.isVisible('#reset') && !(await p.isVisible('#qaSkip')), 'result menu: Open in and New prompt');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(100);
+  expect(!(await p.isVisible('#dockMenu')), 'Escape should close the menu');
+  await p.fill('#thoughts', 'yard sale this weekend, and a bake sale'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(100);
+  expect(await p.isVisible('#build') && !(await p.isVisible('#copy')), 'changing your words after a build should bring back Build my prompt');
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.check('#quickMode'); await p.waitForTimeout(100);
+  expect(await p.isVisible('#build'), 'changing Quick or Normal after a build should bring back Build my prompt too');
+  await p.check('#normalMode'); await p.click('#build'); await p.waitForSelector('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.click('#xrayBtn');
+  expect(await p.evaluate(() => document.getElementById('nextDock').classList.contains('away')) && !(await p.evaluate(() => document.body.classList.contains('dock-on'))), 'the dock should tuck away while X-ray is open');
+  await p.click('#xrayBtn'); await p.waitForTimeout(100);
+  expect(!(await p.evaluate(() => document.getElementById('nextDock').classList.contains('away'))), 'the dock should come back after X-ray Done');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('new prompt: a 6 second Undo puts your words back, typing makes it go away; Copy prompt + my note sits right under the prompt', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'plan my garden for spring'); await p.click('#build'); await done(p);
+  expect(await p.evaluate(() => { const o = document.getElementById('output'), c = document.getElementById('copyNote'), r = document.querySelector('#result .reportbtn'); return !!(o.compareDocumentPosition(c) & 4) && !!(c.compareDocumentPosition(r) & 4); }), 'Copy prompt + my note should come right after the prompt, before Report');
+  await menuTap(p, '#reset'); await p.waitForTimeout(150);
+  expect(await p.inputValue('#thoughts') === '' && await p.isVisible('#undoToast') && /Prompt cleared/.test(await p.textContent('#undoToast')), 'New prompt should clear the box and offer Undo');
+  await p.click('#undoReset'); await p.waitForTimeout(150);
+  expect(await p.inputValue('#thoughts') === 'plan my garden for spring' && !(await p.isVisible('#undoToast')), 'Undo should put the words back: ' + await p.inputValue('#thoughts'));
+  expect(await p.isVisible('#build'), 'after Undo the next step is Build my prompt');
+  await p.click('#build'); await done(p);
+  await menuTap(p, '#reset'); await p.waitForTimeout(150);
+  await p.type('#thoughts', 'n'); await p.waitForTimeout(100);
+  expect(!(await p.isVisible('#undoToast')), 'typing something new should make the Undo go away');
+  await p.fill('#thoughts', 'plan my garden for spring'); await p.click('#build'); await done(p);
+  await menuTap(p, '#reset'); await p.waitForTimeout(6300);
+  expect(!(await p.isVisible('#undoToast')), 'the Undo should go away by itself after 6 seconds');
+  await p.evaluate(() => document.getElementById('reset').click()); await p.waitForTimeout(150);   /* box already empty */
+  expect(!(await p.isVisible('#undoToast')), 'no Undo when the box was already empty');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('keyboard: Ctrl or Cmd + Enter in the box builds, plain Enter is a new line', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'plan my week'); await p.press('#thoughts', 'Enter'); await p.waitForTimeout(400);
+  expect(!(await p.isVisible('#result')) && (await p.inputValue('#thoughts')).includes('\n'), 'plain Enter should add a line, not build');
+  await p.press('#thoughts', 'Control+Enter'); await done(p);
+  expect(await p.isVisible('#result'), 'Ctrl + Enter should build');
+  const q = await page();
+  await q.fill('#thoughts', 'plan my week'); await q.press('#thoughts', 'Meta+Enter'); await done(q);
+  expect(await q.isVisible('#result'), 'Cmd + Enter should build');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('start over forgets the transcript, and Paste warns when the clipboard still has the one you used', async () => {

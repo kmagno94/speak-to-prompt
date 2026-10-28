@@ -2,6 +2,27 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.9",
+      "date": "2026-10-28",
+      "title": "R1 build 2: Copy under the prompt, New prompt with Undo, Ctrl or ⌘ + Enter",
+      "items": [
+        "Copy under the prompt: Copy prompt + my note now sits right under the prompt, with Report and Remember for next time? after it. Copy prompt itself stays in the dock.",
+        "New prompt with Undo: after New prompt, a small Prompt cleared · Undo pill shows for 6 seconds just above the dock (or the keyboard). Undo puts your words back in the box so a mis-tap never loses a transcript. Typing something new makes it go away. Kept in memory only, and the old prompt isn't brought back: build again from your words.",
+        "Ctrl or ⌘ + Enter in the box builds, for iPad keyboards and computers. Plain Enter is still a new line.",
+        "Fix from build 1: after building a second time, changing Quick or Normal, Use my core, or My context now switches the dock back to Build my prompt like it should."
+      ],
+      "checks": [
+        { "say": "Build a prompt and look under it.", "see": "Copy prompt + my note sits right under the prompt box. Something went wrong? and Remember for next time? come after it. Copy prompt is still in the dock." },
+        { "say": "Tap ⋯ in the dock, then New prompt.", "see": "The box empties and a dark Prompt cleared · Undo pill shows just above the dock, with a thin line shrinking for about 6 seconds." },
+        { "say": "Tap Undo.", "see": "Your words are back in the box and the dock says Build my prompt." },
+        { "say": "Tap New prompt again and start typing something new.", "see": "The Undo pill goes away as soon as you type." },
+        { "say": "Tap New prompt and wait.", "see": "The Undo pill goes away by itself after about 6 seconds." },
+        { "say": "With the 💡 Ideas tab on, tap New prompt.", "see": "💡 Ideas slides up above the Undo pill, so nothing overlaps." },
+        { "say": "On an iPad with a keyboard (or a computer), type a note and press ⌘ + Enter (Ctrl + Enter on Windows).", "see": "It builds, same as tapping Build my prompt. Plain Enter still makes a new line." },
+        { "say": "With your key, build a prompt, change only Quick or Normal, then look at the dock.", "see": "The dock says Build my prompt, so you can rebuild with the new mode." }
+      ]
+    },
+    {
       "version": "2.1.8",
       "date": "2026-10-28",
       "title": "R1 build 1: Next step dock",

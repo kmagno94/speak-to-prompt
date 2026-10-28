@@ -162,15 +162,16 @@
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
-    <ReportIssue />
-    <MemorySuggest />
-    <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17). -->
+    <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
+         The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
       <div class="row secondary">
         <button type="button" id="copyNote">Copy prompt + my note</button>
       </div>
     </div>
     <p id="status" class="status openstatus" role="status"></p>
+    <ReportIssue />
+    <MemorySuggest />
     <div class="devrow" id="devRow" hidden={!core.dev}>
       <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
       <div class="row">
