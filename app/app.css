@@ -133,6 +133,12 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 }
 .idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
 .idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
+/* Start here (StartHere.svelte): the box and Talk it out glow while the pointer shows. */
+.ideabox.starthere-on #thoughts, #talkLink.starthere-on { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .ideabox.starthere-on #thoughts, #talkLink.starthere-on { animation: sh-glow 1.5s ease-in-out infinite; }
+  @keyframes sh-glow { 50% { outline-color: color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 5px; } }
+}
 .ideabox .ideas-show {
   position: absolute; right: 22px; bottom: 12px; min-height: 40px; padding: 8px 14px; border-radius: 999px;
   font-size: 14px; font-weight: 700; color: var(--accent); border: 1px solid var(--line);

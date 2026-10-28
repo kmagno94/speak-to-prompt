@@ -7,6 +7,11 @@
   import CoreToggle from './CoreToggle.svelte';
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
+  import StartHere from './StartHere.svelte';
+  import StuckNudge from './StuckNudge.svelte';
+  import CookPot from './CookPot.svelte';
+  import { cookDemo } from './lib/cook.svelte.js';
+  import { IS_STAGING } from './lib/channel.js';
   import PromptXray from './PromptXray.svelte';
   import Tutorial from './Tutorial.svelte';
   import Guide from './Guide.svelte';
@@ -32,7 +37,13 @@
     memo.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
-  onMount(() => { startApp(); });
+  onMount(() => {
+    startApp();
+    /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
+    const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
+    demo();
+    window.addEventListener('hashchange', demo);
+  });
 </script>
 
 <div class="wrap">
@@ -92,7 +103,9 @@
         </div>
       </div>
       <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
+      <StartHere />
     </div>
+    <StuckNudge />
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <Notice where="form" />
@@ -107,6 +120,7 @@
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
+      <div class="cookslot" data-keep><CookPot place="build" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
     </div>
@@ -125,6 +139,7 @@
     <div class="tracker" id="resultTrack" hidden>
       <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>
+      <div class="cookslot" data-keep><CookPot place="result" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
     </div>

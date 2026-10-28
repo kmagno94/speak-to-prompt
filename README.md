@@ -176,6 +176,9 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `lessons.json` | Lessons learned: up to 6 short rules the review keeps from graded runs, added to every prompt build, copied into the build |
   | `.github/workflows/deploy.yml` | Test, build, and publish live and staging together, roll back by tag (and deploy the report Worker once its Cloudflare secrets are set) |
   | `app/ContextRow.svelte`, `app/lib/context.svelte.js` | My context (dev tools): reusable background picked per prompt |
+  | `app/StartHere.svelte`, `app/lib/starthere.svelte.js` | Start here: on open, a pointer to the box and Talk it out until the first action, then the idea strip. Keeps only a yes/no flag (`stp-started`) |
+  | `app/StuckNudge.svelte`, `app/lib/stuck.js` | Stuck? A sentence to finish after the box sits still about 6 seconds, aimed at what the Ghost Coach says is missing |
+  | `app/CookPot.svelte`, `app/lib/cook.svelte.js` | Prompt cooking: the pot and progress ring next to the timer (ingredients, boil-over on a model hand-off, plated). Staging has a `#cookdemo` preview |
   | `app/RoundBanner.svelte` | Rework round 2: the banner over the box and on the card, with Back to round 1 |
   | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
   | `app/TestLab.svelte`, `app/lib/testlab.svelte.js`, `app/lib/testlabPlan.js` | Staging only: the 🧪 Test lab, a walkthrough of every `releases.json` check not live yet, with ✓ / ✗, notes, and the promote verdict |

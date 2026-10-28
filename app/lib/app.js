@@ -5,6 +5,8 @@ import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify } from './ui.svelte.js';
+import { startHere } from './starthere.svelte.js';
+import { cook, cookStart, cookStop } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
 import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
@@ -669,12 +671,13 @@ export function startApp() {
   function ideasBtnSync() {
     /* The box's own hint would peek through the glass, so it waits until the ideas clear. */
     thoughts.placeholder = ideasEl.classList.contains("gone") ? thoughtsHint : "";
-    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && !shortcutMode());
+    ideasShowBtn.hidden = !(ideasEl.classList.contains("gone") && !thoughts.value.trim() && !shortcutMode() && !startHere.active);
   }
   function ideasHide() { clearTimeout(ideasBack); ideasEl.classList.add("gone"); ideasStop(); ideasBtnSync(); }
   function ideasSync() {
     if (!ideasEl) return;
-    if (thoughts.value.trim() || document.activeElement === thoughts || shortcutMode()) { ideasHide(); return; }
+    /* Start here (StartHere.svelte) shows first; the ideas come in when it ends. */
+    if (thoughts.value.trim() || document.activeElement === thoughts || shortcutMode() || startHere.active) { ideasHide(); return; }
     var wasGone = ideasEl.classList.contains("gone");
     ideasEl.classList.remove("gone");
     ideasBtnSync();
@@ -692,6 +695,7 @@ export function startApp() {
     thoughts.style.minHeight = Math.max(240, need) + "px";
     ideasGo(ideasIdx, false);
   }
+  window.addEventListener("stp-starthere-end", function () { ideasSync(); });
   thoughts.addEventListener("pointerdown", ideasHide);
   thoughts.addEventListener("focus", ideasHide);
   thoughts.addEventListener("input", ideasSync);
@@ -1028,8 +1032,29 @@ export function startApp() {
   var awaySpans = [], awayAt = document.visibilityState === "hidden" ? Date.now() : 0;
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") { if (!awayAt) awayAt = Date.now(); }
-    else if (awayAt) { awaySpans.push([awayAt, Date.now()]); awayAt = 0; if (awaySpans.length > 50) awaySpans.shift(); }
+    else {
+      if (awayAt) { awaySpans.push([awayAt, Date.now()]); awayAt = 0; if (awaySpans.length > 50) awaySpans.shift(); }
+      comeBack();
+    }
   });
+  /* Leaving mid-build (idea mvojarxehejm). iPhone pauses the page in another app and
+     web notifications only work for Home Screen apps, so instead: a request that drops
+     while you're away gets one more try on the same model (askGemini), the tab title
+     says when it's ready if it finishes while you're gone, and coming back says so. */
+  var titleBase = "", readyAway = "";
+  function doneAway(what) {
+    if (document.visibilityState !== "hidden") return false;
+    if (!titleBase) titleBase = document.title;
+    document.title = (what === "questions" ? "\u2753 Questions ready \u00b7 " : "\u2705 Prompt ready \u00b7 ") + titleBase;
+    readyAway = what;
+    return true;
+  }
+  function comeBack() {
+    if (titleBase) { document.title = titleBase; titleBase = ""; }
+    if (readyAway === "prompt" && !result.hidden) notify("result", "success", "Ready while you were away", "Your prompt finished while you were in another app. It's below, ready to copy.");
+    readyAway = "";
+    if (busy) cook.back = Date.now();
+  }
   function awayMs(t0) {
     var now = Date.now(), ms = awayAt ? now - Math.max(awayAt, t0) : 0;
     awaySpans.forEach(function (s) { if (s[1] > t0) ms += s[1] - Math.max(s[0], t0); });
@@ -1052,7 +1077,7 @@ export function startApp() {
       return JSON.stringify(p);
     }
     return new Promise(function (resolve, reject) {
-      var next = 0, running = 0, done = false, lastErr = null, live = [];
+      var next = 0, running = 0, done = false, lastErr = null, live = [], awayTried = {};
       function finish(ok, value) {
         if (done) return;
         done = true;
@@ -1089,6 +1114,7 @@ export function startApp() {
         var hedge = hedgeAfter && i < list.length - 1 ? setTimeout(function () {
           if (done || next !== i + 1) return;
           history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt) / 1000) + "s");
+          cookSwitch();
           startNext();
         }, hedgeAfter) : null;
         var settled = false;
@@ -1116,6 +1142,13 @@ export function startApp() {
           settle();
           if (done) return;   // another model already won; this one was stopped on purpose
           var secs = Math.round((Date.now() - tAttempt) / 1000);
+          /* Dropped or timed out while you were in another app: not the model's fault, so the
+             same model gets one more try (no rest, no backup spent) now that you're back. */
+          if ((e.status === "network" || e.status === "timeout") && !awayTried[i] && awayMs(tAttempt) >= 1000) {
+            awayTried[i] = true;
+            history.push(model + " dropped while you were away, so it tried again");
+            return run(i, withThinking);
+          }
           /* "after Ns" shows how long a model made you wait before the next one took over */
           if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY, "busy"); }
           else if (e.status === 429) {
@@ -1135,7 +1168,7 @@ export function startApp() {
           else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY, "busy"); }
           /* A model that rejects the thinking setting gets one more try without it. */
           if (e.status === 400 && withThinking) return run(i, false);
-          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) startNext(); return; }
+          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
           finish(false, e);
         });
       }
@@ -1394,12 +1427,16 @@ export function startApp() {
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
     setProgress(bar, "pct", 2);
+    cookStart(track.id === "buildTrack" ? "build" : "result", step === "write" ? "write" : "read", cookIngredients(step));
     function draw() {
       var secs = (Date.now() - t0) / 1000, since = (Date.now() - tModel) / 1000;
-      setProgress(bar, "pct", Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))))));
+      var pct = Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6))))));
+      setProgress(bar, "pct", pct);
+      cook.pct = pct;
       var left = usual - since;
       elEl.textContent = clock(secs + offset);
       var over = left <= 1;
+      cook.over = over;
       right.classList.toggle("over", over);
       leftEl.textContent = over ? "Almost there" : clock(left);
       leftLbl.textContent = over ? "taking a bit longer than usual" : "estimated left";
@@ -1410,10 +1447,22 @@ export function startApp() {
     ticker = setInterval(draw, 1000);
     return function (m) { model = m; tModel = Date.now(); draw(); };
   }
+  /* Prompt cooking: plain labels for what went into the pot, never the words themselves. */
+  function cookIngredients(step) {
+    var list = ["Your thoughts"];
+    if (step === "write" && session && session.round === 2) list.push("Your edits");
+    if (step === "write" && session && session.answers && session.answers.length) list.push("Your answers");
+    if (context.active) list.push("Your context");
+    if (step === "write" && lessons.list.length) list.push("Lessons learned");
+    return list;
+  }
+  /* A model stalled or ran out and the next one took over: the pot boils over. */
+  function cookSwitch() { if (cook.place && !cook.done) cook.switches++; }
   function finishTrack(bar, secs, skipAsk, offset) {
     var track = bar.closest(".tracker");
     secs += offset || 0;
     stopTicker();
+    cook.done = true;
     setSteps(track, "ready", skipAsk);
     track.querySelector("li[data-step='ready']").className = "done";
     setProgress(bar, "pct", 100);
@@ -1543,6 +1592,7 @@ export function startApp() {
     }).catch(function (e) {
       setBusy(false);
       setBuild("");
+      cookStop();
       signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
@@ -1558,6 +1608,7 @@ export function startApp() {
     qaStatus.textContent = "";
     qa.hidden = false;
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    doneAway("questions");
   }
   chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
@@ -1642,6 +1693,8 @@ export function startApp() {
           ? (offset ? "Round 2 built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
           : (offset ? "Round 2 ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
         if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built" });
+        /* Left mid-build and came back before it finished: say it picked back up. */
+        if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
         if (memory.active) {
@@ -1664,6 +1717,7 @@ export function startApp() {
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
+      cookStop();
       setProgress(resultProg, "off");
       setBusy(false);
       setBuild("");
@@ -1710,11 +1764,27 @@ export function startApp() {
   }
   function snapResult() {
     var snap = {};
-    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el) snap[id] = { html: el.innerHTML, hidden: el.hidden }; });
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el) { var k = keepOut(el); snap[id] = { html: el.innerHTML, hidden: el.hidden }; keepIn(el, k); } });
     return snap;
   }
   function restoreResult(snap) {
-    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el && snap[id]) { el.innerHTML = snap[id].html; el.hidden = snap[id].hidden; } });
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el && snap[id]) { var k = keepOut(el); el.innerHTML = snap[id].html; keepIn(el, k); el.hidden = snap[id].hidden; } });
+  }
+  /* A part drawn by Svelte (marked data-keep, like the cooking pot) must never be rebuilt
+     from saved HTML, or Svelte loses track of it. It steps out for the copy and goes back
+     into the same spot. */
+  function keepOut(el) {
+    var k = el.querySelector("[data-keep]");
+    if (!k) return null;
+    var mark = document.createComment("keep");
+    k.replaceWith(mark);
+    return k;
+  }
+  function keepIn(el, k) {
+    if (!k) return;
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_COMMENT), n;
+    while ((n = w.nextNode())) if (n.data === "keep") { n.replaceWith(k); return; }
+    el.appendChild(k);
   }
   function startRework() {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();

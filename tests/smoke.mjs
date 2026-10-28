@@ -17,8 +17,9 @@ function browserPath() {
   const dir = '/opt/pw-browsers';
   if (!existsSync(dir)) return undefined;
   const shell = readdirSync(dir).find(d => d.startsWith('chromium_headless_shell'));
-  if (shell) return `${dir}/${shell}/chrome-linux/headless_shell`;
-  return undefined;
+  if (!shell) return undefined;
+  /* Newer Playwright builds name the folder chrome-headless-shell-linux64. */
+  return [`${dir}/${shell}/chrome-linux/headless_shell`, `${dir}/${shell}/chrome-headless-shell-linux64/chrome-headless-shell`].find(existsSync);
 }
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
@@ -54,7 +55,9 @@ function expect(cond, msg) { if (!cond) throw new Error(msg); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
 
 async function page(opts = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}) });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
+  /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
+  if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
@@ -102,6 +105,7 @@ async function page(opts = {}) {
     if (opts.failRound2 && /ROUND 2: THE PERSON REWORKED/.test(ask)) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
+    if (opts.dropOnce === model && !p.droppedOnce) { p.droppedOnce = true; await new Promise(res => setTimeout(res, opts.dropDelay || 0)); return r.abort('failed'); }   // drops once, like leaving for another app
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
@@ -2356,9 +2360,126 @@ await check('grader bench: the Saturday example runs first, and the number check
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* Build 3 (v2.1.6): Start here, the writer's block nudge, leaving mid-build, and prompt cooking. */
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const setVis = (p, v) => p.evaluate((v) => { Object.defineProperty(document, 'visibilityState', { get: () => v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, v);
+
+await check('start here: points at the box and Talk it out on open, holds the ideas, shows each open until the first action, then never again', async () => {
+  const p = await page({ fresh: true, ua: IPHONE });
+  await p.waitForTimeout(300);
+  expect(await p.isVisible('#startHere'), 'Start here should show on a first visit');
+  expect(await p.isVisible('#startHereTalk') && await p.$('#talkLink.starthere-on') && await p.$('.ideabox.starthere-on'), 'box and Talk it out should both be pointed at on iPhone');
+  expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
+  await p.waitForTimeout(4800);
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.starthere-on')), 'Start here should end on its own');
+  expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
+  expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
+  await p.reload(); await p.waitForTimeout(300);
+  expect(await p.isVisible('#startHere'), 'no action yet, so it should show again on the next open');
+  await p.click('#thoughts'); await p.keyboard.type('hi'); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#startHere')), 'tapping into the box should end it');
+  expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
+  const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
+  expect(!/\bhi\b/.test(saved), 'nothing typed may be saved');
+  await p.reload(); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#startHere')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
+  const q = await page({ fresh: true });
+  await q.waitForTimeout(300);
+  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')), 'computers get the box pointer without Talk it out');
+  const r = await page({ fresh: true, reduced: true });
+  await r.waitForTimeout(300);
+  expect(await r.isVisible('#startHere') && await r.$eval('#startHere .tap', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: still highlight, no pulse');
+  for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('start here: a shortcut hand-off skips it', async () => {
+  const p = await page({ fresh: true });
+  await p.goto('about:blank'); await p.goto(BASE + '#t=' + encodeURIComponent('from the shortcut')); await p.waitForTimeout(300);
+  expect(await p.inputValue('#thoughts') === 'from the shortcut', 'the hand-off text should land in the box');
+  expect(!(await p.isVisible('#startHere')), 'a hand-off already knows where to go');
+});
+
+await check('stuck nudge: a quiet box gets one sentence to finish; tap starts that line, dice swaps it, typing hides it, the X stops it', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'help me plan a yard sale');
+  await p.waitForTimeout(3000);
+  expect(!(await p.isVisible('#stuck')), 'too soon for a nudge');
+  await p.waitForTimeout(3600);
+  expect(await p.isVisible('#stuck'), 'a nudge should show after about 6 quiet seconds');
+  const first = (await p.textContent('#stuckLine')).replace(/\s*…$/, '');
+  await p.click('#stuckNext');
+  const second = (await p.textContent('#stuckLine')).replace(/\s*…$/, '');
+  expect(first && second && first !== second, 'the dice should swap the sentence');
+  await p.click('#stuckLine'); await p.waitForTimeout(300);
+  const v = await p.inputValue('#thoughts');
+  expect(v.startsWith('help me plan a yard sale\n') && v.trimEnd().endsWith(second.trim()), 'the sentence should start a new line: ' + JSON.stringify(v));
+  expect(!(await p.isVisible('#stuck')), 'using it should tuck it away');
+  await p.waitForTimeout(6600);
+  expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
+  await p.click('#stuckClose'); await p.waitForTimeout(300);
+  await p.type('#thoughts', ' more'); await p.waitForTimeout(6600);
+  expect(!(await p.isVisible('#stuck')), 'the X should stop nudges for this visit');
+  await p.fill('#thoughts', ''); await p.click('#build');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('come back: a request dropped while away retries the same model, finishing away flips the tab title and says so on return', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, dropOnce: 'gemini-3.5-flash-lite', dropDelay: 1500 });
+  await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
+  const title = await p.title();
+  await setVis(p, 'hidden');
+  await p.click('#build'); await done(p);
+  const intake = p.calls.filter(c => c.intake).map(c => c.model);
+  expect(intake.length === 2 && intake.every(m => m === 'gemini-3.5-flash-lite'), 'the dropped step should retry the same model, got: ' + intake.join(', '));
+  expect((await p.title()).startsWith('✅ Prompt ready'), 'tab title should say the prompt is ready, got: ' + await p.title());
+  await setVis(p, 'visible'); await p.waitForTimeout(200);
+  expect(await p.title() === title, 'title should go back on return');
+  expect(/Ready while you were away/.test(await p.textContent('#notice-result')), 'coming back should say it finished while away');
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, dropOnce: 'gemini-3.5-flash-lite', dropDelay: 3500 });
+  await withKey(q); await q.fill('#thoughts', 'plan a yard sale saturday');
+  await setVis(q, 'hidden'); await q.click('#build');
+  await q.waitForTimeout(3200); await setVis(q, 'visible');
+  await done(q);
+  expect(/Picked back up/.test(await q.textContent('#notice-result')), 'back before it finished: it should say it picked back up');
+  expect(!(await q.title()).includes('Prompt ready'), 'no title flip when it finished in view');
+  for (const x of [p, q]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('prompt cooking: the pot ring fills, shows what went in, boils over when a model hands off, plates when done', async () => {
+  const p = await page({ hold: 'gemini-3.8-flash', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#resultTrack .cook', { timeout: 8000 });
+  await p.waitForTimeout(1200);
+  const mid = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, ing: [...c.querySelectorAll('.ing i')].map(i => i.textContent), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset'), len: +c.querySelector('.ring').getAttribute('stroke-dasharray') }; });
+  expect(/Simmering/.test(mid.cap), 'writing should simmer, got: ' + mid.cap);
+  expect(mid.ing[0] === 'Your thoughts', 'ingredients should list what went in, got: ' + mid.ing.join(', '));
+  expect(mid.off < mid.len && mid.off > 0, 'ring should be part way');
+  await setVis(p, 'hidden'); await setVis(p, 'visible'); await p.waitForTimeout(150);
+  expect(/Welcome back/.test(await p.textContent('#resultTrack .cook .cap')), 'coming back mid-build should say welcome back');
+  p.release(); await done(p);
+  const end = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, boil: c.classList.contains('boil'), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset') }; });
+  expect(end.boil, 'a model handing off should boil over');
+  expect(/Plated/.test(end.cap) && end.off < 0.5, 'done should plate with a full ring, got: ' + JSON.stringify(end));
+  const words = await p.$eval('#resultTrack .cook', el => el.textContent);
+  expect(!/memo/.test(words), 'the pot shows labels, never your words');
+  const r = await page({ reduced: true, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(r); await r.fill('#thoughts', 'memo'); await r.click('#build'); await done(r);
+  expect(await r.$eval('#resultTrack .cook .steam path', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: the pot holds still');
+  for (const x of [p, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
 /* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
    live, APP_CHANNEL=staging for staging, so each build is checked for the right behavior. */
 if (process.env.APP_CHANNEL === 'staging') {
+  await check('cook demo (staging): #cookdemo plays one full cook with a boil-over and no Gemini call', async () => {
+    const p = await page();
+    await p.goto(BASE + '#cookdemo'); await p.waitForSelector('#buildTrack .cook', { timeout: 3000 });
+    await p.waitForTimeout(3400);
+    expect(await p.$('#buildTrack .cook.boil') && /Boiled over/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should boil over');
+    await p.waitForTimeout(3600);
+    expect(/Plated/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should plate');
+    expect(!p.calls.length && !p.errors.length, 'no Gemini calls or errors: ' + p.errors.join('; '));
+  });
   await check('staging build: shows the STAGING badge and keeps its saved data under stg: keys', async () => {
     const p = await page();
     const badge = await p.textContent('#stgBadge').catch(() => '');
