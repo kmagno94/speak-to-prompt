@@ -3,6 +3,14 @@
   "done": [
     { "id": "mvkn9z1mlw4n", "commit": "9728d58", "version": "2.1.0", "note": "My context: reusable pieces picked under Build (questions see them too, 38477b0)" },
     { "id": "mvkv67pecul3", "commit": "b1db256", "version": "2.1.0", "note": "Screen stays awake while Gemini works" },
-    { "id": "mvkv7qsjgbv7", "commit": "9246c45", "version": "2.1.0", "note": "Rework from this prompt, asking one question first if it helps" }
+    { "id": "mvkv7qsjgbv7", "commit": "9246c45", "version": "2.1.0", "note": "Rework from this prompt, asking one question first if it helps" },
+    { "id": "mvlcl4crx4i8", "commit": "1b55f17", "version": "2.1.4", "note": "Writer keeps hedges, adds no date parts or stronger wording; weekday check; grade docked when the number check flags; bench B9 first (cbf5765)" },
+    { "id": "mvlpo0ne97hi", "commit": "cbf5765", "version": "2.1.4", "note": "Copy and open status line moved right under the links, with a failed-copy message" },
+    { "id": "mvlqtwula9bc", "commit": "cbf5765", "version": "2.1.4", "note": "Start over clears the transcript everywhere; Paste warns when the clipboard holds the one already used" },
+    { "id": "mvnda0z3gtah", "commit": "cbf5765", "version": "2.1.4", "note": "Edit with Save and Cancel on open ideas" },
+    { "id": "mvo9oi00jsl6", "commit": "cbf5765", "version": "2.1.4", "note": "Copy gives the prompt only; the writer works in the context facts it needs, core stays last" },
+    { "id": "mvptkvu2upic", "commit": "cbf5765", "version": "2.1.4", "note": "Questions bold, helper lines small and gray, in both chats" },
+    { "id": "mvpxckagv1jr", "commit": "1b55f17", "version": "2.1.4", "note": "Front page intro: each sentence on its own line with open spacing" },
+    { "id": "mvr7vbp842db", "commit": "cbf5765", "version": "2.1.4", "note": "My context editor opens at its top, cursor in a title, new piece first" }
   ]
 }
