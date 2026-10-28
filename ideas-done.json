@@ -15,6 +15,10 @@
     { "id": "mvlc1dk0zf5v", "commit": "753d9b2", "version": "2.1.5", "note": "My context budget: chip shows tokens and % of 1,500" },
     { "id": "mvo9leuwkgl9", "commit": "753d9b2", "version": "2.1.5", "note": "Past 100%, one Flash-Lite squeeze (memory only), chip shows before and after" },
     { "id": "mvncgnd04n93", "commit": "753d9b2", "version": "2.1.5", "note": "Rework is round 2: prompt back in the box with one What was weak line, originals kept in memory, Save to Notes original words + new prompt" },
-    { "id": "mvlcgojd9rhz", "commit": "753d9b2", "version": "2.1.5", "note": "Back to round 1; timer shows Round 2 with the running total; old one-question side flow removed" }
+    { "id": "mvlcgojd9rhz", "commit": "753d9b2", "version": "2.1.5", "note": "Back to round 1; timer shows Round 2 with the running total; old one-question side flow removed" },
+    { "id": "mvlbzn3ivv4q", "commit": "df58af4", "version": "2.1.6", "note": "Start here: pointer to the box and Talk it out on open until the first action, then the idea strip" },
+    { "id": "mvlhezlg09c9", "commit": "df58af4", "version": "2.1.6", "note": "Prompt cooking: pot and progress ring by the timer, boil-over on a model hand-off, plated when done" },
+    { "id": "mvni8bq6ecec", "commit": "df58af4", "version": "2.1.6", "note": "Stuck? nudge: a sentence to finish after the box sits still, dice for another, X to stop" },
+    { "id": "mvojarxehejm", "commit": "df58af4", "version": "2.1.6", "note": "Leaving mid-build: dropped step retries the same model, tab title and return message say when it's ready" }
   ]
 }
