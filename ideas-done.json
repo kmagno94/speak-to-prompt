@@ -11,6 +11,10 @@
     { "id": "mvo9oi00jsl6", "commit": "cbf5765", "version": "2.1.4", "note": "Copy gives the prompt only; the writer works in the context facts it needs, core stays last" },
     { "id": "mvptkvu2upic", "commit": "cbf5765", "version": "2.1.4", "note": "Questions bold, helper lines small and gray, in both chats" },
     { "id": "mvpxckagv1jr", "commit": "1b55f17", "version": "2.1.4", "note": "Front page intro: each sentence on its own line with open spacing" },
-    { "id": "mvr7vbp842db", "commit": "cbf5765", "version": "2.1.4", "note": "My context editor opens at its top, cursor in a title, new piece first" }
+    { "id": "mvr7vbp842db", "commit": "cbf5765", "version": "2.1.4", "note": "My context editor opens at its top, cursor in a title, new piece first" },
+    { "id": "mvlc1dk0zf5v", "commit": "753d9b2", "version": "2.1.5", "note": "My context budget: chip shows tokens and % of 1,500" },
+    { "id": "mvo9leuwkgl9", "commit": "753d9b2", "version": "2.1.5", "note": "Past 100%, one Flash-Lite squeeze (memory only), chip shows before and after" },
+    { "id": "mvncgnd04n93", "commit": "753d9b2", "version": "2.1.5", "note": "Rework is round 2: prompt back in the box with one What was weak line, originals kept in memory, Save to Notes original words + new prompt" },
+    { "id": "mvlcgojd9rhz", "commit": "753d9b2", "version": "2.1.5", "note": "Back to round 1; timer shows Round 2 with the running total; old one-question side flow removed" }
   ]
 }
