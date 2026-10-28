@@ -34,6 +34,13 @@
   function addNew() { openAt(context.add()); }
   function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
   function done() { context.save(); context.open = false; armed = ''; }
+  /* While the editor is open, the floating 💡 Ideas and 🧪 Test lab buttons tuck away so they
+     don't sit on top of the floating Done bar (Test lab, v2.1.7). */
+  $effect(() => {
+    const on = !!context.open;
+    document.body.classList.toggle('fabs-away', on);
+    return () => document.body.classList.remove('fabs-away');
+  });
 </script>
 
 {#if core.dev}

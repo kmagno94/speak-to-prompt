@@ -2509,14 +2509,21 @@ const fakeKeyboard = (p, inset) => p.evaluate((inset) => {
 }, inset);
 const inView = (p, sel) => p.evaluate((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1; }, sel);
 
-await check('my context: Done floats at the bottom of the screen (and on top of the keyboard) while you scroll the pieces', async () => {
+await check('my context: Done floats at the bottom of the screen (and on top of the keyboard) while you scroll the pieces, and the 💡 / 🧪 buttons tuck away', async () => {
   const p = await page();
   await devOn(p);
+  await ideasOn(p);
+  const fabs = process.env.APP_CHANNEL === 'staging' ? ['#ideaTab', '#labTab'] : ['#ideaTab'];
+  for (const f of fabs) expect(await p.isVisible(f), f + ' should show before the editor opens');
   for (let i = 0; i < 4; i++) { await p.click(i ? '#contextBar button:text-is("+ Add another")' : '#contextNew'); await p.waitForTimeout(150); }
   await p.evaluate(() => document.getElementById('contextEditor').scrollIntoView({ block: 'start' })); await p.waitForTimeout(200);
   const tall = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().height > innerHeight);
   expect(tall, 'need a list taller than the screen for this check');
   expect(await inView(p, '#contextDone'), 'Done should float in view at the top of a long list');
+  await p.waitForTimeout(250);
+  const hit = await p.evaluate(() => [...document.querySelectorAll('#contextBar button')].every(b => { const r = b.getBoundingClientRect(); const pts = [[r.left + 6, r.top + r.height / 2], [r.right - 6, r.top + r.height / 2], [r.left + r.width / 2, r.top + r.height / 2]]; return pts.every(([x, y]) => b.contains(document.elementFromPoint(x, y))); }));
+  expect(hit, 'nothing may sit on top of the + Add another / Done bar (Test lab, v2.1.7)');
+  for (const f of fabs) expect(await p.$eval(f, el => getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el).opacity === '0'), f + ' should tuck away while the editor is open');
   await fakeKeyboard(p, 300); await p.waitForTimeout(150);
   const bottom = await p.$eval('#contextDone', el => el.getBoundingClientRect().bottom);
   expect(bottom <= 844 - 300 + 2, 'with the keyboard up, Done should sit on top of it, bottom at ' + bottom);
@@ -2524,6 +2531,8 @@ await check('my context: Done floats at the bottom of the screen (and on top of 
   await p.click('#contextDone');
   await p.waitForSelector('#contextEditor', { state: 'detached', timeout: 2000 }).catch(() => {});
   expect(!(await p.$('#contextEditor')), 'the floating Done should close the editor');
+  await p.waitForTimeout(300);
+  for (const f of fabs) expect(await p.$eval(f, el => getComputedStyle(el).pointerEvents !== 'none' && getComputedStyle(el).opacity === '1'), f + ' should come back after Done');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2551,6 +2560,7 @@ await check('keyboard coach: while typing with the keyboard up, the meter and on
   const b = await p.$eval('#kbCoach', el => Math.round(el.getBoundingClientRect().bottom));
   expect(Math.abs(b - (844 - 320)) <= 2, 'the bar should sit right on the keyboard, bottom at ' + b);
   expect(await p.$('#coach.kbaway'), 'the coach under the box steps aside while the bar has it');
+  expect(await p.evaluate(() => document.body.classList.contains('fabs-away-kb')), 'the floating 💡 / 🧪 buttons tuck away while the bar is up');
   const before = await p.inputValue('#thoughts');
   await p.click('#kbTip');
   expect((await p.inputValue('#thoughts')).length > before.length && await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the tip should add a line and keep the cursor in the box');
