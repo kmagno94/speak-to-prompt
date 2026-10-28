@@ -62,7 +62,7 @@
         <rect style="--i:2" x="112" y="22" width="140" height="4" rx="2"/>
       </g>
     </svg>
-    <p class="lede">Every great answer starts with a good first step. Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</p>
+    <p class="lede"><span>Every great answer starts with a good first step.</span> <span>Say what's on your mind, messy is fine, and shape it into the prompt that gets you going in any AI.</span></p>
   </header>
 
   <JourneyStrip />

@@ -4,23 +4,23 @@
   "cases": [
     {
       "id": "B9",
-      "name": "Game night, Saturday made sure (written)",
-      "today": "Tuesday, October 27, 2026",
-      "raw": "ok so maybe saturday the 30th? i think. want to do a chill game night at my place for my cousins, like 6 of us. need snack ideas and a couple games that work for a big group, nothing too competitive, my one cousin gets heated lol",
+      "name": "Potluck, a Saturday I think (real run, rewritten)",
+      "today": "Friday, October 23, 2026",
+      "raw": "ok so potluck at my place, a saturday I think? my friend Dana is gluten free so I need a few dishes she can eat, like 8 people total, easy stuff I can make the night before",
       "answers": [
         {
-          "question": "What's your snack budget?",
-          "answer": "Under $40"
+          "question": "How many dishes do you want to make yourself?",
+          "answer": "Three"
         }
       ],
-      "prompt": "You are a laid-back party planner who knows great group games and easy snacks.\n\nContext: I'm hosting a chill game night at my place on Saturday, October 30, 2026 for my cousins, 6 of us total. My snack budget is under $40. One cousin gets heated, so I want games that keep things friendly.\n\nTask: Suggest snacks and a couple of games that work well for a group of 6 and aren't too competitive.\n\nA great answer is a plan I could shop for and set up the same afternoon without looking anything else up.\n\nFormat: Two short lists, Snacks (about 5 ideas with rough costs that stay under $40) and Games (2 or 3, each with one line on why it stays friendly). Keep it to about one screen.\n\nStart right away, and ask at most one short question only if something essential is missing.",
+      "prompt": "You are a home cook who plans easy, make-ahead potluck menus.\n\nContext: I'm hosting a potluck at my place on Saturday, November 15, 2026 for 8 people. My friend Dana is strictly gluten-free, so the dishes I make need to be safe for her.\n\nTask: Suggest three easy dishes I can make the night before that are gluten-free and work for a group of 8.\n\nA great answer is a menu I could shop for and prep the night before without looking anything else up.\n\nFormat: A short list of the three dishes, each with a one-line description, a short ingredient list, and the night-before steps. Keep it to about one screen.\n\nStart right away, and ask at most one short question only if something essential is missing.",
       "key": {
         "score": 3.0,
         "missing": [],
         "invented": true,
         "rearranged": false,
         "broke": [],
-        "why": "Turned \"maybe Saturday the 30th, I think\" into a sure date, added the month and a year nobody said, and October 30, 2026 is a Friday. The number check flags 2026 and the weekday, so it can't pass."
+        "why": "Turned \"a Saturday I think\" into a sure date with a month, a day, and a year nobody said, and November 15, 2026 is a Sunday. Also made gluten free \"strictly\". The number check flags 15, 2026, and the weekday, so it can't pass."
       }
     },
     {

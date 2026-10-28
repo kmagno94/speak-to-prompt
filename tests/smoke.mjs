@@ -2137,13 +2137,11 @@ await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen
 });
 
 /* Build 1 (v2.1.4): Batch A, the number and date check, and prompt-only copy. */
-await check('first time intro: no emojis, and room between the parts', async () => {
+await check('intro text: each sentence on its own line with room to breathe, spacing only, no emojis', async () => {
   const p = await page();
-  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
-  const text = await p.$eval('#tutorial .sheet', (e) => { const c = e.cloneNode(true); c.querySelector('#tutClose')?.remove(); return c.textContent; });
-  expect(!/[\p{Extended_Pictographic}\u2713\u21bb]/u.test(text), 'the intro should have no emojis or icon characters: ' + (text.match(/[\p{Extended_Pictographic}\u2713\u21bb]/gu) || []).join(' '));
-  const gaps = await p.evaluate(() => ({ sheet: parseFloat(getComputedStyle(document.querySelector('#tutorial .sheet')).rowGap), flow: parseFloat(getComputedStyle(document.querySelector('#tutorial .flow')).rowGap) }));
-  expect(gaps.sheet >= 20 && gaps.flow >= 24, 'parts of the intro need more room: ' + JSON.stringify(gaps));
+  const st = await p.$eval('header .lede', (e) => { const cs = getComputedStyle(e), spans = e.querySelectorAll('span'); return { lh: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize), gap: parseFloat(cs.rowGap), n: spans.length, stacked: spans.length === 2 && spans[1].getBoundingClientRect().top > spans[0].getBoundingClientRect().bottom, text: e.textContent }; });
+  expect(st.n === 2 && st.stacked && st.lh >= 1.6 && st.gap >= 8, 'the intro should have each sentence on its own line with open spacing: ' + JSON.stringify(st));
+  expect(!/\p{Extended_Pictographic}/u.test(st.text), 'no emojis in the intro text');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2266,6 +2264,7 @@ await check('writer: keeps hedges and adds no year, weekday, or extra words to a
   const w = p.calls.find((c) => !c.intake).text;
   expect(/Keep their hedges\. If they said maybe, probably, I think/.test(w) && /Never add a year, a weekday, a month, or a time they didn't say/.test(w), 'the writer should be told to keep hedges and add nothing to dates');
   expect(/Never copy its year, weekday, or month onto a date the person gave/.test(w), "today's date is only for counting days");
+  expect(/don't match, keep both as they said them and ask the AI to check/.test(w) && /No strictly, absolutely, always, or must unless they used that word/.test(w), 'a mismatch is flagged, not picked, and preferences are not made stronger');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2294,7 +2293,7 @@ await check('quality grade: docked below the bar when the number check flags', a
 await check('grader bench: the Saturday example runs first, and the number check docks it like a live run', async () => {
   const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
   const sat = bench.cases[0];
-  expect(/saturday the 30th/i.test(sat.raw) && /Saturday, October 30, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
+  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
   const p = await page({ gradeFn: (ask) => (ask.includes(sat.prompt) ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : null) });
   await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [sat] }) }));
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');

@@ -65,8 +65,8 @@
         <p>Type or talk the way you'd text a friend. This is the kind of note people really write:</p>
         <div class="scratch" id="tutNote" aria-label="Example note">{ex.note}</div>
         <div class="whyok" aria-label="Why messy is fine">
-          {#each ex.tags as t}<span>{t}</span>{/each}
-          <button type="button" class="inline" id="tutShuffle" onclick={shuffle}>Another one</button>
+          {#each ex.tags as t}<span>✓ {t}</span>{/each}
+          <button type="button" class="inline" id="tutShuffle" onclick={shuffle}>↻ Another one</button>
         </div>
         <p class="aside">The strength meter under the box lights up as you add things like who it's for or a budget. Tap a faint note to add what's missing.</p>
       </li>
@@ -98,7 +98,7 @@
     <details class="extras">
       <summary>Extras you can skip for now</summary>
       <ul>
-        <li><b>Ideas</b> in the box: swipe for something to try.</li>
+        <li><b>💡 Ideas</b> in the box: swipe for something to try.</li>
         <li><b>Not sure where to start?</b> Pick a goal and answer a few taps.</li>
         <li><b>X-ray</b> on your prompt: see which parts came from your words.</li>
         <li><b>Something went wrong?</b> Tap it and it tells us what broke. Never your words.</li>
@@ -116,12 +116,11 @@
 <style>
   .tutorial { border: 0; padding: 0; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px -20px rgba(10, 20, 40, 0.55); }
   .tutorial::backdrop { background: color-mix(in srgb, #0b1420 55%, transparent); }
-  .sheet { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 22px 20px 20px; display: grid; gap: 20px; }
+  .sheet { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 20px 18px 18px; display: grid; gap: 14px; }
   .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   h2 { font-family: var(--display); font-size: 26px; line-height: 1.1; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
   .x { min-height: 40px; min-width: 40px; padding: 0; border-radius: 999px; border: 0; background: var(--bg); color: var(--muted); font-size: 16px; flex: none; }
-  /* The intro: plain words, no emojis, room to breathe (Build 1, #15). */
-  .intro { margin: 0; color: var(--muted); line-height: 1.55; }
+  .intro { margin: 0; color: var(--muted); }
 
   /* Same red record dot as Talk it out, so it reads as the voice way in. */
   .talk { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; line-height: 1.35; }
@@ -130,15 +129,14 @@
   .talk:focus-visible, .x:focus-visible, .inline:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   /* The four steps hang off one line, top to bottom, because they happen in order. */
-  .flow { list-style: none; margin: 4px 0 0; padding: 0; counter-reset: step; display: grid; gap: 26px; }
-  .flow li { counter-increment: step; position: relative; padding-left: 44px; display: grid; gap: 10px; }
+  .flow { list-style: none; margin: 4px 0 0; padding: 0; counter-reset: step; display: grid; gap: 18px; }
+  .flow li { counter-increment: step; position: relative; padding-left: 44px; display: grid; gap: 8px; }
   .flow li::before { content: counter(step); position: absolute; left: 0; top: -2px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 15px; background: var(--accent-soft); color: var(--accent); }
-  .flow li:not(:last-child)::after { content: ""; position: absolute; left: 14px; top: 34px; bottom: -22px; width: 2px; background: var(--line); }
+  .flow li:not(:last-child)::after { content: ""; position: absolute; left: 14px; top: 34px; bottom: -16px; width: 2px; background: var(--line); }
   h3 { font-family: var(--display); font-size: 18px; margin: 2px 0 0; }
   .flow p { margin: 0; }
   .aside { font-size: 14px; color: var(--muted); }
-  .whyok { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ok); font-weight: 700; }
-  .whyok span { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .whyok { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--ok); font-weight: 700; }
   .whyok .inline { font-size: 13px; }
 
   /* Loose scratchpad in... */
@@ -163,7 +161,7 @@
 
   .extras { border-top: 1px solid var(--line); padding-top: 10px; }
   .extras summary { cursor: pointer; font-weight: 700; color: var(--muted); }
-  .extras ul { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 15px; }
+  .extras ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 15px; }
   .safe { margin: 0; font-size: 14px; color: var(--ok); font-weight: 700; }
   .actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; position: sticky; bottom: -18px; background: var(--surface); padding: 10px 0 2px; }
   @media (max-width: 379px) { .actions { grid-template-columns: 1fr; } }

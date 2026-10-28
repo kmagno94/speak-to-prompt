@@ -68,7 +68,10 @@ h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-heigh
   @keyframes speak { from { transform: scaleY(0.1); } }
   @keyframes settle { from { transform: scaleX(0); } }
 }
-.lede { margin: 0; color: var(--muted); max-width: 52ch; }
+/* The intro text gets room to breathe: each sentence on its own line, open line height,
+   a touch of space after the waveform. Spacing only, no emojis (Build 1, #15). */
+.lede { margin: 6px 0 4px; color: var(--muted); max-width: 46ch; font-size: 17px; line-height: 1.65; letter-spacing: 0.005em; display: grid; gap: 10px; text-wrap: pretty; }
+.lede span:first-child { color: var(--ink); font-weight: 600; }
 .chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border-radius: 999px; padding: 4px 11px; }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 /* Memory on: say so up front, in the accent color instead of the "nothing saved" green. */

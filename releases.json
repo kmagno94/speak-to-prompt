@@ -10,10 +10,10 @@
         "Start over forgets your transcript. If Paste finds the same one still on the clipboard, it warns you instead of bringing it back (Use it anyway if you mean it).",
         "Ideas tab: Edit on any open idea.",
         "Questions read clearer: the question is bold, the helper lines around it are small and gray.",
-        "First time? Start here: more room between the parts and no emojis.",
+        "The intro text on the first screen has room to breathe: each sentence on its own line, open spacing.",
         "My context: the editor opens at its top with the cursor in a title, and a new piece goes first.",
-        "Dates stay as you said them: the writer keeps maybe and I think, and adds no year, weekday, or month. The Heads up note now also catches a weekday that doesn't match its date (Saturday the 30th when the 30th is a Friday).",
-        "The Quality check is docked below the bar whenever the number check flags something, and the grader bench runs the Saturday example first.",
+        "Dates stay as you said them: the writer keeps maybe and I think, adds no year, weekday, or month, and doesn't make a preference stronger (no strictly you didn't say). If your own weekday and date don't match, the prompt asks the AI to check instead of picking one. The Heads up note now also catches a weekday that doesn't match its date (Saturday the 30th when the 30th is a Friday).",
+        "The Quality check is docked below the bar whenever the number check flags something, and the grader bench runs the real Saturday example (B9) first.",
         "Copy gives the prompt only: My context is no longer tacked on as a block. The writer works in just the facts the request needs, and your core stays at the end."
       ],
       "checks": [
@@ -34,20 +34,20 @@
           "see": "The question is bold. The \"Got it\" line above it and the \"That's everything I need\" line after are small and gray."
         },
         {
-          "say": "Tap First time? Start here.",
-          "see": "No emojis anywhere in the sheet, and more space between the intro and each step."
+          "say": "Open staging fresh and read the intro under Speak to Prompt.",
+          "see": "Each sentence sits on its own line with more space around it, the first one a little darker. No emojis."
         },
         {
           "say": "With dev tools on and at least one My context piece saved, tap + New under My context.",
           "see": "The editor scrolls to its top, the new empty piece is first, and the cursor is in its title."
         },
         {
-          "say": "With your key, build from: \"ok maybe saturday the 30th? want a chill game night for my cousins, snack ideas\".",
-          "see": "The prompt keeps the maybe and has no 2026, no month, and no weekday you didn't say. If it ever adds one, a Heads up note names it (and says the 30th is a Friday)."
+          "say": "With your key, build from: \"potluck at my place, a saturday I think? my friend is gluten free, like 8 people\".",
+          "see": "The prompt keeps \"I think\", adds no month, day, or year, and says gluten free without \"strictly\". If it ever adds a date, a Heads up note names it (and the weekday if it is wrong)."
         },
         {
           "say": "More options > Grader bench > Run grader bench (dev tools on).",
-          "see": "B9 Game night is the first row, and its grader score is under 4.5."
+          "see": "B9 Potluck is the first row, and its grader score is under 4.5."
         },
         {
           "say": "Dev tools on: pick a My context chip, build with your key, tap Copy prompt, and paste into Notes.",
