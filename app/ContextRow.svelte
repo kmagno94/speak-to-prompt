@@ -5,7 +5,18 @@
   import { slide } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { core } from './lib/core.svelte.js';
-  import { context } from './lib/context.svelte.js';
+  import { context, BUDGET } from './lib/context.svelte.js';
+  import { ui } from './lib/ui.svelte.js';
+
+  const n = (x) => x.toLocaleString('en-US');
+  /* The budget chip: size and % of the 1,500 token budget. Past 100% with a key it says a
+     squeeze is coming; after one, it shows before and after (memory only, this visit). */
+  const budget = $derived.by(() => {
+    if (context.squeezed) return 'squeezed ' + n(context.squeezed.before) + ' → ' + n(context.squeezed.after) + ' tokens · ' + context.pct + '%';
+    const base = 'about ' + n(context.tokens) + ' tokens · ' + context.pct + '%';
+    if (!context.over) return base;
+    return base + (ui.hasKey ? ' · squeezes to fit when you build' : ' · over budget, used in full');
+  });
 
   let armed = $state('');
   let editor = $state();
@@ -29,7 +40,7 @@
   <div class="ctxrow" id="contextRow">
     <div class="ctxhead">
       <span class="ctxlabel">My context</span>
-      {#if context.chosen.length}<span class="ctxcount" id="contextCount">{context.chosen.length} added to this prompt · about {context.tokens} tokens</span>{/if}
+      {#if context.chosen.length}<span class="ctxcount" class:over={context.over} id="contextCount" title={`Budget: ${n(BUDGET)} tokens`}>{context.chosen.length} added to this prompt · {budget}</span>{/if}
       <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
     </div>
     <div class="chips" role="group" aria-label="Context to add to this prompt">
@@ -64,7 +75,8 @@
   .ctxrow { grid-column: 1 / -1; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
   .ctxhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
   .ctxlabel { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); }
-  .ctxcount { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; }
+  .ctxcount { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
+  .ctxcount.over { color: var(--warn); background: var(--warn-soft); }
   .ctxedit { margin-left: auto; min-height: var(--tap); }
   .ctxedit:empty { display: none; }
   .ctxchip { min-height: var(--tap); }

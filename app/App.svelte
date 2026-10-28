@@ -20,6 +20,7 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import QualityCheck from './QualityCheck.svelte';
+  import RoundBanner from './RoundBanner.svelte';
   import ContextRow from './ContextRow.svelte';
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
@@ -79,6 +80,7 @@
         <p id="pasteHelp" hidden>Safari will show a small Paste button. Tap it to bring the full transcript in.</p>
       </div>
     </div>
+    <RoundBanner place="form" />
     <div class="ideabox">
       <textarea id="thoughts" autocomplete="off" placeholder="Type or paste your thoughts. Messy is fine."></textarea>
       <div class="ideas gone" id="ideas">
@@ -130,6 +132,7 @@
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
+    <RoundBanner place="result" />
     <QualityCheck />
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>

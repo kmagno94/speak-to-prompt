@@ -2,6 +2,27 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.5",
+      "date": "2026-10-27",
+      "title": "Build 2: context budget, Rework as round 2",
+      "items": [
+        "My context has a budget: the chip shows about how many tokens your picks add and the % of 1,500.",
+        "Past 100%, a build with your key squeezes the picks once with Flash-Lite: every fact stays, filler goes. The chip shows before and after. The short version is memory only, so your saved pieces never change.",
+        "Rework is now round 2: your prompt goes back in the box with one What was weak line on top. Change anything, then Build. Round 2 uses your original thoughts and answers plus your edits, with no new questions.",
+        "Round 2 shows on the timer with the running total for both rounds, and the card shows the score before and after.",
+        "Save to Notes after round 2 keeps your original words with the new prompt. Back to round 1 puts everything back. The old one-question rework in the card is gone."
+      ],
+      "checks": [
+        { "say": "Dev tools on, no key: pick one short My context piece.", "see": "The chip next to My context says about N tokens and a small %, like · 3%." },
+        { "say": "With your key, pick My context pieces that add up past 100% (or paste a long piece), then build.", "see": "Before: the chip is orange and says squeezes to fit when you build. The button says Squeezing your context to fit, then the chip says squeezed (before) → (after) tokens with a % near or under 100." },
+        { "say": "After that squeeze, open My context > Edit and look at the long piece.", "see": "Your saved words are exactly as you wrote them. Reload the page and pick them again: the chip is back to the full size." },
+        { "say": "With run stats on, build a prompt that lands under the 4.5 bar, then tap 🔁 Rework from this prompt.", "see": "The card steps aside. The box holds one line starting What was weak, a blank line, then your prompt. A Round 2 banner sits above the box with Back to round 1." },
+        { "say": "Add a line to the box (like a budget), then tap Build my prompt.", "see": "No new questions. The timer says Round 2 and total, both rounds. The ready line says Round 2 ready in Ns (Ms total, both rounds). The banner on the card shows Quality check before → after." },
+        { "say": "Tap Save to Notes, then look at the note.", "see": "Your original words (summary and transcript) with the new prompt under Prompt Built. No What was weak line anywhere." },
+        { "say": "Tap ← Back to round 1 on the card.", "see": "The first prompt, its grade, and your original words in the box are back, and 🔁 Rework from this prompt shows again." }
+      ]
+    },
+    {
       "version": "2.1.4",
       "date": "2026-10-27",
       "title": "Build 1: Batch A, honest dates, prompt-only copy",

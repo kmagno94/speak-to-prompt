@@ -76,7 +76,7 @@ async function page(opts = {}) {
       p.repairs.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
       if (opts.repairDelay) await new Promise(res => setTimeout(res, opts.repairDelay));
       if (opts.repairFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      const fixed = opts.repair != null ? opts.repair : (opts.write || 'THE PROMPT');
+      const fixed = opts.repair != null ? opts.repair : opts.writeFn ? opts.writeFn(ask) : (opts.write || 'THE PROMPT');
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: fixed }] } }] }) });
     }
     if (/PROMPT TO FINISH:/.test(ask)) {
@@ -94,21 +94,18 @@ async function page(opts = {}) {
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
-    if (/REWORK QUESTION STEP/.test(ask)) {
-      (p.reworkQs = p.reworkQs || []).push({ model, text: ask });
-      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 90 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(opts.reworkQ || { question: '' }) }] } }] }) });
+    if (/CONTEXT SQUEEZE STEP/.test(ask)) {
+      (p.squeezes = p.squeezes || []).push({ model, text: ask });
+      if (opts.squeezeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 300 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.squeeze || '[Roastery]\nSQUEEZED: roast Tuesday and Friday.' }] } }] }) });
     }
-    if (/FIRST DRAFT TO REWORK/.test(ask)) {
-      (p.reworks = p.reworks || []).push({ model, text: ask });
-      if (opts.reworkFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
-      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 600 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.rework || 'REWORKED PROMPT' }] } }] }) });
-    }
+    if (opts.failRound2 && /ROUND 2: THE PERSON REWORKED/.test(ask)) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
-      : (opts.write || 'THE PROMPT');
+      : (opts.writeFn ? opts.writeFn(ask) : opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
     return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500, thoughtsTokenCount: 100 }, candidates: [{ finishReason, content: { parts: [{ text }] } }] }) });
   });
@@ -1874,36 +1871,53 @@ async function reworkPage(opts) {
   await p.waitForSelector('#reworkBtn', { timeout: 5000 });
   return p;
 }
-await check('rework: under the bar, it asks one question, rewrites from the first prompt, and keeps the higher score', async () => {
+const RAW_BAKE = 'plan a bake sale for the robotics club, friday, gym lobby';
+const round2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT with a $40 budget' : 'First prompt');
+await check('rework: round 2 puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
-  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), reworkQ: { question: 'How much should each item cost?', choices: ['$1', '$2 to $3', '$5'] } });
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
   await p.click('#reworkBtn');
-  await p.waitForSelector('#reworkQ');
-  expect(/How much should each item cost/.test(await p.textContent('#reworkQ')), 'the clarifying question should show');
-  await p.click('#reworkQ .chips button:has-text("$2 to $3")');
-  await p.waitForSelector('#reworkNote', { timeout: 5000 });
-  const w = p.reworks[0].text;
-  expect(/FIRST DRAFT TO REWORK[\s\S]*First prompt/.test(w) && /words rearranged/.test(w), 'rewrite should start from the first prompt with what was weak');
-  expect(/Q: How much should each item cost\?\nA: \$2 to \$3/.test(w), 'the new answer should reach the writer');
-  expect(await p.inputValue('#output') === 'REWORKED PROMPT', 'the higher-scoring rework should replace the prompt');
-  expect(/Reworked: 2\.0 to 5\.0, kept the new one/.test(await p.textContent('#reworkNote')), 'note wrong: ' + await p.textContent('#reworkNote'));
-  expect(!(await p.$('#reworkBtn')), 'only one rework per prompt');
+  await p.waitForSelector('#roundForm');
+  const box = await p.inputValue('#thoughts');
+  const lines = box.split('\n');
+  expect(/^What was weak: It reads like your words rearranged/.test(lines[0]) && lines[1] === '' && /First prompt/.test(box), 'the box should hold one weak line, then the prompt: ' + box);
+  expect(await p.isHidden('#result'), 'the old prompt card should step aside while you edit');
+  expect(!(await p.$('#reworkQ')), 'the old side flow (one question in the card) is gone');
+  await p.fill('#thoughts', box + '\nBudget is $40 total.');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget', 'round 2 should show the new prompt');
+  const w = p.calls.filter((c) => !c.intake).pop().text;
+  expect(/ROUND 2: THE PERSON REWORKED[\s\S]*EDITED PROMPT:[\s\S]*What was weak[\s\S]*First prompt/.test(w), 'the writer should get the edited prompt with the weak line');
+  expect(w.includes(RAW_BAKE) && /Q: What I changed when reworking\nA: Budget is \$40 total\./.test(w), 'the original words and the new line should reach the writer');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'round 2 asks no new questions');
+  expect(/Round 2 (ready|built).* in \d+s \(\d+s total, both rounds\)/.test(await p.textContent('#madeBy')), 'made-by line should show Round 2 and the total: ' + await p.textContent('#madeBy'));
+  expect(/total, both rounds/.test(await p.textContent('#resultTrack .nums')), 'the timer should read as a running total');
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(!(await p.$('#reworkBtn')), 'no Rework button inside round 2');
+  await p.click('#saveNote');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(note.includes(RAW_BAKE) && /REWORKED PROMPT/.test(note) && !/What was weak/.test(note), 'Save to Notes should be the original words plus the new prompt: ' + note.slice(-300));
+  await p.click('#round1Result');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should bring back the first prompt and your words');
+  await p.waitForSelector('#roundResult', { state: 'detached' });
+  expect(!/Round 2/.test(await p.textContent('#madeBy')) && await p.isVisible('#reworkBtn'), 'round 1 should look like it did, Rework ready again');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('rework: no question needed goes straight to the rewrite; a worse rework keeps the first prompt; a failed one says so', async () => {
-  const low = { craft: 3, rearranged: true, invented: false, missing: [] }, lower = { craft: 2, rearranged: true, invented: false, missing: [] };
-  const p = await reworkPage({ gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? lower : low) });
-  await p.click('#reworkBtn');
-  await p.waitForSelector('#reworkNote', { timeout: 5000 });
-  expect(!(await p.$('#reworkQ')), 'no question should show when none is needed');
-  expect(await p.inputValue('#output') === 'First prompt', 'a lower-scoring rework must not replace the prompt');
-  expect(/kept the first one/.test(await p.textContent('#reworkNote')), 'note should say the first was kept');
-  const q = await reworkPage({ grade: low, reworkFail: true });
-  await q.click('#reworkBtn');
-  await q.waitForSelector('#notice-result', { timeout: 5000 });
-  expect(/rework didn't come through/.test(await q.textContent('#notice-result')) && await q.inputValue('#output') === 'First prompt', 'a failed rework should keep the prompt and say so');
-  expect(!p.errors.length && !q.errors.length, 'page errors');
+await check('rework: Back to round 1 from the box, and a failed round 2 brings round 1 back and says so', async () => {
+  const low = { craft: 3, rearranged: true, invented: false, missing: [] };
+  const p = await reworkPage({ grade: low });
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#round1Form');
+  await p.waitForSelector('#roundForm', { state: 'detached' });
+  expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
+  const q = await reworkPage({ grade: low, failRound2: true });
+  await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
+  await q.click('#build');
+  await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
+  expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
@@ -2036,6 +2050,43 @@ async function logIdea(p, kind, area, text) {
   await p.fill('#ideaText', text); await p.click('#ideaSave');
   await p.waitForSelector('#ideaSaved');
 }
+
+
+const LONG = (k) => Array.from({ length: 45 }, (_, i) => 'Note ' + k + i + ': roast Tuesday and Friday, two blends, check the green coffee bins first.').join(' ').slice(0, 3600);
+await check('my context: budget chip shows %, past 100% one Flash-Lite squeeze fits it (memory only, before and after shown)', async () => {
+  const pieces = [{ id: 'a', title: 'Roastery', text: LONG('A') }, { id: 'b', title: 'Roastery two', text: LONG('B') }];
+  const p = await page();
+  await p.evaluate((v) => localStorage.setItem('stp-context', JSON.stringify(v)), [{ id: 's', title: 'Short', text: 'Roast days are Tuesday and Friday.' }, ...pieces]);
+  await devOn(p);
+  await p.click('#contextRow .ctxchip:has-text("Short")');
+  expect(/about \d+ tokens · \d%$/.test((await p.textContent('#contextCount')).trim()), 'under budget should show tokens and %: ' + await p.textContent('#contextCount'));
+  await p.click('#contextRow .ctxchip:has-text("Short")');
+  await p.click('#contextRow .ctxchip:text-is("Roastery")'); await p.click('#contextRow .ctxchip:has-text("Roastery two")');
+  expect(/1\d\d% · over budget, used in full/.test(await p.textContent('#contextCount')) && await p.$('#contextCount.over'), 'no key: over budget is flagged and used in full: ' + await p.textContent('#contextCount'));
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  expect(/squeezes to fit when you build/.test(await p.textContent('#contextCount')), 'with a key it should say a squeeze is coming');
+  await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect((p.squeezes || []).length === 1 && /lite/.test(p.squeezes[0].model) && p.squeezes[0].text.includes('Note A0'), 'one squeeze call, Flash-Lite first, with the picked text');
+  const intake = p.calls.find((c) => c.intake).text;
+  expect(/SQUEEZED: roast Tuesday and Friday/.test(intake) && !intake.includes('Note A0'), 'the question step should get the squeezed version');
+  expect(/squeezed [\d,]+ → \d+ tokens · \d+%/.test(await p.textContent('#contextCount')) && !(await p.$('#contextCount.over')), 'chip should show before and after: ' + await p.textContent('#contextCount'));
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  expect(/SQUEEZED/.test(p.calls.filter((c) => !c.intake).pop().text), 'the writer should get the squeezed version too');
+  expect(JSON.parse(await p.evaluate(() => localStorage.getItem('stp-context')))[1].text === pieces[0].text, 'saved pieces never change');
+  await p.click('#reset'); await p.fill('#thoughts', 'again'); await p.click('#build'); await p.waitForSelector('#qa:not([hidden])');
+  expect(p.squeezes.length === 1, 'same picks reuse the squeeze, no second call');
+  await p.reload();
+  expect(!(await p.$('#contextCount')) || !/squeezed/.test(await p.textContent('#contextCount')), 'a reload drops the squeeze (memory only)');
+  const q = await page({ squeezeFail: true });
+  await q.evaluate((v) => localStorage.setItem('stp-context', JSON.stringify(v)), pieces);
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:text-is("Roastery")'); await q.click('#contextRow .ctxchip:has-text("Roastery two")');
+  await q.fill('#thoughts', 'plan my roast week'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  expect(q.squeezes.length === 1 && q.calls.find((c) => c.intake).text.includes('Note A0'), 'a failed squeeze is tried once, then the full pieces are used');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
 
 await check('ideas tab: hidden by default, the More options toggle shows it and remembers', async () => {
   const p = await page();

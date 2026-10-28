@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, withContext, REWORK_QUESTION, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -7,7 +7,7 @@ import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify } from './ui.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
-import { context } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
+import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
@@ -72,7 +72,7 @@ export function startApp() {
         "  intake " + (r.intake_s != null ? r.intake_s + "s on " + r.intake_model + ", " + n(r.intake_tokens) + " tokens" : "-") + "\n" +
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
-        (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" : "") +
+        (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -223,7 +223,8 @@ export function startApp() {
       words_in: words(session.raw),
       questions: (session.questions || []).length,
       answered: (session.answers || []).length,
-      context: context.active ? context.chosen.length : 0, context_tok: context.tokens   /* My context: counts only */
+      context: context.active ? context.chosen.length : 0, context_tok: context.tokens,   /* My context: counts only */
+      context_raw_tok: context.active && context.rawTokens !== context.tokens ? context.rawTokens : null, squeeze: session.squeeze || null
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -255,6 +256,7 @@ export function startApp() {
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
+    else if (act === "round1") backToRound1();
   });
 
   form.addEventListener("submit", function (e) {
@@ -262,9 +264,11 @@ export function startApp() {
     var raw = thoughts.value.trim();
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
+    var key = gemini.key || gkey.value.trim();
+    if (ui.round && round1 && key) { roundTwo(raw); return; }   /* Rework round 2 */
+    if (ui.round) { round1 = null; ui.round = null; }
     rememberUsed(raw);
     inputHint(raw);
-    var key = gemini.key || gkey.value.trim();
     if (key) { geminiFlow(raw, key); return; }
     session = { raw: raw, quick: true, known: knownText() };
     showQuick(raw, "");
@@ -404,6 +408,7 @@ export function startApp() {
       s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "") + (g.confirm ? " \u00b7 pass check " + g.confirm + (g.secondCraft != null ? " (" + g.firstCraft.toFixed(2) + " then " + g.secondCraft.toFixed(2) + ")" : "") : "")); });
     } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
     if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
+    if (s.reworkText) { out.push("", "ROUND 2 EDITS (what went back in the box)", s.reworkText); if (round1) out.push("", "ROUND 1 PROMPT", round1.output); }
     out.push("", "PROMPT", output.value);
     return out.join("\n");
   }
@@ -461,7 +466,8 @@ export function startApp() {
     memory.suggestions = [];
     pastedPrint = ""; pendingPaste = null;
     xray.clear();
-    ui.rework = null;
+    round1 = null;
+    ui.round = null;
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
@@ -1379,8 +1385,11 @@ export function startApp() {
       if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
   }
-  function startEstimate(bar, label, usual, step, skipAsk) {
+  /* offset: seconds already spent (Rework round 1), so elapsed shows the running total. */
+  function startEstimate(bar, label, usual, step, skipAsk, offset) {
     var track = bar.closest(".tracker");
+    offset = offset || 0;
+    track.querySelector(".nums small").textContent = offset ? "total, both rounds" : "elapsed";
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
@@ -1389,7 +1398,7 @@ export function startApp() {
       var secs = (Date.now() - t0) / 1000, since = (Date.now() - tModel) / 1000;
       setProgress(bar, "pct", Math.max(2, Math.min(95, Math.round(95 * (1 - Math.exp(-since / (usual * 0.6)))))));
       var left = usual - since;
-      elEl.textContent = clock(secs);
+      elEl.textContent = clock(secs + offset);
       var over = left <= 1;
       right.classList.toggle("over", over);
       leftEl.textContent = over ? "Almost there" : clock(left);
@@ -1401,8 +1410,9 @@ export function startApp() {
     ticker = setInterval(draw, 1000);
     return function (m) { model = m; tModel = Date.now(); draw(); };
   }
-  function finishTrack(bar, secs, skipAsk) {
+  function finishTrack(bar, secs, skipAsk, offset) {
     var track = bar.closest(".tracker");
+    secs += offset || 0;
     stopTicker();
     setSteps(track, "ready", skipAsk);
     track.querySelector("li[data-step='ready']").className = "done";
@@ -1471,6 +1481,23 @@ export function startApp() {
     return verifyKey(key);
   }
 
+  /* My context budget: past 1,500 tokens, one Flash-Lite call (the question models, Lite
+     first) makes the picks shorter for this build. Kept in memory only for these exact picks;
+     if it fails or doesn't come out shorter, the full pieces are used. Never retried. */
+  function squeezeContext(onModel) {
+    if (!context.over) return Promise.resolve();
+    var sig = context.sig, before = context.rawTokens;
+    setBusy(true, "Squeezing your context to fit...");
+    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, gemini.plan.intake.slice(0, 1), "auto", onModel, 45000).then(function (r) {
+      var text = cleanPrompt(r.text);
+      if (context.sig !== sig) return;
+      var after = blockTokens(text);
+      if (!text || after >= before) { if (session) session.squeeze = "no gain"; return; }
+      context.squeeze = { sig: sig, text: text, before: before, after: after };
+      if (session) session.squeeze = before + " to " + after;
+    }, function () { if (session) session.squeeze = "failed"; }).then(function () { setBusy(true, "Reading your thoughts..."); });
+  }
+
   function geminiFlow(raw, key) {
     session = { raw: raw, known: knownText() };
     result.hidden = true;
@@ -1480,10 +1507,13 @@ export function startApp() {
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
-    if (context.active) base = withContext(base, context.block);   /* My context */
     memory.suggestions = [];
-    var intakeText = base + "\n" + raw + '\n"""';
+    var intakeText = "";
     ensureModel(key).then(function () {
+      return squeezeContext(onIntakeModel);
+    }).then(function () {
+      /* My context goes in after any squeeze, so the question step sees the same version the writer will. */
+      intakeText = (context.active ? withContext(base, context.block) : base) + "\n" + raw + '\n"""';
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
       session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeAway = r.away || 0; session.intakeTokens = r.tokens;
@@ -1540,6 +1570,7 @@ export function startApp() {
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
+    if (session.reworkText) text += "\n\nROUND 2: THE PERSON REWORKED THE FIRST PROMPT. Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     return text;
   }
@@ -1560,12 +1591,13 @@ export function startApp() {
     var depth = quick ? DEPTH.quick : depthOf(session.complexity);
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
-    var skipAsk = session.mode === "Quick mode" || !(session.questions && session.questions.length);
+    var skipAsk = session.mode === "Quick mode" || session.round === 2 || !(session.questions && session.questions.length);
+    var offset = session.round === 2 ? session.round1Secs || 0 : 0;   /* Rework round 2: running total */
     var busyP = quick ? null : busyNow();
     var models = busyP ? busyOrder(writeModels(quick), busyP.start) : writeModels(quick);
     var movedStart = busyP && models[0] !== writeModels(quick)[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
-    var eta = startEstimate(resultProg, depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk);
+    var eta = startEstimate(resultProg, (session.round === 2 ? "Round 2 \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
     /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
        a backup starts too and the first good prompt wins. */
     var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
@@ -1574,7 +1606,7 @@ export function startApp() {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT, hedgeAfter).then(function (r) {
       if (run !== writeRun) { setBusy(false); return; }
-      finishTrack(resultProg, r.ms / 1000, skipAsk);
+      finishTrack(resultProg, r.ms / 1000, skipAsk, offset);
       var draft = cleanPrompt(r.text);
       /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
       var before = qualityCheck(draft);
@@ -1600,13 +1632,16 @@ export function startApp() {
         qaStatus.textContent = "";
         var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
         /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
-        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
+        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         session.basePrompt = prompt;
+        session.workSecs = (offset || (session.intakeMs || 0) / 1000) + r.ms / 1000 + (rep.secs || 0);
+        var total = offset ? " (" + Math.max(1, Math.round(session.workSecs)) + "s total, both rounds)" : "";
         showResult(extras(prompt), techOn()   /* core */
-          ? "Built with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + detour + ". Your AI can start working right away."
-          : "Ready in " + secs + ". Your AI can start working right away.", session.title);
+          ? (offset ? "Round 2 built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
+          : (offset ? "Round 2 ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+        if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built" });
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
         if (memory.active) {
@@ -1622,7 +1657,8 @@ export function startApp() {
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
-          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null });
+          repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
+          round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null });
         gradeRun(prompt, run);
       }
     }).catch(function (e) {
@@ -1633,6 +1669,12 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
+      if (session.round === 2 && round1) {   /* Rework round 2 failed: round 1 comes back, nothing lost */
+        var why = e && e.message ? e.message : "unknown";
+        logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: 2 });
+        backToRound1();
+        return notify("result", "error", "Round 2 didn't come through", "Your round 1 prompt is back and ready to copy. Tap Rework from this prompt to try again.");
+      }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
       session.writeError = e && e.message ? e.message : "unknown";
@@ -1646,83 +1688,85 @@ export function startApp() {
      labels, and lesson ids go into the run, for the review's lessons learned.
      It never slows the prompt down; if it's late or fails, the run is sent
      without it. */
-  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; ui.rework = null; }
+  function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; }
 
-  /* Rework (from the Quality check, when it's under the bar): first see if one more
-     question would raise the grade and ask it; then rewrite with everything the same
-     plus the first prompt as the starting point and what was weak. The new version is
-     graded and kept only if it scores higher. Once per prompt, so it can't loop. */
+  /* Rework = round 2 (from the Quality check, when it's under the bar). The prompt goes back
+     in the box with one "What was weak" line on top, for the person to change as they like.
+     Their original thoughts and answers stay in memory (never saved): round 2 writes from
+     them plus the edited prompt, with no questions, and Save to Notes keeps the original
+     words with the new prompt. Back to round 1 puts the first prompt and its grade back. */
+  var round1 = null;
+  var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
     var n = [];
-    if (g.rearranged) n.push("It reads like the person's words rearranged. Turn it into clear instructions for the AI.");
-    if (g.invented) n.push("It added something the person didn't say. Take it out.");
+    if (g.rearranged) n.push("It reads like your words rearranged, not clear instructions for the AI.");
+    if (g.invented) n.push("It added something you didn't say.");
     g.missing.forEach(function (m) { n.push("It's missing " + (LABEL_NAMES[m] || m) + "."); });
     (g.broke || []).forEach(function (b) { n.push("It broke lesson " + b + "."); });
-    if (!n.length) n.push("Make it sharper and more specific, using only what the person said.");
+    if (g.numCheck) n.push("The number check flagged a number or date.");
+    if (!n.length) n.push("It could be sharper and more specific.");
     return n;
+  }
+  function snapResult() {
+    var snap = {};
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el) snap[id] = { html: el.innerHTML, hidden: el.hidden }; });
+    return snap;
+  }
+  function restoreResult(snap) {
+    ROUND_IDS.forEach(function (id) { var el = document.getElementById(id); if (el && snap[id]) { el.innerHTML = snap[id].html; el.hidden = snap[id].hidden; } });
   }
   function startRework() {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
-    if (!g || g.pass || !session.basePrompt || busy || !key || !gemini.plan || session.reworked) return;
-    session.reworked = true;
-    notify("result");
-    ui.rework = { stage: "asking" };
-    setBusy(true, "Checking if one question would help...");
-    var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer; });
-    var ask = REWORK_QUESTION + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS SO FAR:\n" + (lines.length ? lines.join("\n\n") : "None.") +
-      "\n\nCURRENT PROMPT:\n\"\"\"\n" + session.basePrompt + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
-    askGemini(ask, true, gemini.plan.intake, "low", null, 30000).then(function (r) {
-      var j = null; try { j = JSON.parse(cleanPrompt(r.text)); } catch (e) {}
-      var q = j && typeof j.question === "string" ? j.question.trim().slice(0, 160) : "";
-      if (!q) return doRework();
-      setBusy(false);
-      ui.rework = { stage: "question", question: q, choices: (Array.isArray(j.choices) ? j.choices : []).filter(function (c) { return typeof c === "string" && c.trim(); }).slice(0, 3).map(function (c) { return c.trim().slice(0, 60); }) };
-    }, function () { doRework(); });
+    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan || session.round === 2) return;
+    var seed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
+    round1 = { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value, seed: seed };
+    notify("result"); notify("form");
+    thoughts.value = seed;
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
+    ideasSync();
+    ui.round = { n: 2, stage: "edit", before: ui.grade ? ui.grade.score : null };
+    result.hidden = true;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    try { thoughts.focus({ preventScroll: true }); thoughts.setSelectionRange(0, 0); } catch (e) {}
   }
-  window.addEventListener("stp-rework-answer", function (e) {
-    if (!ui.rework || ui.rework.stage !== "question" || !session) return;
-    var d = e.detail || {};
-    if (d.answer && String(d.answer).trim()) session.answers = session.answers.concat([{ question: ui.rework.question, answer: String(d.answer).trim().slice(0, 500), tapped: !!d.tapped }]);
-    doRework();
-  });
-  function doRework() {
-    var g = lastGrade(), first = session.basePrompt, run = writeRun, fields = session.gradeFields || {};
-    ui.rework = { stage: "writing" };
-    setBusy(true, "Reworking your prompt...");
-    var text = writerText() + "\n\nFIRST DRAFT TO REWORK (keep what works, fix what's weak, follow every rule above):\n\"\"\"\n" + first + "\n\"\"\"\n\nWHAT THE QUALITY CHECK SAID WAS WEAK:\n- " + reworkNotes(g).join("\n- ");
-    var t0 = Date.now();
-    askGemini(text, false, writeModels(false), depthOf(session.complexity).level, null, WRITE_LIMIT).then(function (r) {
-      var next = cleanPrompt(r.text);
-      return gradeConfirmed(gradeOnce(next, session.raw, session.answers, session.today, lessons.items, lessons.grader)).then(function (g2) {
-        if (run !== writeRun) { setBusy(false); return; }
-        setBusy(false);
-        var keep = g2.craft > g.craft;
-        var note = "\ud83d\udd01 Reworked: " + (Math.round(g.craft * 10) / 10).toFixed(1) + " to " + (Math.round(g2.craft * 10) / 10).toFixed(1) + ", kept the " + (keep ? "new one" : "first one");
-        if (keep) {
-          session.draftBefore = first;
-          session.basePrompt = next;
-          session.grades.push(g2);
-          output.value = extras(next);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
-          var nc = showNumberCheck(next);
-          session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
-          output.dispatchEvent(new Event("stp:changed"));
-        }
-        session.rework = { kept: keep, before: g.craft, after: g2.craft, secs: Math.round((Date.now() - t0) / 100) / 10 };
-        var el = document.getElementById("gradeNote");
-        el.textContent = gradeText(keep ? g2 : g, fields, note);
-        el.hidden = false;
-        ui.grade = Object.assign({}, ui.grade, { reworked: true, note: note.replace(/^\S+ /, "") });
-        ui.rework = { stage: "done" };
-      });
-    }).catch(function () {
-      if (run !== writeRun) return;
-      setBusy(false);
-      session.reworked = false;
-      ui.rework = null;
-      notify("result", "error", "The rework didn't come through", "Your first prompt is still here and ready to copy. You can try the rework again.", [{ label: "Try the rework again", act: "rework", primary: true }]);
-    });
+  function roundTwo(text) {
+    var s1 = round1.session, seedLines = round1.seed.split(/\n+/).map(function (l) { return l.trim(); });
+    /* Lines the person typed or changed count as their own words, like an answer, so the
+       number check and the grader don't treat them as made up. */
+    var added = text.split(/\n+/).map(function (l) { return l.trim(); }).filter(function (l) {
+      return l && seedLines.indexOf(l) === -1 && !/^what was weak:/i.test(l);
+    }).join("\n").slice(0, 2000);
+    session = Object.assign({}, s1, { answers: (s1.answers || []).slice(), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
+      round: 2, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round 2" });
+    if (added) session.answers.push({ question: "What I changed when reworking", answer: added, tapped: false });
+    ui.round = Object.assign({}, ui.round, { stage: "writing" });
+    notify("form");
+    writeFinal(session.answers, false);
+  }
+  function backToRound1() {
+    if (!round1) return;
+    writeRun++;
+    setBusy(false);
+    stopTicker();
+    setBuild("");
+    session = round1.session;
+    thoughts.value = round1.box;
+    thoughts.dispatchEvent(new Event("stp:changed"));
+    output.value = round1.output;
+    restoreResult(round1.dom);
+    if (typeof resetKeep === "function") resetKeep();
+    setReady(true);
+    document.getElementById("resultHead").textContent = "Your prompt is ready";
+    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+    ui.grade = round1.grade;
+    round1 = null;
+    ui.round = null;
+    notify("form"); notify("result");
+    qa.hidden = true;
+    result.hidden = false;
+    output.dispatchEvent(new Event("stp:changed"));
+    result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
