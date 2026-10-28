@@ -2364,31 +2364,37 @@ await check('grader bench: the Saturday example runs first, and the number check
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 const setVis = (p, v) => p.evaluate((v) => { Object.defineProperty(document, 'visibilityState', { get: () => v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, v);
 
-await check('start here: points at the box and Talk it out on open, holds the ideas, shows each open until the first action, then never again', async () => {
+await check('start here: title and description pulse first, then it scrolls to Talk it out and the box, holds the ideas, shows each open until the first action, then never again', async () => {
   const p = await page({ fresh: true, ua: IPHONE });
   await p.waitForTimeout(300);
-  expect(await p.isVisible('#startHere'), 'Start here should show on a first visit');
-  expect(await p.isVisible('#startHereTalk') && await p.$('#talkLink.starthere-on') && await p.$('.ideabox.starthere-on'), 'box and Talk it out should both be pointed at on iPhone');
+  expect(await p.$('h1.sh-halo') && await p.$('.lede.sh-halo'), 'step 1: the title and description should wear the halo');
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('#thoughts.sh-halo')), 'step 1: the box waits its turn');
   expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
-  await p.waitForTimeout(4800);
-  expect(!(await p.isVisible('#startHere')) && !(await p.$('.starthere-on')), 'Start here should end on its own');
+  await p.waitForTimeout(2400);
+  expect(!(await p.$('h1.sh-halo')), 'step 2: the title lets go');
+  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
+  const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
+  expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
+  expect(await p.getAttribute('#thoughts', 'placeholder') === '', 'the pointer speaks instead of the box hint');
+  await p.waitForTimeout(4200);
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'Start here should end on its own');
   expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
   await p.reload(); await p.waitForTimeout(300);
-  expect(await p.isVisible('#startHere'), 'no action yet, so it should show again on the next open');
+  expect(await p.$('h1.sh-halo'), 'no action yet, so it should play again on the next open');
   await p.click('#thoughts'); await p.keyboard.type('hi'); await p.waitForTimeout(300);
-  expect(!(await p.isVisible('#startHere')), 'tapping into the box should end it');
+  expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'tapping into the box should end it');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
   const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
   expect(!/\bhi\b/.test(saved), 'nothing typed may be saved');
   await p.reload(); await p.waitForTimeout(300);
-  expect(!(await p.isVisible('#startHere')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
+  expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
   const q = await page({ fresh: true });
-  await q.waitForTimeout(300);
-  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')), 'computers get the box pointer without Talk it out');
+  await q.waitForTimeout(2500);
+  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
   const r = await page({ fresh: true, reduced: true });
   await r.waitForTimeout(300);
-  expect(await r.isVisible('#startHere') && await r.$eval('#startHere .tap', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: still highlight, no pulse');
+  expect(await r.$('h1.sh-halo') && await r.$eval('h1', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');
   for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
@@ -2452,14 +2458,17 @@ await check('prompt cooking: the pot ring fills, shows what went in, boils over 
   await p.waitForTimeout(1200);
   const mid = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, ing: [...c.querySelectorAll('.ing i')].map(i => i.textContent), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset'), len: +c.querySelector('.ring').getAttribute('stroke-dasharray') }; });
   expect(/Simmering/.test(mid.cap), 'writing should simmer, got: ' + mid.cap);
-  expect(mid.ing[0] === 'Your thoughts', 'ingredients should list what went in, got: ' + mid.ing.join(', '));
+  expect(/Your thoughts/.test(mid.ing[0]), 'ingredients should list what went in, got: ' + mid.ing.join(', '));
+  expect(await p.$('#resultTrack .cook .fly span') && !(await p.isVisible('#resultTrack .nums')), 'chips fly in, and the ring wraps the timer instead of the plain one');
+  expect(/^0:0\d$/.test(await p.textContent('#resultTrack .cook .clock')), 'the clock sits inside the ring');
   expect(mid.off < mid.len && mid.off > 0, 'ring should be part way');
   await setVis(p, 'hidden'); await setVis(p, 'visible'); await p.waitForTimeout(150);
   expect(/Welcome back/.test(await p.textContent('#resultTrack .cook .cap')), 'coming back mid-build should say welcome back');
   p.release(); await done(p);
   const end = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook'); return { cap: c.querySelector('.cap').textContent, boil: c.classList.contains('boil'), off: +c.querySelector('.ring').getAttribute('stroke-dashoffset') }; });
   expect(end.boil, 'a model handing off should boil over');
-  expect(/Plated/.test(end.cap) && end.off < 0.5, 'done should plate with a full ring, got: ' + JSON.stringify(end));
+  expect(/plated/i.test(end.cap) && end.off < 0.5, 'done should plate with a full ring, got: ' + JSON.stringify(end));
+  expect(await p.textContent('#resultTrack .cook .clock') === await p.textContent('#resultTrack .el'), 'the ring clock matches the timer');
   const words = await p.$eval('#resultTrack .cook', el => el.textContent);
   expect(!/memo/.test(words), 'the pot shows labels, never your words');
   const r = await page({ reduced: true, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
@@ -2474,10 +2483,12 @@ if (process.env.APP_CHANNEL === 'staging') {
   await check('cook demo (staging): #cookdemo plays one full cook with a boil-over and no Gemini call', async () => {
     const p = await page();
     await p.goto(BASE + '#cookdemo'); await p.waitForSelector('#buildTrack .cook', { timeout: 3000 });
+    await p.waitForTimeout(7000);
+    expect(await p.$('#buildTrack .cook.over') && /Lid on|picky|a minute|plates/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should stall with the lid on');
     await p.waitForTimeout(3400);
     expect(await p.$('#buildTrack .cook.boil') && /Boiled over/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should boil over');
-    await p.waitForTimeout(3600);
-    expect(/Plated/.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should plate');
+    await p.waitForTimeout(4600);
+    expect(/plated/i.test(await p.textContent('#buildTrack .cook .cap')), 'the preview should plate');
     expect(!p.calls.length && !p.errors.length, 'no Gemini calls or errors: ' + p.errors.join('; '));
   });
   await check('staging build: shows the STAGING badge and keeps its saved data under stg: keys', async () => {

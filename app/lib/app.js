@@ -6,7 +6,7 @@ import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify } from './ui.svelte.js';
 import { startHere } from './starthere.svelte.js';
-import { cook, cookStart, cookStop } from './cook.svelte.js';
+import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
 import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
@@ -1441,6 +1441,7 @@ export function startApp() {
       leftEl.textContent = over ? "Almost there" : clock(left);
       leftLbl.textContent = over ? "taking a bit longer than usual" : "estimated left";
       detail.textContent = label + (model && techOn() ? " · " + model : "");
+      cookClock(track);
     }
     stopTicker();
     draw();
@@ -1471,6 +1472,7 @@ export function startApp() {
     right.classList.add("over");
     track.querySelector(".left").textContent = "Done";
     track.querySelector(".leftlbl").textContent = "";
+    cookClock(track);
   }
 
   var ticker = null;
@@ -1683,7 +1685,7 @@ export function startApp() {
         qaStatus.textContent = "";
         var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
         /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
-        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; }
+        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; cookClock(resultProg.closest(".tracker")); }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         session.basePrompt = prompt;

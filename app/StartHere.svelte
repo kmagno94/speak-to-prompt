@@ -1,11 +1,13 @@
 <script>
-  /* Start here: a pointer over the empty box on open, until the first real action.
-     State and the "seen" flag live in lib/starthere.svelte.js. Taps go straight
-     through to the box underneath. Reduce Motion: a still highlight, no pulse. */
+  /* Start here: a white halo walks you in on open, until the first real action.
+     Title and description pulse first, then the page scrolls to Talk it out and the
+     box, which pulse with ✍️ Start here. State and the "seen" flag live in
+     lib/starthere.svelte.js. Taps go straight through to the box underneath.
+     Reduce Motion: a still halo and a jump instead of a scroll. */
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import { startHere } from './lib/starthere.svelte.js';
-  import { ms } from './lib/motion.js';
+  import { ms, reduceMotion } from './lib/motion.js';
 
   let talk = $state(false);
 
@@ -33,39 +35,43 @@
     };
   });
 
-  /* The box and Talk it out glow together while the pointer shows. */
+  /* Which parts wear the halo in each phase. */
   $effect(() => {
-    const on = startHere.active;
-    document.querySelector('.ideabox')?.classList.toggle('starthere-on', on);
-    document.getElementById('talkLink')?.classList.toggle('starthere-on', on && talk);
+    const p = startHere.phase;
+    const set = (el, on) => el && el.classList.toggle('sh-halo', on);
+    set(document.querySelector('.wrap > header h1'), p === 'title');
+    set(document.querySelector('.wrap > header .lede'), p === 'title');
+    set(document.getElementById('thoughts'), p === 'box');
+    set(document.getElementById('talkLink'), p === 'box' && talk);
+    /* Step two: bring Talk it out and the box into view, and let the pointer speak
+       instead of the box's own hint (app.js puts the hint back when the ideas settle). */
+    if (p === 'box') {
+      document.getElementById('form')?.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+      const box = document.getElementById('thoughts');
+      if (box) box.placeholder = '';
+    }
   });
 </script>
 
-{#if startHere.active}
-  <div class="starthere" id="startHere" role="note" transition:fade={{ duration: ms(220) }}>
-    <span class="tap" aria-hidden="true"></span>
-    <b>✍️ Start here</b>
-    <span>Type what's on your mind. Messy is fine.</span>
-    {#if talk}<span class="or" id="startHereTalk">or tap <b>Talk it out</b> above ↑</span>{/if}
+{#if startHere.phase === 'box'}
+  <div class="starthere" id="startHere" role="note" transition:fade={{ duration: ms(260) }}>
+    <div class="pill">
+      <b>✍️ Start here</b>
+      <span>Type what's on your mind. Messy is fine.</span>
+      {#if talk}<span class="or" id="startHereTalk">or tap <b>Talk it out</b> above ↑</span>{/if}
+    </div>
   </div>
 {/if}
 
 <style>
   .starthere {
     position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    display: grid; place-content: center; justify-items: center; gap: 6px; padding: 16px; text-align: center;
+    display: grid; place-content: center; padding: 16px; text-align: center;
     font-size: 16px; color: var(--ink); border-radius: 10px;
   }
-  .starthere b { font-size: 18px; color: var(--accent); }
+  .pill { display: grid; justify-items: center; gap: 6px; padding: 14px 18px; border-radius: 16px;
+    background: var(--surface); box-shadow: 0 6px 24px var(--halo-drop), 0 0 0 1px var(--halo-edge); }
+  .starthere b { font-size: 20px; color: var(--ink); }
   .starthere .or { font-size: 14px; color: var(--muted); }
   .starthere .or b { font-size: 14px; }
-  .tap { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); opacity: 0.85; margin-bottom: 4px; }
-  @media (prefers-reduced-motion: no-preference) {
-    .tap { animation: sh-tap 1.5s ease-out infinite; }
-    @keyframes sh-tap {
-      0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); transform: scale(0.9); }
-      60% { box-shadow: 0 0 0 18px transparent; transform: scale(1); }
-      100% { box-shadow: 0 0 0 0 transparent; transform: scale(0.9); }
-    }
-  }
 </style>

@@ -22,6 +22,7 @@
   --accent: #1d5c8c;
   --accent-ink: #ffffff;
   --accent-soft: #dbe8f3;
+  --halo-fill: rgba(255,255,255,0.8); --halo-edge: rgba(24,33,44,0.14); --halo-drop: rgba(24,33,44,0.2);
   --danger: #a3332b;
   --ok: #2f6b3f;
   --record: #d93a3f;
@@ -33,14 +34,14 @@
   :root:not([data-theme="light"]) {
     --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
     --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+    --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45);
     --warn: #f0bd5c; --warn-soft: #3a2c14;
   }
 }
 :root[data-theme="dark"] {
   --bg: #11161d; --surface: #19212b; --bubble: #2e3b4b; --ink: #e6ebf1; --muted: #9aa6b5;
   --line: #2c3744; --rule: #26384b; --accent: #6fb0e3; --accent-ink: #0d1620;
-  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark;
+  --accent-soft: #1d3247; --danger: #f08a80; --ok: #8fd19e; --record: #f06a6e; color-scheme: dark; --halo-fill: rgba(255,255,255,0.07); --halo-edge: transparent; --halo-drop: rgba(0,0,0,0.45);
   --warn: #f0bd5c; --warn-soft: #3a2c14;
 }
 @media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; } }
@@ -133,11 +134,16 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 }
 .idea { flex: 0 0 100%; scroll-snap-align: start; display: flex; gap: 10px; align-items: flex-start; font-size: 16px; line-height: 1.42; color: var(--ink); padding-right: 4px; }
 .idea b { font-size: 24px; line-height: 1; font-weight: 400; padding-top: 1px; }
-/* Start here (StartHere.svelte): the box and Talk it out glow while the pointer shows. */
-.ideabox.starthere-on #thoughts, #talkLink.starthere-on { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Start here (StartHere.svelte): a white halo walks you in. A white ring and glow, with a
+   faint edge and drop shadow so white still reads on a white card in light mode.
+   Title and description get a soft white panel around them (no layout shift). */
+.sh-halo:is(textarea, a) { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 28px 10px rgba(255,255,255,0.7), 0 12px 30px var(--halo-drop); }
+:is(h1, .lede).sh-halo { border-radius: 14px; background: var(--halo-fill);
+  box-shadow: 0 0 0 10px var(--halo-fill), 0 0 0 12px #fff, 0 0 0 13px var(--halo-edge), 0 0 36px 16px rgba(255,255,255,0.6), 0 14px 34px var(--halo-drop); }
+h1.sh-halo { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: no-preference) {
-  .ideabox.starthere-on #thoughts, #talkLink.starthere-on { animation: sh-glow 1.5s ease-in-out infinite; }
-  @keyframes sh-glow { 50% { outline-color: color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: 5px; } }
+  .sh-halo { transition: box-shadow 0.3s ease, background 0.3s ease; animation: sh-pulse 1.4s ease-in-out infinite; }
+  @keyframes sh-pulse { 50% { scale: 1.02; filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)); } }
 }
 .ideabox .ideas-show {
   position: absolute; right: 22px; bottom: 12px; min-height: 40px; padding: 8px 14px; border-radius: 999px;
@@ -263,6 +269,8 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .tracker .nums small { display: block; font-size: 12px; color: var(--muted); }
 .tracker .nums .right { text-align: right; }
 .tracker .nums .over b { font-size: 15px; font-family: var(--body); color: var(--muted); }
+/* Prompt cooking (CookPot.svelte) wraps the timer in its ring, so the plain timer and bar step aside. */
+.tracker:has(.cook) .nums, .tracker:has(.cook) .progress { display: none; }
 .tracker .detail { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
@@ -416,3 +424,6 @@ details.key[open] summary { margin-bottom: 10px; }
   font: 700 13px/1.35 var(--mono); letter-spacing: 0.03em; text-align: center;
   overflow-wrap: anywhere;
 }
+
+/* Start here scrolls the form into view with a little room above it. */
+#form { scroll-margin-top: 14px; }
