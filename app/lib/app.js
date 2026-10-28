@@ -311,8 +311,7 @@ export function startApp() {
     setChatName(title);
     setReady(false);
     qa.hidden = true;
-    result.hidden = false;
-    result.scrollIntoView({ behavior: "smooth", block: "start" });
+    result.hidden = false;   /* writeFinal snaps to its cooking ring once the tracker shows */
   }
   try { localStorage.removeItem("stp-folder"); } catch (e) {} /* retired setting */
   function setCategoryLine() {
@@ -907,6 +906,17 @@ export function startApp() {
     if (track) { track.hidden = mode === "off"; el.hidden = false; }
     el.classList.toggle("indeterminate", mode === "busy");
     el.firstElementChild.style.width = mode === "pct" ? pct + "%" : "";
+  }
+  /* Snap to the cooking (Build 4): Build closes the keyboard and brings the tracker with the
+     cooking ring to the middle of the screen. The keyboard needs a moment to get out of
+     the way first, or the scroll lands short. */
+  function snapTo(el) {
+    if (!el) return;
+    var a = document.activeElement, typed = a && /^(TEXTAREA|INPUT)$/.test(a.tagName);
+    if (typed) a.blur();
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var go = function () { if (!el.hidden) el.scrollIntoView({ block: "center", behavior: calm ? "auto" : "smooth" }); };
+    if (typed) setTimeout(go, 320); else requestAnimationFrame(go);
   }
   function setBuild(text, bad) { stopTicker(); setProgress(document.getElementById("buildProg"), "off"); buildStatus.textContent = text; buildStatus.className = "buildstatus" + (bad ? " bad" : ""); }
   function setBusy(on, label) {
@@ -1556,6 +1566,7 @@ export function startApp() {
     buildStatus.textContent = "";
     session.estIntake = intakeEstimate();
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
+    snapTo(document.getElementById("buildTrack"));
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
     memory.suggestions = [];
@@ -1651,6 +1662,7 @@ export function startApp() {
     var movedStart = busyP && models[0] !== writeModels(quick)[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
     var eta = startEstimate(resultProg, (session.round === 2 ? "Round 2 \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
+    snapTo(document.getElementById("resultTrack"));
     /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
        a backup starts too and the first good prompt wins. */
     var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;

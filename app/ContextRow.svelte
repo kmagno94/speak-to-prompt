@@ -62,9 +62,10 @@
             <button type="button" class="link del" onclick={() => del(c.id)}>{armed === c.id ? 'Tap again to delete' : 'Delete'}</button>
           </div>
         {/each}
-        <div class="row">
+        <!-- Floats at the bottom of the screen (on top of the keyboard) while the editor is open. -->
+        <div class="row ctxbar" id="contextBar">
           <button type="button" onclick={addNew}>+ Add another</button>
-          <button type="button" class="primary" onclick={done}>Done</button>
+          <button type="button" class="primary" id="contextDone" onclick={done}>Done</button>
         </div>
       </div>
     {/if}
@@ -82,6 +83,13 @@
   .ctxchip { min-height: var(--tap); }
   .ctxnew { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); border: 1.5px dashed var(--line); background: transparent; color: var(--accent); font-weight: 700; font-size: var(--fs-sm); }
   .ctxeditor { display: grid; gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
+  /* Floating Done: sticks to the bottom of the screen, above the keyboard (--kb, lib/keyboard.svelte.js),
+     while you scroll through the pieces; settles back at the end of the list. */
+  .ctxbar { position: sticky; bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom, 0px) + 10px); z-index: 5;
+    display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--ink) 45%, transparent); }
+  .ctxbar button { min-height: 48px; white-space: nowrap; }
   .ctxitem { display: grid; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
   .ctxtitle { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
   .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); min-height: 150px; }

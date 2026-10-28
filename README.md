@@ -179,6 +179,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/StartHere.svelte`, `app/lib/starthere.svelte.js` | Start here: on open, a white halo on the title and description, then a scroll to Talk it out and the box, until the first action, then the idea strip. Keeps only a yes/no flag (`stp-started`) |
   | `app/StuckNudge.svelte`, `app/lib/stuck.js` | Stuck? A sentence to finish after the box sits still about 6 seconds, aimed at what the Ghost Coach says is missing |
   | `app/CookPot.svelte`, `app/lib/cook.svelte.js` | Prompt cooking: a big ring around the timer with a kitchen inside (ingredients fly in, lid rattles when slow, boil-over on a model hand-off, plated). Staging has a `#cookdemo` preview |
+  | `app/KeyboardCoach.svelte`, `app/lib/keyboard.svelte.js`, `app/lib/stuck.svelte.js` | The on-screen keyboard (`--kb`, so bars can sit on top of it), the coach bar that rides on it while you type, and the Stuck? nudge state it shares with the box |
   | `app/RoundBanner.svelte` | Rework round 2: the banner over the box and on the card, with Back to round 1 |
   | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
   | `app/TestLab.svelte`, `app/lib/testlab.svelte.js`, `app/lib/testlabPlan.js` | Staging only: the 🧪 Test lab, a walkthrough of every `releases.json` check not live yet, with ✓ / ✗, notes, and the promote verdict |

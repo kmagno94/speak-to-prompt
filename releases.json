@@ -2,6 +2,24 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.7",
+      "date": "2026-10-28",
+      "title": "Build 4: floating Done, snap to the cooking, keyboard coach bar",
+      "items": [
+        "My context: the + Add another and Done bar floats at the bottom of the screen while the editor is open, and sits on top of the keyboard while you type, so Done is always one tap away.",
+        "Snap to the cooking: Build closes the keyboard and scrolls straight to the cooking ring, the one under Build while it reads your thoughts, then the prompt card's ring while it writes.",
+        "Keyboard coach bar: while you type with the keyboard up, a slim bar rides on top of it with the Prompt strength meter and one tap-to-add chip (the Stuck? nudge when it shows, else the coach's top tip). Taps keep the keyboard up. Close the keyboard and they're back under the box."
+      ],
+      "checks": [
+        { "say": "Dev tools on: My context > + New, then + Add another 3 times, and scroll up and down through the pieces.", "see": "The + Add another and Done bar floats at the bottom of the screen the whole time. Tapping Done closes the editor." },
+        { "say": "In My context, tap into one of the big text boxes so the keyboard opens.", "see": "The + Add another and Done bar sits right on top of the keyboard, not behind it." },
+        { "say": "With your key, type a short note, and with the keyboard still open tap Build my prompt.", "see": "The keyboard closes and the page snaps to the cooking ring under Build while it says Reading your thoughts, then to the ring on the prompt card while it writes." },
+        { "say": "Tap the thoughts box and type help me plan a yard sale (keyboard up).", "see": "A slim bar sits on top of the keyboard: 👻 with the strength meter and a + tip chip. Tapping the tip adds a new line and the keyboard stays up." },
+        { "say": "Keep the keyboard up, type a few more words, then stop for about 6 seconds.", "see": "✍️ Stuck? sentence shows in the bar on top of the keyboard (not under the box). 🎲 swaps it, tapping it adds the line, and the keyboard stays up." },
+        { "say": "Close the keyboard (tap outside the box).", "see": "The bar is gone, and Prompt strength and the nudge are back under the box." }
+      ]
+    },
+    {
       "version": "2.1.6",
       "date": "2026-10-28",
       "title": "Build 3: Start here, stuck nudge, leaving mid-build, prompt cooking",

@@ -9,9 +9,11 @@
   import GhostCoach from './GhostCoach.svelte';
   import StartHere from './StartHere.svelte';
   import StuckNudge from './StuckNudge.svelte';
+  import KeyboardCoach from './KeyboardCoach.svelte';
   import CookPot from './CookPot.svelte';
   import { cookDemo } from './lib/cook.svelte.js';
   import { IS_STAGING } from './lib/channel.js';
+  import { watchKeyboard } from './lib/keyboard.svelte.js';
   import PromptXray from './PromptXray.svelte';
   import Tutorial from './Tutorial.svelte';
   import Guide from './Guide.svelte';
@@ -39,6 +41,7 @@
   /* The page markup renders once; app.js wires up the behavior after it mounts. */
   onMount(() => {
     startApp();
+    watchKeyboard();   /* lib/keyboard.svelte.js: --kb, so bars can sit on top of the keyboard */
     /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
     const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
     demo();
@@ -299,6 +302,7 @@
   <IdeasTab />
   <TestLab />
   <Guide />
+  <KeyboardCoach />
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

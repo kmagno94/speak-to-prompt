@@ -75,6 +75,7 @@ async function page(opts = {}) {
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
     const intake = /intake step/.test(ask);
+    if (intake && opts.intakeDelay) await new Promise(res => setTimeout(res, opts.intakeDelay));
     if (/PROMPT TO FIX:/.test(ask)) {
       p.repairs.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
       if (opts.repairDelay) await new Promise(res => setTimeout(res, opts.repairDelay));
@@ -2496,6 +2497,71 @@ await check('prompt cooking: the pot ring fills, shows what went in, boils over 
   await withKey(r); await r.fill('#thoughts', 'memo'); await r.click('#build'); await done(r);
   expect(await r.$eval('#resultTrack .cook .steam path', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: the pot holds still');
   for (const x of [p, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+/* Build 4 (v2.1.7): floating Done, snap to the cooking, coach bar on top of the keyboard. */
+/* A pretend on-screen keyboard: visualViewport shrinks by inset px, like iPhone's keyboard. */
+const fakeKeyboard = (p, inset) => p.evaluate((inset) => {
+  const vv = window.visualViewport, h = innerHeight - inset;
+  Object.defineProperty(vv, 'height', { get: () => h, configurable: true });
+  Object.defineProperty(vv, 'offsetTop', { get: () => 0, configurable: true });
+  vv.dispatchEvent(new Event('resize'));
+}, inset);
+const inView = (p, sel) => p.evaluate((sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1; }, sel);
+
+await check('my context: Done floats at the bottom of the screen (and on top of the keyboard) while you scroll the pieces', async () => {
+  const p = await page();
+  await devOn(p);
+  for (let i = 0; i < 4; i++) { await p.click(i ? '#contextBar button:text-is("+ Add another")' : '#contextNew'); await p.waitForTimeout(150); }
+  await p.evaluate(() => document.getElementById('contextEditor').scrollIntoView({ block: 'start' })); await p.waitForTimeout(200);
+  const tall = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().height > innerHeight);
+  expect(tall, 'need a list taller than the screen for this check');
+  expect(await inView(p, '#contextDone'), 'Done should float in view at the top of a long list');
+  await fakeKeyboard(p, 300); await p.waitForTimeout(150);
+  const bottom = await p.$eval('#contextDone', el => el.getBoundingClientRect().bottom);
+  expect(bottom <= 844 - 300 + 2, 'with the keyboard up, Done should sit on top of it, bottom at ' + bottom);
+  await fakeKeyboard(p, 0);
+  await p.click('#contextDone');
+  await p.waitForSelector('#contextEditor', { state: 'detached', timeout: 2000 }).catch(() => {});
+  expect(!(await p.$('#contextEditor')), 'the floating Done should close the editor');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('snap to cooking: Build closes the keyboard and brings the cooking ring into view, reading then writing', async () => {
+  const p = await page({ intakeDelay: 1500, hold: 'gemini-3.8-flash', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
+  await p.evaluate(() => scrollTo(0, 0)); await p.focus('#thoughts');
+  await p.evaluate(() => document.getElementById('form').requestSubmit());
+  await p.waitForTimeout(900);
+  expect(await p.evaluate(() => document.activeElement.id !== 'thoughts'), 'Build should close the keyboard');
+  expect(await inView(p, '#buildTrack'), 'while it reads, the cooking ring under Build should be on screen');
+  await p.waitForTimeout(1600);
+  expect(await inView(p, '#resultTrack .cook'), 'while it writes, the prompt card cooking ring should be on screen');
+  p.release(); await done(p);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('keyboard coach: while typing with the keyboard up, the meter and one chip ride on top of it; taps keep the keyboard; gone when it closes', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'help me plan a yard sale');
+  await p.focus('#thoughts'); await p.waitForTimeout(200);
+  expect(!(await p.isVisible('#kbCoach')), 'no keyboard, no bar');
+  await fakeKeyboard(p, 320); await p.waitForTimeout(300);
+  expect(await p.isVisible('#kbCoach'), 'the bar should show on top of the keyboard');
+  const b = await p.$eval('#kbCoach', el => Math.round(el.getBoundingClientRect().bottom));
+  expect(Math.abs(b - (844 - 320)) <= 2, 'the bar should sit right on the keyboard, bottom at ' + b);
+  expect(await p.$('#coach.kbaway'), 'the coach under the box steps aside while the bar has it');
+  const before = await p.inputValue('#thoughts');
+  await p.click('#kbTip');
+  expect((await p.inputValue('#thoughts')).length > before.length && await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the tip should add a line and keep the cursor in the box');
+  await p.keyboard.type('mostly old toys'); await p.waitForTimeout(6600);
+  expect(await p.isVisible('#kbNudge'), 'after a quiet stretch, the nudge shows in the bar');
+  expect(!(await p.isVisible('#stuck')), 'and not under the box (that spot is under the keyboard)');
+  await p.click('#kbNudge');
+  expect(await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the nudge keeps the cursor in the box');
+  await fakeKeyboard(p, 0); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#kbCoach')) && !(await p.$('#coach.kbaway')), 'keyboard down: bar gone, coach back under the box');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 /* Staging vs live (lib/channel.js). The deploy runs these tests once per lane: plain for
