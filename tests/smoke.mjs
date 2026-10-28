@@ -2405,6 +2405,18 @@ await check('start here: title and description pulse first, then it scrolls to T
   for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
+await check('build row: a long busy label wraps inside Build and never squeezes Quick and Normal', async () => {
+  const p = await page();
+  const m = () => p.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return { build: Math.round(r('#build').width), modes: Math.round(r('.modes').width), h: Math.round(r('#build').height), fit: [...document.querySelectorAll('.mode b, .mode small')].every(e => e.scrollWidth <= e.parentElement.clientWidth) }; });
+  const rest = await m();
+  for (const label of ['Reading your thoughts...', 'Squeezing your context to fit...', 'Writing your prompt...']) {
+    await p.evaluate((l) => { document.getElementById('build').textContent = l; }, label);
+    const busy = await m();
+    expect(busy.modes === rest.modes && busy.build === rest.build && busy.h === rest.h, `"${label}" moved the row: ${JSON.stringify(rest)} to ${JSON.stringify(busy)}`);
+    expect(busy.fit && busy.modes >= 130, `"${label}" squeezed Quick and Normal: ${JSON.stringify(busy)}`);
+  }
+});
+
 await check('start here: a shortcut hand-off skips it', async () => {
   const p = await page({ fresh: true });
   await p.goto('about:blank'); await p.goto(BASE + '#t=' + encodeURIComponent('from the shortcut')); await p.waitForTimeout(300);
