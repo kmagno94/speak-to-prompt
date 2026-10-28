@@ -2367,6 +2367,9 @@ const setVis = (p, v) => p.evaluate((v) => { Object.defineProperty(document, 'vi
 await check('start here: title and description pulse first, then it scrolls to Talk it out and the box, holds the ideas, shows each open until the first action, then never again', async () => {
   const p = await page({ fresh: true, ua: IPHONE });
   await p.waitForTimeout(300);
+  expect(!(await p.$('.sh-halo')) && !(await p.isVisible('#startHere')), 'step 0: the title entrance plays first, no halo yet');
+  expect(!(await p.isVisible('#ideas .ideas-track')), 'ideas wait from the start');
+  await p.waitForTimeout(1700);
   expect(await p.$('h1.sh-halo') && await p.$('.lede.sh-halo'), 'step 1: the title and description should wear the halo');
   expect(!(await p.isVisible('#startHere')) && !(await p.$('#thoughts.sh-halo')), 'step 1: the box waits its turn');
   expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
@@ -2380,7 +2383,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'Start here should end on its own');
   expect(await p.isVisible('#ideas .ideas-track'), 'ideas should come in after Start here');
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === null, 'just watching is not an action');
-  await p.reload(); await p.waitForTimeout(300);
+  await p.reload(); await p.waitForTimeout(2000);
   expect(await p.$('h1.sh-halo'), 'no action yet, so it should play again on the next open');
   await p.click('#thoughts'); await p.keyboard.type('hi'); await p.waitForTimeout(300);
   expect(!(await p.isVisible('#startHere')) && !(await p.$('.sh-halo')), 'tapping into the box should end it');
@@ -2390,7 +2393,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   await p.reload(); await p.waitForTimeout(300);
   expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
   const q = await page({ fresh: true });
-  await q.waitForTimeout(2500);
+  await q.waitForTimeout(4100);
   expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
   const r = await page({ fresh: true, reduced: true });
   await r.waitForTimeout(300);

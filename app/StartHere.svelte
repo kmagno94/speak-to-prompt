@@ -1,6 +1,6 @@
 <script>
   /* Start here: a white halo walks you in on open, until the first real action.
-     Title and description pulse first, then the page scrolls to Talk it out and the
+     The title's own entrance plays first, then the title and description pulse, then the page scrolls to Talk it out and the
      box, which pulse with ✍️ Start here. State and the "seen" flag live in
      lib/starthere.svelte.js. Taps go straight through to the box underneath.
      Reduce Motion: a still halo and a jump instead of a scroll. */

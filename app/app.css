@@ -60,7 +60,7 @@ body {
 header { display: flex; flex-direction: column; gap: 8px; }
 h1 { font-family: var(--display); font-size: clamp(36px, 10vw, 52px); line-height: 0.98; margin: 0; letter-spacing: -0.025em; text-wrap: balance; }
 /* The one signature: a voice waveform that settles into lines of text. */
-.wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; }
+.wave { display: block; width: min(100%, 340px); height: 30px; margin: 2px 0 4px; position: relative; z-index: 1; }   /* stays crisp over the Start here halo */
 .wave .v rect { fill: var(--record); transform-box: fill-box; transform-origin: center; }
 .wave .t rect { fill: var(--accent); opacity: 0.85; }
 @media (prefers-reduced-motion: no-preference) {
@@ -140,7 +140,6 @@ textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; b
 .sh-halo:is(textarea, a) { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 28px 10px rgba(255,255,255,0.7), 0 12px 30px var(--halo-drop); }
 :is(h1, .lede).sh-halo { border-radius: 14px; background: var(--halo-fill);
   box-shadow: 0 0 0 10px var(--halo-fill), 0 0 0 12px #fff, 0 0 0 13px var(--halo-edge), 0 0 36px 16px rgba(255,255,255,0.6), 0 14px 34px var(--halo-drop); }
-h1.sh-halo { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: no-preference) {
   .sh-halo { transition: box-shadow 0.3s ease, background 0.3s ease; animation: sh-pulse 1.4s ease-in-out infinite; }
   @keyframes sh-pulse { 50% { scale: 1.02; filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)); } }
