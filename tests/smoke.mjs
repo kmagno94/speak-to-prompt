@@ -2424,7 +2424,7 @@ await check('start here: a shortcut hand-off skips it', async () => {
   expect(!(await p.isVisible('#startHere')), 'a hand-off already knows where to go');
 });
 
-await check('stuck nudge: a quiet box gets one sentence to finish; tap starts that line, dice swaps it, typing hides it, the X stops it', async () => {
+await check('stuck nudge: a quiet box gets one sentence to finish; tap starts that line, dice swaps it, typing hides it, and it keeps coming back (no X)', async () => {
   const p = await page();
   await p.fill('#thoughts', 'help me plan a yard sale');
   await p.waitForTimeout(3000);
@@ -2441,9 +2441,11 @@ await check('stuck nudge: a quiet box gets one sentence to finish; tap starts th
   expect(!(await p.isVisible('#stuck')), 'using it should tuck it away');
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
-  await p.click('#stuckClose'); await p.waitForTimeout(300);
-  await p.type('#thoughts', ' more'); await p.waitForTimeout(6600);
-  expect(!(await p.isVisible('#stuck')), 'the X should stop nudges for this visit');
+  expect(!(await p.$('#stuckClose')), 'no ✕: a stray tap must not switch the nudges off');
+  await p.type('#thoughts', ' more'); await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#stuck')), 'typing should tuck it away');
+  await p.waitForTimeout(6600);
+  expect(await p.isVisible('#stuck'), 'nudges stay: it comes back after every quiet stretch');
   await p.fill('#thoughts', ''); await p.click('#build');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -2539,7 +2541,7 @@ if (process.env.APP_CHANNEL === 'staging') {
     return p;
   }
 
-  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Ideas jar, kept on reload, Re-check', async () => {
+  await check('test lab: #testlab opens the plan newer than live (oldest first) plus Before you promote; ✓, ✗ with a note, Copy report, Ideas jar, kept on reload, Re-check', async () => {
     const p = await labPage();
     await p.waitForSelector('#labVerdict');
     expect(/Live v9\.0\.0/.test(await p.textContent('#labLive')), 'top line should name live v9.0.0');
@@ -2552,7 +2554,12 @@ if (process.env.APP_CHANNEL === 'staging') {
     await p.click('#labWorks');
     expect(/Check one B/.test(await p.textContent('#labStep')), 'Works should move to the next step');
     await p.click('#labBroken');
-    await p.fill('#labNote', 'Button did nothing'); await p.click('#labJar');
+    await p.fill('#labNote', 'Button did nothing');
+    await p.click('#labReportStep');
+    const rep = await p.evaluate(() => navigator.clipboard.readText());
+    expect(/^Test lab report · staging v/.test(rep) && /Do: Check one B/.test(rep) && /What happened: Button did nothing/.test(rep) && /1 broken/.test(rep), 'Copy report should put the broken check and the note on the clipboard, got: ' + rep);
+    expect(/Copied/.test(await p.textContent('#labReportMsg')), 'Copy report should say it copied');
+    await p.click('#labJar');
     await p.waitForSelector('#labJarMsg');
     const jar = JSON.parse(await p.evaluate(() => localStorage.getItem('stp-ideas')) || '[]');
     expect(jar.length === 1 && jar[0].kind === 'bug' && jar[0].soon === 'now' && /Check one B/.test(jar[0].text) && /Button did nothing/.test(jar[0].text), 'a broken step should become a Now bug in the Ideas jar with the check and the note');
@@ -2562,6 +2569,9 @@ if (process.env.APP_CHANNEL === 'staging') {
     await p.reload(); await p.waitForSelector('#labVerdict');
     expect(/Don't promote: 1 broken/.test(await p.textContent('#labVerdict')), 'results should survive a reload');
     expect(/Re-check 1 fix/.test(await p.textContent('#labRun')), 'with a broken step, the run should be a Re-check');
+    await p.evaluate(() => navigator.clipboard.writeText(''));
+    await p.click('#labReport');
+    expect(/What happened: Button did nothing/.test(await p.evaluate(() => navigator.clipboard.readText())), 'the verdict card should copy the same report');
     await p.click('#labRun');
     expect(/Check one B/.test(await p.textContent('#labStep')) && /1 of 1/.test(await p.textContent('#labStep')), 'Re-check should walk only the broken step');
     await p.click('#labWorks');

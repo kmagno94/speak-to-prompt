@@ -13,6 +13,8 @@
   let note = $state('');
   let resetArmed = $state(false);
   let copied = $state('');
+  let reported = $state('');     // 📋 Copy report feedback
+  let showReport = $state(false); // clipboard blocked: show the report to copy by hand
   let panel = $state();
 
   const status = $derived(lab.live ? releaseStatus(lab.releases, lab.live) : null);
@@ -24,7 +26,7 @@
   onMount(() => { if (lab.enabled) lab.load(); });
   $effect(() => { if (lab.open) { lab.load(); tick().then(() => panel?.querySelector('.primary, button')?.focus()); } });
 
-  function close() { lab.open = false; walk = null; resetArmed = false; }
+  function close() { lab.open = false; walk = null; resetArmed = false; reported = ''; showReport = false; }
   function onKey(e) { if (e.key === 'Escape' && lab.open) { if (walk) walk = null; else close(); } }
 
   function start() { const r = lab.run; if (!r.steps.length) return; walk = { steps: r.steps, i: 0, title: r.recheck ? 'Re-check fixes' : 'Test lab' }; note = lab.results[r.steps[0].key]?.note || ''; }
@@ -33,13 +35,20 @@
     const i = walk.i + d;
     if (i < 0) return;
     if (i >= walk.steps.length) { walk = null; return; }
-    walk = { ...walk, i }; note = lab.results[walk.steps[i].key]?.note || '';
+    walk = { ...walk, i }; note = lab.results[walk.steps[i].key]?.note || ''; reported = ''; showReport = false;
   }
   function works() { lab.mark(step.key, 'pass'); go(1); }
   function broken() { lab.mark(step.key, 'fail', note); }
   function saveNote() { if (res?.s === 'fail') lab.mark(step.key, 'fail', note); }
   function toJar() { lab.mark(step.key, 'fail', note); lab.toJar(step); }
   function reset() { if (!resetArmed) { resetArmed = true; return; } lab.reset(); resetArmed = false; walk = null; }
+  /* 📋 Copy report: every broken check with its note, ready to paste into the Claude chat.
+     From a step card it saves the note you're typing first. */
+  async function copyReport(fromStep) {
+    if (fromStep && step) lab.mark(step.key, 'fail', note);
+    try { await navigator.clipboard.writeText(lab.report); reported = 'Copied. Paste it into your Claude chat.'; showReport = false; }
+    catch (e) { reported = 'Couldn’t copy. Select the report below and copy it.'; showReport = true; }
+  }
   async function copyPromote() {
     try { await navigator.clipboard.writeText(lab.verdict.promote); copied = 'Copied. Paste it into your Claude chat.'; }
     catch (e) { copied = 'Couldn’t copy. Type it: ' + lab.verdict.promote; }
@@ -82,10 +91,13 @@
         {#if res?.s === 'fail'}
           <label class="lbl" for="labNote">What happened?</label>
           <textarea id="labNote" rows="2" maxlength="300" bind:value={note} onblur={saveNote} placeholder="What you saw instead"></textarea>
+          <button type="button" class="primary" id="labReportStep" onclick={() => copyReport(true)}>📋 Copy report for Claude</button>
+          {#if reported}<p class="sub" role="status" id="labReportMsg">{reported}</p>{/if}
+          {#if showReport}<textarea class="report" readonly rows="8" aria-label="Test lab report">{lab.report}</textarea>{/if}
           {#if res.jar}
             <p class="okmsg" role="status" id="labJarMsg">💡 In the Ideas jar as a 🔥 Now bug. It rides the next Fix session.</p>
           {:else}
-            <button type="button" id="labJar" onclick={toJar}>💡 Add to Ideas jar</button>
+            <button type="button" class="link" id="labJar" onclick={toJar}>💡 Add to Ideas jar instead</button>
           {/if}
         {/if}
         <div class="row nav">
@@ -99,6 +111,11 @@
         <p class="vtext">{lab.verdict.text}</p>
         {#if lab.plan.newest}<p class="sub">{lab.verdict.pass} ✓ · {lab.verdict.fail} ✗ · {lab.verdict.left} not checked</p>{/if}
         {#if runLabel}<button type="button" class="primary" id="labRun" onclick={start}>{runLabel}</button>{/if}
+        {#if lab.verdict.fail}
+          <button type="button" class="primary" id="labReport" onclick={() => copyReport(false)}>📋 Copy report for Claude · {lab.verdict.fail} broken</button>
+          {#if reported}<p class="sub" role="status" id="labReportMsg">{reported}</p>{/if}
+          {#if showReport}<textarea class="report" readonly rows="8" aria-label="Test lab report">{lab.report}</textarea>{/if}
+        {/if}
         {#if lab.verdict.ready}
           <button type="button" class="primary" id="labPromote" onclick={copyPromote}>Copy “{lab.verdict.promote}”</button>
           {#if copied}<p class="sub" role="status">{copied}</p>{/if}
@@ -159,6 +176,7 @@
   button.bad.on { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
   .nav { justify-content: space-between; }
   .nav .link { min-height: 44px; }
+  .report { font-size: 13px; min-height: 140px; }
   textarea { width: 100%; min-height: 64px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; resize: vertical; }
   .okmsg { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 14%, var(--surface)); color: var(--ok); font-weight: 700; font-size: 14px; }
   .build { display: grid; gap: 6px; }

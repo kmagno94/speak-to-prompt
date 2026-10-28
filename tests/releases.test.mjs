@@ -55,7 +55,7 @@ test('the real releases.json is well formed and matches package.json', () => {
 });
 
 /* Test lab plan (app/lib/testlabPlan.js) */
-import { labPlan, runSteps, verdict, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
+import { labPlan, runSteps, verdict, labReport, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
 
 test('test lab plan: builds newer than live, oldest first, then Before you promote', () => {
   const list = [rel('2.1.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] }), rel('2.1.1'), rel('2.1.0')];
@@ -90,6 +90,19 @@ test('test lab verdict: broken blocks, all pass is ready with the promote phrase
   const none = verdict(labPlan([rel('1.0.1')], '1.0.1'), {});
   assert.equal(none.ready, false);
   assert.match(none.text, /Nothing on staging is newer than live/);
+});
+
+test('test lab report: broken checks in full with the note, counts, and the ask; all pass carries the promote phrase', () => {
+  const plan = labPlan([rel('1.0.2', { title: 'Build 9', checks: [{ say: 'Tap X', see: 'Y shows' }, { say: 'Tap Z', see: 'W shows' }] })], '1.0.1');
+  const k = plan.steps.map((s) => s.key);
+  const r = labReport(plan, { [k[0]]: { s: 'fail', note: 'nothing happened' }, [k[1]]: { s: 'pass' } }, { staging: '1.0.2', live: '1.0.1', ahead: '1/5' });
+  assert.match(r, /^Test lab report · staging v1\.0\.2 · live v1\.0\.1 · 1\/5 ahead/);
+  assert.match(r, new RegExp(`Result: 1 broken · 1 work · ${plan.steps.length - 2} not checked`));
+  assert.match(r, /1\. v1\.0\.2 · Build 9\n   Do: Tap X\n   Expected: Y shows\n   What happened: nothing happened/);
+  assert.ok(!/Tap Z/.test(r), 'passed checks stay out of the report');
+  assert.match(r, /Fix these on staging/);
+  const all = Object.fromEntries(plan.steps.map((s) => [s.key, { s: 'pass' }]));
+  assert.match(labReport(plan, all, { staging: '1.0.2' }), /Everything works\. Pre-flight passed, promote v1\.0\.2/);
 });
 
 test('the real releases.json: every check in the Test lab plan has say and see', () => {

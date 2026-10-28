@@ -1,7 +1,8 @@
 <script>
   /* Writer's block nudge: after the box sits still for a few seconds with some words in
-     it, one sentence to finish shows up. Tap it to start that line, 🎲 for another,
-     ✕ to stop them for this visit. Typing hides it right away. Lines: lib/stuck.js. */
+     it, one sentence to finish shows up. Tap it to start that line, 🎲 for another.
+     Typing hides it right away, and it comes back after the next quiet stretch. No ✕ on
+     purpose: a stray tap shouldn't switch off the help (Test lab, v2.1.6). Lines: lib/stuck.js. */
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { assess } from './lib/coach.js';
@@ -11,7 +12,6 @@
   let show = $state(false);
   let lines = $state([]);
   let at = $state(0);
-  let off = false;      // ✕ tapped: no more nudges until the page reloads
   let timer = null;
   let box;
 
@@ -19,9 +19,9 @@
   function wait() {
     clearTimeout(timer);
     show = false;
-    if (off || !box.value.trim()) return;
+    if (!box.value.trim()) return;
     timer = setTimeout(() => {
-      if (off || busy() || !box.value.trim()) return;
+      if (busy() || !box.value.trim()) return;
       const a = assess(box.value);
       lines = lineOrder(box.value, a.checks.filter((c) => !c.hit).map((c) => c.key));
       at = 0;
@@ -47,7 +47,6 @@
     box.setSelectionRange(box.value.length, box.value.length);
   }
   function another() { at = (at + 1) % lines.length; }
-  function close() { off = true; stop(); }
 </script>
 
 {#if show}
@@ -55,7 +54,6 @@
     <span class="lbl">✍️ Stuck? Finish this:</span>
     <button type="button" class="line" id="stuckLine" onclick={use}>{lines[at].text.trim()} …</button>
     <button type="button" class="mini" id="stuckNext" onclick={another} aria-label="Another sentence">🎲</button>
-    <button type="button" class="mini" id="stuckClose" onclick={close} aria-label="No more of these">✕</button>
   </div>
 {/if}
 
