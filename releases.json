@@ -2,6 +2,27 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.14",
+      "date": "2026-10-29",
+      "title": "R2 Feel: remembered Quick or Normal, your last AI first, result reveal, words box that fits",
+      "items": [
+        "Quick or Normal is remembered on this device, saved right next to the 4 slider numbers. It is a setting, never your words. New prompt keeps it and the sliders for the rest of the visit, while My context picks clear like before.",
+        "In the dock's ⋯ menu, the AI you opened last is listed first under Open in. The main button stays Copy prompt. This lasts for the open tab only: nothing is saved, and a reload puts the list back in its usual order.",
+        "When your prompt finishes, the card slides up gently and Copy prompt pulses once. With Reduce Motion on, the card fades in and the button gets a quick highlight, and nothing moves.",
+        "The words box fits what you type. Empty, it keeps its height so the 💡 ideas fit. Once you type or paste it fits your words (3 lines at least), grows up to about 40% of the screen, then scrolls inside, so Build my prompt stays right under your words and on screen."
+      ],
+      "checks": [
+        { "say": "Tap Normal, then close the tab and open the staging page again.", "see": "Normal is still picked when it opens (and Quick stays picked if you choose Quick). Nothing you typed comes back." },
+        { "say": "Tap Quick, type a few words, build, then tap ⋯ → New prompt.", "see": "Quick is still picked, and the 4 sliders (open Not sure where to start?) are where you left them. My context picks are cleared, same as before.", "paste": "need to plan a surprise birthday for my sister maya, saturday the 14th, maybe 12 people, her favorite is the lemon bakery downtown, keep it under 300 bucks" },
+        { "say": "Build a prompt. When it finishes, tap ⋯ and look under Open in. Tap Gemini (it opens in a new tab), come back, and tap ⋯ again.", "see": "Before: ChatGPT, Claude, Gemini. After opening Gemini: Gemini is listed first. The big button still says Copy prompt." },
+        { "say": "Reload the page and build again.", "see": "Open in is back to ChatGPT, Claude, Gemini, since this is tab-only memory." },
+        { "say": "Build a prompt and watch the card as it finishes (try it once with a key and once without).", "see": "The prompt card slides up about a quarter of a second, then Copy prompt in the dock pulses once. It pulses again only when you build or rebuild another prompt, never when you flip rounds or tap Undo." },
+        { "say": "Turn on Reduce Motion in iPhone Settings → Accessibility → Motion, reload, and build.", "see": "The card fades in with no sliding, and Copy prompt gets one quick glow instead of the pulse." },
+        { "say": "Open the page with the box empty, then type one word, then paste the test note below four or five times in a row, so it becomes a long ramble.", "see": "Empty: the box is tall enough for the 💡 ideas. One word: it shrinks to about 3 lines. The long ramble: it grows to about 40% of the screen, then scrolls inside, and Build my prompt stays right under it and on screen.", "paste": "ok so the thing is the garage sale is saturday and i still have to price all the stuff from the attic, plus my brother said he might bring his old speakers, and the neighbors on both sides want to join so we need tables, maybe six, and somebody has to handle the cash box, also it might rain so i need a plan b, maybe the carport, idk" },
+        { "say": "Clear the box (select all, delete).", "see": "It goes back to its tall empty height and the 💡 ideas come back." }
+      ]
+    },
+    {
       "version": "2.1.13",
       "date": "2026-10-28",
       "title": "Up to 3 rounds, and Compare rounds side by side",

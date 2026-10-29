@@ -364,6 +364,7 @@ export function startApp() {
     qa.hidden = true;
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.dispatchEvent(new Event("stp-ready"));   /* a prompt just finished: the dock's Copy prompt pulses once (#31) */
   }
   function showQuick(raw, reason) {
     showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */

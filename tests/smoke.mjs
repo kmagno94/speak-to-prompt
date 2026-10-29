@@ -356,6 +356,110 @@ await check('mode picker (Svelte component): hint follows the mode and the key',
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* ---- R2 Feel (v2.1.14): #21 + #23 remembered mode, #22 last AI first, #31 result reveal, #32 auto-grow box ---- */
+await check('R2 feel (#21, #23): Quick or Normal is remembered on this device, New prompt keeps it and the sliders, and no words are saved', async () => {
+  const p = await page();
+  expect(await p.evaluate(() => localStorage.getItem('stp-mode')) === null, 'nothing about the mode should be saved before it is picked');
+  await p.check('#normalMode');
+  expect(await p.evaluate(() => localStorage.getItem('stp-mode')) === 'normal', 'picking Normal should save it');
+  await p.reload();
+  expect(await p.isChecked('#normalMode'), 'Normal should still be picked after a reload');
+  await p.check('#quickMode');
+  await p.reload();
+  expect(await p.isChecked('#quickMode') && await p.evaluate(() => localStorage.getItem('stp-mode')) === 'quick', 'Quick should still be picked after a reload');
+  /* A saved pick stays even once a key shows up, because the person chose it. */
+  await withKey(p);
+  expect(await p.isChecked('#quickMode'), 'a typed key should not undo the mode you picked');
+  /* New prompt keeps the mode and the saved sliders. */
+  await p.evaluate(() => localStorage.setItem('stp-tune', JSON.stringify({ detail: 5, tone: 1, level: 2, creative: 3 })));
+  await p.fill('#thoughts', 'plan a surprise party for maya, lemon bakery on 5th, about 12 people'); await p.click('#build'); await done(p);
+  await menuTap(p, '#reset'); await p.waitForTimeout(300);
+  expect(await p.isChecked('#quickMode'), 'New prompt should keep Quick');
+  expect(await p.evaluate(() => localStorage.getItem('stp-mode')) === 'quick', 'New prompt should keep the saved mode');
+  expect(await p.evaluate(() => JSON.parse(localStorage.getItem('stp-tune')).detail) === 5, 'New prompt should keep the saved sliders');
+  const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
+  expect(!/surprise party|lemon bakery|maya/i.test(saved), 'no words may be saved, only the setting');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('R2 feel (#22): the ⋯ menu lists the AI you opened last first, for this tab only, and Copy prompt stays the main button', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  await p.evaluate(() => { document.querySelectorAll('.openrow a').forEach(a => a.removeAttribute('href')); });
+  const order = () => p.$$eval('.openrow a', l => l.map(a => a.textContent.trim()).join(','));
+  const keys = () => p.evaluate(() => { const k = []; for (let i = 0; i < localStorage.length; i++) k.push(localStorage.key(i)); return k.sort().join(','); });
+  const before = await keys();
+  expect(await order() === 'ChatGPT,Claude,Gemini', 'usual order first: ' + await order());
+  await menuTap(p, '.openrow a >> text=Gemini'); await p.waitForTimeout(300);
+  expect(await order() === 'Gemini,ChatGPT,Claude', 'Gemini should come first after opening it: ' + await order());
+  expect((await p.textContent('#copy')).trim() === 'Copy prompt', 'the main button should stay Copy prompt');
+  expect(await p.$eval('#geminiLink', a => a.textContent.trim()) === 'Gemini', 'the Gemini link keeps its id after the reorder');
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === 'THE PROMPT', 'opening an AI still copies the prompt');
+  await menuTap(p, '.openrow a >> text=Claude'); await p.waitForTimeout(300);
+  expect(await order() === 'Claude,ChatGPT,Gemini', 'only the AI you opened last leads, the rest keep the usual order: ' + await order());
+  expect(await keys() === before, 'nothing may be saved about which AI you opened');
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
+  expect(await order() === 'ChatGPT,Claude,Gemini', 'a reload should put the order back: ' + await order());
+  /* iPhone keeps the app link for Gemini through the reorder. */
+  const m = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await m.fill('#thoughts', 'memo'); await m.click('#build'); await done(m);
+  await m.evaluate(() => { const g = document.getElementById('geminiLink'); g.dataset.href = g.href; g.addEventListener('click', e => e.preventDefault()); });
+  await menuTap(m, '#geminiLink'); await m.waitForTimeout(300);
+  expect(await m.$$eval('.openrow a', l => l[0].textContent.trim()) === 'Gemini' && /download\/mobile$/.test(await m.getAttribute('#geminiLink', 'href')), 'Gemini should lead and keep the iPhone app link');
+  expect(!p.errors.length && !m.errors.length, 'page errors: ' + p.errors.concat(m.errors).join('; '));
+});
+
+await check('R2 feel (#31): the result card slides up, then Copy prompt pulses once per run; Reduce Motion fades and glows', async () => {
+  const watch = (p) => p.evaluate(() => {
+    window.__pulses = 0; window.__card = [];
+    document.getElementById('copy').addEventListener('animationstart', (e) => { if (e.animationName === 'dockpulse' || e.animationName === 'dockglow') window.__pulses++; });
+    document.getElementById('result').addEventListener('animationstart', (e) => { if (e.target.id === 'result') window.__card.push(e.animationName); });
+  });
+  const pulses = (p) => p.evaluate(() => window.__pulses);
+  const p = await page();
+  await watch(p);
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p); await p.waitForTimeout(1000);
+  expect((await p.evaluate(() => window.__card)).join() === 'resultin', 'the card should slide up: ' + await p.evaluate(() => window.__card));
+  expect(await p.$eval('#result', el => getComputedStyle(el).animationDuration) === '0.25s', 'the slide should be the motion kit reveal, 250ms');
+  expect(await pulses(p) === 1, 'Copy prompt should pulse once when the prompt is ready, got ' + await pulses(p));
+  /* A rebuild is another run: one more pulse. */
+  await p.fill('#thoughts', 'help me plan a 5k and a 10k'); await p.click('#build'); await done(p); await p.waitForTimeout(1000);
+  expect(await pulses(p) === 2, 'a rebuild is a new run and pulses once more, got ' + await pulses(p));
+  /* New prompt then Undo brings the prompt back without building, so it stays quiet. */
+  await menuTap(p, '#reset'); await p.waitForSelector('#undoReset');
+  await p.click('#undoReset'); await p.waitForTimeout(1000);
+  expect(await p.isVisible('#result') && await pulses(p) === 2, 'Undo is not a run, so no pulse, got ' + await pulses(p));
+  /* Reduce Motion: the card fades, the button glows, nothing moves. */
+  const q = await page({ reduced: true });
+  await watch(q);
+  await q.fill('#thoughts', 'help me plan a 5k'); await q.click('#build'); await done(q); await q.waitForTimeout(1000);
+  expect((await q.evaluate(() => window.__card)).join() === 'resultfade', 'Reduce Motion should fade the card in: ' + await q.evaluate(() => window.__card));
+  expect(await pulses(q) === 1, 'Reduce Motion still gets one quick highlight, got ' + await pulses(q));
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('R2 feel (#32): the words box fits what you type, 3 lines at least, up to about 40% of the screen, then scrolls inside', async () => {
+  const p = await page();
+  await p.waitForTimeout(300);
+  const h = () => p.$eval('#thoughts', el => Math.round(el.getBoundingClientRect().height));
+  const empty = await h();
+  expect(empty >= 190, 'the empty box keeps its height so the ideas fit, got ' + empty);
+  await p.fill('#thoughts', 'one short line');
+  const one = await h();
+  expect(one >= 96 && one < empty && one <= 140, 'a short line should fit in about 3 lines, got ' + one + ' (empty was ' + empty + ')');
+  await p.fill('#thoughts', Array.from({ length: 7 }, (_, i) => 'line number ' + i + ' of my ramble').join('\n'));
+  const some = await h();
+  expect(some > one && some < 400, 'seven lines should grow the box, got ' + some);
+  await p.fill('#thoughts', Array.from({ length: 60 }, (_, i) => 'paragraph ' + i + ' of a very long ramble about the weekend plan').join('\n'));
+  const cap = await h();
+  expect(cap > some && cap <= Math.round(844 * 0.4) + 2, 'a long ramble stops growing near 40% of the screen (about 338px), got ' + cap);
+  expect(await p.$eval('#thoughts', el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto'), 'past the cap the box should scroll inside');
+  await p.fill('#thoughts', '');
+  expect(await h() === empty, 'an empty box goes back to its tall height, got ' + await h());
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('chat questions: tap, type, skip, edit an answer, live summary, all sent to the writer', async () => {
   const p = await page({ intake: { title: 'Trip Plan', need: 'N', category: 'Travel', complexity: 'standard', questions: [
     { question: 'Where to?', choices: ['Tokyo', 'Paris'] },

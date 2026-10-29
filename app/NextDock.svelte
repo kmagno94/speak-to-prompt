@@ -70,6 +70,28 @@
     if (tut) watch.observe(tut, { attributes: true, attributeFilter: ['open'] });
     read();
 
+    /* Result reveal (#31, spec locked 10/28): the prompt card slides up (250ms, the motion kit's
+       reveal, in app.css), then Copy prompt pulses once per run. With Reduce Motion the card
+       fades in and the button gets a quick highlight instead (also app.css). app.js announces a
+       finished run with "stp-ready" (showResult), so Undo or flipping rounds (nothing was built)
+       stay quiet, and a half-written prompt never pulses. */
+    const copyBtn = el('copy');
+    let revealedAt = 0, pulseTimer = 0, wasShown = !result.hidden;
+    const pulse = () => {
+      copyBtn.classList.remove('pulse'); void copyBtn.offsetWidth; copyBtn.classList.add('pulse');
+    };
+    const endPulse = (e) => { if (e.animationName === 'dockpulse' || e.animationName === 'dockglow') copyBtn.classList.remove('pulse'); };
+    copyBtn.addEventListener('animationend', endPulse);
+    const shown = () => { if (!result.hidden && !wasShown) revealedAt = Date.now(); wasShown = !result.hidden; };
+    const revealWatch = new MutationObserver(shown);
+    revealWatch.observe(result, { attributes: true, attributeFilter: ['hidden'] });
+    const ran = () => {
+      clearTimeout(pulseTimer);
+      /* One tick later, so the card's own reveal time is known; then after the slide, never before it. */
+      pulseTimer = setTimeout(() => { pulseTimer = setTimeout(pulse, Math.max(0, revealedAt + 260 - Date.now())); }, 0);
+    };
+    window.addEventListener('stp-ready', ran);
+
     /* Build my prompt under the box: shows only while Build is the next step, and the dock's
        copy of it shows only once you've scrolled past that one. */
     const inline = el('build');
@@ -110,7 +132,8 @@
     };
     document.addEventListener('keydown', keys);
     return () => {
-      seen.disconnect(); mo.disconnect();
+      seen.disconnect(); mo.disconnect(); revealWatch.disconnect(); clearTimeout(pulseTimer);
+      copyBtn.removeEventListener('animationend', endPulse); window.removeEventListener('stp-ready', ran);
       reset.removeEventListener('click', snap, true); window.removeEventListener('stp-undo', undone); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
       clearTimeout(undoTimer);
       watch.disconnect();
@@ -148,6 +171,18 @@
   /* Picking anything in the menu closes it, after the tap has done its job (app.js copies and
      the link opens first). */
   const picked = () => setTimeout(() => { menu = false; }, 0);
+
+  /* Open in your last AI (#22): the main button stays Copy prompt. The AI you opened last is
+     listed first under Open in, for this tab only (a variable, nothing saved, gone on reload).
+     The order changes after the tap has done its job, so the link opens from where you tapped. */
+  const AIS = [
+    { name: 'ChatGPT', id: undefined, href: 'https://chatgpt.com/' },
+    { name: 'Claude', id: undefined, href: 'https://claude.ai/new' },
+    { name: 'Gemini', id: 'geminiLink', href: 'https://gemini.google.com/app' }
+  ];
+  let lastAI = $state('');
+  const openList = $derived([...AIS.filter((a) => a.name === lastAI), ...AIS.filter((a) => a.name !== lastAI)]);
+  const openedIn = (name) => setTimeout(() => { lastAI = name; menu = false; }, 0);
   function quick() { menu = false; chat.finish(true); }
 
   /* Undo: app.js puts back your words and whatever was on screen (questions or the prompt). */
@@ -180,9 +215,10 @@
   <div class="sheet" id="dockMenu" bind:this={sheet} hidden={!menu || moment === 'input'} role="menu" aria-label="More">
     <div class="openrow" hidden={!showCopy}>
       <span class="ghead" id="dockOpenHead">Open in</span>
-      <a class="openai" href="https://chatgpt.com/" target="_blank" rel="noopener" role="menuitem" onclick={picked}>ChatGPT</a>
-      <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener" role="menuitem" onclick={picked}>Claude</a>
-      <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener" role="menuitem" onclick={picked}>Gemini</a>
+      <!-- Keyed so a reorder moves the same links (app.js wired them once, and sets Gemini's href). -->
+      {#each openList as ai (ai.name)}
+        <a class="openai" id={ai.id} href={ai.href} target="_blank" rel="noopener" role="menuitem" onclick={() => openedIn(ai.name)}>{ai.name}</a>
+      {/each}
     </div>
     <div class="grp" hidden={moment !== 'qa'}>
       <span class="ghead">Write it now</span>
