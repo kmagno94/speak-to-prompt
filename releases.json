@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.13",
+      "date": "2026-10-28",
+      "title": "Up to 3 rounds, and Compare rounds side by side",
+      "items": [
+        "Rework now goes up to 3 rounds. It builds the next round from whichever round you're looking at, so if round 2 went sideways you can go back to round 1 and rework from there.",
+        "The switcher on the card shows Round 1 / 2 / 3 with each round's score. At 3 rounds Rework goes away and the card says 3 is the max, so you pick your favorite or start fresh with more detail.",
+        "Compare rounds (on the switcher, for 2 or 3 rounds) lines the rounds up like a product comparison table: the Quality check score, then each part of a great prompt (who the AI is, the exact job, background, shape and length, and more) with ✓ or ✗. 🏆 marks the stronger round on each row where they differ, the top says Best overall and why, and Where they differ spells out what each round beats the others at. Use under a round flips to it.",
+        "Everything in the table comes from the Quality check each round already got, so opening it is instant and uses no extra Gemini calls. Nothing is saved."
+      ],
+      "checks": [
+        { "say": "With run stats on and your key in, tap Copy test note, paste it, and build. When the Quality check is under 4.5, tap Rework, add a line at the bottom, and build round 2.", "see": "Round 2 builds. The card shows Round 1 / Round 2 with scores, and a ⚖️ Compare rounds button under the switcher.", "paste": "uh so the thing for saturday, need to sort it out, maybe ask around, idk" },
+        { "say": "Tap ⚖️ Compare rounds.", "see": "A table with Round 1 and Round 2 side by side fits across the screen: Quality check on top, ✓ or ✗ for each part, 🏆 on the stronger round where they differ, Best overall with a reason, and a Where they differ list. The round on screen says Showing, the other has a Use button." },
+        { "say": "Tap Use under the other round.", "see": "The card flips to that round (prompt, score, box), the switcher follows, and the table stays open with Showing on the new round." },
+        { "say": "If a round is still under 4.5, view it and tap Rework, add a line, and build round 3. (Try it from round 1 to see it build from there.)", "see": "The box banner says Round 3 and Back to round 1 (or 2, whichever you were on). Round 3 builds and the switcher shows all three." },
+        { "say": "With 3 rounds, flip to any round and open Compare rounds.", "see": "No Rework button on any round, and the card says 3 rounds is the max. All 3 columns fit on screen with no sideways scrolling." },
+        { "say": "Tap New prompt.", "see": "The switcher and the comparison go away, and the next prompt starts clean." }
+      ]
+    },
+    {
       "version": "2.1.12",
       "date": "2026-10-28",
       "title": "Fix session: your core shapes the prompt, Round 1 / Round 2 switcher",

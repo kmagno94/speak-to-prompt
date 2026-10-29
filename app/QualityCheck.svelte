@@ -22,7 +22,7 @@
       {#each [1, 2, 3, 4, 5] as i (i)}<i style="--f: {Math.max(0, Math.min(1, g.score - (i - 1)))}"></i>{/each}
     </div>
     <p class="tip">{g.working ? 'Polishing a few lines…' : 'Tip: ' + g.tip}</p>
-    {#if !g.pass && !g.working && !ui.round && ui.hasKey}
+    {#if !g.pass && !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
       <button type="button" class="rwbtn" id="reworkBtn" onclick={() => act('rework')}>🔁 Rework from this prompt</button>
     {/if}
   </div>

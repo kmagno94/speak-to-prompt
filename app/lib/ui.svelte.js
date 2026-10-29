@@ -9,7 +9,8 @@ export const ui = $state({
      shown by Notice.svelte with the shared Message look. app.js sets them with
      notify(); a button's `act` comes back to app.js as a window 'stp-act' event. */
   notices: { form: null, result: null },
-  round: null,        // Rework round 2: { n: 2, stage: edit | writing | built, before: round 1 score }. Memory only
+  round: null,        // Rework rounds: { n, stage: edit | writing | built, viewing, from, count, max, scores }. Memory only
+  compare: null,      // Compare rounds table (lib/compare.js) once 2+ rounds are built. Memory only
   grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
 

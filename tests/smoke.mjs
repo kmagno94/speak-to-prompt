@@ -1934,7 +1934,7 @@ await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back an
   expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'round 1 prompt and words should come back');
   expect(await p.isVisible('#roundResult') && await p.getAttribute('#round1Result', 'aria-pressed') === 'true', 'the switcher should stay, on Round 1');
   expect(/Round 1\s*2\.0/.test(await p.textContent('#round1Result')) && /Round 2\s*5\.0/.test(await p.textContent('#round2Result')), 'each round should show its own score');
-  expect(!(await p.$('#reworkBtn')), 'no third round yet');
+  expect(await p.isVisible('#reworkBtn'), 'round 1 is under the bar, so Rework can build round 3 from it');
   // Flip back to round 2: nothing lost
   await p.click('#round2Result');
   expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget' && await p.inputValue('#thoughts') === edited, 'round 2 should come back exactly');
@@ -1955,7 +1955,7 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nMake it fun.');
   const draft = await p.inputValue('#thoughts');
-  await p.click('#round1Form');
+  await p.click('#roundBackForm');
   await p.waitForSelector('#roundForm', { state: 'detached' });
   expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
   await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
@@ -1966,6 +1966,72 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('rework: up to 3 rounds, Rework from the round you are viewing, max message, Compare rounds table with the strongest per row and Use this', async () => {
+  const g1 = { craft: 2, rearranged: true, invented: false, missing: ['role', 'context'] };
+  const g2 = { craft: 3.6, rearranged: false, invented: false, missing: ['context'] };
+  const g3 = { craft: 4.0, rearranged: false, invented: false, missing: ['role'] };
+  const writeFn = (ask) => (/ROUND 3: THE PERSON REWORKED/.test(ask) ? 'ROUND THREE PROMPT' : /ROUND 2: THE PERSON REWORKED/.test(ask) ? 'SECOND ROUND PROMPT' : 'First prompt');
+  const gradeFn = (ask) => (/ROUND THREE PROMPT/.test(ask) ? g3 : /SECOND ROUND PROMPT/.test(ask) ? g2 : g1);
+  const p = await reworkPage({ writeFn, gradeFn });
+  // Round 2
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nKeep it friendly.');
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult:has-text("2.0 → 3.6")', { timeout: 5000 });
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 should show');
+  // Round 3, reworked from round 1
+  await p.click('#round1Result');
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  expect(/Round 3/.test(await p.textContent('#roundForm')) && /Back to round 1/.test(await p.textContent('#roundBackForm')), 'the box banner should say Round 3, back to round 1');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nIt is for my cousin.');
+  await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'ROUND THREE PROMPT', 'round 3 should show');
+  const w = p.calls.filter((c) => !c.intake).pop().text;
+  expect(/ROUND 3: THE PERSON REWORKED THE PROMPT FROM ROUND 1/.test(w) && /First prompt/.test(w) && !/SECOND ROUND PROMPT/.test(w), 'round 3 should build from round 1, the round on screen');
+  expect(/Round 3 (ready|built)/.test(await p.textContent('#madeBy')), 'made-by should say Round 3');
+  await p.waitForSelector('#roundResult:has-text("2.0 → 3.6 → 4.0")', { timeout: 5000 });
+  expect(await p.$$eval('#roundResult .pick button', (b) => b.length) === 3, 'three rounds on the switcher');
+  expect(!(await p.$('#reworkBtn')) && /3 rounds is the max/.test(await p.textContent('#roundResult')), 'no fourth round, and it says so');
+  // Flip around: every round comes back
+  await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 back');
+  expect(!(await p.$('#reworkBtn')), 'still no fourth round from round 2');
+  await p.click('#round3Result');
+  expect(await p.inputValue('#output') === 'ROUND THREE PROMPT', 'round 3 back');
+  // Compare
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.click('#compareBtn'); await p.waitForSelector('#compareRounds');
+  expect(await p.$eval('#compareRounds .scroll', (e) => e.scrollWidth <= e.clientWidth + 1), 'all 3 rounds should fit across a phone, no sideways scroll in the table');
+  expect(await p.$eval('#roundResult .pick', (e) => e.scrollWidth <= e.clientWidth + 1), 'the 3-round switcher should fit across a phone');
+  expect(/Best overall: Round 3/.test(await p.textContent('#compareBest')), 'best overall should be round 3: ' + await p.textContent('#compareBest'));
+  const row = (label) => p.$$eval('#compareRounds tbody tr', (rows, l) => { const r = rows.find((x) => x.querySelector('th').textContent.trim() === l); return r ? [...r.querySelectorAll('td')].map((td) => (td.classList.contains('win') ? 'W' : '') + td.textContent.replace(/\s|\(stronger\)|🏆/g, '')) : null; }, label);
+  expect(JSON.stringify(await row('Quality check')) === '["2.0","3.6","W4.0"]', 'score row: ' + JSON.stringify(await row('Quality check')));
+  expect(JSON.stringify(await row('Who the AI is')) === '["✗","W✓","✗"]', 'role row: ' + JSON.stringify(await row('Who the AI is')));
+  expect(JSON.stringify(await row('Background')) === '["✗","✗","W✓"]', 'background row: ' + JSON.stringify(await row('Background')));
+  expect(JSON.stringify(await row('The exact job')) === '["✓","✓","✓"]', 'a row everyone gets right has no winner');
+  expect(JSON.stringify(await row('Reads like instructions')) === '["✗","W✓","W✓"]', 'clear row');
+  const diff = await p.textContent('#compareRounds .diff');
+  expect(/Round 2 beats Round 3 at Who the AI is\./.test(diff) && /Round 3 beats Round 2 at Background\./.test(diff), 'contrasts: ' + diff);
+  await p.click('#compareUse2');
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT' && await p.getAttribute('#round2Result', 'aria-pressed') === 'true', 'Use this should flip to that round');
+  expect(await p.isVisible('#compareRounds') && /Showing/.test(await p.textContent('#compareRounds thead')), 'the table stays open and marks the round on screen');
+  expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Compare must not push the page sideways');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('compare rounds: 2 rounds, ties and a round still grading', async () => {
+  const { compareRounds } = await import('../app/lib/compare.js');
+  const a = { craft: 3, rearranged: false, invented: false, missing: ['format'] }, b = { craft: 4.7, rearranged: false, invented: false, missing: [] };
+  const two = compareRounds([{ n: 1, g: a, words: 40 }, { n: 2, g: b, words: 60 }]);
+  expect(two.best && two.best.n === 2 && /Shape and length/.test(two.best.why), 'best of two: ' + JSON.stringify(two.best));
+  expect(two.contrasts.join(' ') === 'Round 2 beats Round 1 at Shape and length.', 'two-round contrast: ' + two.contrasts.join(' | '));
+  const same = compareRounds([{ n: 1, g: b, words: 40 }, { n: 2, g: { ...b, craft: 4.5 }, words: 60 }]);
+  expect(/cover the same parts, and Round 1 scores higher/.test(same.contrasts.join(' ')), 'tie wording: ' + same.contrasts.join(' | '));
+  expect(same.rows.every((r) => r.key === 'overall' || !r.win.length), 'no trophies on rows they share');
+  const wait = compareRounds([{ n: 1, g: a, words: 40 }, { n: 2, g: null, words: 60 }]);
+  expect(!wait.best && wait.rows[0].cells[1].text === '…', 'a round still grading shows … and no best yet');
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
