@@ -22,6 +22,8 @@
     { "id": "mvojarxehejm", "commit": "df58af4", "version": "2.1.6", "note": "Leaving mid-build: dropped step retries the same model, tab title and return message say when it's ready" },
     { "id": "mvs5smwzv42r", "commit": "627ed17", "version": "2.1.7", "note": "My context: + Add another / Done bar floats at the bottom of the screen and on top of the keyboard" },
     { "id": "mvs5ulj14ain", "commit": "627ed17", "version": "2.1.7", "note": "Build closes the keyboard and scrolls to the cooking ring, reading then writing" },
-    { "id": "mvs6n2ke5751", "commit": "627ed17", "version": "2.1.7", "note": "Keyboard coach bar: strength meter and one chip (nudge or top tip) ride on top of the keyboard while typing" }
+    { "id": "mvs6n2ke5751", "commit": "627ed17", "version": "2.1.7", "note": "Keyboard coach bar: strength meter and one chip (nudge or top tip) ride on top of the keyboard while typing" },
+    { "id": "mvstlpm11m0t", "commit": "a7841ca", "version": "2.1.12", "note": "Your core shapes the prompt (writer works it in) and is no longer tacked onto the end; quick version puts it in the background" },
+    { "id": "mvs7gw8qjjvw", "commit": "61c2a29", "version": "2.1.12", "note": "Round 1 / Round 2 switcher on the card keeps both rounds with their scores; going back mid-edit keeps your round 2 edits" }
   ]
 }

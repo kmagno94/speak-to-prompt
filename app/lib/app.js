@@ -8,7 +8,8 @@ import { ui, notify } from './ui.svelte.js';
 import { startHere } from './starthere.svelte.js';
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
-import { core } from './core.svelte.js';   /* core: dev-only, see core.svelte.js */
+import { core } from './core.svelte.js';
+import { compareRounds } from './compare.js';   /* core: dev-only, see core.svelte.js */
 import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
@@ -16,14 +17,29 @@ import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
 export function startApp() {
-  /* What the page adds to the end of every finished prompt: picked context, then the core. */
-  /* What you copy is the prompt only, then your core at the very end. My context is never
-     tacked on as a block any more: the writer works in just the facts this request needs
-     (the no-key quick version puts the picked pieces inside the prompt, before your thoughts). */
-  function extras(p) { return core.apply(p); }
-  function extraBlock() { return core.active ? core.block : ""; }
-  /* The picked context as plain text: counts as things you said (number check, X-ray). */
-  function knownText() { return context.active ? context.chosen.map(function (c) { return c.text.trim(); }).join("\n") : ""; }
+  /* What you copy is the prompt only. Nothing is tacked onto the end any more: the writer
+     works your core and My context into the prompt itself, using only what this request
+     needs (the no-key quick version puts both inside the prompt, before your thoughts). */
+  function extras(p) { return p; }
+  function extraBlock() { return ""; }
+  /* Picked context and your core as plain text: count as things you said (number check, X-ray, grade). */
+  function knownText() {
+    var parts = context.active ? context.chosen.map(function (c) { return c.text.trim(); }) : [];
+    if (core.background) parts.push(core.background);   /* core */
+    return parts.join("\n");
+  }
+  /* The background the no-key quick version puts inside the prompt: My context, then your core. */
+  function quickBackground() {
+    var parts = [];
+    if (context.active) parts.push(context.block.replace(/^---\n[^\n]*\n\n?/, ""));
+    if (core.background) parts.push(core.background);   /* core */
+    return parts.join("\n\n");
+  }
+  /* The grader treats your core as something you said, so working it in isn't "made up". */
+  function gradeAnswers() {
+    var a = (session && session.answers) || [];
+    return core.background ? a.concat([{ question: "My standing context (my core)", answer: core.background }]) : a;
+  }
   function sessionKnown() { return (session && session.known) || ""; }
   /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
   function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
@@ -258,7 +274,8 @@ export function startApp() {
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
-    else if (act === "round1") backToRound1();
+    else if (act === "roundback") backToBase();
+    else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
   form.addEventListener("submit", function (e) {
@@ -267,8 +284,8 @@ export function startApp() {
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
     var key = gemini.key || gkey.value.trim();
-    if (ui.round && round1 && key) { roundTwo(raw); return; }   /* Rework round 2 */
-    if (ui.round) { round1 = null; ui.round = null; }
+    if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(raw); return; }   /* Rework: the next round */
+    if (ui.round || rounds.length || reworkDraft) clearRounds();
     rememberUsed(raw);
     inputHint(raw);
     if (key) { geminiFlow(raw, key); return; }
@@ -349,7 +366,7 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(extras(buildPrompt(raw, context.active ? context.block.replace(/^---\n[^\n]*\n\n?/, "") : "")),   /* core; My context goes inside */
+    showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
@@ -409,7 +426,7 @@ export function startApp() {
       s.grades.forEach(function (g, i) { out.push((s.grades.length > 1 ? (i ? "After the fix: " : "First grade: ") : "Grade: ") + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + " \u00b7 invented " + (g.invented ? "yes" : "no") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "") + (g.confirm ? " \u00b7 pass check " + g.confirm + (g.secondCraft != null ? " (" + g.firstCraft.toFixed(2) + " then " + g.secondCraft.toFixed(2) + ")" : "") : "")); });
     } else out.push("", "GRADER DETAILS", "No grade for this run. Turn on run stats before building to get one.");
     if (s.draftBefore) out.push("", "PROMPT BEFORE THE LABEL FIX", s.draftBefore);
-    if (s.reworkText) { out.push("", "ROUND 2 EDITS (what went back in the box)", s.reworkText); if (round1) out.push("", "ROUND 1 PROMPT", round1.output); }
+    if (s.reworkText) { out.push("", "ROUND " + (s.round || 2) + " EDITS (what went back in the box)", s.reworkText); if (rounds[0]) out.push("", "ROUND 1 PROMPT", rounds[0].output); }
     out.push("", "PROMPT", output.value);
     return out.join("\n");
   }
@@ -467,8 +484,7 @@ export function startApp() {
     memory.suggestions = [];
     pastedPrint = ""; pendingPaste = null;
     xray.clear();
-    round1 = null;
-    ui.round = null;
+    clearRounds();
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
@@ -511,7 +527,7 @@ export function startApp() {
     var qaUp = !qa.hidden && !busy && chat.questions.length > 0;
     if (!thoughts.value.trim() && !resultUp && !qaUp) return;
     undoSnap = { box: thoughts.value, session: resultUp || qaUp ? session : null };
-    if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, round1: round1,
+    if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, rounds: rounds.slice(), reworkFrom: reworkFrom, reworkSeed: reworkSeed, reworkDraft: reworkDraft, compare: ui.compare,
       mem: memory.suggestions.slice(), status: status.textContent, keep: keepStatus.textContent, noteSaved: noteSaved, promptCopied: promptCopied };
     if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, plan: chat.plan, questions: chat.questions,
       answers: chat.answers, tapped: chat.tapped, messages: chat.messages, current: chat.current }));
@@ -543,7 +559,11 @@ export function startApp() {
       xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
       ui.grade = u.result.grade;
       ui.round = u.result.round;
-      round1 = u.result.round1;
+      rounds = u.result.rounds || [];
+      reworkFrom = u.result.reworkFrom || 0;
+      reworkSeed = u.result.reworkSeed || "";
+      reworkDraft = u.result.reworkDraft || null;
+      ui.compare = u.result.compare || null;
       memory.suggestions = u.result.mem;
       status.textContent = u.result.status;
       keepStatus.textContent = u.result.keep;
@@ -1492,7 +1512,7 @@ export function startApp() {
   function startEstimate(bar, label, usual, step, skipAsk, offset) {
     var track = bar.closest(".tracker");
     offset = offset || 0;
-    track.querySelector(".nums small").textContent = offset ? "total, both rounds" : "elapsed";
+    track.querySelector(".nums small").textContent = offset ? (session && session.round > 2 ? "total, all rounds" : "total, both rounds") : "elapsed";
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
@@ -1521,9 +1541,10 @@ export function startApp() {
   /* Prompt cooking: plain labels for what went into the pot, never the words themselves. */
   function cookIngredients(step) {
     var list = ["Your thoughts"];
-    if (step === "write" && session && session.round === 2) list.push("Your edits");
+    if (step === "write" && session && session.round >= 2) list.push("Your edits");
     if (step === "write" && session && session.answers && session.answers.length) list.push("Your answers");
     if (context.active) list.push("Your context");
+    if (core.active) list.push("Your core");
     if (step === "write" && lessons.list.length) list.push("Lessons learned");
     return list;
   }
@@ -1689,12 +1710,11 @@ export function startApp() {
   function writerText() {
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
-    /* core: the person's standing profile is attached to the finished prompt by the page.
-       The writer sees it so it doesn't repeat or contradict it. */
+    /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
-    if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
-    if (session.reworkText) text += "\n\nROUND 2: THE PERSON REWORKED THE FIRST PROMPT. Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
+    if (core.active) text += "\n\nTHE PERSON'S CORE (their standing context. It is NOT attached to the prompt, so the prompt has to stand on its own. Use it to shape the prompt: who they are, how they like answers, how the AI should work with them, and the AI's role, wherever it fits this request, in plain words. Never paste it in as a block, never list it back, and never mention \"my core\"):\n" + core.block;
+    if (session.reworkText) text += "\n\nROUND " + session.round + ": THE PERSON REWORKED THE PROMPT FROM ROUND " + (session.reworkOf || 1) + ". Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     return text;
   }
@@ -1715,13 +1735,13 @@ export function startApp() {
     var depth = quick ? DEPTH.quick : depthOf(session.complexity);
     var depthKey = quick ? "quick" : (DEPTH[session.complexity] ? session.complexity : "standard");
     var est = writeEstimate(depthKey);
-    var skipAsk = session.mode === "Quick mode" || session.round === 2 || !(session.questions && session.questions.length);
-    var offset = session.round === 2 ? session.round1Secs || 0 : 0;   /* Rework round 2: running total */
+    var skipAsk = session.mode === "Quick mode" || session.round >= 2 || !(session.questions && session.questions.length);
+    var offset = session.round >= 2 ? session.round1Secs || 0 : 0;   /* Rework rounds: running total */
     var busyP = quick ? null : busyNow();
     var models = busyP ? busyOrder(writeModels(quick), busyP.start) : writeModels(quick);
     var movedStart = busyP && models[0] !== writeModels(quick)[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
-    var eta = startEstimate(resultProg, (session.round === 2 ? "Round 2 \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
+    var eta = startEstimate(resultProg, (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
     snapTo(document.getElementById("resultTrack"));
     /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
        a backup starts too and the first good prompt wins. */
@@ -1762,11 +1782,11 @@ export function startApp() {
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         session.basePrompt = prompt;
         session.workSecs = (offset || (session.intakeMs || 0) / 1000) + r.ms / 1000 + (rep.secs || 0);
-        var total = offset ? " (" + Math.max(1, Math.round(session.workSecs)) + "s total, both rounds)" : "";
+        var total = offset ? " (" + Math.max(1, Math.round(session.workSecs)) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
         showResult(extras(prompt), techOn()   /* core */
-          ? (offset ? "Round 2 built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
-          : (offset ? "Round 2 ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
-        if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built" });
+          ? (offset ? "Round " + session.round + " built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
+          : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+        if (session.round >= 2 && ui.round) roundBuilt(session.round);
         /* Left mid-build and came back before it finished: say it picked back up. */
         if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
         showRepairNote(rep);
@@ -1797,11 +1817,11 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
-      if (session.round === 2 && round1) {   /* Rework round 2 failed: round 1 comes back, nothing lost */
-        var why = e && e.message ? e.message : "unknown";
-        logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: 2 });
-        backToRound1();
-        return notify("result", "error", "Round 2 didn't come through", "Your round 1 prompt is back and ready to copy. Tap Rework from this prompt to try again.");
+      if (session.round >= 2 && rounds.length) {   /* A Rework round failed: the round it came from comes back, nothing lost */
+        var why = e && e.message ? e.message : "unknown", failedN = session.round, backN = reworkFrom + 1;
+        logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: failedN });
+        backToBase();
+        return notify("result", "error", "Round " + failedN + " didn't come through", "Your round " + backN + " prompt is back and ready to copy. Tap Rework from this prompt to try again.");
       }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
@@ -1818,12 +1838,20 @@ export function startApp() {
      without it. */
   function hideGrade() { var el = document.getElementById("gradeNote"); el.hidden = true; el.textContent = ""; ui.grade = null; }
 
-  /* Rework = round 2 (from the Quality check, when it's under the bar). The prompt goes back
-     in the box with one "What was weak" line on top, for the person to change as they like.
-     Their original thoughts and answers stay in memory (never saved): round 2 writes from
+  /* Rework (from the Quality check, when it's under the bar): the prompt goes back in the
+     box with one "What was weak" line on top, for the person to change as they like. Their
+     original thoughts and answers stay in memory (never saved): the new round writes from
      them plus the edited prompt, with no questions, and Save to Notes keeps the original
-     words with the new prompt. Back to round 1 puts the first prompt and its grade back. */
-  var round1 = null;
+     words with the new prompt.
+     Up to ROUND_MAX rounds. rounds[i] is a snapshot of round i+1 (session, prompt, card,
+     grade, box); the round on screen is live and is snapshotted when you leave it. Once
+     there are 2 or more, Round 1 / 2 / 3 on the card flips between them, Compare lines
+     them up, and Rework builds the next round from whichever round you're viewing.
+     reworkDraft keeps your edits if you go back before the new round is built, so Rework
+     picks up where you left off. All in memory only, never saved. */
+  var ROUND_MAX = 3;
+  var rounds = [], reworkFrom = 0, reworkSeed = "", reworkDraft = null;   /* reworkDraft: { from, text } */
+  function clearRounds() { rounds = []; reworkFrom = 0; reworkSeed = ""; reworkDraft = null; ui.round = null; ui.compare = null; }
   var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
@@ -1860,57 +1888,106 @@ export function startApp() {
     while ((n = w.nextNode())) if (n.data === "keep") { n.replaceWith(k); return; }
     el.appendChild(k);
   }
+  function roundSnap() { return { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value }; }
+  function viewingRound() { return ui.round && ui.round.viewing ? ui.round.viewing : rounds.length; }
+  /* Puts a saved round back on screen: prompt, card, Quality check, and the box. */
+  function restoreRound(r) {
+    session = r.session;
+    thoughts.value = r.box;
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
+    output.value = r.output;
+    restoreResult(r.dom);
+    if (typeof resetKeep === "function") resetKeep();
+    setReady(true);
+    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+    ui.grade = r.grade;
+    qa.hidden = true;
+    result.hidden = false;
+    output.dispatchEvent(new Event("stp:changed"));
+  }
+  /* Scores for the switcher and the Compare table, from each round's Quality check. The
+     round on screen reads live, so a grade that lands later shows up right away. */
+  function refreshCompare() {
+    if (!ui.round || ui.round.stage !== "built" || rounds.length < 2) { ui.compare = null; return; }
+    var v = viewingRound() - 1;
+    var list = rounds.map(function (r, i) {
+      var s = i === v ? session : r.session, g = s && s.grades && s.grades.length ? s.grades[s.grades.length - 1] : null;
+      return { n: i + 1, g: g, words: words(i === v ? output.value : r.output) };
+    });
+    ui.compare = compareRounds(list);
+    ui.round = Object.assign({}, ui.round, { scores: list.map(function (x) { return x.g ? Math.round(x.g.craft * 10) / 10 : null; }) });
+  }
   function startRework() {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
-    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan || session.round === 2) return;
-    var seed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
-    round1 = { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value, seed: seed };
+    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan) return;
+    if ((ui.round && ui.round.stage !== "built") || rounds.length >= ROUND_MAX) return;
+    var from = rounds.length ? viewingRound() - 1 : 0;
+    rounds[from] = Object.assign({}, rounds[from] || {}, roundSnap());
+    reworkFrom = from;
+    reworkSeed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
     notify("result"); notify("form");
-    thoughts.value = seed;
+    thoughts.value = reworkDraft && reworkDraft.from === from ? reworkDraft.text : reworkSeed;   /* your earlier edits come back */
+    reworkDraft = null;
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     ideasSync();
-    ui.round = { n: 2, stage: "edit", before: ui.grade ? ui.grade.score : null };
+    ui.round = Object.assign({}, ui.round || {}, { n: rounds.length + 1, stage: "edit", from: from + 1, count: rounds.length, max: ROUND_MAX });
     result.hidden = true;
     form.scrollIntoView({ behavior: "smooth", block: "start" });
     try { thoughts.focus({ preventScroll: true }); thoughts.setSelectionRange(0, 0); } catch (e) {}
   }
-  function roundTwo(text) {
-    var s1 = round1.session, seedLines = round1.seed.split(/\n+/).map(function (l) { return l.trim(); });
+  function roundNext(text) {
+    var s1 = rounds[reworkFrom].session, seedLines = reworkSeed.split(/\n+/).map(function (l) { return l.trim(); });
+    var n = rounds.length + 1;
     /* Lines the person typed or changed count as their own words, like an answer, so the
        number check and the grader don't treat them as made up. */
     var added = text.split(/\n+/).map(function (l) { return l.trim(); }).filter(function (l) {
       return l && seedLines.indexOf(l) === -1 && !/^what was weak:/i.test(l);
     }).join("\n").slice(0, 2000);
     session = Object.assign({}, s1, { answers: (s1.answers || []).slice(), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
-      round: 2, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round 2" });
+      round: n, reworkOf: reworkFrom + 1, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n });
     if (added) session.answers.push({ question: "What I changed when reworking", answer: added, tapped: false });
     ui.round = Object.assign({}, ui.round, { stage: "writing" });
     notify("form");
     writeFinal(session.answers, false);
   }
-  function backToRound1() {
-    if (!round1) return;
+  function roundBuilt(n) {
+    rounds[n - 1] = roundSnap();
+    ui.round = Object.assign({}, ui.round, { stage: "built", viewing: n, count: rounds.length, max: ROUND_MAX });
+    refreshCompare();
+  }
+  /* ← Back to round N, before the new round is built: that round comes back as it was,
+     and your edits wait for the next Rework. */
+  function backToBase() {
+    if (!ui.round || ui.round.stage === "built" || !rounds[reworkFrom]) return;
+    var text = ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
+    reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
     writeRun++;
     setBusy(false);
     stopTicker();
     setBuild("");
-    session = round1.session;
-    thoughts.value = round1.box;
-    thoughts.dispatchEvent(new Event("stp:changed"));
-    output.value = round1.output;
-    restoreResult(round1.dom);
-    if (typeof resetKeep === "function") resetKeep();
-    setReady(true);
+    restoreRound(rounds[reworkFrom]);
     document.getElementById("resultHead").textContent = "Your prompt is ready";
-    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
-    ui.grade = round1.grade;
-    round1 = null;
-    ui.round = null;
+    if (rounds.length > 1) ui.round = Object.assign({}, ui.round, { stage: "built", viewing: reworkFrom + 1, count: rounds.length, n: rounds.length });
+    else { rounds = []; ui.round = null; }
     notify("form"); notify("result");
-    qa.hidden = true;
-    result.hidden = false;
-    output.dispatchEvent(new Event("stp:changed"));
+    refreshCompare();
     result.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  /* Flip between built rounds. The round you leave is snapshotted, so its prompt, card,
+     score and box come back exactly. A grade still on its way for the round you leave
+     is dropped (writeRun), so it can't land on the other round. */
+  function showRound(n) {
+    var r = ui.round, v = viewingRound();
+    if (!r || r.stage !== "built" || n < 1 || n > rounds.length || v === n || !rounds[n - 1]) return;
+    rounds[v - 1] = Object.assign({}, rounds[v - 1], roundSnap());
+    writeRun++;
+    setBusy(false);
+    stopTicker();
+    restoreRound(rounds[n - 1]);
+    ui.round = Object.assign({}, r, { viewing: n });
+    notify("result");
+    refreshCompare();
+    ideasSync();
   }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
@@ -1955,7 +2032,7 @@ export function startApp() {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
-    var job = gradeConfirmed(gradeOnce(prompt, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g) {
+    var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g) {
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -1984,6 +2061,7 @@ export function startApp() {
   }
   function gradeText(g, fields, extra) {
     ui.grade = gradeView(g, extra);
+    if (ui.round) queueMicrotask(refreshCompare);   /* Compare rounds reads the new grade */
     var notes = [g.pass ? "\u2705 passes the " + GRADE_PASS + " bar" + (g.confirm === "held" ? ", confirmed" : "") : "\u270b below the " + GRADE_PASS + " bar"];
     if (confirmNote(g)) notes.push(confirmNote(g));
     if (g.rearranged) notes.push("reads like your words rearranged");
@@ -2029,7 +2107,7 @@ export function startApp() {
         var fixed = cleanPrompt(r.text);
         if (!onlyAdded(fixed, cur, list.length)) return again("kept original", "tried adding " + what + ", but it changed other lines");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
-        return gradeConfirmed(gradeOnce(fixed, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g2) {
+        return gradeConfirmed(gradeOnce(fixed, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g2) {
           if (!g2 || g2.craft <= best.craft) return again("kept original", "tried adding " + what + ", but it didn't score higher");
           if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
           list.forEach(function (m) { if (g2.missing.indexOf(m) === -1 && added.indexOf(m) === -1) added.push(m); });

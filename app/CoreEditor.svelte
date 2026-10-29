@@ -9,7 +9,7 @@
 </script>
 
 <div class="core" id="coreEditor">
-  <p class="intro">Set this once and it's added to every prompt, so you never have to re-explain yourself. Tap to add (tap again to remove), or type your own.</p>
+  <p class="intro">Set this once and it shapes every prompt, so you never have to re-explain yourself. It's built in, never tacked on the end. Tap to add (tap again to remove), or type your own.</p>
 
   <section>
     <h3><span>USER</span> About you</h3>
@@ -49,7 +49,7 @@
 
   {#if core.has}
     <details class="peek">
-      <summary>See what gets added to your prompts</summary>
+      <summary>See what the writer reads</summary>
       <div class="block">{core.block}</div>
     </details>
   {/if}

@@ -456,7 +456,7 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
 });
 
-await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, switch, kept on reload, delete', async () => {
+await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {
   const p = await page(); await devOn(p);
   expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
   await p.click('#starterBtn'); await p.click('#coreBtn');
@@ -474,10 +474,13 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
   expect((await p.inputValue('#coreSoul')).match(/Be direct/g).length === 1, 'premade line added twice');
   await p.click('#coreDone'); await p.click('#starterClose');
   expect(await p.isChecked('#coreToggle'), 'core should be on once set up');
-  // No-key quick version gets the core block
+  // No-key quick version: the core sits inside the prompt's background, before your thoughts, never tacked on the end
   await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
   let out = await p.inputValue('#output');
-  expect(/MY CORE/.test(out) && /About me:\n- Student\n- Visual: tables and lists\nI work at a coffee shop\./.test(out) && /How to work with me:\n- Be direct/.test(out) && /Your role with me: Coach\.\nKeep me on track with school\./.test(out), 'core block wrong: ' + out.slice(-300));
+  expect(!/MY CORE/.test(out), 'core should not be tacked on as a block: ' + out.slice(-200));
+  expect(out.indexOf('About me:') > -1 && out.indexOf('About me:') < out.indexOf('MY RAW THOUGHTS'), 'core should come before your thoughts, inside the prompt');
+  expect(/help me plan my week\n"""$/.test(out.trimEnd()), 'the prompt should end with your thoughts, nothing after: ' + out.slice(-120));
+  expect(/About me:\n- Student\n- Visual: tables and lists\nI work at a coffee shop\./.test(out) && /How to work with me:\n- Be direct/.test(out) && /Your role with me: Coach\.\nKeep me on track with school\./.test(out), 'core block wrong: ' + out.slice(-300));
   // Kept after reload, and the switch turns it off
   await p.reload(); await p.waitForTimeout(300);
   expect(await p.isChecked('#coreToggle'), 'core not kept after reload');
@@ -485,15 +488,15 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
   expect(!(await p.isChecked('#coreToggle')), 'switch did not turn off');
   await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
   out = await p.inputValue('#output');
-  expect(!/MY CORE/.test(out), 'core added while switched off');
-  // With a key: the writer sees the core, and the finished prompt ends with it
+  expect(!/MY CORE|About me:/.test(out), 'core added while switched off');
+  // With a key: the writer uses the core to shape the prompt, and nothing is attached to the end
   await p.click('.coretoggle');
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
   const write = p.calls.filter(c => !c.intake).pop().text;
-  expect(/THE PERSON'S CORE/.test(write) && /Be direct/.test(write), 'writer did not see the core');
+  expect(/THE PERSON'S CORE/.test(write) && /Be direct/.test(write) && /NOT attached/.test(write), 'writer did not get the core to shape the prompt');
   out = await p.inputValue('#output');
-  expect(/^THE PROMPT\n\n---\nMY CORE/.test(out), 'finished prompt should end with the core: ' + out.slice(0, 80));
+  expect(!/MY CORE/.test(out) && !/About me:/.test(out), 'finished prompt should not have the core attached: ' + out.slice(0, 120));
   expect(!(await p.isVisible('#numWarn')), 'numbers in the core should not trigger the number check');
   // Delete
   await p.click('#starterBtn'); await p.click('#coreBtn'); await p.click('#coreClear'); await p.click('#coreClearYes');
@@ -537,7 +540,7 @@ await check('dev tools: hidden by default, switch shows them, an existing core t
   // Switch off: the core stops being added
   await q.click('#moreOpts summary'); await q.uncheck('#devTools');
   await q.fill('#thoughts', 'plan my week again'); await q.click('#build'); await done(q);
-  expect(!/MY CORE/.test(await q.inputValue('#output')) && !(await q.$('#coreToggle')), 'dev tools off should drop the core');
+  expect(!/MY CORE|About me:/.test(await q.inputValue('#output')) && !(await q.$('#coreToggle')), 'dev tools off should drop the core');
 });
 
 await check('starter answers: 5 at a time, same all window, new set every 3 hours, More options shows others', async () => {
@@ -1033,7 +1036,7 @@ await check('Glow-Up: before and after slider, short by default, no core, saves 
   });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
-  expect(/MY CORE/.test(await p.inputValue('#output')), 'setup: the core should be on this prompt');
+  expect(/THE PERSON'S CORE/.test(p.calls.filter(c => !c.intake).pop().text), 'setup: the writer should get the core for this prompt');
   await p.click('#glowBtn'); await p.waitForSelector('#glowup[open]');
   const after = await p.textContent('#glowAfter');
   expect(/Plan my week/.test(after) && !/MY CORE|Student|Thinking partner/.test(after), 'the card must never show the core: ' + after);
@@ -1912,9 +1915,37 @@ await check('rework: round 2 puts the prompt in the box with one weak line, buil
   const note = await p.evaluate(() => navigator.clipboard.readText());
   expect(note.includes(RAW_BAKE) && /REWORKED PROMPT/.test(note) && !/What was weak/.test(note), 'Save to Notes should be the original words plus the new prompt: ' + note.slice(-300));
   await p.click('#round1Result');
-  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should bring back the first prompt and your words');
-  await p.waitForSelector('#roundResult', { state: 'detached' });
-  expect(!/Round 2/.test(await p.textContent('#madeBy')) && await p.isVisible('#reworkBtn'), 'round 1 should look like it did, Rework ready again');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Round 1 should bring back the first prompt and your words');
+  expect(!/Round 2/.test(await p.textContent('#madeBy')), 'round 1 should look like it did');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back and forth with each score, and a new prompt clears them', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  const edited = (await p.inputValue('#thoughts')) + '\nBudget is $40 total.';
+  await p.fill('#thoughts', edited);
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(await p.getAttribute('#round2Result', 'aria-pressed') === 'true', 'round 2 should be picked once built');
+  // Flip to round 1: everything from round 1 comes back, round 2 is kept
+  await p.click('#round1Result');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'round 1 prompt and words should come back');
+  expect(await p.isVisible('#roundResult') && await p.getAttribute('#round1Result', 'aria-pressed') === 'true', 'the switcher should stay, on Round 1');
+  expect(/Round 1\s*2\.0/.test(await p.textContent('#round1Result')) && /Round 2\s*5\.0/.test(await p.textContent('#round2Result')), 'each round should show its own score');
+  expect(await p.isVisible('#reworkBtn'), 'round 1 is under the bar, so Rework can build round 3 from it');
+  // Flip back to round 2: nothing lost
+  await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget' && await p.inputValue('#thoughts') === edited, 'round 2 should come back exactly');
+  expect(/Round 2/.test(await p.textContent('#madeBy')) && /5\.0/.test(await p.textContent('#round2Result')), 'round 2 card and score should come back');
+  // And again, to be sure flipping twice holds
+  await p.click('#round1Result'); await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget', 'flipping twice should still hold round 2');
+  // A brand new prompt clears both rounds
+  await p.fill('#thoughts', 'something new entirely'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult', { state: 'detached', timeout: 3000 }).catch(() => { throw new Error('a new prompt should clear the rounds'); });
+  expect(await p.inputValue('#output') === 'First prompt', 'the new prompt should show');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -1922,15 +1953,85 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   const low = { craft: 3, rearranged: true, invented: false, missing: [] };
   const p = await reworkPage({ grade: low });
   await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
-  await p.click('#round1Form');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nMake it fun.');
+  const draft = await p.inputValue('#thoughts');
+  await p.click('#roundBackForm');
   await p.waitForSelector('#roundForm', { state: 'detached' });
   expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  expect(await p.inputValue('#thoughts') === draft, 'Rework again should bring back your round 2 edits');
   const q = await reworkPage({ grade: low, failRound2: true });
   await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
   await q.click('#build');
   await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('rework: up to 3 rounds, Rework from the round you are viewing, max message, Compare rounds table with the strongest per row and Use this', async () => {
+  const g1 = { craft: 2, rearranged: true, invented: false, missing: ['role', 'context'] };
+  const g2 = { craft: 3.6, rearranged: false, invented: false, missing: ['context'] };
+  const g3 = { craft: 4.0, rearranged: false, invented: false, missing: ['role'] };
+  const writeFn = (ask) => (/ROUND 3: THE PERSON REWORKED/.test(ask) ? 'ROUND THREE PROMPT' : /ROUND 2: THE PERSON REWORKED/.test(ask) ? 'SECOND ROUND PROMPT' : 'First prompt');
+  const gradeFn = (ask) => (/ROUND THREE PROMPT/.test(ask) ? g3 : /SECOND ROUND PROMPT/.test(ask) ? g2 : g1);
+  const p = await reworkPage({ writeFn, gradeFn });
+  // Round 2
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nKeep it friendly.');
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult:has-text("2.0 → 3.6")', { timeout: 5000 });
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 should show');
+  // Round 3, reworked from round 1
+  await p.click('#round1Result');
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  expect(/Round 3/.test(await p.textContent('#roundForm')) && /Back to round 1/.test(await p.textContent('#roundBackForm')), 'the box banner should say Round 3, back to round 1');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nIt is for my cousin.');
+  await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'ROUND THREE PROMPT', 'round 3 should show');
+  const w = p.calls.filter((c) => !c.intake).pop().text;
+  expect(/ROUND 3: THE PERSON REWORKED THE PROMPT FROM ROUND 1/.test(w) && /First prompt/.test(w) && !/SECOND ROUND PROMPT/.test(w), 'round 3 should build from round 1, the round on screen');
+  expect(/Round 3 (ready|built)/.test(await p.textContent('#madeBy')), 'made-by should say Round 3');
+  await p.waitForSelector('#roundResult:has-text("2.0 → 3.6 → 4.0")', { timeout: 5000 });
+  expect(await p.$$eval('#roundResult .pick button', (b) => b.length) === 3, 'three rounds on the switcher');
+  expect(!(await p.$('#reworkBtn')) && /3 rounds is the max/.test(await p.textContent('#roundResult')), 'no fourth round, and it says so');
+  // Flip around: every round comes back
+  await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 back');
+  expect(!(await p.$('#reworkBtn')), 'still no fourth round from round 2');
+  await p.click('#round3Result');
+  expect(await p.inputValue('#output') === 'ROUND THREE PROMPT', 'round 3 back');
+  // Compare
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.click('#compareBtn'); await p.waitForSelector('#compareRounds');
+  expect(await p.$eval('#compareRounds .scroll', (e) => e.scrollWidth <= e.clientWidth + 1), 'all 3 rounds should fit across a phone, no sideways scroll in the table');
+  expect(await p.$eval('#roundResult .pick', (e) => e.scrollWidth <= e.clientWidth + 1), 'the 3-round switcher should fit across a phone');
+  expect(/Best overall: Round 3/.test(await p.textContent('#compareBest')), 'best overall should be round 3: ' + await p.textContent('#compareBest'));
+  const row = (label) => p.$$eval('#compareRounds tbody tr', (rows, l) => { const r = rows.find((x) => x.querySelector('th').textContent.trim() === l); return r ? [...r.querySelectorAll('td')].map((td) => (td.classList.contains('win') ? 'W' : '') + td.textContent.replace(/\s|\(stronger\)|🏆/g, '')) : null; }, label);
+  expect(JSON.stringify(await row('Quality check')) === '["2.0","3.6","W4.0"]', 'score row: ' + JSON.stringify(await row('Quality check')));
+  expect(JSON.stringify(await row('Who the AI is')) === '["✗","W✓","✗"]', 'role row: ' + JSON.stringify(await row('Who the AI is')));
+  expect(JSON.stringify(await row('Background')) === '["✗","✗","W✓"]', 'background row: ' + JSON.stringify(await row('Background')));
+  expect(JSON.stringify(await row('The exact job')) === '["✓","✓","✓"]', 'a row everyone gets right has no winner');
+  expect(JSON.stringify(await row('Reads like instructions')) === '["✗","W✓","W✓"]', 'clear row');
+  const diff = await p.textContent('#compareRounds .diff');
+  expect(/Round 2 beats Round 3 at Who the AI is\./.test(diff) && /Round 3 beats Round 2 at Background\./.test(diff), 'contrasts: ' + diff);
+  await p.click('#compareUse2');
+  expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT' && await p.getAttribute('#round2Result', 'aria-pressed') === 'true', 'Use this should flip to that round');
+  expect(await p.isVisible('#compareRounds') && /Showing/.test(await p.textContent('#compareRounds thead')), 'the table stays open and marks the round on screen');
+  expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Compare must not push the page sideways');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('compare rounds: 2 rounds, ties and a round still grading', async () => {
+  const { compareRounds } = await import('../app/lib/compare.js');
+  const a = { craft: 3, rearranged: false, invented: false, missing: ['format'] }, b = { craft: 4.7, rearranged: false, invented: false, missing: [] };
+  const two = compareRounds([{ n: 1, g: a, words: 40 }, { n: 2, g: b, words: 60 }]);
+  expect(two.best && two.best.n === 2 && /Shape and length/.test(two.best.why), 'best of two: ' + JSON.stringify(two.best));
+  expect(two.contrasts.join(' ') === 'Round 2 beats Round 1 at Shape and length.', 'two-round contrast: ' + two.contrasts.join(' | '));
+  const same = compareRounds([{ n: 1, g: b, words: 40 }, { n: 2, g: { ...b, craft: 4.5 }, words: 60 }]);
+  expect(/cover the same parts, and Round 1 scores higher/.test(same.contrasts.join(' ')), 'tie wording: ' + same.contrasts.join(' | '));
+  expect(same.rows.every((r) => r.key === 'overall' || !r.win.length), 'no trophies on rows they share');
+  const wait = compareRounds([{ n: 1, g: a, words: 40 }, { n: 2, g: null, words: 60 }]);
+  expect(!wait.best && wait.rows[0].cells[1].text === '…', 'a round still grading shows … and no best yet');
 });
 
 await check('mode: starts Quick with no key, moves to Normal when a key is added, unless you picked', async () => {
