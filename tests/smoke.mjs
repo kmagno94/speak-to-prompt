@@ -456,7 +456,7 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
 });
 
-await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, switch, kept on reload, delete', async () => {
+await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {
   const p = await page(); await devOn(p);
   expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
   await p.click('#starterBtn'); await p.click('#coreBtn');
@@ -474,10 +474,13 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
   expect((await p.inputValue('#coreSoul')).match(/Be direct/g).length === 1, 'premade line added twice');
   await p.click('#coreDone'); await p.click('#starterClose');
   expect(await p.isChecked('#coreToggle'), 'core should be on once set up');
-  // No-key quick version gets the core block
+  // No-key quick version: the core sits inside the prompt's background, before your thoughts, never tacked on the end
   await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
   let out = await p.inputValue('#output');
-  expect(/MY CORE/.test(out) && /About me:\n- Student\n- Visual: tables and lists\nI work at a coffee shop\./.test(out) && /How to work with me:\n- Be direct/.test(out) && /Your role with me: Coach\.\nKeep me on track with school\./.test(out), 'core block wrong: ' + out.slice(-300));
+  expect(!/MY CORE/.test(out), 'core should not be tacked on as a block: ' + out.slice(-200));
+  expect(out.indexOf('About me:') > -1 && out.indexOf('About me:') < out.indexOf('MY RAW THOUGHTS'), 'core should come before your thoughts, inside the prompt');
+  expect(/help me plan my week\n"""$/.test(out.trimEnd()), 'the prompt should end with your thoughts, nothing after: ' + out.slice(-120));
+  expect(/About me:\n- Student\n- Visual: tables and lists\nI work at a coffee shop\./.test(out) && /How to work with me:\n- Be direct/.test(out) && /Your role with me: Coach\.\nKeep me on track with school\./.test(out), 'core block wrong: ' + out.slice(-300));
   // Kept after reload, and the switch turns it off
   await p.reload(); await p.waitForTimeout(300);
   expect(await p.isChecked('#coreToggle'), 'core not kept after reload');
@@ -485,15 +488,15 @@ await check('core (USER, SOUL, IDENTITY): set up once, added to every prompt, sw
   expect(!(await p.isChecked('#coreToggle')), 'switch did not turn off');
   await p.fill('#thoughts', 'help me plan my week'); await p.click('#build'); await done(p);
   out = await p.inputValue('#output');
-  expect(!/MY CORE/.test(out), 'core added while switched off');
-  // With a key: the writer sees the core, and the finished prompt ends with it
+  expect(!/MY CORE|About me:/.test(out), 'core added while switched off');
+  // With a key: the writer uses the core to shape the prompt, and nothing is attached to the end
   await p.click('.coretoggle');
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build');
   await p.waitForSelector('#qa:not([hidden])'); await p.click('#qaGo'); await done(p);
   const write = p.calls.filter(c => !c.intake).pop().text;
-  expect(/THE PERSON'S CORE/.test(write) && /Be direct/.test(write), 'writer did not see the core');
+  expect(/THE PERSON'S CORE/.test(write) && /Be direct/.test(write) && /NOT attached/.test(write), 'writer did not get the core to shape the prompt');
   out = await p.inputValue('#output');
-  expect(/^THE PROMPT\n\n---\nMY CORE/.test(out), 'finished prompt should end with the core: ' + out.slice(0, 80));
+  expect(!/MY CORE/.test(out) && !/About me:/.test(out), 'finished prompt should not have the core attached: ' + out.slice(0, 120));
   expect(!(await p.isVisible('#numWarn')), 'numbers in the core should not trigger the number check');
   // Delete
   await p.click('#starterBtn'); await p.click('#coreBtn'); await p.click('#coreClear'); await p.click('#coreClearYes');
@@ -537,7 +540,7 @@ await check('dev tools: hidden by default, switch shows them, an existing core t
   // Switch off: the core stops being added
   await q.click('#moreOpts summary'); await q.uncheck('#devTools');
   await q.fill('#thoughts', 'plan my week again'); await q.click('#build'); await done(q);
-  expect(!/MY CORE/.test(await q.inputValue('#output')) && !(await q.$('#coreToggle')), 'dev tools off should drop the core');
+  expect(!/MY CORE|About me:/.test(await q.inputValue('#output')) && !(await q.$('#coreToggle')), 'dev tools off should drop the core');
 });
 
 await check('starter answers: 5 at a time, same all window, new set every 3 hours, More options shows others', async () => {
@@ -1033,7 +1036,7 @@ await check('Glow-Up: before and after slider, short by default, no core, saves 
   });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
-  expect(/MY CORE/.test(await p.inputValue('#output')), 'setup: the core should be on this prompt');
+  expect(/THE PERSON'S CORE/.test(p.calls.filter(c => !c.intake).pop().text), 'setup: the writer should get the core for this prompt');
   await p.click('#glowBtn'); await p.waitForSelector('#glowup[open]');
   const after = await p.textContent('#glowAfter');
   expect(/Plan my week/.test(after) && !/MY CORE|Student|Thinking partner/.test(after), 'the card must never show the core: ' + after);

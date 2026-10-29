@@ -16,14 +16,29 @@ import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 
 export function startApp() {
-  /* What the page adds to the end of every finished prompt: picked context, then the core. */
-  /* What you copy is the prompt only, then your core at the very end. My context is never
-     tacked on as a block any more: the writer works in just the facts this request needs
-     (the no-key quick version puts the picked pieces inside the prompt, before your thoughts). */
-  function extras(p) { return core.apply(p); }
-  function extraBlock() { return core.active ? core.block : ""; }
-  /* The picked context as plain text: counts as things you said (number check, X-ray). */
-  function knownText() { return context.active ? context.chosen.map(function (c) { return c.text.trim(); }).join("\n") : ""; }
+  /* What you copy is the prompt only. Nothing is tacked onto the end any more: the writer
+     works your core and My context into the prompt itself, using only what this request
+     needs (the no-key quick version puts both inside the prompt, before your thoughts). */
+  function extras(p) { return p; }
+  function extraBlock() { return ""; }
+  /* Picked context and your core as plain text: count as things you said (number check, X-ray, grade). */
+  function knownText() {
+    var parts = context.active ? context.chosen.map(function (c) { return c.text.trim(); }) : [];
+    if (core.background) parts.push(core.background);   /* core */
+    return parts.join("\n");
+  }
+  /* The background the no-key quick version puts inside the prompt: My context, then your core. */
+  function quickBackground() {
+    var parts = [];
+    if (context.active) parts.push(context.block.replace(/^---\n[^\n]*\n\n?/, ""));
+    if (core.background) parts.push(core.background);   /* core */
+    return parts.join("\n\n");
+  }
+  /* The grader treats your core as something you said, so working it in isn't "made up". */
+  function gradeAnswers() {
+    var a = (session && session.answers) || [];
+    return core.background ? a.concat([{ question: "My standing context (my core)", answer: core.background }]) : a;
+  }
   function sessionKnown() { return (session && session.known) || ""; }
   /* Ideas tab signals: names and fixed notes only, never the user's words (lib/ideas.svelte.js). */
   function signal(name, note) { try { window.dispatchEvent(new CustomEvent("stp-signal", { detail: { s: name, note: note || "" } })); } catch (e) {} }
@@ -349,7 +364,7 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
   }
   function showQuick(raw, reason) {
-    showResult(extras(buildPrompt(raw, context.active ? context.block.replace(/^---\n[^\n]*\n\n?/, "") : "")),   /* core; My context goes inside */
+    showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */
       reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
       "");
   }
@@ -1524,6 +1539,7 @@ export function startApp() {
     if (step === "write" && session && session.round === 2) list.push("Your edits");
     if (step === "write" && session && session.answers && session.answers.length) list.push("Your answers");
     if (context.active) list.push("Your context");
+    if (core.active) list.push("Your core");
     if (step === "write" && lessons.list.length) list.push("Lessons learned");
     return list;
   }
@@ -1689,11 +1705,10 @@ export function startApp() {
   function writerText() {
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
-    /* core: the person's standing profile is attached to the finished prompt by the page.
-       The writer sees it so it doesn't repeat or contradict it. */
+    /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
-    if (core.active) text += "\n\nTHE PERSON'S CORE (added to the end of the prompt automatically, so don't repeat it; just don't contradict it):\n" + core.block;
+    if (core.active) text += "\n\nTHE PERSON'S CORE (their standing context. It is NOT attached to the prompt, so the prompt has to stand on its own. Use it to shape the prompt: who they are, how they like answers, how the AI should work with them, and the AI's role, wherever it fits this request, in plain words. Never paste it in as a block, never list it back, and never mention \"my core\"):\n" + core.block;
     if (session.reworkText) text += "\n\nROUND 2: THE PERSON REWORKED THE FIRST PROMPT. Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     return text;
@@ -1955,7 +1970,7 @@ export function startApp() {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
-    var job = gradeConfirmed(gradeOnce(prompt, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g) {
+    var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g) {
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -2029,7 +2044,7 @@ export function startApp() {
         var fixed = cleanPrompt(r.text);
         if (!onlyAdded(fixed, cur, list.length)) return again("kept original", "tried adding " + what + ", but it changed other lines");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
-        return gradeConfirmed(gradeOnce(fixed, session.raw, session.answers, session.today, items, lessons.grader)).then(function (g2) {
+        return gradeConfirmed(gradeOnce(fixed, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g2) {
           if (!g2 || g2.craft <= best.craft) return again("kept original", "tried adding " + what + ", but it didn't score higher");
           if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
           list.forEach(function (m) { if (g2.missing.indexOf(m) === -1 && added.indexOf(m) === -1) added.push(m); });
