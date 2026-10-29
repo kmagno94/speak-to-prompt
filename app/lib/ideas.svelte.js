@@ -35,7 +35,7 @@ export const AREAS = [
     topics: [['cats', 'Categories', 'The categories '], ['answers', 'Tap answers', 'The tap answers '], ['sliders', 'Sliders', 'The sliders ']] },
   { key: 'modes', label: 'Quick and Normal', group: 'Before', sel: '.modes, #modeHint, .coretoggle',
     topics: [['pick', 'Which mode to pick', 'Choosing a mode '], ['time', 'Time estimate', 'The time shown for a mode ']] },
-  { key: 'build', label: 'Building', group: 'During', sel: '#build, #buildTrack, #buildStatus, #resultTrack',
+  { key: 'build', label: 'Building', group: 'During', sel: '#build, #dockBuild, #buildTrack, #buildStatus, #resultTrack',
     topics: [['slow', 'Too slow', 'Building took '], ['fallback', 'Fell back to quick version', 'It switched to the quick version when '], ['estimate', 'Estimate was off', 'The time left said ']] },
   { key: 'questions', label: 'Follow-up questions', group: 'During', sel: '#qa',
     topics: [['quality', 'Question quality', 'A question asked '], ['count', 'Too many or too few', 'It asked '], ['taps', 'Suggested answers', 'The suggested answers ']] },

@@ -31,6 +31,7 @@
   import ContextRow from './ContextRow.svelte';
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
+  import NextDock from './NextDock.svelte';
   let tutorial;
   /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
   function noShortcut() {
@@ -116,6 +117,7 @@
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <Notice where="form" />
     <div class="row buildrow">
+      <!-- Build my prompt sits right under the box; the Next step dock (NextDock.svelte, #17) shows its own copy only once this one is out of view. -->
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
@@ -161,22 +163,16 @@
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
-    <ReportIssue />
-    <MemorySuggest />
+    <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
+         The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
-      <button type="button" class="primary copybig" id="copy">Copy prompt</button>
       <div class="row secondary">
         <button type="button" id="copyNote">Copy prompt + my note</button>
-        <button type="button" id="reset">Start over</button>
       </div>
     </div>
-    <div class="openrow">
-      <span>Copy and open in:</span>
-      <a class="openai" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a>
-      <a class="openai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a>
-      <a class="openai" id="geminiLink" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>
-    </div>
     <p id="status" class="status openstatus" role="status"></p>
+    <ReportIssue />
+    <MemorySuggest />
     <div class="devrow" id="devRow" hidden={!core.dev}>
       <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
       <div class="row">
@@ -303,6 +299,7 @@
   <TestLab />
   <Guide />
   <KeyboardCoach />
+  <NextDock />
 
   <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

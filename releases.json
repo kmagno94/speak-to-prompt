@@ -2,6 +2,82 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.11",
+      "date": "2026-10-28",
+      "title": "R1 fixes: Build under the box, Copy stays after a change, test notes",
+      "items": [
+        "Build my prompt is back right under the box. The dock only shows its own Build my prompt once you scroll past the box, so it's never on screen twice.",
+        "Change your words (or Quick or Normal, Use my core, My context) on a finished prompt and Copy prompt stays. The dock shows Copy prompt and Rebuild side by side, and ⋯ still has Open in and New prompt, so one stray word never takes your prompt away.",
+        "Test lab: a check that asks you to paste a note now gives you one, with a Copy test note button. Picked so the step actually happens (the questions one is written to get questions)."
+      ],
+      "checks": [
+        { "say": "Open staging with an empty box and look under it, then scroll down past the box.", "see": "Build my prompt sits right under the box and the pill is out of the way. Past the box, the pill slides in with Build my prompt. Scroll back up and it slides away again." },
+        { "say": "Tap Copy test note, paste it in the box, close the keyboard, scroll down past the box, and tap Build my prompt in the pill.", "see": "It builds. While it works both Build buttons say Working... and can't be tapped twice.", "paste": "plan my week: gym monday wednesday friday, study for the quiz thursday, call my aunt sometime, and the car needs an oil change" },
+        { "say": "On the finished prompt, add one word to the box, close the keyboard, and scroll down.", "see": "The pill shows Copy prompt (outlined) and Rebuild (filled). Copy prompt copies the prompt you already had.", "paste": "ok so me and a few friends want to do a trip somewhere warm sometime soon, nobody can agree on where, some want beach some want a city, we don't want to spend crazy money but idk the budget yet, can you help us figure out a plan" },
+        { "say": "Still there, tap ⋯ in the pill.", "see": "Open in ChatGPT, Claude, Gemini and New prompt are all there." },
+        { "say": "Tap Rebuild.", "see": "It builds again with your new words, and the pill goes back to just Copy prompt." },
+        { "say": "Open the 🧪 Test lab and go to any check with a test note.", "see": "The note shows under You should see, with 📋 Copy test note. Tapping it says Copied, and the note pastes into the box." }
+      ]
+    },
+    {
+      "version": "2.1.10",
+      "date": "2026-10-28",
+      "title": "Undo brings back the prompt too",
+      "items": [
+        "Undo after New prompt now brings everything back, not just your words: the finished prompt with its notes, X-ray, and Quality check, or the questions with the answers you'd already given. Mid-build there's nothing finished yet, so only your words come back. Still memory only, never saved."
+      ],
+      "checks": [
+        { "say": "Build a prompt, tap ⋯ then New prompt, then tap Undo.", "see": "Your words and the whole prompt card come back, scrolled into view, and the dock says Copy prompt. Copy prompt copies that same prompt." },
+        { "say": "With your key, start a prompt, answer one question, tap ⋯ then New prompt, then Undo.", "see": "The questions come back with your answer, and the dock says Write my prompt (1 of 3)." },
+        { "say": "After an Undo, change a word in the box, close the keyboard, and scroll down.", "see": "The dock shows Copy prompt (the prompt you got back) and Rebuild side by side." }
+      ]
+    },
+    {
+      "version": "2.1.9",
+      "date": "2026-10-28",
+      "title": "R1 build 2: Copy under the prompt, New prompt with Undo, Ctrl or ⌘ + Enter",
+      "items": [
+        "Copy under the prompt: Copy prompt + my note now sits right under the prompt, with Report and Remember for next time? after it. Copy prompt itself stays in the dock.",
+        "New prompt with Undo: after New prompt, a small Prompt cleared · Undo pill shows for 6 seconds just above the dock (or the keyboard). Undo puts your words back in the box so a mis-tap never loses a transcript. Typing something new makes it go away. Kept in memory only, and the old prompt isn't brought back: build again from your words.",
+        "Ctrl or ⌘ + Enter in the box builds, for iPad keyboards and computers. Plain Enter is still a new line.",
+        "Fix from build 1: after building a second time, changing Quick or Normal, Use my core, or My context now switches the dock back to Build my prompt like it should."
+      ],
+      "checks": [
+        { "say": "Build a prompt and look under it.", "see": "Copy prompt + my note sits right under the prompt box. Something went wrong? and Remember for next time? come after it. Copy prompt is still in the dock." },
+        { "say": "Tap ⋯ in the dock, then New prompt.", "see": "The box empties and a dark Prompt cleared · Undo pill shows just above the dock, with a thin line shrinking for about 6 seconds." },
+        { "say": "Tap Undo.", "see": "Your words are back in the box and the dock says Build my prompt." },
+        { "say": "Tap New prompt again and start typing something new.", "see": "The Undo pill goes away as soon as you type." },
+        { "say": "Tap New prompt and wait.", "see": "The Undo pill goes away by itself after about 6 seconds." },
+        { "say": "With the 💡 Ideas tab on, tap New prompt.", "see": "💡 Ideas slides up above the Undo pill, so nothing overlaps." },
+        { "say": "On an iPad with a keyboard (or a computer), tap Copy test note, paste it in the box, and press ⌘ + Enter (Ctrl + Enter on Windows).", "see": "It builds, same as tapping Build my prompt. Plain Enter still makes a new line.", "paste": "plan my week: gym monday wednesday friday, study for the quiz thursday, call my aunt sometime, and the car needs an oil change" },
+        { "say": "With your key, build a prompt, change only Quick or Normal, then scroll down to the dock.", "see": "The dock shows Copy prompt and Rebuild, so you can rebuild with the new mode or still copy the one you have." }
+      ]
+    },
+    {
+      "version": "2.1.8",
+      "date": "2026-10-28",
+      "title": "R1 build 1: Next step dock",
+      "items": [
+        "Next step dock: a floating pill at the bottom of every screen holds the one button you need right now, and it's the only place that button lives. Writing your thoughts: Build my prompt. Questions: Write my prompt (N of 3), which works even at 0 of 3. Result: Copy prompt.",
+        "The ⋯ next to it holds the rest: on the result, Open in ChatGPT, Claude, or Gemini (copies and opens, like before) and New prompt (was Start over); on the questions, Quick version (the faster, lighter write, was Quick prompt) and New prompt.",
+        "Change your words after a build and the dock switches back to Build my prompt, so you can rebuild without scrolling up.",
+        "The dock tucks away while the keyboard is up, while X-ray, the Tutorial, or a panel is open, and fades back in when they close. The page ends above it, and the 💡 Ideas and 🧪 Test lab buttons and the first-run Guide stack on the right just above it.",
+        "Motion kit: one set of speeds (150ms taps, 250ms reveals, about 400ms scrolls) and one easing curve, starting with the dock. With Reduce Motion on, the dock just appears and goes instead of sliding."
+      ],
+      "checks": [
+        { "say": "Open staging on your iPhone with an empty box, then scroll down past the box.", "see": "At the top, Build my prompt sits right under the box and the pill is out of the way. Once you scroll past the box, the pill slides in with Build my prompt and nothing else. The footer stops above it, never behind it." },
+        { "say": "Tap into the box so the keyboard opens, then tap outside it.", "see": "The pill slides away while the keyboard is up, and fades back in quickly once it closes." },
+        { "say": "With your key and Normal picked, tap Copy test note, paste it in the box (keyboard closed), and tap Build my prompt.", "see": "It builds like before. When questions show, the pill says Write my prompt (0 of 3) (or however many), and the number goes up as you answer.", "paste": "ok so me and a few friends want to do a trip somewhere warm sometime soon, nobody can agree on where, some want beach some want a city, we don't want to spend crazy money but idk the budget yet, can you help us figure out a plan" },
+        { "say": "On the questions, tap ⋯ in the pill.", "see": "A small menu opens above it: Quick version (faster, lighter) and New prompt. Tapping outside closes it. Quick version writes the prompt the fast way." },
+        { "say": "Answer the questions and tap Write my prompt in the pill.", "see": "When the prompt is ready the pill says Copy prompt. Tapping it copies (it turns green for a moment) and the copied line shows on the card." },
+        { "say": "On the result, tap ⋯ and then Claude.", "see": "The menu shows Open in: ChatGPT, Claude, Gemini, then New prompt. Claude copies the prompt and opens Claude, and the menu closes." },
+        { "say": "Back on the result, type one more word into the thoughts box at the top and close the keyboard.", "see": "Build my prompt shows under the box and the pill keeps Copy prompt. Scroll down and the pill shows Copy prompt and Rebuild side by side." },
+        { "say": "Tap 🩻 X-ray on the result, then Done.", "see": "The pill is gone while X-ray is open and comes back after Done." },
+        { "say": "Turn on Show my Ideas tab (and dev tools for the Test lab) and look at the bottom right.", "see": "💡 Ideas sits on the right just above the pill, with 🧪 Test lab stacked above it. Nothing overlaps the pill." },
+        { "say": "On an iPad or computer, open staging.", "see": "The pill is centered, not stretched edge to edge, and works the same way." }
+      ]
+    },
+    {
       "version": "2.1.7",
       "date": "2026-10-28",
       "title": "Build 4: floating Done, snap to the cooking, keyboard coach bar",

@@ -55,7 +55,7 @@ test('the real releases.json is well formed and matches package.json', () => {
 });
 
 /* Test lab plan (app/lib/testlabPlan.js) */
-import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE } from '../app/lib/testlabPlan.js';
+import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE, asksForNote } from '../app/lib/testlabPlan.js';
 
 test('test lab plan: builds newer than live, oldest first, then Before you promote', () => {
   const list = [rel('2.1.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] }), rel('2.1.1'), rel('2.1.0')];
@@ -122,4 +122,15 @@ test('the real releases.json: every check in the Test lab plan has say and see',
   const plan = labPlan(registry.releases, '0.0.0');
   const declared = registry.releases.reduce((n, r) => n + r.checks.length, 0);
   assert.equal(plan.steps.length, declared + BEFORE_PROMOTE.length, 'a check was dropped from the plan');
+});
+
+test('test notes: every check from v2.1.8 on that asks you to paste or type a note gives you one, and the plan carries it', () => {
+  const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
+  const recent = registry.releases.filter((r) => compareVersions(r.version, '2.1.8') >= 0);
+  const missing = recent.flatMap((r) => r.checks.filter((c) => asksForNote(c.say) && !(c.paste && c.paste.trim().length > 40)).map((c) => `v${r.version}: ${c.say}`));
+  assert.deepEqual(missing, [], 'checks that ask for a note need a paste-ready one');
+  assert.ok(asksForNote('With your key, paste a messy note and tap Build') && !asksForNote('Tap Undo.'), 'note detector');
+  const plan = labPlan(registry.releases, '2.1.7');
+  const q = plan.steps.find((s) => s.key === '2.1.8#2');
+  assert.ok(q && /trip/.test(q.paste) && !/\d/.test(q.paste), 'the questions check carries a note with no dates or budget numbers, so the app has to ask');
 });

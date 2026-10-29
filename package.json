@@ -1,7 +1,7 @@
 {
   "name": "speak-to-prompt",
   "private": true,
-  "version": "2.1.7",
+  "version": "2.1.11",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

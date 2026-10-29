@@ -493,9 +493,69 @@ export function startApp() {
     ideasSync();
   }
   document.getElementById("reset").addEventListener("click", function () {
+    snapForUndo();
     startOver();
     thoughts.focus();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  /* Undo for New prompt (#19): for a few seconds, what was on screen is kept in memory (never
+     saved) so Undo can bring it all back: your words, and the questions or the finished prompt
+     with its notes, X-ray, and Quality check. The Undo pill (NextDock.svelte) sends "stp-undo".
+     Mid-build there's nothing finished to bring back, so only your words return. */
+  var undoSnap = null, undoTimer = 0;
+  function snapForUndo() {
+    clearTimeout(undoTimer);
+    undoSnap = null;
+    var resultUp = !result.hidden && !busy && !!output.value;
+    var qaUp = !qa.hidden && !busy && chat.questions.length > 0;
+    if (!thoughts.value.trim() && !resultUp && !qaUp) return;
+    undoSnap = { box: thoughts.value, session: resultUp || qaUp ? session : null };
+    if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, round1: round1,
+      mem: memory.suggestions.slice(), status: status.textContent, keep: keepStatus.textContent, noteSaved: noteSaved, promptCopied: promptCopied };
+    if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, plan: chat.plan, questions: chat.questions,
+      answers: chat.answers, tapped: chat.tapped, messages: chat.messages, current: chat.current }));
+    undoTimer = setTimeout(function () { undoSnap = null; }, 7000);   /* a little past the 6 second pill */
+  }
+  window.addEventListener("stp-undo", function () {
+    var u = undoSnap;
+    if (!u) return;
+    undoSnap = null;
+    clearTimeout(undoTimer);
+    writeRun++;
+    setBusy(false);
+    stopTicker();
+    setBuild("");
+    thoughts.value = u.box;
+    thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
+    if (u.qa) {
+      session = u.session;
+      Object.keys(u.qa).forEach(function (k) { chat[k] = u.qa[k]; });
+      chat.typing = false;
+      result.hidden = true;
+      qa.hidden = false;
+    }
+    if (u.result) {
+      session = u.session;
+      output.value = u.result.output;
+      setReady(true);
+      restoreResult(u.result.dom);
+      xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+      ui.grade = u.result.grade;
+      ui.round = u.result.round;
+      round1 = u.result.round1;
+      memory.suggestions = u.result.mem;
+      status.textContent = u.result.status;
+      keepStatus.textContent = u.result.keep;
+      noteSaved = u.result.noteSaved;
+      promptCopied = u.result.promptCopied;
+      qa.hidden = true;
+      result.hidden = false;
+      output.dispatchEvent(new Event("stp:changed"));
+    }
+    ideasSync();
+    var back = u.result ? result : u.qa ? qa : null;
+    if (back) back.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   var pasteWrap = document.getElementById("pasteWrap");
@@ -2239,7 +2299,7 @@ export function startApp() {
     if (t.closest("#xrayBtn")) { pendingRun.xray_opened = true; return; }
     var ai = t.closest(".openai");
     var a = t.closest("#copy") ? "copied" : t.closest("#copyNote") ? "copied with note" : ai ? "opened " + ai.textContent.trim() : t.closest("#saveNote, #saveShare") ? "saved note" : t.closest("#glowSave") ? "saved glow-up"
-      : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build") ? "rebuilt" : "";
+      : t.closest("#reset") ? "started over" : t.closest("#reportSend, #reportIssue") ? "reported" : t.closest("#build, #dockBuild") ? "rebuilt" : "";
     if (a) flushRun(a);
   }, true);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushRun("left the page"); });

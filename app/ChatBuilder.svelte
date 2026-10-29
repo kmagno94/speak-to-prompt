@@ -83,8 +83,5 @@
   </div>
 {/if}
 
-<div class="row">
-  <button type="button" class="primary" id="qaGo" disabled={chat.busy} onclick={() => chat.finish(false)}>Write my prompt</button>
-  <button type="button" id="qaSkip" disabled={chat.busy} onclick={() => chat.finish(true)}>Quick prompt</button>
-</div>
+<!-- Write my prompt and Quick version live in the Next step dock (NextDock.svelte, #17). -->
 
