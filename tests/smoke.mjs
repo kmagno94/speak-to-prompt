@@ -1915,9 +1915,37 @@ await check('rework: round 2 puts the prompt in the box with one weak line, buil
   const note = await p.evaluate(() => navigator.clipboard.readText());
   expect(note.includes(RAW_BAKE) && /REWORKED PROMPT/.test(note) && !/What was weak/.test(note), 'Save to Notes should be the original words plus the new prompt: ' + note.slice(-300));
   await p.click('#round1Result');
-  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should bring back the first prompt and your words');
-  await p.waitForSelector('#roundResult', { state: 'detached' });
-  expect(!/Round 2/.test(await p.textContent('#madeBy')) && await p.isVisible('#reworkBtn'), 'round 1 should look like it did, Rework ready again');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Round 1 should bring back the first prompt and your words');
+  expect(!/Round 2/.test(await p.textContent('#madeBy')), 'round 1 should look like it did');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back and forth with each score, and a new prompt clears them', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  const edited = (await p.inputValue('#thoughts')) + '\nBudget is $40 total.';
+  await p.fill('#thoughts', edited);
+  await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(await p.getAttribute('#round2Result', 'aria-pressed') === 'true', 'round 2 should be picked once built');
+  // Flip to round 1: everything from round 1 comes back, round 2 is kept
+  await p.click('#round1Result');
+  expect(await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'round 1 prompt and words should come back');
+  expect(await p.isVisible('#roundResult') && await p.getAttribute('#round1Result', 'aria-pressed') === 'true', 'the switcher should stay, on Round 1');
+  expect(/Round 1\s*2\.0/.test(await p.textContent('#round1Result')) && /Round 2\s*5\.0/.test(await p.textContent('#round2Result')), 'each round should show its own score');
+  expect(!(await p.$('#reworkBtn')), 'no third round yet');
+  // Flip back to round 2: nothing lost
+  await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget' && await p.inputValue('#thoughts') === edited, 'round 2 should come back exactly');
+  expect(/Round 2/.test(await p.textContent('#madeBy')) && /5\.0/.test(await p.textContent('#round2Result')), 'round 2 card and score should come back');
+  // And again, to be sure flipping twice holds
+  await p.click('#round1Result'); await p.click('#round2Result');
+  expect(await p.inputValue('#output') === 'REWORKED PROMPT with a $40 budget', 'flipping twice should still hold round 2');
+  // A brand new prompt clears both rounds
+  await p.fill('#thoughts', 'something new entirely'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#roundResult', { state: 'detached', timeout: 3000 }).catch(() => { throw new Error('a new prompt should clear the rounds'); });
+  expect(await p.inputValue('#output') === 'First prompt', 'the new prompt should show');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -1925,9 +1953,13 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   const low = { craft: 3, rearranged: true, invented: false, missing: [] };
   const p = await reworkPage({ grade: low });
   await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nMake it fun.');
+  const draft = await p.inputValue('#thoughts');
   await p.click('#round1Form');
   await p.waitForSelector('#roundForm', { state: 'detached' });
   expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
+  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  expect(await p.inputValue('#thoughts') === draft, 'Rework again should bring back your round 2 edits');
   const q = await reworkPage({ grade: low, failRound2: true });
   await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
   await q.click('#build');

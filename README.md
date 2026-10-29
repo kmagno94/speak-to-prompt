@@ -162,7 +162,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
   | `app/StartHelper.svelte`, `app/lib/starter.svelte.js`, `app/lib/starters.js` | Not sure where to start?: 11 categories with tap-or-type questions and fine-tune sliders that write a starting point |
   | `app/lib/rotate.js` | Picks which 5 starter answers show, from the current 3-hour window (no storage) |
-  | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY). Testing only; remove these files, the lines marked "core" in app.js, and the "Improve this app" category in starters.js before shipping |
+  | `app/lib/core.svelte.js`, `app/CoreEditor.svelte`, `app/CoreToggle.svelte` | Your core (USER, SOUL, IDENTITY): the writer uses it to shape each prompt, never tacked onto the end. Testing only; remove these files, the lines marked "core" in app.js, and the "Improve this app" category in starters.js before shipping |
   | `app/ChatBuilder.svelte`, `app/lib/chat.svelte.js` | The follow-up questions as a chat: tap, type, or skip, edit any answer, live summary. See `docs/chat-builder.md` |
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |
@@ -180,7 +180,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/StuckNudge.svelte`, `app/lib/stuck.js` | Stuck? A sentence to finish after the box sits still about 6 seconds, aimed at what the Ghost Coach says is missing |
   | `app/CookPot.svelte`, `app/lib/cook.svelte.js` | Prompt cooking: a big ring around the timer with a kitchen inside (ingredients fly in, lid rattles when slow, boil-over on a model hand-off, plated). Staging has a `#cookdemo` preview |
   | `app/KeyboardCoach.svelte`, `app/lib/keyboard.svelte.js`, `app/lib/stuck.svelte.js` | The on-screen keyboard (`--kb`, so bars can sit on top of it), the coach bar that rides on it while you type, and the Stuck? nudge state it shares with the box |
-  | `app/RoundBanner.svelte` | Rework round 2: the banner over the box and on the card, with Back to round 1 |
+  | `app/RoundBanner.svelte` | Rework round 2: the banner over the box (Back to round 1 keeps your edits for the next Rework) and the Round 1 / Round 2 switcher on the card. Both rounds stay in memory until a new prompt, never saved |
   | `app/IdeasTab.svelte`, `app/lib/ideas.svelte.js` | The owner-only Ideas tab: capture panel, context trail, fix session prompt |
   | `app/TestLab.svelte`, `app/lib/testlab.svelte.js`, `app/lib/testlabPlan.js` | Staging only: the 🧪 Test lab, a walkthrough of every `releases.json` check not live yet, with ✓ / ✗, notes, and the promote verdict |
   | `app/lib/channel.js` | Staging only: the STAGING badge, and the `stg:` prefix that keeps staging's saved data apart from live's |

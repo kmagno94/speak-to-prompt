@@ -274,6 +274,7 @@ export function startApp() {
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
     else if (act === "round1") backToRound1();
+    else if (act === "round2") showRound(2);
   });
 
   form.addEventListener("submit", function (e) {
@@ -282,8 +283,8 @@ export function startApp() {
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
     var key = gemini.key || gkey.value.trim();
-    if (ui.round && round1 && key) { roundTwo(raw); return; }   /* Rework round 2 */
-    if (ui.round) { round1 = null; ui.round = null; }
+    if (ui.round && ui.round.stage === "edit" && round1 && key) { roundTwo(raw); return; }   /* Rework round 2 */
+    if (ui.round || round1 || reworkDraft) clearRounds();
     rememberUsed(raw);
     inputHint(raw);
     if (key) { geminiFlow(raw, key); return; }
@@ -482,8 +483,7 @@ export function startApp() {
     memory.suggestions = [];
     pastedPrint = ""; pendingPaste = null;
     xray.clear();
-    round1 = null;
-    ui.round = null;
+    clearRounds();
     document.getElementById("categoryLine").hidden = true;
     thoughts.value = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
@@ -526,7 +526,7 @@ export function startApp() {
     var qaUp = !qa.hidden && !busy && chat.questions.length > 0;
     if (!thoughts.value.trim() && !resultUp && !qaUp) return;
     undoSnap = { box: thoughts.value, session: resultUp || qaUp ? session : null };
-    if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, round1: round1,
+    if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, round1: round1, round2: round2, reworkDraft: reworkDraft,
       mem: memory.suggestions.slice(), status: status.textContent, keep: keepStatus.textContent, noteSaved: noteSaved, promptCopied: promptCopied };
     if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, plan: chat.plan, questions: chat.questions,
       answers: chat.answers, tapped: chat.tapped, messages: chat.messages, current: chat.current }));
@@ -559,6 +559,8 @@ export function startApp() {
       ui.grade = u.result.grade;
       ui.round = u.result.round;
       round1 = u.result.round1;
+      round2 = u.result.round2 || null;
+      reworkDraft = u.result.reworkDraft || "";
       memory.suggestions = u.result.mem;
       status.textContent = u.result.status;
       keepStatus.textContent = u.result.keep;
@@ -1781,7 +1783,7 @@ export function startApp() {
         showResult(extras(prompt), techOn()   /* core */
           ? (offset ? "Round 2 built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
           : (offset ? "Round 2 ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
-        if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built" });
+        if (session.round === 2 && ui.round) ui.round = Object.assign({}, ui.round, { stage: "built", viewing: 2 });
         /* Left mid-build and came back before it finished: say it picked back up. */
         if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
         showRepairNote(rep);
@@ -1839,6 +1841,12 @@ export function startApp() {
      them plus the edited prompt, with no questions, and Save to Notes keeps the original
      words with the new prompt. Back to round 1 puts the first prompt and its grade back. */
   var round1 = null;
+  /* Round switcher: once round 2 is built, Round 1 / Round 2 on the card flips between them.
+     round2 is filled when you flip to round 1, so both stay until you start a new prompt.
+     reworkDraft keeps your round 2 edits if you go back before it's built, so Rework picks
+     up where you left off. All in memory only, never saved. */
+  var round2 = null, reworkDraft = "";
+  function clearRounds() { round1 = null; round2 = null; reworkDraft = ""; ui.round = null; }
   var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
@@ -1877,11 +1885,12 @@ export function startApp() {
   }
   function startRework() {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
-    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan || session.round === 2) return;
+    if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan || session.round === 2 || round2) return;
     var seed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
     round1 = { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value, seed: seed };
     notify("result"); notify("form");
-    thoughts.value = seed;
+    thoughts.value = reworkDraft || seed;   /* your earlier round 2 edits come back */
+    reworkDraft = "";
     thoughts.dispatchEvent(new Event("stp:changed"));   /* Ghost Coach re-reads the box */
     ideasSync();
     ui.round = { n: 2, stage: "edit", before: ui.grade ? ui.grade.score : null };
@@ -1905,6 +1914,10 @@ export function startApp() {
   }
   function backToRound1() {
     if (!round1) return;
+    if (ui.round && ui.round.stage === "built") return showRound(1);   /* round 2 is kept */
+    /* Going back before round 2 is built: keep your edits for the next Rework. */
+    reworkDraft = ui.round && ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
+    if (reworkDraft.trim() === round1.seed.trim()) reworkDraft = "";
     writeRun++;
     setBusy(false);
     stopTicker();
@@ -1926,6 +1939,35 @@ export function startApp() {
     result.hidden = false;
     output.dispatchEvent(new Event("stp:changed"));
     result.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  /* Flip between built rounds. The round you leave is snapshotted, so its prompt, card,
+     score and box come back exactly. A grade still on its way for the round you leave
+     is dropped (writeRun), so it can't land on the other round. */
+  function roundSnap() { return { session: session, output: output.value, grade: ui.grade, dom: snapResult(), box: thoughts.value }; }
+  function showRound(n) {
+    var r = ui.round;
+    if (!r || r.stage !== "built" || !round1 || (r.viewing || 2) === n) return;
+    var to = n === 1 ? round1 : round2;
+    if (!to) return;
+    if (n === 1) round2 = roundSnap(); else round1 = Object.assign({}, round1, roundSnap());
+    writeRun++;
+    setBusy(false);
+    stopTicker();
+    session = to.session;
+    thoughts.value = to.box;
+    thoughts.dispatchEvent(new Event("stp:changed"));
+    output.value = to.output;
+    restoreResult(to.dom);
+    if (typeof resetKeep === "function") resetKeep();
+    setReady(true);
+    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+    ui.grade = to.grade;
+    ui.round = Object.assign({}, r, { viewing: n, after: n === 1 ? (round2.grade ? round2.grade.score : null) : r.after });
+    notify("result");
+    qa.hidden = true;
+    result.hidden = false;
+    output.dispatchEvent(new Event("stp:changed"));
+    ideasSync();
   }
   function gradeFrom(text, items) {
     var j; try { j = JSON.parse(String(text || "").replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "")); } catch (e) { return null; }
