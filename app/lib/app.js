@@ -15,6 +15,7 @@ import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
+import { IS_STAGING } from './channel.js';
 
 export function startApp() {
   /* What you copy is the prompt only. Nothing is tacked onto the end any more: the writer
@@ -274,6 +275,7 @@ export function startApp() {
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
+    else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
@@ -650,6 +652,17 @@ export function startApp() {
   }
   setShortcutMode(false);
   window.addEventListener("hashchange", function () { if (location.hash === "#paste") enterPasteMode(); });
+  /* Staging only: #flashbusy rests every Flash model for 2 minutes, to test the
+     "Flash models are busy" ask (#35) without waiting for a real busy hour. */
+  function fakeFlashBusy() {
+    if (!IS_STAGING || location.hash !== "#flashbusy") return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    var names = Object.keys(LIMITS).concat(gemini.plan ? gemini.plan.write : []).filter(function (m, i, a) { return !/lite/.test(m) && a.indexOf(m) === i; });
+    names.forEach(function (m) { restModel(m, 120000, "busy"); });
+    notify("form", "info", "Flash models are resting for 2 minutes", "Staging test. Tap Normal and build a prompt to see the Flash models are busy note.");
+  }
+  window.addEventListener("hashchange", fakeFlashBusy);
+  setTimeout(fakeFlashBusy, 0);
   window.addEventListener("pageshow", function (e) { if (e.persisted && location.hash === "#paste") enterPasteMode(); });
   (function () {
     var h = location.hash || "";
@@ -1055,6 +1068,12 @@ export function startApp() {
      so they don't spend the small Flash allowance that full prompts need.
      Flash models stay in the list as backups. */
   function writeModels(quick) { return quick ? gemini.plan.intake : gemini.plan.write; }
+  /* #35 widened (10/30): Normal and Rework prompts are written by Flash models only.
+     A weaker backup (Flash-Lite) slipping in during a busy spell is what added junk
+     numbers, so it never writes these without asking. A key with no Flash model at all
+     keeps the old list, so the app still works. */
+  function fullWriters() { var f = gemini.plan.write.filter(function (m) { return !/lite/.test(m); }); return f.length ? f : gemini.plan.write; }
+  function flashOnly() { return fullWriters().every(function (m) { return !/lite/.test(m); }); }
   function depthOf(c) { return DEPTH[c] || DEPTH.standard; }
   /* Model names and thinking levels only show with run stats on; everyone else
      sees plain words and times. */
@@ -1719,7 +1738,55 @@ export function startApp() {
     if (session.memFacts && session.memFacts.length) text += "\n\nBACKGROUND THE PERSON SAVED ABOUT THEMSELVES (it matters for this request; work it in where it helps, in their voice, and don't list it back as a block):\n- " + session.memFacts.join("\n- ");   /* memory */
     return text;
   }
+  /* #35 widened, SPEC LOCKED 10/29 (B, default is wait): when no Flash model can write a
+     Normal or Rework prompt, the page says so and waits for one on its own, about as long
+     as the soonest one is resting (at least a minute), then writes. One tap uses the quick
+     model now instead. If Flash is used up for the day, it only offers the quick model.
+     Memory only; leaving, New prompt, or Back to round N stops the wait. */
+  var flashWait = null;
+  function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
+  function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
+  function flashRestMs() {
+    var ms = Infinity;
+    fullWriters().forEach(function (m) { var r = restInfo(m); ms = Math.min(ms, r ? r.secs * 1000 : 0); });
+    return ms === Infinity ? 0 : ms;
+  }
+  function askFlashWait(why) {
+    stopFlashWait();
+    stopTicker();
+    cookStop();
+    setProgress(document.getElementById("resultProg"), "off");
+    setBusy(false);
+    setBuild("");
+    qaStatus.textContent = "";
+    var head = document.getElementById("resultHead"), run = writeRun, ms = Math.max(60000, flashRestMs());
+    var quickBtn = { label: "Use quick model now", act: "flashquick", primary: true };
+    session.flashAsked = (session.flashAsked || 0) + 1;
+    logRun({ outcome: "flash busy, asked: " + why, round: session.round || null });
+    if (ms > 60 * 60000) {
+      head.textContent = "Flash is used up for today";
+      return notify("result", "warn", "Today's Flash limit is used up", "Flash comes back around 3 AM Eastern. The quick model can write it now: faster, but not as strong.", [quickBtn]);
+    }
+    var until = Date.now() + ms;
+    function show() {
+      var mins = Math.max(1, Math.ceil((until - Date.now()) / 60000));
+      head.textContent = "Waiting for a Flash model...";
+      notify("result", "info", "Flash models are busy, about " + mins + " min", "It's waiting and will write your prompt on its own when one is free. Or use the quick model now: faster, but not as strong.", [quickBtn]);
+    }
+    show();
+    flashWait = {
+      tick: setInterval(function () { if (run !== writeRun) return stopFlashWait(); show(); }, 30000),
+      timer: setTimeout(function () {
+        var ok = run === writeRun && !busy && session;
+        stopFlashWait();
+        if (!ok) return;
+        notify("result");
+        writeFinal(session.answers, false);
+      }, ms)
+    };
+  }
   function writeFinal(answers, quick) {
+    stopFlashWait();
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
@@ -1739,8 +1806,9 @@ export function startApp() {
     var skipAsk = session.mode === "Quick mode" || session.round >= 2 || !(session.questions && session.questions.length);
     var offset = session.round >= 2 ? session.round1Secs || 0 : 0;   /* Rework rounds: running total */
     var busyP = quick ? null : busyNow();
-    var models = busyP ? busyOrder(writeModels(quick), busyP.start) : writeModels(quick);
-    var movedStart = busyP && models[0] !== writeModels(quick)[0];
+    var baseModels = quick ? writeModels(true) : fullWriters();
+    var models = busyP ? busyOrder(baseModels, busyP.start) : baseModels;
+    var movedStart = busyP && models[0] !== baseModels[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
     var eta = startEstimate(resultProg, (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
     snapTo(document.getElementById("resultTrack"));
@@ -1748,6 +1816,8 @@ export function startApp() {
        a backup starts too and the first good prompt wins. */
     var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
+    /* Every Flash model is resting: ask before anything is sent (#35). */
+    if (!quick && flashOnly() && models.every(function (m) { return resting(m); })) { askFlashWait("all resting"); return Promise.resolve(); }
     return askGemini(text, false, models, depth.level, function (m) {
       if (run === writeRun) eta(m);
     }, WRITE_LIMIT, hedgeAfter).then(function (r) {
@@ -1818,6 +1888,9 @@ export function startApp() {
       setBuild("");
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
+      /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).
+         Offline and key problems keep their own messages below. */
+      if (!quick && flashOnly() && flashBusy(e)) return askFlashWait(e && e.message ? e.message : "unknown");
       if (session.round >= 2 && rounds.length) {   /* A Rework round failed: the round it came from comes back, nothing lost */
         var why = e && e.message ? e.message : "unknown", failedN = session.round, backN = reworkFrom + 1;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: failedN });

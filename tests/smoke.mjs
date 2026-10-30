@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
@@ -176,6 +176,41 @@ await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   const p = await page({ fail: { 'gemini-3.8-flash': 429 }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not fall back to 3.7 Flash');
+});
+
+await check('model switching: Flash-Lite never writes a Normal prompt without asking; it waits for Flash on its own, or uses the quick model on a tap (#35)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  // 1. Every Flash model busy: no silent Flash-Lite write, the page asks, then writes on Flash by itself once one is back
+  const fail = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
+  const p = await page({ intake, fail });
+  await p.clock.install();
+  await withKey(p); await p.fill('#thoughts', 'it goes pretty fast and wow 13 14 94'); await p.click('#build');
+  for (let i = 0; i < 40 && !(await p.isVisible('#notice-result:has-text("Flash models are busy")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
+  const t = await p.textContent('#notice-result');
+  expect(/Flash models are busy, about 10 min/.test(t) && /on its own/.test(t), 'should say it is waiting and for how long: ' + t);
+  expect(/Waiting for a Flash model/.test(await p.textContent('#resultHead')) && !(await p.inputValue('#output')), 'no prompt yet, heading says it is waiting');
+  expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write without asking: ' + p.calls.map(c => c.model).join());
+  for (const k of Object.keys(fail)) delete fail[k];
+  await p.clock.runFor(10 * 60000 + 2000);
+  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
+  const last = p.calls.filter(c => !c.intake).pop().model;
+  expect(!/lite/.test(last) && await p.inputValue('#output') === 'THE PROMPT', 'after the wait a Flash model writes it: ' + last);
+  // 2. Every Flash model already resting: asks before sending anything; one tap uses the quick model
+  const q = await page({ intake });
+  await q.evaluate(() => { const u = Date.now() + 120000; localStorage.setItem('stp-model-rest', JSON.stringify({ 'gemini-3.8-flash': { until: u, why: 'busy' }, 'gemini-3.7-flash': { until: u, why: 'busy' }, 'gemini-3.6-flash': { until: u, why: 'busy' } })); });
+  await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build');
+  await q.waitForSelector('#notice-result:has-text("about 2 min")', { timeout: 15000 });
+  expect(!q.calls.some(c => !c.intake), 'nothing should be sent to a writer while every Flash model rests');
+  await q.click('#notice-result button:has-text("Use quick model now")'); await done(q);
+  expect(/lite/.test(q.calls.filter(c => !c.intake).pop().model) && !(await q.isVisible('#notice-result:has-text("Flash models")')), 'quick model writes it and the ask goes away');
+  // 3. Flash used up for the day: no wait offered, only the quick model
+  const r = await page({ intake, fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 429 } });
+  await withKey(r); await r.fill('#thoughts', 'plan my week'); await r.click('#build');
+  await r.waitForSelector('#notice-result:has-text("Flash limit is used up")', { timeout: 15000 });
+  expect(!/about \d+ min/.test(await r.textContent('#notice-result')) && !r.calls.some(c => !c.intake && /lite/.test(c.model)), 'used up: no wait, no silent Flash-Lite');
+  await r.click('#notice-result button:has-text("Use quick model now")'); await done(r);
+  expect(await r.inputValue('#output') === 'THE PROMPT', 'the quick model writes it');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
 });
 
 await check('Couldn\'t reach Google on one model tries the next model', async () => {
@@ -1168,8 +1203,11 @@ await check('limits: per-minute is a pause, daily is used up (and learned), busy
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] },
     fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 503 }, failDetails: { 'gemini-3.8-flash': minute, 'gemini-3.7-flash': daily } });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
-  await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build'); await done(p);
-  expect(await p.inputValue('#output') === 'THE PROMPT', 'Flash-Lite should still write it');
+  await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
+  await p.waitForSelector('#notice-result:has-text("Flash models are busy")', { timeout: 15000 });
+  expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write a Normal prompt without asking (#35)');
+  await p.click('#notice-result button:has-text("Use quick model now")'); await done(p);
+  expect(await p.inputValue('#output') === 'THE PROMPT' && /lite/.test(p.calls.filter(c => !c.intake).pop().model), 'after Use quick model now, Flash-Lite writes it');
   await p.click('#testLog summary').catch(() => {});
   const rows = await p.$$eval('#usage .m', l => Object.fromEntries(l.map(r => [r.querySelector('b').firstChild.textContent.trim(), r.querySelector(':scope > span').textContent])));
   expect(/per-minute limit, back in \d+s/.test(rows['gemini-3.8-flash']), 'per-minute should be a pause, not used up: ' + rows['gemini-3.8-flash']);
@@ -2067,6 +2105,8 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   const q = await reworkPage({ grade: low, failRound2: true });
   await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
   await q.click('#build');
+  await q.waitForSelector('#notice-result:has-text("Flash models are busy")', { timeout: 15000 });
+  await q.click('#notice-result button:has-text("Use quick model now")');
   await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));

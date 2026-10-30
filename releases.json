@@ -2,6 +2,41 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.15",
+      "date": "2026-10-30",
+      "title": "Flash writes your prompt, or it asks first (#35 widened)",
+      "items": [
+        "Normal and Rework prompts are written by Flash models only. When the Flash models were busy, the weaker quick model (Flash-Lite) used to take over without a word, and that is what put junk like random numbers into a reworked prompt.",
+        "When no Flash model can write it, the card says \"Flash models are busy, about N min\" and waits on its own, then writes as soon as one is free. One tap on Use quick model now writes it right away instead: faster, but not as strong.",
+        "If Flash is used up for the day, it says so (back around 3 AM Eastern) and only offers the quick model. Quick mode is unchanged and still writes on the quick model.",
+        "Staging only: open the staging page with #flashbusy on the end to rest every Flash model for 2 minutes, so you can test this without waiting for a busy hour."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the note, and build.",
+          "see": "Same as before when Flash is free: the prompt shows, and the made-by line names a Flash model (3.8, 3.7 or 3.6), not Flash-Lite.",
+          "paste": "ok so the timer test went pretty fast and like wow, the grader passed it, i want a prompt that checks if one ai model grading another is fair, for my coffee shop menu bot, keep it short"
+        },
+        {
+          "say": "Open the staging link that ends in #flashbusy. Tap Normal, paste the note, and build.",
+          "see": "A note says Flash models are resting for 2 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy, about 2 min, with a Use quick model now button.",
+          "paste": "need a prompt to plan my roast schedule for next week, two lines, fancy diner on monday and thursday, rio knights wednesday, about 40 pounds each, roaster down friday for cleaning"
+        },
+        {
+          "say": "While it's waiting, tap Use quick model now.",
+          "see": "The note goes away and the prompt writes in about 10 seconds. With run stats on, the made-by line names Flash-Lite."
+        },
+        {
+          "say": "Open #flashbusy again, build a Normal prompt, then just wait about 2 minutes without tapping anything.",
+          "see": "The minutes count down, then it writes on its own with a Flash model. No random numbers you never said."
+        },
+        {
+          "say": "Get a prompt under the bar, tap Rework, change a line, open #flashbusy, and build round 2.",
+          "see": "Round 2 waits with the same Flash models are busy note instead of quietly using Flash-Lite. Back to round 1 still brings round 1 back."
+        }
+      ]
+    },
+    {
       "version": "2.1.14",
       "date": "2026-10-29",
       "title": "R2 Feel: remembered Quick or Normal, your last AI first, result reveal, words box that fits",
