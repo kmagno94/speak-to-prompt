@@ -14,6 +14,7 @@
   import { cookDemo } from './lib/cook.svelte.js';
   import { IS_STAGING } from './lib/channel.js';
   import { watchKeyboard } from './lib/keyboard.svelte.js';
+  import { growBox } from './lib/grow.js';
   import PromptXray from './PromptXray.svelte';
   import Tutorial from './Tutorial.svelte';
   import Guide from './Guide.svelte';
@@ -43,10 +44,12 @@
   onMount(() => {
     startApp();
     watchKeyboard();   /* lib/keyboard.svelte.js: --kb, so bars can sit on top of the keyboard */
+    const stopGrow = growBox(document.getElementById('thoughts'));   /* #32: the words box fits what you type */
     /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
     const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
     demo();
     window.addEventListener('hashchange', demo);
+    return () => { stopGrow(); window.removeEventListener('hashchange', demo); };
   });
 </script>
 

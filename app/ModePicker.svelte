@@ -1,15 +1,17 @@
 <script>
-  import { ui } from './lib/ui.svelte.js';
+  import { ui, saveMode } from './lib/ui.svelte.js';
 
   /* Newcomers have no key, so they start in Quick and never hit a "needs a key" wall.
-     Once a key is typed or saved, it moves to Normal, unless they picked a mode. */
+     Once a key is typed or saved, it moves to Normal, unless they picked a mode (which now
+     sticks across visits, #21). */
   $effect(() => { const k = ui.hasKey; if (!ui.modePicked) ui.mode = k ? 'normal' : 'quick'; });
   let hint = $derived(
     ui.mode === 'quick'
       ? (ui.hasKey ? 'Quick: skips the questions and writes right away.' : 'Quick: writes right away. Add a free Gemini key (below) and Normal asks a few questions first.')
       : 'Normal: asks a few quick questions, then writes.' + (ui.hasKey ? '' : ' Needs a free Gemini key (below).')
   );
-  const picked = () => (ui.modePicked = true);
+  /* Picking one is remembered on this device (the mode only, never words). */
+  const picked = (e) => { ui.modePicked = true; saveMode(e.currentTarget.value); };
 </script>
 
 <!-- Mode picker beside Build: Quick skips the questions; Normal asks a few, then writes. -->

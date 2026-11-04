@@ -109,6 +109,8 @@ label { font-family: var(--display); font-weight: 600; font-size: var(--fs-lg); 
 .helpers { margin: calc(var(--sp-2) * -1) 0 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
 .hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
 textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; border: 1px solid var(--line); resize: vertical; }
+/* The words box fits what you type (#32, lib/grow.js), so it has no drag handle. */
+textarea#thoughts { resize: none; }
 #thoughts {
   min-height: 190px; padding: 12px 14px; line-height: 32px;
   background-color: var(--surface);
@@ -371,6 +373,28 @@ details.key[open] summary { margin-bottom: 10px; }
 #keyStatus { font-size: 14px; margin: 0; min-height: 1.2em; }
 #keyStatus.good { color: var(--ok); }
 #keyStatus.bad { color: var(--danger); }
+/* Result reveal (#31): the prompt card slides up (250ms, the motion kit's reveal), then the dock's
+   Copy prompt pulses once per run (NextDock.svelte adds .pulse). Reduce Motion: the card fades in
+   and the button gets a quick highlight, nothing moves. */
+@media (prefers-reduced-motion: no-preference) {
+  #result:not([hidden]) { animation: resultin var(--dur-reveal) var(--ease) both; }
+  @keyframes resultin { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  #copy.pulse { animation: dockpulse 650ms var(--ease); }
+  @keyframes dockpulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+    35% { transform: scale(1.04); }
+    100% { transform: scale(1); box-shadow: 0 0 0 16px transparent; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #result:not([hidden]) { animation: resultfade 200ms linear both; }
+  @keyframes resultfade { from { opacity: 0; } to { opacity: 1; } }
+  #copy.pulse { animation: dockglow 450ms linear; }
+  @keyframes dockglow {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    30%, 60% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 45%, transparent); }
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .card { animation: rise var(--dur) var(--ease); }
   @keyframes rise { from { transform: translateY(6px); opacity: 0.6; } to { transform: none; opacity: 1; } }

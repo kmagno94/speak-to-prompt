@@ -2,6 +2,69 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.15",
+      "date": "2026-10-30",
+      "title": "Flash writes your prompt, or it asks first (#35 widened)",
+      "items": [
+        "Normal and Rework prompts are written by Flash models only. When the Flash models were busy, the weaker quick model (Flash-Lite) used to take over without a word, and that is what put junk like random numbers into a reworked prompt.",
+        "When no Flash model can write it, the card says \"Flash models are busy. It will write on its own\" with a live countdown (like 2:41) and a bar that drains to 0:00, then a Flash model writes it by itself. One tap on Use quick model now writes it right away instead: faster, but not as strong.",
+        "The wait never goes past 3 minutes a round. If no Flash model is free by then, the quick model writes it on its own, with a note saying so. A busy Flash model rests 3 minutes instead of 10.",
+        "With run stats on, the Quality check is never graded by the model that wrote the prompt: a Flash-Lite prompt (Quick mode or the 3 minute cap) is graded by a Flash model, so the grade isn't biased.",
+        "If Flash is used up for the day, it says so (back around 3 AM Eastern) and only offers the quick model. Quick mode is unchanged and still writes on the quick model.",
+        "Staging only: open the staging page with #flashbusy on the end to rest every Flash model for 5 minutes, past the 3 minute cap, so you can test this without waiting for a busy hour."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the note, and build.",
+          "see": "Same as before when Flash is free: the prompt shows, and the made-by line names a Flash model (3.8, 3.7 or 3.6), not Flash-Lite.",
+          "paste": "ok so the timer test went pretty fast and like wow, the grader passed it, i want a prompt that checks if one ai model grading another is fair, for my coffee shop menu bot, keep it short"
+        },
+        {
+          "say": "Open the staging link that ends in #flashbusy. Tap Normal, paste the note, and build.",
+          "see": "A note says Flash models are resting for 5 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy. It will write on its own, with a big timer starting at 3:00 that says until the quick model writes it, a bar draining, and a Use quick model now button.",
+          "paste": "need a prompt to plan my roast schedule for next week, two lines, fancy diner on monday and thursday, rio knights wednesday, about 40 pounds each, roaster down friday for cleaning"
+        },
+        {
+          "say": "While it's waiting, tap Use quick model now.",
+          "see": "The note goes away and the prompt writes in about 10 seconds. With run stats on, the made-by line names Flash-Lite."
+        },
+        {
+          "say": "Open #flashbusy again, turn on Show run stats, build a Normal prompt, then just wait 3 minutes without tapping anything.",
+          "see": "The timer starts at 3:00 and ticks down every second. At 0:00 it says Writing now..., the quick model writes it by itself, and a note says The quick model wrote this one. The made-by line names a Flash-Lite model, and the model in brackets at the end of the Quality check line is a different one (Flash models are resting in this test, so it may be the other Flash-Lite)."
+        },
+        {
+          "say": "Get a prompt under the bar, tap Rework, change a line, open #flashbusy, and build round 2.",
+          "see": "Round 2 waits with the same Flash models are busy note instead of quietly using Flash-Lite. Back to round 1 still brings round 1 back."
+        },
+        {
+          "say": "Turn on Show run stats, tap Quick, paste the note, and build.",
+          "see": "The prompt shows fast, written by Flash-Lite. When the Quality check line lands, the model in brackets at the end is a Flash model (like 3.8-flash), not Flash-Lite, so it isn't grading its own work.",
+          "paste": "ok quick one, need a prompt to help me write a thank you card for my coworker who covered my saturday shift, keep it warm but short, she likes plants"
+        }
+      ]
+    },
+    {
+      "version": "2.1.14",
+      "date": "2026-10-29",
+      "title": "R2 Feel: remembered Quick or Normal, your last AI first, result reveal, words box that fits",
+      "items": [
+        "Quick or Normal is remembered on this device, saved right next to the 4 slider numbers. It is a setting, never your words. New prompt keeps it and the sliders for the rest of the visit, while My context picks clear like before.",
+        "In the dock's ⋯ menu, the AI you opened last is listed first under Open in. The main button stays Copy prompt. This lasts for the open tab only: nothing is saved, and a reload puts the list back in its usual order.",
+        "When your prompt finishes, the card slides up gently and Copy prompt pulses once. With Reduce Motion on, the card fades in and the button gets a quick highlight, and nothing moves.",
+        "The words box fits what you type. Empty, it keeps its height so the 💡 ideas fit. Once you type or paste it fits your words (3 lines at least), grows up to about 40% of the screen, then scrolls inside, so Build my prompt stays right under your words and on screen."
+      ],
+      "checks": [
+        { "say": "Tap Normal, then close the tab and open the staging page again.", "see": "Normal is still picked when it opens (and Quick stays picked if you choose Quick). Nothing you typed comes back." },
+        { "say": "Tap Quick, type a few words, build, then tap ⋯ → New prompt.", "see": "Quick is still picked, and the 4 sliders (open Not sure where to start?) are where you left them. My context picks are cleared, same as before.", "paste": "need to plan a surprise birthday for my sister maya, saturday the 14th, maybe 12 people, her favorite is the lemon bakery downtown, keep it under 300 bucks" },
+        { "say": "Build a prompt. When it finishes, tap ⋯ and look under Open in. Tap Gemini (it opens in a new tab), come back, and tap ⋯ again.", "see": "Before: ChatGPT, Claude, Gemini. After opening Gemini: Gemini is listed first. The big button still says Copy prompt." },
+        { "say": "Reload the page and build again.", "see": "Open in is back to ChatGPT, Claude, Gemini, since this is tab-only memory." },
+        { "say": "Build a prompt and watch the card as it finishes (try it once with a key and once without).", "see": "The prompt card slides up about a quarter of a second, then Copy prompt in the dock pulses once. It pulses again only when you build or rebuild another prompt, never when you flip rounds or tap Undo." },
+        { "say": "Turn on Reduce Motion in iPhone Settings → Accessibility → Motion, reload, and build.", "see": "The card fades in with no sliding, and Copy prompt gets one quick glow instead of the pulse." },
+        { "say": "Open the page with the box empty, then type one word, then paste the test note below four or five times in a row, so it becomes a long ramble.", "see": "Empty: the box is tall enough for the 💡 ideas. One word: it shrinks to about 3 lines. The long ramble: it grows to about 40% of the screen, then scrolls inside, and Build my prompt stays right under it and on screen.", "paste": "ok so the thing is the garage sale is saturday and i still have to price all the stuff from the attic, plus my brother said he might bring his old speakers, and the neighbors on both sides want to join so we need tables, maybe six, and somebody has to handle the cash box, also it might rain so i need a plan b, maybe the carport, idk" },
+        { "say": "Clear the box (select all, delete).", "see": "It goes back to its tall empty height and the 💡 ideas come back." }
+      ]
+    },
+    {
       "version": "2.1.13",
       "date": "2026-10-28",
       "title": "Up to 3 rounds, and Compare rounds side by side",

@@ -1,8 +1,19 @@
 /* Shared, reactive app state. Svelte components read it directly; the original
    page code (app.js) updates it, and the components redraw on their own. */
+/* Quick or Normal is remembered on this device (#21), right next to the 4 slider numbers
+   (stp-tune). It is a setting, never your words. New prompt keeps it (#23). */
+const MODE_KEY = 'stp-mode';
+function savedMode() {
+  try { const v = localStorage.getItem(MODE_KEY); return v === 'quick' || v === 'normal' ? v : null; } catch (e) { return null; }
+}
+export function saveMode(m) {
+  try { if (m === 'quick' || m === 'normal') localStorage.setItem(MODE_KEY, m); } catch (e) {}
+}
+const mode0 = savedMode();
+
 export const ui = $state({
-  mode: 'quick',      // 'quick' or 'normal'. Quick until a key exists (ModePicker), unless picked
-  modePicked: false,  // the person chose a mode themselves, so it no longer follows the key
+  mode: mode0 || 'quick',   // 'quick' or 'normal'. Quick until a key exists (ModePicker), unless picked
+  modePicked: !!mode0,      // the person chose a mode themselves (now or on an earlier visit), so it no longer follows the key
   hasKey: false,      // a Gemini key is typed in or saved
   quickSecs: 15,      // Quick mode's usual time, learned from run stats when on
   /* One message per place ('form' under the thoughts box, 'result' on the prompt card),
@@ -14,7 +25,8 @@ export const ui = $state({
   grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
 
-/* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }] */
-export function notify(where, kind, title, text, actions) {
-  ui.notices[where] = kind ? { kind, title, text: text || '', actions: actions || [], at: Date.now() } : null;
+/* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]
+   countdown (optional): { until, total, label, done } shows a live m:ss timer and a draining bar. */
+export function notify(where, kind, title, text, actions, countdown) {
+  ui.notices[where] = kind ? { kind, title, text: text || '', actions: actions || [], countdown: countdown || null, at: Date.now() } : null;
 }
