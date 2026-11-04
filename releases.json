@@ -8,9 +8,10 @@
       "items": [
         "Normal and Rework prompts are written by Flash models only. When the Flash models were busy, the weaker quick model (Flash-Lite) used to take over without a word, and that is what put junk like random numbers into a reworked prompt.",
         "When no Flash model can write it, the card says \"Flash models are busy. It will write on its own\" with a live countdown (like 2:41) and a bar that drains to 0:00, then a Flash model writes it by itself. One tap on Use quick model now writes it right away instead: faster, but not as strong.",
+        "The wait never goes past 3 minutes a round. If no Flash model is free by then, the quick model writes it on its own, with a note saying so. A busy Flash model rests 3 minutes instead of 10.",
+        "With run stats on, the Quality check is never graded by the model that wrote the prompt: a Flash-Lite prompt (Quick mode or the 3 minute cap) is graded by a Flash model, so the grade isn't biased.",
         "If Flash is used up for the day, it says so (back around 3 AM Eastern) and only offers the quick model. Quick mode is unchanged and still writes on the quick model.",
-        "A busy Flash model now rests 3 minutes instead of 10, so the wait is shorter.",
-        "Staging only: open the staging page with #flashbusy on the end to rest every Flash model for 2 minutes, so you can test this without waiting for a busy hour."
+        "Staging only: open the staging page with #flashbusy on the end to rest every Flash model for 5 minutes, past the 3 minute cap, so you can test this without waiting for a busy hour."
       ],
       "checks": [
         {
@@ -20,7 +21,7 @@
         },
         {
           "say": "Open the staging link that ends in #flashbusy. Tap Normal, paste the note, and build.",
-          "see": "A note says Flash models are resting for 2 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy. It will write on its own, with a big timer under 2:00 counting down every second, a bar draining, and a Use quick model now button.",
+          "see": "A note says Flash models are resting for 5 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy. It will write on its own, with a big timer starting at 3:00 that says until the quick model writes it, a bar draining, and a Use quick model now button.",
           "paste": "need a prompt to plan my roast schedule for next week, two lines, fancy diner on monday and thursday, rio knights wednesday, about 40 pounds each, roaster down friday for cleaning"
         },
         {
@@ -28,12 +29,17 @@
           "see": "The note goes away and the prompt writes in about 10 seconds. With run stats on, the made-by line names Flash-Lite."
         },
         {
-          "say": "Open #flashbusy again, build a Normal prompt, then just wait about 2 minutes without tapping anything.",
-          "see": "The big timer ticks down every second and the bar drains, so it is clear it is waiting. At 0:00 it says Writing now... and a Flash model writes it by itself. No random numbers you never said."
+          "say": "Open #flashbusy again, turn on Show run stats, build a Normal prompt, then just wait 3 minutes without tapping anything.",
+          "see": "The timer starts at 3:00 and ticks down every second. At 0:00 it says Writing now..., the quick model writes it by itself, and a note says The quick model wrote this one. The made-by line names a Flash-Lite model, and the model in brackets at the end of the Quality check line is a different one (Flash models are resting in this test, so it may be the other Flash-Lite)."
         },
         {
           "say": "Get a prompt under the bar, tap Rework, change a line, open #flashbusy, and build round 2.",
           "see": "Round 2 waits with the same Flash models are busy note instead of quietly using Flash-Lite. Back to round 1 still brings round 1 back."
+        },
+        {
+          "say": "Turn on Show run stats, tap Quick, paste the note, and build.",
+          "see": "The prompt shows fast, written by Flash-Lite. When the Quality check line lands, the model in brackets at the end is a Flash model (like 3.8-flash), not Flash-Lite, so it isn't grading its own work.",
+          "paste": "ok quick one, need a prompt to help me write a thank you card for my coworker who covered my saturday shift, keep it warm but short, she likes plants"
         }
       ]
     },

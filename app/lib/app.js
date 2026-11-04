@@ -652,14 +652,14 @@ export function startApp() {
   }
   setShortcutMode(false);
   window.addEventListener("hashchange", function () { if (location.hash === "#paste") enterPasteMode(); });
-  /* Staging only: #flashbusy rests every Flash model for 2 minutes, to test the
-     "Flash models are busy" ask (#35) without waiting for a real busy hour. */
+  /* Staging only: #flashbusy rests every Flash model for 5 minutes, to test the
+     "Flash models are busy" ask (#35) and its 3 minute cap without waiting for a real busy hour. */
   function fakeFlashBusy() {
     if (!IS_STAGING || location.hash !== "#flashbusy") return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var names = Object.keys(LIMITS).concat(gemini.plan ? gemini.plan.write : []).filter(function (m, i, a) { return !/lite/.test(m) && a.indexOf(m) === i; });
-    names.forEach(function (m) { restModel(m, 120000, "busy"); });
-    notify("form", "info", "Flash models are resting for 2 minutes", "Staging test. Tap Normal and build a prompt to see the Flash models are busy note.");
+    names.forEach(function (m) { restModel(m, 5 * 60000, "busy"); });
+    notify("form", "info", "Flash models are resting for 5 minutes", "Staging test. Tap Normal and build a prompt: it waits 3 minutes at most, then the quick model writes it.");
   }
   window.addEventListener("hashchange", fakeFlashBusy);
   setTimeout(fakeFlashBusy, 0);
@@ -1742,7 +1742,10 @@ export function startApp() {
      Normal or Rework prompt, the page says so and waits for one on its own, about as long
      as the soonest one is resting (at least a minute), then writes. One tap uses the quick
      model now instead. If Flash is used up for the day, it only offers the quick model.
-     Memory only; leaving, New prompt, or Back to round N stops the wait. */
+     Memory only; leaving, New prompt, or Back to round N stops the wait.
+     v2.1.15 fix (11/04): the wait never goes past 3 minutes a round. If no Flash model is
+     free by then, the quick model writes it on its own. Waiting longer felt unbearable. */
+  var FLASH_WAIT_MAX = 3 * 60000;
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
@@ -1767,11 +1770,22 @@ export function startApp() {
       head.textContent = "Flash is used up for today";
       return notify("result", "warn", "Today's Flash limit is used up", "Flash comes back around 3 AM Eastern. The quick model can write it now: faster, but not as strong.", [quickBtn]);
     }
+    /* 3 minute cap per round: the clock starts at the first ask and keeps running if a
+       Flash try at 0:00 comes back busy again, so the total wait stays under 3 minutes. */
+    var key = session.round || 1;
+    if (!session.flashDeadline || session.flashDeadline.round !== key) session.flashDeadline = { round: key, at: Date.now() + FLASH_WAIT_MAX };
+    var left = session.flashDeadline.at - Date.now();
+    if (left <= 1000) return autoQuick();
+    var toQuick = ms > left;   /* no Flash model is due back before the 3 minutes are up */
+    ms = Math.min(ms, left);
     /* The note shows once with a live m:ss countdown and a draining bar (Message.svelte
        ticks it every second), so it's clear it will write on its own even with the button
        there. Re-sending the note every 30 seconds made it blink back in, so it no longer does. */
     head.textContent = "Waiting for a Flash model...";
-    notify("result", "info", "Flash models are busy. It will write on its own", "A Flash model writes your prompt by itself when the timer hits 0:00. Nothing to tap. Or use the quick model now: faster, but not as strong.", [quickBtn], { until: Date.now() + ms, total: ms, label: "until it writes on its own", done: "Writing now..." });
+    notify("result", "info", "Flash models are busy. It will write on its own",
+      toQuick ? "No Flash model is free yet, so at 0:00 the quick model writes it: faster, but not as strong. You never wait more than 3 minutes. Or tap to use it now."
+              : "A Flash model writes it at 0:00. If none is free by then, the quick model does, so you never wait more than 3 minutes. Or use the quick model now.",
+      [quickBtn], { until: Date.now() + ms, total: ms, label: toQuick ? "until the quick model writes it" : "until a Flash model writes it", done: "Writing now..." });
     flashWait = {
       tick: setInterval(function () { if (run !== writeRun) stopFlashWait(); }, 1000),
       timer: setTimeout(function () {
@@ -1779,9 +1793,18 @@ export function startApp() {
         stopFlashWait();
         if (!ok) return;
         notify("result");
-        writeFinal(session.answers, false);
+        /* Decided now, not when the wait started: a Flash model that's free gets a try,
+           and if it comes back busy the cap sends it straight to the quick model. */
+        if (fullWriters().some(function (m) { return !resting(m); })) writeFinal(session.answers, false); else autoQuick();
       }, ms)
     };
+    /* 3 minutes is up and Flash is still busy: the quick model writes it, no tap needed. */
+    function autoQuick() {
+      session.autoQuick = true;
+      logRun({ outcome: "flash busy 3 min, quick model wrote it", round: session.round || null });
+      notify("result");
+      writeFinal(session.answers, true);
+    }
   }
   function writeFinal(answers, quick) {
     stopFlashWait();
@@ -1858,6 +1881,8 @@ export function startApp() {
         if (session.round >= 2 && ui.round) roundBuilt(session.round);
         /* Left mid-build and came back before it finished: say it picked back up. */
         if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
+        session.flashDeadline = null;
+        if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash models stayed busy for 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
         if (memory.active) {
@@ -1875,7 +1900,7 @@ export function startApp() {
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
           round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null });
-        gradeRun(prompt, run);
+        gradeRun(prompt, run, r.model);
       }
     }).catch(function (e) {
       if (run !== writeRun) { setBusy(false); return; }
@@ -2074,9 +2099,19 @@ export function startApp() {
     return { craft: g, pass: g >= GRADE_PASS, rearranged: re, invented: inv, missing: miss, broke: broke };
   }
   /* One grade: a promise of the parsed grade (with .model), or an error. */
-  function gradeOnce(prompt, raw, answers, today, items, grader) {
+  /* The grader is never the model that wrote the prompt, so it can't go easy on its own
+     work (v2.1.15 fix, 11/04). A Flash-Lite prompt (Quick mode or the quick model after a
+     Flash wait) is graded by a Flash model first, then the other Flash-Lite. A Flash prompt
+     is graded by Flash-Lite as before. Resting models still go to the back of the line. */
+  function graderModels(writer) {
+    var list = gemini.plan.intake;
+    if (writer && /lite/.test(writer)) list = list.filter(function (m) { return !/lite/.test(m); }).concat(list.filter(function (m) { return /lite/.test(m); }));
+    var others = list.filter(function (m) { return m !== writer; });
+    return others.length ? others : list;
+  }
+  function gradeOnce(prompt, raw, answers, today, items, grader, writer) {
     return function () {
-      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, graderModels(writer), "low", null, 30000).then(function (r) {
         var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade.");
         g = numberDock(g, session ? promptFlags(prompt) : null);   /* the number check flagged: docked */
         g.model = r.model; return g;
@@ -2100,11 +2135,11 @@ export function startApp() {
   function confirmNote(g) {
     return g.confirm === "dropped" ? "a second look gave " + g.secondCraft.toFixed(2) + " (first " + g.firstCraft.toFixed(2) + ")" : g.confirm === "unconfirmed" ? "pass not confirmed" : "";
   }
-  function gradeRun(prompt, run) {
+  function gradeRun(prompt, run, writer) {
     if (!testLog.on() || !gemini.plan || !session) return;
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
-    var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g) {
+    var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader, writer)).then(function (g) {
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -2116,7 +2151,7 @@ export function startApp() {
       var el = document.getElementById("gradeNote");
       el.textContent = gradeText(g, fields, "");
       el.hidden = false;
-      if (canFix(g)) return fixLabel(prompt, run, target, g, fields, items, el);
+      if (canFix(g)) return fixLabel(prompt, run, target, g, fields, items, el, writer);
     }, function () {});
     if (target) target._grade = job;
   }
@@ -2152,7 +2187,7 @@ export function startApp() {
   function andList(a) { return a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]; }
   function fixList(g) { return g.missing.filter(function (m) { return LABEL_FIXES.indexOf(m) !== -1; }); }
   function canFix(g) { return !g.pass && !g.rearranged && !g.invented && fixList(g).length > 0; }
-  function fixLabel(prompt, run, target, g, fields, items, el) {
+  function fixLabel(prompt, run, target, g, fields, items, el, writer) {
     var t0 = Date.now(), first = g, best = g, cur = prompt, tries = 0, added = [], last = "", lastStatus = "kept original";
     function secs() { return Math.round((Date.now() - t0) / 100) / 10; }
     function used() { return run !== writeRun || pendingRun !== target || output.value !== extras(cur); }
@@ -2179,7 +2214,7 @@ export function startApp() {
         var fixed = cleanPrompt(r.text);
         if (!onlyAdded(fixed, cur, list.length)) return again("kept original", "tried adding " + what + ", but it changed other lines");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
-        return gradeConfirmed(gradeOnce(fixed, session.raw, gradeAnswers(), session.today, items, lessons.grader)).then(function (g2) {
+        return gradeConfirmed(gradeOnce(fixed, session.raw, gradeAnswers(), session.today, items, lessons.grader, writer)).then(function (g2) {
           if (!g2 || g2.craft <= best.craft) return again("kept original", "tried adding " + what + ", but it didn't score higher");
           if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
           list.forEach(function (m) { if (g2.missing.indexOf(m) === -1 && added.indexOf(m) === -1) added.push(m); });
