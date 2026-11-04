@@ -2,6 +2,26 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.16",
+      "date": "2026-11-04",
+      "title": "Promote tags itself",
+      "items": [
+        "After a promote, the live deploy tags main with its version by itself (like v2.1.16), once every check passed and live changed. Chat sessions can't push tags or releases, so the version tag kept getting skipped and Roll back had nothing to pin to.",
+        "It also tags the version live had right before, if that one never got a tag, so the untagged v2.1.15 gets fixed on the next promote. A tag that already exists is never moved.",
+        "Nothing changes in the app itself, and staging pushes never tag anything."
+      ],
+      "checks": [
+        {
+          "say": "On GitHub, open Actions, then the Test and deploy run for this staging push (Promote tags itself, v2.1.16).",
+          "see": "The run is green, and the Tag live version job shows as skipped (it only runs after a live deploy from main)."
+        },
+        {
+          "say": "Open the staging Test lab (the staging link ending in #testlab).",
+          "see": "It loads like before and lists v2.1.16 Promote tags itself with these checks."
+        }
+      ]
+    },
+    {
       "version": "2.1.15",
       "date": "2026-10-30",
       "title": "Flash writes your prompt, or it asks first (#35 widened)",
