@@ -1080,12 +1080,12 @@ export function startApp() {
   function techOn() { return testLog.on(); }
   function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
   /* Model rest list: a model that just said it was busy (or timed out) sits out
-     for 10 minutes, and one at its limit sits out for an hour, so the next run
+     for 3 minutes (was 10, too long to sit and wait, v2.1.15 fix), and one at its limit sits out for an hour, so the next run
      goes straight to a model that's working instead of waiting on the same one.
      Google has no way to ask "how much is left" with a key, so the page learns
      from what each model just did. Stored on this device: model names and times only. */
   var REST_KEY = "stp-model-rest";
-  var REST_BUSY = 10 * 60000;
+  var REST_BUSY = 3 * 60000;
   function restList() { try { return JSON.parse(localStorage.getItem(REST_KEY) || "{}") || {}; } catch (e) { return {}; } }
   /* why: "busy" (Google overloaded), "minute" (per-minute limit), "day" (daily limit, until 3 AM Eastern). */
   function restModel(model, ms, why) {
@@ -1760,22 +1760,20 @@ export function startApp() {
     setBuild("");
     qaStatus.textContent = "";
     var head = document.getElementById("resultHead"), run = writeRun, ms = Math.max(60000, flashRestMs());
-    var quickBtn = { label: "Use quick model now", act: "flashquick", primary: true };
+    var quickBtn = { label: "Use quick model now", act: "flashquick" };   /* not primary: waiting is the default (#35) */
     session.flashAsked = (session.flashAsked || 0) + 1;
     logRun({ outcome: "flash busy, asked: " + why, round: session.round || null });
     if (ms > 60 * 60000) {
       head.textContent = "Flash is used up for today";
       return notify("result", "warn", "Today's Flash limit is used up", "Flash comes back around 3 AM Eastern. The quick model can write it now: faster, but not as strong.", [quickBtn]);
     }
-    var until = Date.now() + ms;
-    function show() {
-      var mins = Math.max(1, Math.ceil((until - Date.now()) / 60000));
-      head.textContent = "Waiting for a Flash model...";
-      notify("result", "info", "Flash models are busy, about " + mins + " min", "It's waiting and will write your prompt on its own when one is free. Or use the quick model now: faster, but not as strong.", [quickBtn]);
-    }
-    show();
+    /* The note shows once with a live m:ss countdown and a draining bar (Message.svelte
+       ticks it every second), so it's clear it will write on its own even with the button
+       there. Re-sending the note every 30 seconds made it blink back in, so it no longer does. */
+    head.textContent = "Waiting for a Flash model...";
+    notify("result", "info", "Flash models are busy. It will write on its own", "A Flash model writes your prompt by itself when the timer hits 0:00. Nothing to tap. Or use the quick model now: faster, but not as strong.", [quickBtn], { until: Date.now() + ms, total: ms, label: "until it writes on its own", done: "Writing now..." });
     flashWait = {
-      tick: setInterval(function () { if (run !== writeRun) return stopFlashWait(); show(); }, 30000),
+      tick: setInterval(function () { if (run !== writeRun) stopFlashWait(); }, 1000),
       timer: setTimeout(function () {
         var ok = run === writeRun && !busy && session;
         stopFlashWait();

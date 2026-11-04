@@ -25,7 +25,8 @@ export const ui = $state({
   grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
 });
 
-/* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }] */
-export function notify(where, kind, title, text, actions) {
-  ui.notices[where] = kind ? { kind, title, text: text || '', actions: actions || [], at: Date.now() } : null;
+/* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]
+   countdown (optional): { until, total, label, done } shows a live m:ss timer and a draining bar. */
+export function notify(where, kind, title, text, actions, countdown) {
+  ui.notices[where] = kind ? { kind, title, text: text || '', actions: actions || [], countdown: countdown || null, at: Date.now() } : null;
 }

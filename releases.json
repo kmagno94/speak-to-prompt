@@ -7,8 +7,9 @@
       "title": "Flash writes your prompt, or it asks first (#35 widened)",
       "items": [
         "Normal and Rework prompts are written by Flash models only. When the Flash models were busy, the weaker quick model (Flash-Lite) used to take over without a word, and that is what put junk like random numbers into a reworked prompt.",
-        "When no Flash model can write it, the card says \"Flash models are busy, about N min\" and waits on its own, then writes as soon as one is free. One tap on Use quick model now writes it right away instead: faster, but not as strong.",
+        "When no Flash model can write it, the card says \"Flash models are busy. It will write on its own\" with a live countdown (like 2:41) and a bar that drains to 0:00, then a Flash model writes it by itself. One tap on Use quick model now writes it right away instead: faster, but not as strong.",
         "If Flash is used up for the day, it says so (back around 3 AM Eastern) and only offers the quick model. Quick mode is unchanged and still writes on the quick model.",
+        "A busy Flash model now rests 3 minutes instead of 10, so the wait is shorter.",
         "Staging only: open the staging page with #flashbusy on the end to rest every Flash model for 2 minutes, so you can test this without waiting for a busy hour."
       ],
       "checks": [
@@ -19,7 +20,7 @@
         },
         {
           "say": "Open the staging link that ends in #flashbusy. Tap Normal, paste the note, and build.",
-          "see": "A note says Flash models are resting for 2 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy, about 2 min, with a Use quick model now button.",
+          "see": "A note says Flash models are resting for 2 minutes. After the questions: no prompt yet, the heading says Waiting for a Flash model..., and a note says Flash models are busy. It will write on its own, with a big timer under 2:00 counting down every second, a bar draining, and a Use quick model now button.",
           "paste": "need a prompt to plan my roast schedule for next week, two lines, fancy diner on monday and thursday, rio knights wednesday, about 40 pounds each, roaster down friday for cleaning"
         },
         {
@@ -28,7 +29,7 @@
         },
         {
           "say": "Open #flashbusy again, build a Normal prompt, then just wait about 2 minutes without tapping anything.",
-          "see": "The minutes count down, then it writes on its own with a Flash model. No random numbers you never said."
+          "see": "The big timer ticks down every second and the bar drains, so it is clear it is waiting. At 0:00 it says Writing now... and a Flash model writes it by itself. No random numbers you never said."
         },
         {
           "say": "Get a prompt under the bar, tap Rework, change a line, open #flashbusy, and build round 2.",

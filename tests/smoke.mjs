@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash wait:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
@@ -178,6 +178,40 @@ await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not fall back to 3.7 Flash');
 });
 
+await check('flash wait: a busy Flash model rests 3 minutes, and the countdown ticks live without the note blinking (v2.1.15 fix)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const fail = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
+  const p = await page({ intake, fail });
+  await p.clock.install();
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  for (let i = 0; i < 40 && !(await p.isVisible('#notice-result [data-countdown]')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
+  // 1. Busy models rest 3 minutes, not 10
+  const rest = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-model-rest') || '{}'));
+  const left = Object.values(rest).map((x) => x.until - Date.now());
+  expect(left.length && left.every((ms) => ms > 2 * 60000 && ms <= 3 * 60000 + 5000), 'busy rest should be about 3 min: ' + left.join());
+  // 2. A live m:ss timer, a progress bar, and the button is not the main action
+  const clockOf = async () => (await p.textContent('#notice-result .mclock')).trim();
+  const c1 = await clockOf();
+  expect(/^[23]:\d\d$/.test(c1), 'timer should start near 3:00, got ' + c1);
+  expect(await p.isVisible('#notice-result .mbar'), 'draining bar missing');
+  expect(/on its own/.test(await p.textContent('#notice-result')), 'should say it writes on its own');
+  expect(!(await p.getAttribute('#notice-result button:has-text("Use quick model now")', 'class') || '').includes('primary'), 'waiting is the default, so the quick button is not primary');
+  // 3. It ticks every second, and the note is not rebuilt (no blink) when time passes
+  await p.evaluate(() => { window.__note = document.getElementById('notice-result'); });
+  await p.clock.runFor(5000); await p.waitForTimeout(50);
+  const c2 = await clockOf();
+  const secs = (c) => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
+  expect(secs(c1) - secs(c2) >= 4, `timer should count down by the second: ${c1} -> ${c2}`);
+  await p.clock.runFor(35000); await p.waitForTimeout(50);
+  expect(await p.evaluate(() => window.__note === document.getElementById('notice-result')), 'the note should stay put, not blink back in every 30 seconds');
+  // 4. At 0:00 a Flash model writes it by itself
+  for (const k of Object.keys(fail)) delete fail[k];
+  await p.clock.runFor(3 * 60000);
+  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
+  expect(!/lite/.test(p.calls.filter(c => !c.intake).pop().model) && await p.inputValue('#output') === 'THE PROMPT', 'a Flash model writes it after the countdown');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('model switching: Flash-Lite never writes a Normal prompt without asking; it waits for Flash on its own, or uses the quick model on a tap (#35)', async () => {
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
   // 1. Every Flash model busy: no silent Flash-Lite write, the page asks, then writes on Flash by itself once one is back
@@ -187,11 +221,11 @@ await check('model switching: Flash-Lite never writes a Normal prompt without as
   await withKey(p); await p.fill('#thoughts', 'it goes pretty fast and wow 13 14 94'); await p.click('#build');
   for (let i = 0; i < 40 && !(await p.isVisible('#notice-result:has-text("Flash models are busy")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
   const t = await p.textContent('#notice-result');
-  expect(/Flash models are busy, about 10 min/.test(t) && /on its own/.test(t), 'should say it is waiting and for how long: ' + t);
+  expect(/Flash models are busy/.test(t) && /on its own/.test(t) && /\b[23]:\d\d\b/.test(t), 'should say it is waiting, with a 3 minute countdown: ' + t);
   expect(/Waiting for a Flash model/.test(await p.textContent('#resultHead')) && !(await p.inputValue('#output')), 'no prompt yet, heading says it is waiting');
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write without asking: ' + p.calls.map(c => c.model).join());
   for (const k of Object.keys(fail)) delete fail[k];
-  await p.clock.runFor(10 * 60000 + 2000);
+  await p.clock.runFor(3 * 60000 + 2000);
   await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
   const last = p.calls.filter(c => !c.intake).pop().model;
   expect(!/lite/.test(last) && await p.inputValue('#output') === 'THE PROMPT', 'after the wait a Flash model writes it: ' + last);
@@ -199,7 +233,7 @@ await check('model switching: Flash-Lite never writes a Normal prompt without as
   const q = await page({ intake });
   await q.evaluate(() => { const u = Date.now() + 120000; localStorage.setItem('stp-model-rest', JSON.stringify({ 'gemini-3.8-flash': { until: u, why: 'busy' }, 'gemini-3.7-flash': { until: u, why: 'busy' }, 'gemini-3.6-flash': { until: u, why: 'busy' } })); });
   await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build');
-  await q.waitForSelector('#notice-result:has-text("about 2 min")', { timeout: 15000 });
+  await q.waitForFunction(() => /\b[12]:\d\d\b/.test(document.querySelector('#notice-result [data-countdown]')?.textContent || ''), null, { timeout: 15000 });
   expect(!q.calls.some(c => !c.intake), 'nothing should be sent to a writer while every Flash model rests');
   await q.click('#notice-result button:has-text("Use quick model now")'); await done(q);
   expect(/lite/.test(q.calls.filter(c => !c.intake).pop().model) && !(await q.isVisible('#notice-result:has-text("Flash models")')), 'quick model writes it and the ask goes away');
@@ -207,7 +241,7 @@ await check('model switching: Flash-Lite never writes a Normal prompt without as
   const r = await page({ intake, fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 429 } });
   await withKey(r); await r.fill('#thoughts', 'plan my week'); await r.click('#build');
   await r.waitForSelector('#notice-result:has-text("Flash limit is used up")', { timeout: 15000 });
-  expect(!/about \d+ min/.test(await r.textContent('#notice-result')) && !r.calls.some(c => !c.intake && /lite/.test(c.model)), 'used up: no wait, no silent Flash-Lite');
+  expect(!(await r.isVisible('#notice-result [data-countdown]')) && !r.calls.some(c => !c.intake && /lite/.test(c.model)), 'used up: no wait, no silent Flash-Lite');
   await r.click('#notice-result button:has-text("Use quick model now")'); await done(r);
   expect(await r.inputValue('#output') === 'THE PROMPT', 'the quick model writes it');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));

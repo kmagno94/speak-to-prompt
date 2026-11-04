@@ -10,6 +10,6 @@
 
 {#if n}
   {#key n.at}
-    <Message id={'notice-' + where} kind={n.kind} title={n.title} text={n.text} actions={n.actions} {onact} />
+    <Message id={'notice-' + where} kind={n.kind} title={n.title} text={n.text} actions={n.actions} countdown={n.countdown} {onact} />
   {/key}
 {/if}
