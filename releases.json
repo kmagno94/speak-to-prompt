@@ -2,6 +2,35 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.17",
+      "date": "2026-11-04",
+      "title": "30 second turns, Switch to quick at 2:00",
+      "items": [
+        "Each Flash model now gets 30 seconds on its own while writing a Normal or Rework prompt, then the next one starts too and the first good prompt wins. All 3 Flash models are working by 1:00. (It used to wait 30 to 90 seconds depending on the request.)",
+        "If Flash is still writing at 2:00, a note says \"Taking longer than usual\" with a Switch to quick button and a live countdown. At 0:00 (3:00 total) the quick model takes over on its own, with a note saying so. If Flash finishes first, its prompt shows and the note goes away.",
+        "The 3 minutes count from your Write tap. Time spent on a slow Flash write now counts toward the busy-Flash wait too, so a slow write followed by a busy spell doesn't stack two full waits.",
+        "Staging only: open the staging page with #slowtest on the end to run this 10x faster (a new Flash model every 3 seconds, Switch to quick at 0:12, quick model at 0:18). Reload to go back to normal."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging page with #slowtest on the end. Tap Normal and build the Try it note.",
+          "see": "A note says Slow-write test is on. While it writes, Switch to quick shows around 0:12 with a countdown, unless Flash finishes first."
+        },
+        {
+          "say": "Tap Switch to quick when it shows.",
+          "see": "The note goes away and a prompt shows a few seconds later. No \"quick model wrote this one\" note, since you chose it."
+        },
+        {
+          "say": "Reload with #slowtest again and build again, but don't tap anything.",
+          "see": "Either Flash finishes (the note clears) or at 0:18 the quick model writes it and a note says The quick model wrote this one."
+        },
+        {
+          "say": "Reload the plain staging page (no #slowtest) and build a normal prompt.",
+          "see": "Works like before; no Taking longer note on a normal run."
+        }
+      ]
+    },
+    {
       "version": "2.1.16",
       "date": "2026-11-04",
       "title": "Promote tags itself",

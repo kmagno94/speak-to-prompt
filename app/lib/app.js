@@ -275,6 +275,7 @@ export function startApp() {
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
     else if (act === "rework") startRework();
+    else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
@@ -663,6 +664,17 @@ export function startApp() {
   }
   window.addEventListener("hashchange", fakeFlashBusy);
   setTimeout(fakeFlashBusy, 0);
+  /* Staging only: #slowtest runs the slow-write timing 10x faster for this tab (next Flash
+     joins every 3 seconds, Switch to quick at 0:12, quick model at 0:18), so a normal
+     Standard or Complex build is "slow" enough to see it. A reload goes back to normal. */
+  function fakeSlowTest() {
+    if (!IS_STAGING || location.hash !== "#slowtest") return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    TIME_SCALE = 0.1;
+    notify("form", "info", "Slow-write test is on (10x faster)", "Staging test. Pick Normal and build something with a few details: a new Flash model joins every 3 seconds, Switch to quick shows at 0:12, and the quick model takes over at 0:18. Reload to go back to normal.");
+  }
+  window.addEventListener("hashchange", fakeSlowTest);
+  setTimeout(fakeSlowTest, 0);
   window.addEventListener("pageshow", function (e) { if (e.persisted && location.hash === "#paste") enterPasteMode(); });
   (function () {
     var h = location.hash || "";
@@ -1136,7 +1148,9 @@ export function startApp() {
        the next model starts too and the first good answer wins (the other is
        stopped). One busy model can't hold you hostage for minutes.
      level sets how much the model thinks first. onModel(name) reports which
-     model is working. */
+     model is working. handle (optional): askGemini puts handle.stop() on it, which
+     stops every model still working and rejects with status "stopped". It returns
+     false if an answer already came back (too late to stop). */
   /* Time away: iPhone pauses the page while you're in another app, so a run's
      seconds would include that time. Waits are logged without it (hidden_s shows it). */
   var awaySpans = [], awayAt = document.visibilityState === "hidden" ? Date.now() : 0;
@@ -1170,7 +1184,7 @@ export function startApp() {
     awaySpans.forEach(function (s) { if (s[1] > t0) ms += s[1] - Math.max(s[0], t0); });
     return Math.max(0, ms);
   }
-  function askGemini(text, asJson, models, level, onModel, limit, hedgeAfter) {
+  function askGemini(text, asJson, models, level, onModel, limit, hedgeAfter, handle) {
     var started = Date.now();
     var history = [];
     var fresh = models.filter(function (m) { return !resting(m); });
@@ -1194,6 +1208,12 @@ export function startApp() {
         live.forEach(function (c) { try { c.abort(); } catch (e) {} });
         if (ok) resolve(value); else reject(value);
       }
+      if (handle) handle.stop = function () {
+        if (done) return false;
+        var s = new Error("Switched to the quick model."); s.status = "stopped";
+        finish(false, s);
+        return true;
+      };
       function giveUp() {
         if (lastErr && lastErr.status === 429 && lastErr.perMinute) {
           var slow = new Error("Gemini's free per-minute limit is full right now. Wait about a minute and try again.");
@@ -1746,9 +1766,58 @@ export function startApp() {
      v2.1.15 fix (11/04): the wait never goes past 3 minutes a round. If no Flash model is
      free by then, the quick model writes it on its own. Waiting longer felt unbearable. */
   var FLASH_WAIT_MAX = 3 * 60000;
+  /* SPEC LOCKED 11/04 (timing): each Flash writer gets 30 seconds on its own, then the next
+     one joins the race (first good prompt wins), so 3 Flash models are all working by 1:00.
+     At 2:00 (the make or break point) a note offers Switch to quick with a live countdown;
+     at 3:00 the quick model takes over on its own. The countdown stays because it's a promise
+     ("you'll have a prompt by 3:00"), not a threat, and it matches the busy-Flash note. */
+  var ROTATE_MS = 30000;
+  var SLOW_OFFER_MS = 2 * 60000;
+  var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
+  /* Slow write (11/04): a Flash write still going at 2:00 gets the Switch to quick note,
+     and at 3:00 the quick model takes over by itself. The 3 minutes count from the first
+     Write tap of this round; a write that comes back after a busy-Flash wait keeps that
+     wait's deadline (at least 20 seconds more, so it gets a fair try). Memory only. */
+  var slowWrite = null;
+  function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } }
+  function watchSlowWrite(run, handle) {
+    stopSlowWrite();
+    var key = session.round || 1, now = Date.now();
+    if (!session.writeStart || session.writeStart.round !== key) session.writeStart = { round: key, at: now };
+    var fd = session.flashDeadline && session.flashDeadline.round === key ? session.flashDeadline.at : 0;
+    var cap = FLASH_WAIT_MAX * TIME_SCALE;
+    var autoAt = Math.max(now + 20000 * TIME_SCALE, fd || session.writeStart.at + cap);
+    var offerAt = Math.max(now, autoAt - (cap - SLOW_OFFER_MS * TIME_SCALE));
+    slowWrite = {
+      run: run, handle: handle, autoAt: autoAt,
+      tick: setInterval(function () { if (run !== writeRun) stopSlowWrite(); }, 1000),
+      offer: setTimeout(function () {
+        if (!slowWrite || run !== writeRun || !busy) return;
+        slowWrite.offered = true;
+        notify("result", "info", "Taking longer than usual",
+          "Flash is still writing and may finish any second. If it isn't done at 0:00, the quick model takes over, so you'll have a prompt by then. Or switch now: faster, but not as strong.",
+          [{ label: "Switch to quick", act: "slowquick" }], { until: autoAt, total: autoAt - Date.now(), label: "until the quick model takes over", done: "Switching to quick..." });
+      }, offerAt - now),
+      auto: setTimeout(function () { slowQuick(true); }, autoAt - now)
+    };
+  }
+  /* Tap (or 3:00): stop the Flash write and let the quick model write it. If Flash just
+     finished, it's too late to stop, so its prompt shows instead. */
+  function slowQuick(auto) {
+    var s = slowWrite;
+    if (!s || s.run !== writeRun || !session) return;
+    if (!s.handle.stop || !s.handle.stop()) return;
+    stopSlowWrite();
+    notify("result");
+    session.autoQuick = !!auto;
+    session.slowSwitch = auto ? "auto at 3:00" : "tapped";
+    logRun({ outcome: auto ? "flash slow 3 min, quick model wrote it" : "flash slow, switched to quick", round: session.round || null });
+    setBusy(false);
+    writeFinal(session.answers, true);
+  }
   function flashRestMs() {
     var ms = Infinity;
     fullWriters().forEach(function (m) { var r = restInfo(m); ms = Math.min(ms, r ? r.secs * 1000 : 0); });
@@ -1773,7 +1842,13 @@ export function startApp() {
     /* 3 minute cap per round: the clock starts at the first ask and keeps running if a
        Flash try at 0:00 comes back busy again, so the total wait stays under 3 minutes. */
     var key = session.round || 1;
-    if (!session.flashDeadline || session.flashDeadline.round !== key) session.flashDeadline = { round: key, at: Date.now() + FLASH_WAIT_MAX };
+    if (!session.flashDeadline || session.flashDeadline.round !== key) {
+      /* Time already spent on a slow Flash write counts toward the 3 minutes (at least 1 more
+         minute). A fast fail keeps the full 3, so Flash still gets its try at 0:00. */
+      var spent = session.writeStart && session.writeStart.round === key ? Date.now() - session.writeStart.at : 0;
+      if (spent < ROTATE_MS) spent = 0;
+      session.flashDeadline = { round: key, at: Date.now() + Math.max(60000, FLASH_WAIT_MAX - spent) };
+    }
     var left = session.flashDeadline.at - Date.now();
     if (left <= 1000) return autoQuick();
     var toQuick = ms > left;   /* no Flash model is due back before the 3 minutes are up */
@@ -1808,6 +1883,7 @@ export function startApp() {
   }
   function writeFinal(answers, quick) {
     stopFlashWait();
+    stopSlowWrite();
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
@@ -1833,15 +1909,18 @@ export function startApp() {
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
     var eta = startEstimate(resultProg, (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
     snapTo(document.getElementById("resultTrack"));
-    /* If the writer hasn't answered in about 2.5x the usual time (30 to 90 seconds),
-       a backup starts too and the first good prompt wins. */
-    var hedgeAfter = Math.min(90, Math.max(30, Math.round(est.secs * 2.5))) * 1000;
+    /* Each writer gets 30 seconds on its own (SPEC 11/04), then the next one starts too
+       and the first good prompt wins. Busy hours can start the backup sooner. */
+    var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
     /* Every Flash model is resting: ask before anything is sent (#35). */
     if (!quick && flashOnly() && models.every(function (m) { return resting(m); })) { askFlashWait("all resting"); return Promise.resolve(); }
+    var handle = {};
+    if (!quick) watchSlowWrite(run, handle);
     return askGemini(text, false, models, depth.level, function (m) {
       if (run === writeRun) eta(m);
-    }, WRITE_LIMIT, hedgeAfter).then(function (r) {
+    }, WRITE_LIMIT, hedgeAfter, handle).then(function (r) {
+      if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       finishTrack(resultProg, r.ms / 1000, skipAsk, offset);
       var draft = cleanPrompt(r.text);
@@ -1881,8 +1960,8 @@ export function startApp() {
         if (session.round >= 2 && ui.round) roundBuilt(session.round);
         /* Left mid-build and came back before it finished: say it picked back up. */
         if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
-        session.flashDeadline = null;
-        if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash models stayed busy for 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
+        session.flashDeadline = null; session.writeStart = null;
+        if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
         if (memory.active) {
@@ -1899,10 +1978,13 @@ export function startApp() {
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
           coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
-          round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null });
+          round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null, slow_switch: session.slowSwitch || null });
+        session.slowSwitch = null;
         gradeRun(prompt, run, r.model);
       }
     }).catch(function (e) {
+      if (e && e.status === "stopped") return;   /* Switch to quick stopped it; the quick write is already going */
+      if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       stopTicker();
       cookStop();
@@ -1914,6 +1996,7 @@ export function startApp() {
       /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).
          Offline and key problems keep their own messages below. */
       if (!quick && flashOnly() && flashBusy(e)) return askFlashWait(e && e.message ? e.message : "unknown");
+      session.flashDeadline = null; session.writeStart = null;
       if (session.round >= 2 && rounds.length) {   /* A Rework round failed: the round it came from comes back, nothing lost */
         var why = e && e.message ? e.message : "unknown", failedN = session.round, backN = reworkFrom + 1;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: failedN });

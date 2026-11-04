@@ -35,6 +35,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    Match is on the start of each check's name. */
 const CORE = [
   'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash wait:', 'flash wait cap:', 'grader: never the model',
+  'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
@@ -107,6 +108,8 @@ async function page(opts = {}) {
     }
     if (opts.failRound2 && /ROUND 2: THE PERSON REWORKED/.test(ask)) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
     p.calls.push({ model, intake, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, text: ask });
+    /* slow: these writers hang (no answer) until p.releaseSlow() or the page stops them */
+    if (!intake && opts.slow && opts.slow.includes(model)) { await new Promise(res => { (p.slowWaiters = p.slowWaiters || []).push(res); p.releaseSlow = () => p.slowWaiters.forEach(f => f()); }); try { return await r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 500 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'FLASH PROMPT' }] } }] }) }); } catch (e) { return; } }
     if (!intake && opts.hold === model) { await new Promise(res => { p.release = res; }); try { return await r.fulfill({ status: 503, headers: h, body: '{"error":{"code":503,"message":"mock busy"}}' }); } catch (e) { return; } }
     if (opts.dropOnce === model && !p.droppedOnce) { p.droppedOnce = true; await new Promise(res => setTimeout(res, opts.dropDelay || 0)); return r.abort('failed'); }   // drops once, like leaving for another app
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
@@ -242,6 +245,62 @@ await check('flash wait cap: after 3 minutes of busy Flash the quick model write
   expect(last && /lite/.test(last.model) && await q.inputValue('#output') === 'THE PROMPT', 'Flash stayed busy, so the quick model wrote it: ' + (last && last.model));
   expect(waited <= 3 * 60000 + 30000, 'never much past 3 minutes, waited ' + Math.round(waited / 1000) + 's');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('slow write: each Flash gets 30s, Switch to quick shows at 2:00, the quick model takes over at 3:00 (SPEC 11/04)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const writers = (p) => p.calls.filter(c => !c.intake).map(c => c.model);
+  const start = async (p) => {
+    await p.clock.install();
+    await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+    for (let i = 0; i < 20 && !p.calls.some(c => !c.intake); i++) { await p.clock.runFor(500); await p.waitForTimeout(30); }
+  };
+  const t = async (p, ms) => { await p.clock.runFor(ms); await p.waitForTimeout(60); };
+  // 1. One writer at a time: the next Flash joins every 30 seconds
+  const p = await page({ intake, slow });
+  await start(p);
+  expect(writers(p).join() === 'gemini-3.8-flash', 'only 3.8 at first: ' + writers(p).join());
+  await t(p, 30000);
+  expect(writers(p).join() === 'gemini-3.8-flash,gemini-3.7-flash', '3.7 joins at 0:30: ' + writers(p).join());
+  await t(p, 30000);
+  expect(writers(p).length === 3 && writers(p)[2] === 'gemini-3.6-flash', '3.6 joins at 1:00: ' + writers(p).join());
+  expect(!(await p.isVisible('#notice-result:has-text("Taking longer")')), 'no note before 2:00');
+  // 2. At 2:00: Switch to quick, with a live countdown to the quick model
+  await t(p, 61000);
+  const note = await p.textContent('#notice-result');
+  expect(/Taking longer than usual/.test(note) && /until the quick model takes over/.test(note), 'the 2:00 note should show: ' + note);
+  const c = (await p.textContent('#notice-result .mclock')).trim();
+  expect(/^(1:00|0:5\d)$/.test(c), 'countdown should start near 1:00, got ' + c);
+  expect(!(await p.getAttribute('#notice-result button:has-text("Switch to quick")', 'class') || '').includes('primary'), 'waiting is still the default');
+  // 3. Tap it: the Flash writers stop and the quick model writes now, with no 3-minute note
+  await p.click('#notice-result button:has-text("Switch to quick")');
+  for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(p, 500);
+  expect(/lite/.test(writers(p).pop()) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it: ' + writers(p).join());
+  const noteText = async (pg) => pg.evaluate(() => (document.getElementById('notice-result') || {}).textContent || '');
+  expect(!/The quick model wrote this one/.test(await noteText(p)), 'a tap needs no explaining');
+  if (p.releaseSlow) p.releaseSlow();
+  await t(p, 1000);
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'a late Flash answer must not replace the quick prompt');
+  // 4. No tap: at 3:00 the quick model takes over by itself and says so
+  const q = await page({ intake, slow });
+  await start(q);
+  await t(q, 3 * 60000 + 1000);
+  for (let i = 0; i < 40 && !(await q.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(q, 500);
+  expect(/lite/.test(writers(q).pop()) && await q.inputValue('#output') === 'THE PROMPT', 'quick model at 3:00: ' + writers(q).join());
+  expect(/The quick model wrote this one/.test(await noteText(q)), 'the auto switch is explained');
+  // 5. Flash finishes after the 2:00 note: its prompt shows and the note goes away
+  const r = await page({ intake, slow });
+  await start(r);
+  await t(r, 2 * 60000 + 2000);
+  expect(await r.isVisible('#notice-result:has-text("Taking longer")'), 'note is up');
+  r.releaseSlow();
+  for (let i = 0; i < 40 && !(await r.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(r, 500);
+  expect(await r.inputValue('#output') === 'FLASH PROMPT', 'Flash prompt shows: ' + await r.inputValue('#output'));
+  expect(!(await r.isVisible('#notice-result:has-text("Taking longer")')), 'the note clears once Flash finishes');
+  await t(r, 70000);
+  expect(!writers(r).some(m => /lite/.test(m)), 'no quick switch after Flash finished: ' + writers(r).join());
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
 });
 
 await check('grader: never the model that wrote the prompt, so Quick mode prompts are graded by Flash (v2.1.15 fix)', async () => {
