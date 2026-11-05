@@ -1575,7 +1575,7 @@ export function startApp() {
     var key = gemini.key || gkey.value.trim();
     if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
     if (busy) { info.textContent = "Finish the build that's running first."; return; }
-    var saved = session, results = [], prior = {};
+    var saved = session, results = [], prior = {}, redone = [];
     if (onlyFailed === true && flowLast && flowLast.results) flowLast.results.forEach(function (r) { prior[r.c.id] = r; });
     else onlyFailed = false;
     btn.disabled = true; document.getElementById("flowRetry").disabled = true;
@@ -1587,6 +1587,7 @@ export function startApp() {
         cases.forEach(function (c, i) {
           var tag = "Note " + (i + 1) + " of " + cases.length + " (" + c.name + "): ", had = prior[c.id];
           if (onlyFailed && had && had.old && !had.old.err && had.new && !had.new.err) { results[i] = had; return; }   /* this pair already worked */
+          if (onlyFailed) redone.push(c.id);
           chain = chain.then(function () {
             if (had && had.c && had.c._complexity) { c._complexity = had.c._complexity; c._shape = had.c._shape; return; }
             info.textContent = tag + "reading...";
@@ -1596,7 +1597,7 @@ export function startApp() {
             }, function () { c._complexity = "standard"; c._shape = null; });
           }).then(function () {
             var res = { c: c }, order = i % 2 ? ["new", "old"] : ["old", "new"];
-            if (had) { res.old = had.old; res.new = had.new; }
+            if (had) { res.old = had.old; res.new = had.new; res.label = had.label; }   /* a rerun keeps the pair's A/B letters */
             return order.reduce(function (p, flow) {
               return p.then(function () {
                 if (res[flow] && !res[flow].err) return;   /* rerun: keep the half that worked */
@@ -1606,35 +1607,47 @@ export function startApp() {
             }, Promise.resolve()).then(function () { results[i] = res; });
           });
         });
-        return chain.then(function () { showFlow(results); });
+        return chain.then(function () { showFlow(results, onlyFailed ? redone : null); });
       })
       .catch(function (e) { info.textContent = "Couldn't run the flow bench: " + ((e && e.message) || "unknown"); })
       .then(function () { session = saved; setBusy(false); btn.disabled = false; document.getElementById("flowRetry").disabled = !flowFailed(); });
   }
-  function showFlow(results) {
-    flowLast = { at: new Date().toISOString(), results: results };
-    lsSet(FLOW_LAST, JSON.stringify(flowLast));
-    var map = {}, blind = [], reveal = [], when = new Date().toLocaleString("en-US"), ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+  /* redone: the note ids a rerun redid (null on a full run). A rerun's Copy for Claude has only
+     those notes, since Claude scored the rest already; Copy reveal always covers every note.
+     A pair keeps its A/B letters for the life of a run (r.label; older saved runs fall back to
+     the saved map), so the reveal still matches scores from before the rerun. restore: rebuild
+     the copies from the saved run after a reload, without re-running anything. */
+  function showFlow(results, redone, restore) {
+    var at = restore && flowLast && flowLast.at ? flowLast.at : new Date().toISOString();
+    var ids = redone && redone.length ? redone : null, oldMap = {};
+    if (ids || restore) { try { oldMap = JSON.parse(lsGet(FLOW_KEY) || "{}").map || {}; } catch (e) { oldMap = {}; } }
+    var map = {}, blind = [], reveal = [], when = new Date(at).toLocaleString("en-US"), ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
     function sum(o) {
       if (!o || o.err) return "error: " + (o && o.err);
       return secsText(o.secs) + ", " + o.words + " words, X-ray " + o.xray + "%, " + o.dropped + " dropped, " + o.numflags + " number flags, repair " + o.repair +
         (o.flow === "new" ? ", clean " + o.clean + ", ledger " + o.ledger + " items (" + o.ledgerMissing + " missing), stand-in " + (o.standin || "none") + (o.open ? " (" + o.open + " open)" : "") : "") +
         " [" + (o.model || "").replace(/^gemini-/, "") + "; " + (o.steps || []).join(", ") + "]";
     }
-    blind.push("FLOW BENCH (blind) \u00b7 app " + ver + " \u00b7 " + when, "Score each pair against its key, without knowing which flow is which: how many key items each prompt keeps, anything invented or changed (dates, numbers, strictness), and which prompt would get the better answer from an AI. Then ask Kevin for the reveal.");
+    var howTo = "Score each pair against its key, without knowing which flow is which: how many key items each prompt keeps, anything invented or changed (dates, numbers, strictness), and which prompt would get the better answer from an AI. Then ask Kevin for the reveal.";
+    if (ids) blind.push("FLOW BENCH (blind, rerun) \u00b7 app " + ver + " \u00b7 " + when + " \u00b7 " + ids.length + " of " + results.length + " notes",
+      "Only the notes that errored last time. You scored the other pairs already, and every pair keeps its A and B letters, so a prompt you saw before is still under the same letter.", howTo);
+    else blind.push("FLOW BENCH (blind) \u00b7 app " + ver + " \u00b7 " + when, howTo);
     results.forEach(function (r) {
-      var aNew = Math.random() < 0.5, A = aNew ? r.new : r.old, B = aNew ? r.old : r.new;
-      map[r.c.id] = aNew ? "A=new, B=old" : "A=old, B=new";
-      blind.push("", "== " + r.c.id + " \u00b7 " + r.c.name + " ==", "Today: " + r.c.today, "Raw thoughts:", r.c.raw,
+      r.label = r.label || oldMap[r.c.id] || (Math.random() < 0.5 ? "A=new, B=old" : "A=old, B=new");
+      var aNew = /^A=new/.test(r.label), A = aNew ? r.new : r.old, B = aNew ? r.old : r.new;
+      map[r.c.id] = r.label;
+      if (!ids || ids.indexOf(r.c.id) >= 0) blind.push("", "== " + r.c.id + " \u00b7 " + r.c.name + " ==", "Today: " + r.c.today, "Raw thoughts:", r.c.raw,
         "Answers: " + ((r.c.answers || []).map(function (a) { return a.question + " " + a.answer; }).join(" | ") || "none"),
         "Key:", "- " + r.c.key.join("\n- "),
         "--- Prompt A ---", A && A.prompt ? A.prompt : "(error: " + (A && A.err) + ")",
         "--- Prompt B ---", B && B.prompt ? B.prompt : "(error: " + (B && B.err) + ")");
-      reveal.push(r.c.id + ": " + map[r.c.id], "  old: " + sum(r.old), "  new: " + sum(r.new));
+      reveal.push(r.c.id + ": " + map[r.c.id] + (ids && ids.indexOf(r.c.id) >= 0 ? " (rerun)" : ""), "  old: " + sum(r.old), "  new: " + sum(r.new));
     });
-    lsSet(FLOW_KEY, JSON.stringify({ at: new Date().toISOString(), map: map }));
+    flowLast = { at: at, results: results, redone: ids };
+    lsSet(FLOW_LAST, JSON.stringify(flowLast));
+    lsSet(FLOW_KEY, JSON.stringify({ at: at, map: map }));
     flowText = blind.join("\n");
-    flowReveal = ["FLOW BENCH reveal \u00b7 app " + ver + " \u00b7 " + when].concat(reveal).join("\n");
+    flowReveal = ["FLOW BENCH reveal \u00b7 app " + ver + " \u00b7 " + when + " \u00b7 all " + results.length + " notes"].concat(reveal).join("\n");
     var rows = results.map(function (r) {
       function cell(o) { return !o || o.err ? "\u26a0\ufe0f error" : secsText(o.secs) + "<small>" + o.dropped + " dropped \u00b7 " + o.numflags + " flags" + (o.flow === "new" ? " \u00b7 ledger " + o.ledgerMissing + "/" + o.ledger + " missing" : "") + "</small>"; }
       return "<tr><td>" + esc(r.c.id) + "<small>" + esc(r.c.name) + "</small></td><td>" + cell(r.old) + "</td><td>" + cell(r.new) + "</td></tr>";
@@ -1642,13 +1655,20 @@ export function startApp() {
     var el = document.getElementById("flowOut");
     el.innerHTML = "<table><thead><tr><th>Note</th><th>Old flow</th><th>New flow</th></tr></thead><tbody>" + rows + "</tbody></table>";
     el.hidden = false;
-    document.getElementById("flowInfo").textContent = "Done. Tap Copy for Claude and paste it into a chat. Copy reveal only after Claude has scored.";
+    document.getElementById("flowInfo").textContent = restore
+      ? "Your last run (" + when + ") is loaded" + (flowFailed() ? ". Some halves errored: tap Rerun failed notes to redo just those." : ". Copy reveal covers all " + results.length + " notes.")
+      : ids
+      ? "Done. Copy for Claude has just the " + ids.length + " rerun note" + (ids.length === 1 ? "" : "s") + "; Copy reveal covers all " + results.length + ". Copy reveal only after Claude has scored."
+      : "Done. Tap Copy for Claude and paste it into a chat. Copy reveal only after Claude has scored.";
     document.getElementById("flowCopy").disabled = false;
     document.getElementById("flowReveal").disabled = false;
   }
   document.getElementById("flowRun").addEventListener("click", function () { flowRun(false); });
   document.getElementById("flowRetry").addEventListener("click", function () { flowRun(true); });
   document.getElementById("flowRetry").disabled = !flowFailed();
+  if (flowLast && flowLast.results && flowLast.results.length && flowLast.results.every(function (r) { return r && r.c && r.c.id && Array.isArray(r.c.key); })) {
+    try { showFlow(flowLast.results, flowLast.redone, true); } catch (e) { /* a broken saved run just means no copies until the next run */ }
+  }
   document.getElementById("flowCopy").addEventListener("click", function () {
     if (!flowText || !navigator.clipboard) return;
     navigator.clipboard.writeText(flowText).then(function () { document.getElementById("flowInfo").textContent = "Copied the blind pairs. Paste them to Claude."; }, function () {});

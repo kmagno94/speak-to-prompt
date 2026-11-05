@@ -2048,12 +2048,30 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   await q.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
   const failed = await q.$$eval('#flowOut td', l => l.filter(td => /error/.test(td.textContent)).length);
   expect(failed >= 1 && await q.isEnabled('#flowRetry'), 'a failed half shows and Rerun failed notes turns on: ' + failed);
+  const failedIds = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench-last')).results.filter(r => !r.old || r.old.err || !r.new || r.new.err).map(r => r.c.id));
+  const mapBefore = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
+  // A reload keeps the last run: Copy reveal still works without running anything again
+  await q.reload();
+  await devOn(q); await q.click('#moreOpts summary');
+  expect(await q.isEnabled('#flowReveal') && await q.isEnabled('#flowRetry') && /last run/i.test(await q.textContent('#flowInfo')), 'after a reload the last run is loaded, with Copy reveal and Rerun failed notes on');
+  await withKey(q);
   const before = q.calls.filter(c => !c.intake).length;
   await q.click('#flowRetry');
   await q.waitForFunction(() => /Done/.test(document.getElementById('flowInfo').textContent) && !document.getElementById('flowRun').disabled, null, { timeout: 60000 });
   const rerun = q.calls.filter(c => !c.intake).length - before;
   expect(rerun >= 1 && rerun <= 2 && await q.isDisabled('#flowRetry'), 'the rerun only redoes what failed, then turns off: ' + rerun + ' writes');
   expect(!(await q.$$eval('#flowOut td', l => l.some(td => /error/.test(td.textContent)))), 'every pair is complete after the rerun');
+  // Copy for Claude after a rerun: just the rerun notes. Copy reveal: all 5, same letters as before.
+  await q.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await q.click('#flowCopy');
+  const reBlind = await q.evaluate(() => navigator.clipboard.readText());
+  const reIds = [...reBlind.matchAll(/^== (\w+) /gm)].map(m => m[1]);
+  expect(/blind, rerun/.test(reBlind) && reIds.length === failedIds.length && reIds.every(id => failedIds.includes(id)) && !/A=new|A=old/.test(reBlind), 'the rerun copy has only the notes that errored: ' + reIds.join() + ' vs ' + failedIds.join());
+  await q.click('#flowReveal');
+  const reReveal = await q.evaluate(() => navigator.clipboard.readText());
+  const mapAfter = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
+  expect(/all 5 notes/.test(reReveal) && (reReveal.match(/^\w+: A=(new|old)/gm) || []).length === 5 && failedIds.every(id => new RegExp('^' + id + ': .*\\(rerun\\)', 'm').test(reReveal)), 'the reveal covers all 5 notes and marks the rerun ones: ' + reReveal.slice(0, 300));
+  expect(Object.keys(mapBefore).every(id => mapBefore[id] === mapAfter[id]), 'every pair keeps its A/B letters through the rerun, so earlier scores still match');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 

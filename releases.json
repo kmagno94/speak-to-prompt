@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.21",
+      "date": "2026-11-05",
+      "title": "Flow bench: rerun just the notes that errored",
+      "items": [
+        "Flow bench (dev tools): after Rerun failed notes, Copy for Claude has only the notes that were redone, so Claude does not rescore pairs it already scored. Copy reveal still covers all 5 notes and marks the rerun ones.",
+        "Each pair keeps its A and B letters for the whole run, so scores Claude gave before a rerun still match the reveal. Runs saved before this build keep the letters they already had.",
+        "Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload."
+      ],
+      "checks": [
+        {
+          "say": "With Show my dev tools on, open More options and scroll to Flow bench.",
+          "see": "Your last run is loaded: the old vs new table shows, Copy reveal is on, and Rerun failed notes is on if anything errored."
+        },
+        {
+          "say": "Tap Rerun failed notes (after the daily Gemini limit resets, around 3 AM). Keep the screen open.",
+          "see": "It only works through the notes that errored, then says Copy for Claude has just those notes and Copy reveal covers all 5."
+        },
+        {
+          "say": "Tap Copy for Claude and paste it into Claude.",
+          "see": "The header says blind, rerun and N of 5 notes, and only the redone notes are in it."
+        },
+        {
+          "say": "After Claude scores, tap Copy reveal.",
+          "see": "All 5 notes, the rerun ones marked (rerun), and the same A/B letters as the first run for the notes Claude already scored."
+        }
+      ]
+    },
+    {
       "version": "2.1.20",
       "date": "2026-11-04",
       "title": "Quality crew: fact ledger, stand-in AI, shape up front",
