@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
@@ -286,7 +286,7 @@ await check('cooking: Polish and Check run inside the timer, and the prompt only
 
 await check('quality crew: the fact ledger is a must-keep list the phone checks, the intake suggests success and format, and a stand-in AI fills gaps you already answered (v2.1.20)', async () => {
   const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
-  const memo = 'ok so I want to plan a taco night for 6 people on friday around 7 and I think the budget is maybe $60 and my cousin Ana is vegetarian, oh and it is at my place in Albertson';
+  const memo = 'ok so I want to plan a taco night for 6 people on friday around 7 and I think the budget is maybe $60 and my cousin Ana is vegetarian, oh and it is at my place in Albertson. I want a simple menu with a few kinds of tacos and one easy dessert, and a shopping list I can take to the store on thursday after work, and I want cleanup to be easy because I have to be up early on saturday';
   const intake = { title: 'Taco Night', need: 'N', category: 'Ideas', complexity: 'simple', questions: [], shape: { success: 'a plan I can shop from today', format: 'a short checklist, about one screen' } };
   const W = 'You are a party planner.\nContext: I am hosting a taco night for 6 people on Friday around 7 with a budget of maybe $60.\nTask: Plan the menu and a shopping list.\nStart right away.';
   const ledger = ['taco night for 6 people', 'Friday around 7', 'budget maybe $60', 'cousin Ana is vegetarian', 'hosted at my place in Albertson', 'a made up thing about 99 balloons'];
@@ -322,6 +322,25 @@ await check('quality crew: the fact ledger is a must-keep list the phone checks,
   await withKey(r); await r.fill('#thoughts', memo); await r.click('#build'); await done(r);
   expect(await r.inputValue('#output') === W, 'a fill that changed a line is not kept');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('bench fixes: Auto-Repair never pastes raw lines or leaves a sentence hanging (#34), the ledger is plain words, shape adds no strictness, the stand-in skips short notes (v2.1.20, flow bench run 1)', async () => {
+  const P = await import('../app/lib/prompts.js');
+  const rp = P.repairPrompt('X', 'raw', [], { dropped: ['a thing'], stray: ['$450'], missingNums: [] });
+  expect(!/a daily budget that fits the total/.test(rp) && /plain English/.test(rp) && /never leave a sentence unfinished/.test(rp) && /Never paste their raw sentence/.test(rp), '#34 wording: no example phrase, plain English, no hanging sentences');
+  expect(P.isAside("um I think that's it") && P.isAside('ok um so this is gonna be long, sorry.') && !P.isAside('my cousin Ana is vegetarian'), 'sign-offs are asides, real details are not');
+  expect(/plain English/.test(P.LEDGER) && /At most 12 items/.test(P.LEDGER) && /lol/.test(P.CLEAN), 'ledger in plain words (12 max), clean drops lol');
+  // A fix that leaves "totaling." hanging is thrown away
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const intake = { title: 'Tokyo', need: 'N', category: 'Travel', complexity: 'standard', questions: [], shape: { success: 'a plan we can follow', format: 'a short day-by-day list' } };
+  const p = await page({ intake, write: BAD, repair: BAD.replace('with a rough daily budget of $450.', 'with a rough budget totaling. I get motion sick on long bus rides, so skip long bus trips.') });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  expect(p.repairs.length === 1 && await p.inputValue('#output') === BAD, 'the hanging fix is not kept');
+  const w = p.calls.filter(c => !c.intake).pop();
+  expect(/never makes a preference stronger and never adds safety, health, or strictness rules/.test(w.text), 'shape tells the writer it adds no strictness');
+  expect(!(p.standins || []).length, 'short note (under 60 words): no stand-in');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {
@@ -2011,7 +2030,31 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const aIsNew = /A=new/.test(map.T4);
   expect(/--- Prompt A ---\n(NEW|OLD) PROMPT/.exec(t4)[1] === (aIsNew ? 'NEW' : 'OLD'), 'A and B match the saved map');
   expect(!(await p.isVisible('#result')) && await p.isEnabled('#build'), 'the bench leaves the page as it was');
-  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  expect(await p.isDisabled('#flowRetry'), 'nothing failed, so Rerun failed notes stays off');
+  // Busy errors (run 1): a busy flow gets one retry; a note that still fails can be rerun alone, keeping the halves that worked
+  const fail = {};
+  const q = await page({ models, fail, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await q.addInitScript(() => { window.__flowRetryMs = 50; });
+  await q.reload();
+  await devOn(q); await q.click('#moreOpts summary'); await withKey(q);
+  let busyLeft = 7;   // the first 7 Flash writes say busy: note 1 retries and recovers, note 2's first flow fails twice
+  await q.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
+    const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';
+    if (/intake step|PROMPT TO|CLEAN STEP|LEDGER STEP|STAND-IN|GAPS AN AI/.test(ask) || busyLeft <= 0) return r.fallback();
+    busyLeft--;
+    return r.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) });
+  });
+  await q.click('#flowRun');
+  await q.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
+  const failed = await q.$$eval('#flowOut td', l => l.filter(td => /error/.test(td.textContent)).length);
+  expect(failed >= 1 && await q.isEnabled('#flowRetry'), 'a failed half shows and Rerun failed notes turns on: ' + failed);
+  const before = q.calls.filter(c => !c.intake).length;
+  await q.click('#flowRetry');
+  await q.waitForFunction(() => /Done/.test(document.getElementById('flowInfo').textContent) && !document.getElementById('flowRun').disabled, null, { timeout: 60000 });
+  const rerun = q.calls.filter(c => !c.intake).length - before;
+  expect(rerun >= 1 && rerun <= 2 && await q.isDisabled('#flowRetry'), 'the rerun only redoes what failed, then turns off: ' + rerun + ' writes');
+  expect(!(await q.$$eval('#flowOut td', l => l.some(td => /error/.test(td.textContent)))), 'every pair is complete after the rerun');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('grader bench: one tap grades every bench.json case with the current grader and compares with the answer key', async () => {

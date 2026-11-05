@@ -1527,7 +1527,19 @@ export function startApp() {
      and memory stay out, so the flow is the only difference. The flows take turns going
      first. Copy for Claude labels each pair A and B at random (the key stays on this phone
      until Copy reveal), so Claude scores them blind. About 10 Flash writes. */
-  var FLOW_KEY = "stp-flowbench", flowText = "", flowReveal = "";
+  var FLOW_KEY = "stp-flowbench", FLOW_LAST = "stp-flowbench-last", flowText = "", flowReveal = "", flowLast = null, FLOW_RETRY_MS = window.__flowRetryMs || 10000;
+  /* Run 1 lost 3 of 5 pairs to busy errors: a busy flow gets one more try after a short wait,
+     and Rerun failed notes redoes only the halves that errored. The last run is kept on this
+     phone (bench notes and prompts only) so a reload doesn't lose it. */
+  try { flowLast = JSON.parse(lsGet(FLOW_LAST) || "null"); } catch (e) { flowLast = null; }
+  function busyErr(e) { return !!e && (e.status === 503 || e.status === 500 || e.status === "timeout" || e.status === "empty" || e.status === "network" || (e.status === 429 && e.perMinute) || /high demand|overloaded/i.test(e.message || "")); }
+  function flowTry(c, flow) {
+    return flowOne(c, flow).catch(function (e) {
+      if (!busyErr(e)) throw e;
+      return new Promise(function (res) { setTimeout(res, FLOW_RETRY_MS); }).then(function () { return flowOne(c, flow); });
+    });
+  }
+  function flowFailed() { return !!(flowLast && flowLast.results && flowLast.results.some(function (r) { return !r.old || r.old.err || !r.new || r.new.err; })); }
   function flowOne(c, flow) {
     var s = { raw: c.raw, known: "", today: c.today, memFacts: [], bench: true,
       answers: (c.answers || []).map(function (a) { return { question: a.question, answer: a.answer }; }), questions: (c.answers || []).slice() };
@@ -1558,21 +1570,25 @@ export function startApp() {
       return out;
     });
   }
-  function flowRun() {
+  function flowRun(onlyFailed) {
     var info = document.getElementById("flowInfo"), btn = document.getElementById("flowRun");
     var key = gemini.key || gkey.value.trim();
     if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
     if (busy) { info.textContent = "Finish the build that's running first."; return; }
-    var saved = session, results = [];
-    btn.disabled = true;
+    var saved = session, results = [], prior = {};
+    if (onlyFailed === true && flowLast && flowLast.results) flowLast.results.forEach(function (r) { prior[r.c.id] = r; });
+    else onlyFailed = false;
+    btn.disabled = true; document.getElementById("flowRetry").disabled = true;
     setBusy(true, "Flow bench running...");
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
     ready.then(function () { return fetch("flowbench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("flowbench.json"); return r.json(); }); })
       .then(function (b) {
         var cases = (b && b.cases) || [], chain = Promise.resolve();
         cases.forEach(function (c, i) {
-          var tag = "Note " + (i + 1) + " of " + cases.length + " (" + c.name + "): ";
+          var tag = "Note " + (i + 1) + " of " + cases.length + " (" + c.name + "): ", had = prior[c.id];
+          if (onlyFailed && had && had.old && !had.old.err && had.new && !had.new.err) { results[i] = had; return; }   /* this pair already worked */
           chain = chain.then(function () {
+            if (had && had.c && had.c._complexity) { c._complexity = had.c._complexity; c._shape = had.c._shape; return; }
             info.textContent = tag + "reading...";
             session = { raw: c.raw, answers: [], today: c.today, known: "" };
             return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
@@ -1580,20 +1596,24 @@ export function startApp() {
             }, function () { c._complexity = "standard"; c._shape = null; });
           }).then(function () {
             var res = { c: c }, order = i % 2 ? ["new", "old"] : ["old", "new"];
+            if (had) { res.old = had.old; res.new = had.new; }
             return order.reduce(function (p, flow) {
               return p.then(function () {
+                if (res[flow] && !res[flow].err) return;   /* rerun: keep the half that worked */
                 info.textContent = tag + (flow === "new" ? "new flow" : "old flow") + "...";
-                return flowOne(c, flow).then(function (o) { res[flow] = o; }, function (e) { res[flow] = { flow: flow, err: (e && e.message) || "failed" }; });
+                return flowTry(c, flow).then(function (o) { res[flow] = o; }, function (e) { res[flow] = { flow: flow, err: (e && e.message) || "failed" }; });
               });
-            }, Promise.resolve()).then(function () { results.push(res); });
+            }, Promise.resolve()).then(function () { results[i] = res; });
           });
         });
         return chain.then(function () { showFlow(results); });
       })
       .catch(function (e) { info.textContent = "Couldn't run the flow bench: " + ((e && e.message) || "unknown"); })
-      .then(function () { session = saved; setBusy(false); btn.disabled = false; });
+      .then(function () { session = saved; setBusy(false); btn.disabled = false; document.getElementById("flowRetry").disabled = !flowFailed(); });
   }
   function showFlow(results) {
+    flowLast = { at: new Date().toISOString(), results: results };
+    lsSet(FLOW_LAST, JSON.stringify(flowLast));
     var map = {}, blind = [], reveal = [], when = new Date().toLocaleString("en-US"), ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
     function sum(o) {
       if (!o || o.err) return "error: " + (o && o.err);
@@ -1626,7 +1646,9 @@ export function startApp() {
     document.getElementById("flowCopy").disabled = false;
     document.getElementById("flowReveal").disabled = false;
   }
-  document.getElementById("flowRun").addEventListener("click", flowRun);
+  document.getElementById("flowRun").addEventListener("click", function () { flowRun(false); });
+  document.getElementById("flowRetry").addEventListener("click", function () { flowRun(true); });
+  document.getElementById("flowRetry").disabled = !flowFailed();
   document.getElementById("flowCopy").addEventListener("click", function () {
     if (!flowText || !navigator.clipboard) return;
     navigator.clipboard.writeText(flowText).then(function () { document.getElementById("flowInfo").textContent = "Copied the blind pairs. Paste them to Claude."; }, function () {});
@@ -1964,7 +1986,7 @@ export function startApp() {
       askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT).then(function (r) {
         var seen = {}, all = cleanPrompt(r.text).split("\n").map(function (l) { return l.replace(/^\s*[-*\u2022\d.)]+\s*/, "").trim(); }).filter(function (l) { return l && words(l) <= 16; });
         /* The phone keeps only items the raw words back up (every number, most of the meaning). */
-        var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.6); }).slice(0, 20);
+        var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.5); }).slice(0, 12);
         mine.ledger = { status: items.length ? "ok" : "empty", items: items, dropped: all.length - items.length, model: r.model, ms: r.ms };
       }, function () { mine.ledger = { status: "failed", ms: Date.now() - t0 }; }),
       new Promise(function (res) { timer = setTimeout(function () { if (mine.ledger.status === "running") mine.ledger = { status: "failed", why: "slow" }; res(); }, LEDGER_LIMIT + 2000); })
@@ -2079,10 +2101,10 @@ export function startApp() {
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     /* Fact ledger (#44): what this prompt must keep, listed by Flash-Lite from the raw words. */
     var items = session.ledger && session.ledger.items || [];
-    if (items.length) text += "\n\nMUST-KEEP CHECKLIST (listed from the raw thoughts by an earlier step; it adds nothing new. Every item has to be in the prompt, in plain words, where it fits):\n- " + items.join("\n- ");
+    if (items.length) text += "\n\nMUST-KEEP CHECKLIST (listed from the raw thoughts by an earlier step; it adds nothing new. Every item has to be in the prompt, written cleanly in your own sentences where it fits, never pasted as a raw line):\n- " + items.join("\n- ");
     /* Success + format up front (#46): the intake's suggestions, a default only. */
     var sh = session.shape || {};
-    if (sh.success || sh.format) text += "\n\nSUGGESTED SHAPE (suggested by an earlier step, not the person's words. Use it only where they didn't say otherwise; their own words always win):" + (sh.success ? "\nA great result: " + sh.success : "") + (sh.format ? "\nFormat and length: " + sh.format : "");
+    if (sh.success || sh.format) text += "\n\nSUGGESTED SHAPE (suggested by an earlier step, not the person's words. Use it only where they didn't say otherwise; their own words always win. It never makes a preference stronger and never adds safety, health, or strictness rules):" + (sh.success ? "\nA great result: " + sh.success : "") + (sh.format ? "\nFormat and length: " + sh.format : "");
     if (bare) return text;
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (their standing context. It is NOT attached to the prompt, so the prompt has to stand on its own. Use it to shape the prompt: who they are, how they like answers, how the AI should work with them, and the AI's role, wherever it fits this request, in plain words. Never paste it in as a block, never list it back, and never mention \"my core\"):\n" + core.block;
@@ -2108,7 +2130,7 @@ export function startApp() {
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
   var CYCLE_PAUSE = 20000;
   var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 30000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */
-  var STANDIN_SECS = 6, STANDIN_MAX = 15000;
+  var STANDIN_SECS = 5, STANDIN_MAX = 8000, STANDIN_MIN_WORDS = 60;   /* flow bench run 1: 13s for no gaps on short notes, so long notes only, 8s cap */
 
   /* Stand-in AI test (v2.1.20, #45), the first part of Check on Normal and Rework prompts:
      a Flash-Lite model plays the AI that will receive the prompt and lists what it would
@@ -2129,7 +2151,7 @@ export function startApp() {
     function lines(t) { return t.split("\n").filter(function (l) { return l.trim(); }).length; }
     function round() {
       st.rounds++;
-      return askGemini(STANDIN + "\n" + cur + '\n"""', true, liteCrew(1), "low", null, 12000).then(function (r) {
+      return askGemini(STANDIN + "\n" + cur + '\n"""', true, liteCrew(1), "low", null, 7000).then(function (r) {
         if (!st.model) st.model = r.model;
         var gaps = parseGaps(r.text);
         if (gaps === null) { st.status = st.added ? "added " + st.added : "failed"; return; }
@@ -2323,7 +2345,7 @@ export function startApp() {
            the bar, run inside the timer. The prompt comes up when they're done, or after
            CHECK_MAX at most; anything still going then finishes in the background like before. */
         session.cooking = true;
-        var doStand = !quick, grading = testLog.on();
+        var doStand = !quick && words(session.raw) >= STANDIN_MIN_WORDS, grading = testLog.on();
         if (!doStand && !grading) return reveal(0);
         session.checked = true;
         setSteps(resultProg.closest(".tracker"), "check", skipAsk);
@@ -2778,7 +2800,11 @@ export function startApp() {
   }
   /* Keep a fix only if it solved something, added no new made-up numbers, didn't
      lose numbers, and didn't shrink or balloon the prompt. */
+  /* #34: a sentence that stops right where a value belongs ("totaling.", "each person owes.", "= ,"). */
+  var HANGING = /\b(is|owes|owe|totaling|totals|equals|comes to|for a total of)\s*[.,;)]|=\s*(?![\s$\d(~\u2248-])|\b(owes|totaling|equals|comes to)\s*$/im;
+  function hanging(text) { return HANGING.test(String(text || "")); }
   function isBetter(after, before, fixed, draft) {
+    if (hanging(fixed) && !hanging(draft)) return false;
     var len = words(fixed) / Math.max(1, words(draft));
     /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
     var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
