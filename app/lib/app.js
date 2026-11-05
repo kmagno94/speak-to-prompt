@@ -309,6 +309,9 @@ export function startApp() {
   }
   function setReady(ready) {
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
+    /* Cooking (v2.1.19): until the prompt is ready, the card shows only the heading, the
+       tracker, and messages. The prompt comes up once Write, Polish, and Check are done. */
+    document.getElementById("result").classList.toggle("cooking", !ready);
     if (!ready) xray.clear();
     document.getElementById("copy").disabled = !ready;
     document.getElementById("copyAll").disabled = !ready;
@@ -1569,8 +1572,9 @@ export function startApp() {
      what's left. The bar never claims done early (it stops at 95%). */
   /* Cooking steps (v2.1.18): Read and Clean run side by side on two Flash-Lite models, then
      Ask, then Write on Flash, then Polish (Auto-Repair on Flash-Lite, shown only on runs that
-     need it, #36), then Ready. Clean keeps its own state because it can finish during Ask. */
-  var STEPS = ["read", "clean", "ask", "write", "polish", "ready"];
+     need it, #36), then Check (the quality grade and its label fix, run stats on, v2.1.19),
+     then Ready. Clean keeps its own state because it can finish during Ask. */
+  var STEPS = ["read", "clean", "ask", "write", "polish", "check", "ready"];
   function setSteps(track, active, skipAsk) {
     var at = STEPS.indexOf(active), cs = session && session.clean ? session.clean.status : "";
     Array.prototype.forEach.call(track.querySelectorAll("li"), function (li) {
@@ -1578,6 +1582,7 @@ export function startApp() {
       var cls = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
       if (step === "clean" && cs) cls = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
       if (step === "polish") li.hidden = !(active === "polish" || (session && session.polished));
+      if (step === "check") li.hidden = !(active === "check" || (session && session.checked));
       li.className = cls;
       if (cls === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
@@ -1618,7 +1623,11 @@ export function startApp() {
     stopTicker();
     draw();
     ticker = setInterval(draw, 1000);
-    return function (m) { model = m; tModel = Date.now(); draw(); };
+    var api = function (m) { model = m; tModel = Date.now(); draw(); };
+    /* A new cooking step on the same clock (Polish, Check): elapsed keeps running, the
+       estimate starts over for that step. */
+    api.phase = function (lbl, secs, m) { label = lbl; usual = secs; model = m || ""; tModel = Date.now(); draw(); };
+    return api;
   }
   /* Prompt cooking: plain labels for what went into the pot, never the words themselves. */
   function cookIngredients(step) {
@@ -1852,7 +1861,8 @@ export function startApp() {
   var ROTATE_MS = 30000;
   var SLOW_OFFER_MS = 2 * 60000;
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
-  var CYCLE_PAUSE = 20000;   /* every Flash said busy: wait this long, then go around again */
+  var CYCLE_PAUSE = 20000;
+  var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 25000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */   /* every Flash said busy: wait this long, then go around again */
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
@@ -1934,7 +1944,7 @@ export function startApp() {
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
-    session.polished = false;
+    session.polished = false; session.checked = false; session.cooking = false;
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
     session.today = todayText();
@@ -1971,13 +1981,13 @@ export function startApp() {
     }, WRITE_LIMIT, hedgeAfter, handle).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
-      finishTrack(resultProg, r.ms / 1000, skipAsk, offset);
       var draft = cleanPrompt(r.text);
       /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
       var before = qualityCheck(draft);
       if (!before.score) return showWritten(draft, r, { status: "none" }, before);
       session.polished = true;
       setSteps(resultProg.closest(".tracker"), "polish", skipAsk);
+      eta.phase("Polish \u00b7 fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found", POLISH_SECS, techOn() ? writeModels(true)[0] : "");
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
       document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
       var t0 = Date.now();
@@ -1994,37 +2004,12 @@ export function startApp() {
 
       function showWritten(prompt, r, rep, check) {
         var detour = r.history && r.history.length ? " (" + r.history.join("; ") + ")" : "";
-        setBusy(false);
-        setBuild("");
-        qaStatus.textContent = "";
-        var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
-        /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
-        if (!rep.secs && session.polished) finishTrack(resultProg, r.ms / 1000, skipAsk, offset);   /* Polish ticks done even when it took under 0.1s */
-        if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; cookClock(resultProg.closest(".tracker")); }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
         session.basePrompt = prompt;
         session.workSecs = (offset || (session.intakeMs || 0) / 1000) + r.ms / 1000 + (rep.secs || 0);
-        var total = offset ? " (" + Math.max(1, Math.round(session.workSecs)) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
-        showResult(extras(prompt), techOn()   /* core */
-          ? (offset ? "Round " + session.round + " built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
-          : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
-        if (session.round >= 2 && ui.round) roundBuilt(session.round);
-        /* Left mid-build and came back before it finished: say it picked back up. */
-        if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
-        session.writeStart = null;
-        if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
-        showRepairNote(rep);
-        /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
-        if (memory.active) {
-          var offer = [];
-          (session.memRemember || []).concat(session.answers.map(answerFact)).forEach(function (t) {
-            if (t && !memory.has(t) && offer.every(function (o) { return o.toLowerCase() !== t.toLowerCase(); })) offer.push(t);
-          });
-          memory.suggestions = offer.slice(0, 4);
-        }
-        var nc = showNumberCheck(prompt);
-        session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
+        var nc0 = promptFlags(prompt);
+        session.numFlags = nc0.extra.length + nc0.missing.length + nc0.dates.length;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
@@ -2032,7 +2017,58 @@ export function startApp() {
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
           round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null, slow_switch: session.slowSwitch || null });
         session.slowSwitch = null;
-        gradeRun(prompt, run, r.model);
+        /* Check (v2.1.19, run stats on): the quality grade, and its label fix when it's under
+           the bar, run inside the timer. The prompt comes up when they're done, or after
+           CHECK_MAX at most; anything still going then finishes in the background like before. */
+        session.cooking = true;
+        var job = gradeRun(prompt, run, r.model);
+        if (!job) return reveal(0);
+        session.checked = true;
+        setSteps(resultProg.closest(".tracker"), "check", skipAsk);
+        eta.phase("Check \u00b7 grading the prompt" + (lessons.list.length ? " against " + lessons.list.length + " lessons" : ""), CHECK_SECS);
+        setBusy(true, "\ud83c\udfaf Checking the quality...");
+        document.getElementById("resultHead").textContent = "\ud83c\udfaf Checking the quality...";
+        var t0 = Date.now(), shown = false;
+        var cap = setTimeout(go, CHECK_MAX * TIME_SCALE);
+        job.then(go, go);
+        function go() {
+          if (shown) return;
+          shown = true;
+          clearTimeout(cap);
+          if (run !== writeRun) return;
+          reveal(Math.round((Date.now() - t0) / 100) / 10);
+        }
+        function reveal(checkSecs) {
+          session.cooking = false;
+          setBusy(false);
+          setBuild("");
+          qaStatus.textContent = "";
+          var finalPrompt = session.basePrompt || prompt, more = (rep.secs || 0) + (checkSecs || 0);
+          var secs = Math.max(1, Math.round(r.ms / 1000 + more)) + "s";
+          /* Elapsed matches the total: Polish and Check count, and the line under Done says how much they added. */
+          finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset);
+          if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
+          var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
+          showResult(extras(finalPrompt), techOn()   /* core */
+            ? (offset ? "Round " + session.round + " built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
+            : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+          if (session.round >= 2 && ui.round) roundBuilt(session.round);
+          /* Left mid-build and came back before it finished: say it picked back up. */
+          if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
+          session.writeStart = null;
+          if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
+          showRepairNote(rep);
+          /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
+          if (memory.active) {
+            var offer = [];
+            (session.memRemember || []).concat(session.answers.map(answerFact)).forEach(function (t) {
+              if (t && !memory.has(t) && offer.every(function (o) { return o.toLowerCase() !== t.toLowerCase(); })) offer.push(t);
+            });
+            memory.suggestions = offer.slice(0, 4);
+          }
+          var nc = showNumberCheck(finalPrompt);
+          session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
+        }
       }
     }).catch(function (e) {
       if (e && e.status === "stopped") return;   /* Switch to quick stopped it; the quick write is already going */
@@ -2289,6 +2325,7 @@ export function startApp() {
       if (canFix(g)) return fixLabel(prompt, run, target, g, fields, items, el, writer);
     }, function () {});
     if (target) target._grade = job;
+    return job;
   }
   /* The glanceable Quality check (QualityCheck.svelte): score, a plain label, one tip. */
   function gradeView(g, extra) {
@@ -2325,7 +2362,7 @@ export function startApp() {
   function fixLabel(prompt, run, target, g, fields, items, el, writer) {
     var t0 = Date.now(), first = g, best = g, cur = prompt, tries = 0, added = [], last = "", lastStatus = "kept original";
     function secs() { return Math.round((Date.now() - t0) / 100) / 10; }
-    function used() { return run !== writeRun || pendingRun !== target || output.value !== extras(cur); }
+    function used() { return run !== writeRun || pendingRun !== target || (session && session.cooking ? false : output.value !== extras(cur)); }
     function end(status, note) {
       var s = secs();
       if (target) { target.label_fix = status; target.label_fix_s = s; target.label_fix_tries = tries; }
@@ -2358,9 +2395,11 @@ export function startApp() {
           session.draftBefore = prompt;
           cur = fixed; best = g2;
           session.basePrompt = fixed;
-          output.value = extras(fixed);
-          xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
-          var nc = showNumberCheck(fixed);
+          if (!session.cooking) {   /* while cooking, the reveal shows the fixed version */
+            output.value = extras(fixed);
+            xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+          }
+          var nc = session.cooking ? promptFlags(fixed) : showNumberCheck(fixed);
           session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
           if (target) {
             target.grade_before = first.craft; target.grade = g2.craft; target.grade_pass = g2.pass; target.grade_missing = g2.missing.join("+") || "none";

@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'grader: never the model',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
@@ -225,6 +225,38 @@ await check('prep crew: the second Flash-Lite cleans the thoughts while the firs
   const log = await p.evaluate(() => localStorage.getItem('stp-testlog') || '');
   expect(!/taco|vegetarian/.test(log), 'nothing anyone said goes in the run log');
   expect(!p.errors.length && !q.errors.length && !r.errors.length && !f.errors.length && !k.errors.length, 'page errors: ' + [p, q, r, f, k].flatMap(x => x.errors).join('; '));
+});
+
+await check('cooking: Polish and Check run inside the timer, and the prompt only comes up at Ready (v2.1.19)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const p = await page({ intake, write: BAD, repairDelay: 800, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
+  await p.route(/relay\.test/, r => r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build');
+  // While it polishes: the card shows the tracker with Polish, and no prompt or Quality check yet
+  await p.waitForFunction(() => document.querySelector('#resultTrack li[data-step=polish]')?.className === 'active', null, { timeout: 15000 });
+  expect(!(await p.isVisible('#output')) && !(await p.isVisible('#gradeNote')) && !(await p.textContent('#madeBy')), 'nothing shows while it polishes');
+  expect(!/Done/.test(await p.textContent('#resultTrack .left')), 'the timer is still running');
+  await done(p);
+  const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  expect(cls.includes('polish:done') && cls.includes('check:done') && cls.includes('ready:done'), 'Polish and Check are steps on the timer: ' + cls.join());
+  expect(p.grades.length >= 1 && await p.isVisible('#output') && await p.isVisible('#gradeNote'), 'graded before it showed, and everything shows at Ready');
+  // Run stats off: no grade, so Check stays hidden
+  const q = await page({ intake });
+  await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#resultTrack li[data-step=check]', el => el.hidden) && !q.grades.length, 'no Check step without run stats');
+  // A slow grade never holds the prompt past 25 seconds
+  const r = await page({ intake, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
+  await r.route(/relay\.test/, x => x.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+  await r.route(/generativelanguage/, async (x) => { const b = x.request().postData() || ''; if (/PROMPT TO GRADE:/.test(b)) return; return x.fallback(); });
+  await r.clock.install();
+  await r.click('#moreOpts summary'); await r.check('#statsToggle');
+  await withKey(r); await r.fill('#thoughts', 'plan my week'); await r.click('#build');
+  for (let i = 0; i < 40 && !(await r.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await r.clock.runFor(1000); await r.waitForTimeout(30); }
+  expect(await r.evaluate(() => document.getElementById('madeBy').textContent.length > 0) && await r.isVisible('#output'), 'the prompt comes up after the check cap even if the grade hangs');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
 });
 
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {
@@ -1223,10 +1255,10 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(/Auto-fixed: added 1 detail you said and removed 1 made-up number/.test(note), 'note wrong: ' + note);
   expect(sent[0].repair === 'fixed' && typeof sent[0].repair_s === 'number' && sent[0].xray_dropped === 0, 'run log should record the fix: ' + JSON.stringify(sent[0]));
   expect(!(await p.isVisible('#numWarn')), 'no number warning once the made-up number is gone');
-  // 2b. The fix takes a while: elapsed matches the total and names the finishing touch (report #5)
+  // 2b. The fix takes a while: elapsed matches the total and says it includes polish (report #5, v2.1.19)
   ({ p, sent } = await run({ write: BAD, repair: GOOD, repairDelay: 2200 }));
   const total = (await p.textContent('#madeBy')).match(/in (\d+)s/), el = await p.textContent('#resultTrack .el');
-  expect(total && el === '0:0' + total[1] && /finishing touch/.test(await p.textContent('#resultTrack .leftlbl')), 'elapsed ' + el + ' should match the total ' + (total && total[1]) + 's and mention the finishing touch');
+  expect(total && el === '0:0' + total[1] && /polish/.test(await p.textContent('#resultTrack .leftlbl')), 'elapsed ' + el + ' should match the total ' + (total && total[1]) + 's and mention polish');
   // 3. Fix isn't better: keep the original and say so
   ({ p, sent } = await run({ write: BAD, repair: BAD + '\nAlso budget $999 a day.' }));
   expect(await p.inputValue('#output') === BAD && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away');

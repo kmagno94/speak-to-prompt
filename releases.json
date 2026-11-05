@@ -2,6 +2,32 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.19",
+      "date": "2026-11-04",
+      "title": "Polish and Check inside the timer",
+      "items": [
+        "The prompt no longer shows up while it's still being polished and graded. The timer keeps running through Polish (Auto-Repair) and a new Check step (the quality grade, plus its label fix when it's under the bar), and the prompt, Quality check, and buttons all come up together at Ready.",
+        "While it cooks, the card shows only the heading, the tracker, and any messages. The line under Done says how much Polish and Check added, like \"includes 6s polish and check\", and Ready in Ns counts it all.",
+        "Check only runs with Show run stats on (that's when the grade runs), so for everyone else the steps stay Read, Clean, Ask, Write, Ready, with Polish only when a fix runs.",
+        "The prompt never waits more than 25 seconds on Check. If the grade is slow, the prompt comes up and the grade finishes in the background like before."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "After Write, the tracker moves to Check (and Polish first if a fix runs) with the clock still going. The prompt and Quality check show up together at Ready, never before."
+        },
+        {
+          "say": "Look at the line under Done.",
+          "see": "It says includes Ns check (or polish and check), and Ready in Ns matches the elapsed time."
+        },
+        {
+          "say": "Turn Show run stats off and build again.",
+          "see": "No Check step; the prompt shows right after Write (or Polish)."
+        }
+      ]
+    },
+    {
       "version": "2.1.18",
       "date": "2026-11-04",
       "title": "Prep crew + cooking steps, no rest times",
