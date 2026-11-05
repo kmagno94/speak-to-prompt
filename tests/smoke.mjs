@@ -217,13 +217,13 @@ await check('prep crew: the second Flash-Lite cleans the thoughts while the firs
   expect(p.cleans && p.cleans.length === 1 && p.cleans[0].model === 'gemini-3.1-flash-lite' && intakeCall.model === 'gemini-3.5-flash-lite', 'clean on 3.1 Lite, intake on 3.5 Lite: ' + (p.cleans || []).map(c => c.model).join());
   expect(!/\bum\b/.test(write.text.split('RAW THOUGHTS:')[1]) && /lightly cleaned by an earlier step/.test(write.text) && /budget is maybe 60 bucks/.test(write.text), 'writer should get the clean words with every detail and hedge');
   expect(!/Flash/.test(p.cleans[0].model.replace('flash-lite', '')) , 'clean never uses Flash');
-  const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  const cls = await p.$$eval('#resultTrack > ol > li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
   expect(cls.join() === 'prep:done,ask:skip,write:done,finish:done', 'tracker: four sections, Prep and Finish done: ' + cls.join());
   const legend = await p.textContent('#resultTrack .timestrip');
   expect(/Prep [\d.]+s/.test(legend) && /Write [\d.]+s/.test(legend) && (p.repairs.length ? /Polish/.test(legend) : !/Polish/.test(legend)), 'time strip lists each part, Polish only when it ran: ' + legend);
   const s2 = await page({ intake, models, write: 'Act as a party planner. Context: I am hosting a taco night for 6 people on Friday around 7, budget maybe $60, one vegetarian guest. Task: plan the menu and shopping list. Format: a short checklist under 200 words. A great result is a plan I can shop from today. Start right away and ask at most one short question only if something essential is missing.' });
   await withKey(s2); await s2.fill('#thoughts', memo); await s2.click('#build'); await done(s2);
-  const cls2 = await s2.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  const cls2 = await s2.$$eval('#resultTrack > ol > li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
   const legend2 = await s2.textContent('#resultTrack .timestrip');
   expect(s2.repairs.length || !/Polish/.test(legend2), 'no Polish in the time strip when Auto-Repair does not run: ' + legend2 + ' repairs ' + s2.repairs.length);
   // 2. A clean version that lost a number is not used: the raw words go to the writer
@@ -263,7 +263,7 @@ await check('cooking: Polish and Check run inside the timer, and the prompt only
   expect(!(await p.isVisible('#output')) && !(await p.isVisible('#gradeNote')) && !(await p.textContent('#madeBy')), 'nothing shows while it polishes');
   expect(!/Done/.test(await p.textContent('#resultTrack .left')), 'the timer is still running');
   await done(p);
-  const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  const cls = await p.$$eval('#resultTrack > ol > li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
   expect(cls.includes('finish:done') && !cls.some(c => /active/.test(c)), 'Finish (Polish + Check) is a section on the timer: ' + cls.join());
   const strip = await p.textContent('#resultTrack .timestrip');
   expect(/Write [\d.]+s/.test(strip) && /Polish [\d.]+s/.test(strip) && /Check [\d.]+s/.test(strip) && await p.isVisible('#resultTrack .tsbar'), 'time strip shows how long Write, Polish and Check took: ' + strip);
@@ -306,6 +306,13 @@ await check('quality crew: the fact ledger is a must-keep list the phone checks,
   expect(p.standins && p.standins.length === 2 && p.standins.every(x => /lite/.test(x.model) && x.json), 'stand-in runs twice on Flash-Lite: ' + (p.standins || []).map(x => x.model).join());
   expect(/Ana is the only vegetarian I mentioned/.test(await p.inputValue('#output')), 'filled gap is in the prompt at Ready');
   expect(/Stand-in AI test: filled 1 gap/.test(await p.textContent('#gapNote')), 'gap note says what it did: ' + await p.textContent('#gapNote'));
+  // Step by step: a closed box under the time strip lists every step that ran, with time and what happened
+  expect(!(await p.isVisible('#resultTrack .tsdetail ol')), 'Step by step starts closed');
+  await p.click('#resultTrack .tsdetail summary');
+  const steps = await p.$$eval('#resultTrack .ts-row', l => l.map(x => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-what').textContent));
+  expect(['Read', 'Clean', 'Fact ledger', 'Ask', 'Write', 'Polish', 'Stand-in AI', 'Grade'].every(n => steps.some(x => x.startsWith(n + ' |'))), 'every step is listed: ' + steps.join(' / '));
+  expect(steps.some(x => /^Fact ledger \| 5 must-keep items \(1 unbacked item thrown out\)/.test(x)) && steps.some(x => /^Stand-in AI \| Filled 1 gap/.test(x)), 'rows say what happened: ' + steps.join(' / '));
+  expect(!/taco|Albertson|Ana/.test(steps.join(' ')), 'counts and labels only, none of your words');
   // 5. A gap nobody answered is never guessed: it's shown to you instead
   const q = await page({ models, intake, write: W, gaps: ['Do you want drinks included?'] });
   await withKey(q); await q.fill('#thoughts', memo); await q.click('#build'); await done(q);

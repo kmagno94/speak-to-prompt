@@ -1586,7 +1586,7 @@ export function startApp() {
   var GROUPS = ["prep", "ask", "write", "finish", "done"];
   function setSteps(track, active, skipAsk) {
     var at = GROUPS.indexOf(GROUP[active] || active), cs = prepStatus();
-    Array.prototype.forEach.call(track.querySelectorAll("li"), function (li) {
+    Array.prototype.forEach.call(track.querySelectorAll(":scope > ol > li"), function (li) {
       var g = li.getAttribute("data-step"), i = GROUPS.indexOf(g);
       var cls = g === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
       if (g === "prep" && cs === "running") cls = "active";   /* Clean or the ledger can still be going during Ask */
@@ -1599,13 +1599,13 @@ export function startApp() {
   }
   /* Time strip at Ready: one bar split by how long each part took (Prep, Write, Polish,
      Check), with a small legend. Machine time only; your answering time isn't counted. */
-  function showTimeStrip(track, parts) {
+  function showTimeStrip(track, parts, rows) {
     var strip = track.querySelector(".timestrip");
     if (!strip) return;
     parts = parts.filter(function (x) { return x[3]; });   /* every part that ran, even a quick one */
     var total = parts.reduce(function (a, x) { return a + x[1]; }, 0);
     strip.textContent = "";
-    if (parts.length < 2) { strip.hidden = true; return; }
+    if (parts.length < 2 && !(rows && rows.length)) { strip.hidden = true; return; }
     total = total || parts.length;
     var bar = document.createElement("div"); bar.className = "tsbar";
     var legend = document.createElement("div"); legend.className = "tslegend";
@@ -1618,9 +1618,32 @@ export function startApp() {
       item.textContent = x[2] + " " + secsText(x[1]);
       legend.appendChild(item);
     });
-    strip.appendChild(bar); strip.appendChild(legend);
+    if (parts.length >= 2) { strip.appendChild(bar); strip.appendChild(legend); }
+    if (rows && rows.length) strip.appendChild(breakdown(rows));
     strip.setAttribute("aria-label", "Time per part: " + parts.map(function (x) { return x[2] + " " + secsText(x[1]); }).join(", "));
     strip.hidden = false;
+  }
+  /* Step by step (v2.1.20): a closed details box under the strip with every step that ran,
+     which kind of model did it, how long it took, and what happened. Model names only with
+     run stats on, like everywhere else. Counts and labels only, never anyone's words. */
+  function breakdown(rows) {
+    var d = document.createElement("details"); d.className = "tsdetail";
+    var sum = document.createElement("summary"); sum.textContent = "Step by step (" + rows.length + " steps)";
+    d.appendChild(sum);
+    var list = document.createElement("ol");
+    rows.forEach(function (x) {
+      var li = document.createElement("li"); li.className = "ts-row" + (x.skip ? " skipped" : "");
+      var head = document.createElement("div"); head.className = "tsr-head";
+      var name = document.createElement("b"); name.textContent = x.name;
+      var time = document.createElement("span"); time.className = "tsr-time"; time.textContent = x.secs == null ? "" : secsText(x.secs);
+      head.appendChild(name); head.appendChild(time);
+      var who = document.createElement("small"); who.className = "tsr-who"; who.textContent = x.who + (x.model && techOn() ? " \u00b7 " + x.model.replace(/^gemini-/, "") : "") + (x.when ? " \u00b7 " + x.when : "");
+      var what = document.createElement("span"); what.className = "tsr-what"; what.textContent = x.what;
+      li.appendChild(head); li.appendChild(who); li.appendChild(what);
+      list.appendChild(li);
+    });
+    d.appendChild(list);
+    return d;
   }
   function secsText(s) { return s < 10 ? (Math.round(s * 10) / 10) + "s" : Math.round(s) + "s"; }
   /* Prep (the "clean" step on the tracker) is the clean step plus the fact ledger, side by side. */
@@ -1694,7 +1717,7 @@ export function startApp() {
     stopTicker();
     cook.done = true;
     setSteps(track, "ready", skipAsk);
-    track.querySelectorAll("li:not([hidden])").forEach(function (li) { if (li.className !== "skip") li.className = "done"; });
+    track.querySelectorAll(":scope > ol > li:not([hidden])").forEach(function (li) { if (li.className !== "skip") li.className = "done"; });
     setProgress(bar, "pct", 100);
     track.querySelector(".el").textContent = clock(secs);
     var right = track.querySelector(".right");
@@ -1989,6 +2012,7 @@ export function startApp() {
     function round() {
       st.rounds++;
       return askGemini(STANDIN + "\n" + cur + '\n"""', true, liteCrew(1), "low", null, 12000).then(function (r) {
+        if (!st.model) st.model = r.model;
         var gaps = parseGaps(r.text);
         if (gaps === null) { st.status = st.added ? "added " + st.added : "failed"; return; }
         if (st.rounds === 1) st.gaps = gaps.length;
@@ -2008,7 +2032,7 @@ export function startApp() {
       new Promise(function (res) { timer = setTimeout(function () { if (!st.added && st.status === "failed") st.status = "slow"; res(); }, STANDIN_MAX * TIME_SCALE); })
     ]).then(function () {
       clearTimeout(timer);
-      var out = { prompt: st.prompt, gaps: st.gaps, added: st.added, open: st.open.slice(), rounds: st.rounds, status: st.status, secs: Math.round((Date.now() - t0) / 100) / 10 };
+      var out = { model: st.model || "", prompt: st.prompt, gaps: st.gaps, added: st.added, open: st.open.slice(), rounds: st.rounds, status: st.status, secs: Math.round((Date.now() - t0) / 100) / 10 };
       if (out.status === "failed" && out.added) out.status = "added " + out.added;
       return out;
     });
@@ -2210,6 +2234,31 @@ export function startApp() {
           if (run !== writeRun) return;
           reveal(Math.round((Date.now() - t0) / 100) / 10);
         }
+        /* Every step that ran, for Step by step under the time strip. */
+        function stepRows(r, rep, checkSecs) {
+          var rows = [], c = session.clean || {}, l = session.ledger || {}, st = session.standin, gf = session.gradeFields, g = session.grades && session.grades[session.grades.length - 1];
+          var ms = function (x) { return x != null ? x / 1000 : null; };
+          if (!(session.round >= 2)) {
+            var q = (session.questions || []).length;
+            rows.push({ name: "Read", who: "Flash-Lite", model: String(session.intakeModel || ""), secs: ms(session.intakeMs), what: q ? "Picked " + plural(q, "question", "questions") + (session.shape && (session.shape.success || session.shape.format) ? ", plus a suggested great result and format" : "") : "Nothing missing, so no questions" + (session.shape && (session.shape.success || session.shape.format) ? "; suggested a great result and format" : "") });
+            rows.push({ name: "Clean", who: c.status === "skipped" ? "Skipped" : "Flash-Lite", model: c.model, when: c.status && c.status !== "skipped" ? "alongside Read" : "", secs: ms(c.ms), skip: c.status === "skipped",
+              what: c.status === "ok" ? "Filler out, " + words(session.raw) + " to " + c.words + " words, every number kept" : c.status === "kept raw" ? "Used your raw words (the clean version " + (c.why || "didn't pass the check") + ")" : c.status === "skipped" ? "Short note, nothing to clean" : c.status === "failed" ? "Didn't come through, used your raw words" : "Didn't run" });
+            rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : "Flash-Lite", model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
+              what: l.status === "ok" ? plural(l.items.length, "must-keep item", "must-keep items") + (l.dropped ? " (" + plural(l.dropped, "unbacked item", "unbacked items") + " thrown out)" : "") : l.status === "empty" ? "Nothing it listed was backed by your words" : l.status === "skipped" ? "Short note, nothing to list" : l.status === "failed" ? "Didn't come through, skipped" : "Didn't run" });
+            if (session.prepWaitMs >= 500) rows.push({ name: "Prep wait", who: "Waiting", secs: session.prepWaitMs / 1000, what: "Clean or the ledger was still going when you finished, so writing waited for it" });
+            var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
+            rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") : "No questions this time" });
+          }
+          rows.push({ name: "Write", who: /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
+            what: (r.history && r.history.length ? plural(r.history.length, "hand-off", "hand-offs") + " before it wrote" : "Written on the first try") + ((session.ledger && session.ledger.items && session.ledger.items.length) ? ", with the must-keep list" : "") });
+          if (session.polished) rows.push({ name: "Polish", who: "Flash-Lite", model: rep.model, secs: rep.secs || 0,
+            what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
+          if (st) rows.push({ name: "Stand-in AI", who: "Flash-Lite", model: st.model, secs: st.secs,
+            what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + " you didn't answer, shown under the prompt" : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
+          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: "Flash-Lite or Flash (never the writer)", model: gf ? "gemini-" + String(gf.grade_model || "").split(" ")[0] : "", secs: gf ? gf.grade_s : null,
+            what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "") : "Still grading, it finishes in the background" });
+          return rows;
+        }
         function reveal(checkSecs) {
           session.cooking = false;
           setBusy(false);
@@ -2222,7 +2271,7 @@ export function startApp() {
           resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");
           showTimeStrip(resultProg.closest(".tracker"), [
             ["prep", ((session.intakeMs || 0) + (session.prepWaitMs || 0)) / 1000, "Prep", !(session.round >= 2) && session.intakeMs != null],
-            ["write", r.ms / 1000, "Write", true], ["polish", rep.secs || 0, "Polish", !!session.polished], ["check", checkSecs || 0, "Check", !!session.checked]]);   /* at Ready, the line says how it was written again, not the last step */
+            ["write", r.ms / 1000, "Write", true], ["polish", rep.secs || 0, "Polish", !!session.polished], ["check", checkSecs || 0, "Check", !!session.checked]], stepRows(r, rep, checkSecs));   /* at Ready, the line says how it was written again, not the last step */
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
           showResult(extras(finalPrompt), techOn()   /* core */

@@ -503,3 +503,16 @@ body.dock-on.undo-on #ideaTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
 body.dock-on.undo-on #labTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
 body.dock-on.undo-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 60px + 56px); }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab, #guide { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out, bottom var(--dur-reveal) var(--ease); } }
+/* Step by step under the time strip (v2.1.20) */
+.tsdetail { margin-top: 2px; font-size: var(--fs-xs); }
+.tsdetail summary { cursor: pointer; color: var(--accent); font-weight: 700; text-align: center; list-style-position: inside; padding: 6px 0; min-height: var(--tap); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tsdetail ol { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.tsdetail .ts-row { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); text-align: left; }
+.tsdetail .ts-row.skipped { opacity: 0.6; }
+.tsr-head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
+.tsr-time { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.tsr-who { color: var(--muted); }
+.tsr-what { color: var(--ink); }
+.tsdetail ol { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
+.tsdetail .ts-row { display: grid; flex-direction: initial; align-items: stretch; font-size: var(--fs-xs); color: var(--ink); }
+.tsdetail .ts-row::before { content: none; display: none; }
