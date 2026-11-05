@@ -1519,6 +1519,122 @@ export function startApp() {
     document.getElementById("benchCopy").disabled = false;
   }
   document.getElementById("benchRun").addEventListener("click", benchRun);
+
+  /* Flow bench (dev tools, v2.1.20, #47): the 5 hardest notes in flowbench.json, each run
+     through the old flow (like live: Read, Write, Polish) and the new flow (Prep crew,
+     fact ledger, shape, Polish with the ledger, stand-in AI). One shared Read per note sets
+     the thinking depth for both, the answers come from the file, and your core, My context,
+     and memory stay out, so the flow is the only difference. The flows take turns going
+     first. Copy for Claude labels each pair A and B at random (the key stays on this phone
+     until Copy reveal), so Claude scores them blind. About 10 Flash writes. */
+  var FLOW_KEY = "stp-flowbench", flowText = "", flowReveal = "";
+  function flowOne(c, flow) {
+    var s = { raw: c.raw, known: "", today: c.today, memFacts: [], bench: true,
+      answers: (c.answers || []).map(function (a) { return { question: a.question, answer: a.answer }; }), questions: (c.answers || []).slice() };
+    session = s;
+    var t0 = Date.now(), steps = [];
+    function step(name, p) { var t = Date.now(); return p.then(function (v) { steps.push(name + " " + secsText((Date.now() - t) / 1000)); return v; }); }
+    var prep = flow === "new" ? step("prep", Promise.all([startClean(c.raw), startLedger(c.raw)])) : Promise.resolve();
+    var out = { flow: flow };
+    return prep.then(function () {
+      if (flow === "new") s.shape = c._shape || null;
+      return step("write", askGemini(writerText(true), false, fullWriters(), depthOf(c._complexity).level, null, WRITE_LIMIT, ROTATE_MS));
+    }).then(function (r) {
+      var check = flow === "new" ? fullCheck : qualityCheck, draft = cleanPrompt(r.text), before = check(draft);
+      out.model = r.model; out.prompt = draft; out.repair = "none";
+      if (!before.score) return;
+      return step("polish", askGemini(repairPrompt(draft, s.raw, withMem(s.answers), { dropped: before.dropped.concat(before.facts || []), stray: before.stray, missingNums: before.missingNums }), false, writeModels(true), "low", null, 60000)).then(function (r2) {
+        var fixed = cleanPrompt(r2.text), after = check(fixed);
+        if (isBetter(after, before, fixed, draft)) { out.prompt = fixed; out.repair = "fixed"; } else out.repair = "kept original";
+      }, function () { out.repair = "failed"; });
+    }).then(function () {
+      if (flow !== "new") return;
+      return step("stand-in", standIn(out.prompt)).then(function (st) { if (st.prompt) out.prompt = st.prompt; out.standin = st.status; out.open = st.open.length; });
+    }).then(function () {
+      var x = qualityCheck(out.prompt), nf = promptFlags(out.prompt);
+      out.secs = (Date.now() - t0) / 1000; out.steps = steps; out.words = words(out.prompt);
+      out.xray = x.pct; out.dropped = x.dropped.length; out.numflags = nf.extra.length + nf.missing.length + nf.dates.length;
+      if (flow === "new") { out.clean = s.clean ? s.clean.status : ""; out.ledger = s.ledger && s.ledger.items ? s.ledger.items.length : 0; out.ledgerMissing = missingFacts(out.prompt).length; }
+      return out;
+    });
+  }
+  function flowRun() {
+    var info = document.getElementById("flowInfo"), btn = document.getElementById("flowRun");
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    if (busy) { info.textContent = "Finish the build that's running first."; return; }
+    var saved = session, results = [];
+    btn.disabled = true;
+    setBusy(true, "Flow bench running...");
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
+    ready.then(function () { return fetch("flowbench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("flowbench.json"); return r.json(); }); })
+      .then(function (b) {
+        var cases = (b && b.cases) || [], chain = Promise.resolve();
+        cases.forEach(function (c, i) {
+          var tag = "Note " + (i + 1) + " of " + cases.length + " (" + c.name + "): ";
+          chain = chain.then(function () {
+            info.textContent = tag + "reading...";
+            session = { raw: c.raw, answers: [], today: c.today, known: "" };
+            return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
+              var it = parseIntake(r.text); c._complexity = it.complexity; c._shape = it.shape;
+            }, function () { c._complexity = "standard"; c._shape = null; });
+          }).then(function () {
+            var res = { c: c }, order = i % 2 ? ["new", "old"] : ["old", "new"];
+            return order.reduce(function (p, flow) {
+              return p.then(function () {
+                info.textContent = tag + (flow === "new" ? "new flow" : "old flow") + "...";
+                return flowOne(c, flow).then(function (o) { res[flow] = o; }, function (e) { res[flow] = { flow: flow, err: (e && e.message) || "failed" }; });
+              });
+            }, Promise.resolve()).then(function () { results.push(res); });
+          });
+        });
+        return chain.then(function () { showFlow(results); });
+      })
+      .catch(function (e) { info.textContent = "Couldn't run the flow bench: " + ((e && e.message) || "unknown"); })
+      .then(function () { session = saved; setBusy(false); btn.disabled = false; });
+  }
+  function showFlow(results) {
+    var map = {}, blind = [], reveal = [], when = new Date().toLocaleString("en-US"), ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+    function sum(o) {
+      if (!o || o.err) return "error: " + (o && o.err);
+      return secsText(o.secs) + ", " + o.words + " words, X-ray " + o.xray + "%, " + o.dropped + " dropped, " + o.numflags + " number flags, repair " + o.repair +
+        (o.flow === "new" ? ", clean " + o.clean + ", ledger " + o.ledger + " items (" + o.ledgerMissing + " missing), stand-in " + (o.standin || "none") + (o.open ? " (" + o.open + " open)" : "") : "") +
+        " [" + (o.model || "").replace(/^gemini-/, "") + "; " + (o.steps || []).join(", ") + "]";
+    }
+    blind.push("FLOW BENCH (blind) \u00b7 app " + ver + " \u00b7 " + when, "Score each pair against its key, without knowing which flow is which: how many key items each prompt keeps, anything invented or changed (dates, numbers, strictness), and which prompt would get the better answer from an AI. Then ask Kevin for the reveal.");
+    results.forEach(function (r) {
+      var aNew = Math.random() < 0.5, A = aNew ? r.new : r.old, B = aNew ? r.old : r.new;
+      map[r.c.id] = aNew ? "A=new, B=old" : "A=old, B=new";
+      blind.push("", "== " + r.c.id + " \u00b7 " + r.c.name + " ==", "Today: " + r.c.today, "Raw thoughts:", r.c.raw,
+        "Answers: " + ((r.c.answers || []).map(function (a) { return a.question + " " + a.answer; }).join(" | ") || "none"),
+        "Key:", "- " + r.c.key.join("\n- "),
+        "--- Prompt A ---", A && A.prompt ? A.prompt : "(error: " + (A && A.err) + ")",
+        "--- Prompt B ---", B && B.prompt ? B.prompt : "(error: " + (B && B.err) + ")");
+      reveal.push(r.c.id + ": " + map[r.c.id], "  old: " + sum(r.old), "  new: " + sum(r.new));
+    });
+    lsSet(FLOW_KEY, JSON.stringify({ at: new Date().toISOString(), map: map }));
+    flowText = blind.join("\n");
+    flowReveal = ["FLOW BENCH reveal \u00b7 app " + ver + " \u00b7 " + when].concat(reveal).join("\n");
+    var rows = results.map(function (r) {
+      function cell(o) { return !o || o.err ? "\u26a0\ufe0f error" : secsText(o.secs) + "<small>" + o.dropped + " dropped \u00b7 " + o.numflags + " flags" + (o.flow === "new" ? " \u00b7 ledger " + o.ledgerMissing + "/" + o.ledger + " missing" : "") + "</small>"; }
+      return "<tr><td>" + esc(r.c.id) + "<small>" + esc(r.c.name) + "</small></td><td>" + cell(r.old) + "</td><td>" + cell(r.new) + "</td></tr>";
+    }).join("");
+    var el = document.getElementById("flowOut");
+    el.innerHTML = "<table><thead><tr><th>Note</th><th>Old flow</th><th>New flow</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    el.hidden = false;
+    document.getElementById("flowInfo").textContent = "Done. Tap Copy for Claude and paste it into a chat. Copy reveal only after Claude has scored.";
+    document.getElementById("flowCopy").disabled = false;
+    document.getElementById("flowReveal").disabled = false;
+  }
+  document.getElementById("flowRun").addEventListener("click", flowRun);
+  document.getElementById("flowCopy").addEventListener("click", function () {
+    if (!flowText || !navigator.clipboard) return;
+    navigator.clipboard.writeText(flowText).then(function () { document.getElementById("flowInfo").textContent = "Copied the blind pairs. Paste them to Claude."; }, function () {});
+  });
+  document.getElementById("flowReveal").addEventListener("click", function () {
+    if (!flowReveal || !navigator.clipboard) return;
+    navigator.clipboard.writeText(flowReveal).then(function () { document.getElementById("flowInfo").textContent = "Copied the reveal (which is which, times, and checks)."; }, function () {});
+  });
   document.getElementById("benchCopy").addEventListener("click", function () {
     if (!benchText || !navigator.clipboard) return;
     navigator.clipboard.writeText("bench results\n\n" + benchText).then(function () { document.getElementById("benchInfo").textContent = "Copied. Paste it to Claude."; }, function () {});
@@ -1953,7 +2069,8 @@ export function startApp() {
   chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
 
   /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
-  function writerText() {
+  /* bare (Flow bench): leave out My context, your core, and memory, so only the flow differs. */
+  function writerText(bare) {
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     /* Prep crew: the clean step's version (filler out, every detail kept) when it passed the phone check. */
     var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
@@ -1966,6 +2083,7 @@ export function startApp() {
     /* Success + format up front (#46): the intake's suggestions, a default only. */
     var sh = session.shape || {};
     if (sh.success || sh.format) text += "\n\nSUGGESTED SHAPE (suggested by an earlier step, not the person's words. Use it only where they didn't say otherwise; their own words always win):" + (sh.success ? "\nA great result: " + sh.success : "") + (sh.format ? "\nFormat and length: " + sh.format : "");
+    if (bare) return text;
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (their standing context. It is NOT attached to the prompt, so the prompt has to stand on its own. Use it to shape the prompt: who they are, how they like answers, how the AI should work with them, and the AI's role, wherever it fits this request, in plain words. Never paste it in as a block, never list it back, and never mention \"my core\"):\n" + core.block;
     if (session.reworkText) text += "\n\nROUND " + session.round + ": THE PERSON REWORKED THE PROMPT FROM ROUND " + (session.reworkOf || 1) + ". Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";

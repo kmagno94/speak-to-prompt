@@ -272,6 +272,14 @@
         </div>
         <p class="hint" id="benchInfo">Grades the same fixed prompts with the grader above and compares with Claude's answer key. Uses your Gemini key, a few small calls.</p>
         <div id="benchOut" class="benchout" hidden></div>
+        <p class="srchead">Flow bench</p>
+        <div class="row">
+          <button type="button" id="flowRun">Run flow bench</button>
+          <button type="button" id="flowCopy" disabled>Copy for Claude</button>
+          <button type="button" id="flowReveal" class="linkish" disabled>Copy reveal</button>
+        </div>
+        <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open.</p>
+        <div id="flowOut" class="benchout" hidden></div>
       </div>
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>

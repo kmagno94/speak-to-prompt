@@ -1982,6 +1982,38 @@ await check('grading session: a draft link swaps in draft lessons and grader rul
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
+await check('flow bench: the 5 hardest notes run through the old and new flow, with the same answers, and Claude gets the pairs blind (v2.1.20)', async () => {
+  const fb = JSON.parse(readFileSync(path.join(ROOT, 'flowbench.json'), 'utf8'));
+  expect(fb.cases.length === 5 && fb.cases.every((c) => c.id && c.name && c.raw && c.today && Array.isArray(c.answers) && Array.isArray(c.key) && c.key.length >= 4), 'flowbench.json: 5 cases with raw, today, answers, and a key');
+  expect(!/—/.test(JSON.stringify(fb)), 'no em dashes in flowbench.json');
+  const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const p = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT for ' + (ask.match(/Today: |TODAY: ([A-Za-z]+)/) || [])[1] : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  await p.check('#coreToggle').catch(() => {});
+  await p.click('#flowRun');
+  await p.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
+  const writes = p.calls.filter(c => !c.intake);
+  expect(writes.length === 10 && writes.every(c => !/lite/.test(c.model)), 'two Flash writes per note: ' + writes.map(c => c.model).join());
+  expect(writes.filter(c => /lightly cleaned/.test(c.text)).length >= 3 && writes.every(c => !/THE PERSON'S CORE|CONTEXT THE PERSON PICKED/.test(c.text)), 'new flow gets the clean words; no core or context in either flow');
+  const sameAnswers = writes.filter(c => /How many dishes/.test(c.text)).length === 2;
+  expect(sameAnswers, 'both flows get the note\'s answers');
+  await p.click('#flowCopy');
+  const blind = await p.evaluate(() => navigator.clipboard.readText());
+  expect((blind.match(/--- Prompt A ---/g) || []).length === 5 && !/old flow|new flow|A=new|A=old/i.test(blind) && /Key:/.test(blind), 'blind copy has 5 pairs, keys, and no hint of which is which');
+  await p.click('#flowReveal');
+  const reveal = await p.evaluate(() => navigator.clipboard.readText());
+  const map = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
+  expect(Object.keys(map).length === 5 && /T4: A=(new|old)/.test(reveal) && /stand-in/.test(reveal), 'reveal says which is which, saved on the phone: ' + reveal.slice(0, 200));
+  // Each pair matches the reveal: the NEW PROMPT sits where the map says
+  const t4 = blind.split('== T4')[1].split('== ')[0];
+  const aIsNew = /A=new/.test(map.T4);
+  expect(/--- Prompt A ---\n(NEW|OLD) PROMPT/.exec(t4)[1] === (aIsNew ? 'NEW' : 'OLD'), 'A and B match the saved map');
+  expect(!(await p.isVisible('#result')) && await p.isEnabled('#build'), 'the bench leaves the page as it was');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('grader bench: one tap grades every bench.json case with the current grader and compares with the answer key', async () => {
   const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
   expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');

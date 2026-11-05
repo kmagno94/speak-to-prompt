@@ -1,0 +1,106 @@
+{
+  "note": "Flow bench (dev tools, v2.1.20): the 5 hardest notes, each run through the old flow (live: Read, Write, Polish) and the new flow (Prep crew, fact ledger, shape, stand-in AI) with the same answers, so the flow is the only difference. Claude scores the pairs blind against these keys. Keys were written before any flow bench run; don't tune the app to them.",
+  "updated": "2026-11-04",
+  "cases": [
+    {
+      "id": "T4",
+      "name": "Moving day (stress test 4)",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok um so this is gonna be long, sorry. me and my roommate tasha are moving out of our place at 1187 maple court apt 3b into a new spot at 52 ridgeline ave unit 14, it's on the 4th floor and there's no elevator, which, yeah. move day is saturday december 5th, no wait the landlord said the 6th, sunday the 6th, keys are ready at 9 am. our old lease ends the 7th so we only get like one day of overlap. the truck rental is $89 for the day plus 79 cents a mile, it's about 18 miles each way and we'll probably need two trips. tasha wants to hire movers for the heavy stuff, I really don't want to spend money on that. our whole moving budget is $600 and I want to keep at least a third of it for the internet deposit and groceries the first week. so um, movers only if it fits, you decide, but show me the math. my brother omar can help but only until 1 pm because he has a shift, and my friend june can come after 3. so there's a gap in the middle where it's just me and tasha, plan around that. the couch is the big problem, it's 84 inches long and the stairwell turn is tight, I measured the door and I think it's 32 inches wide. is the couch even gonna fit? like be honest, if it won't fit tell me to sell it, a guy offered $150 for it. oh and tasha's cat pickles has to stay in the bathroom at the new place with the door shut all day, she gets out every single time, please don't forget the cat. I also need to move the electric over, it's with brightline power, the number is 1-800-555-0143, and I need to cancel the old internet, which is a whole thing, they want 30 days notice and I gave it on november 20th, so idk if that works. um what else. tasha says pack the kitchen last, I say first because we barely cook, whatever, kitchen last, she wins that one. oh and don't make up prices for movers, I have no idea what they cost around here, just tell me what to ask them. the parking at the new place is a permit thing, you have to put the sign request in 72 hours before, so that's wednesday the 2nd, no, thursday the 3rd, ugh, you check it. I want all of this as a checklist I can tick off on my phone, like actual checkboxes, not paragraphs, I'll be holding boxes. honestly kind of dreading it lol. ok that's it. oh last thing, I tweaked my back last month so I can't be the one carrying the couch, nothing super heavy for me 📦",
+      "answers": [],
+      "key": [
+        "Sunday December 6th (not Saturday the 5th), keys 9 AM, old lease ends the 7th, one day of overlap",
+        "1187 Maple Court Apt 3B, 52 Ridgeline Ave Unit 14, 4th floor, no elevator, Brightline Power 1-800-555-0143, exact",
+        "Truck $89/day plus 79 cents a mile, about 18 miles each way, probably two trips (correct math fine)",
+        "$600 budget, keep at least a third for internet deposit and groceries, movers only if they fit, show the math",
+        "No made-up mover prices, questions to ask movers instead",
+        "Omar until 1 PM, June after 3 PM, plan the 1 to 3 gap",
+        "Couch 84 in, door about 32 in, tight turn, honest will-it-fit answer, sell for $150 if not",
+        "Pickles the cat shut in the bathroom all day; speaker carries nothing heavy, not the couch",
+        "Internet: 30 days notice given November 20th, check if it works",
+        "Parking sign 72 hours before: Thursday December 3rd, AI should check",
+        "Phone checklist with checkboxes, not paragraphs; kitchen packed last; calm, no lol or sorry copied"
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "Camping trip (stress test 3)",
+      "today": "Tuesday, October 20, 2026",
+      "raw": "ok so um camping trip, me, my friend dev, and my cousin ines are going to pine hollow state park the weekend of november 7th, we're leaving saturday at 6, no wait 6:30 in the morning because dev works late friday. it's about 140 miles, and ines is from madrid so she's gonna ask how far that is in kilometers, just tell her. the campsite is site 22 at 4410 pine hollow road, reservation code PH-20931, check in is after 2 pm. it's $32 a night for two nights and we're splitting it three ways. the ranger station number is (555) 018-2247, I want that written down somewhere in case we lose signal out there. so I need a few things, first a packing list for the three of us, second a meal plan, and third like a rough schedule for both days. dev wants to do the full 9 mile ridge loop on saturday, ines just wants to sit by the lake and read, so figure out a plan where nobody's miserable. oh and we're bringing my dog biscuit, I know, I know, but the park says dogs are fine on a 6 foot leash. the forecast says it drops to 38 at night, fahrenheit, and my sleeping bag is rated 20 degrees, is that enough or should I bring a blanket too, like actually tell me. ines is vegetariana, and she said we can't use la hielera de su papá because it leaks lol, so we'll grab a new cooler. no campfire cooking at all, dev is paranoid about the burn ban, we're using the little propane stove. um I think that's it. oh wait one more, the park website says pinehollowpark.example/trails has the trail map, put that link in so we can save it offline. keep it chill, it's a fun trip not a boot camp 🏕️",
+      "answers": [],
+      "key": [
+        "Weekend of Saturday November 7th, leaving 6:30 AM (not 6), check-in after 2 PM",
+        "Site 22, 4410 Pine Hollow Road, PH-20931, ranger (555) 018-2247, exact",
+        "pinehollowpark.example/trails unchanged, save offline",
+        "About 140 miles, km for Ines fine (about 225 km)",
+        "$32 a night, 2 nights, split 3 ways ($64, about $21.33 fine)",
+        "38F at night, bag rated 20F, a real is-that-enough answer asked for",
+        "Three deliverables in order: packing list for 3, meal plan, schedule for both days",
+        "Dev 9-mile ridge loop Saturday, Ines reads by the lake, plan for both",
+        "Biscuit the dog, 6-foot leash, dog stuff in packing list",
+        "Ines vegetarian, new cooler (dad's leaks), Spanish understood, no lol",
+        "No campfire cooking (burn ban), propane stove only"
+      ]
+    },
+    {
+      "id": "T2",
+      "name": "Surprise party (stress test 2)",
+      "today": "Sunday, October 18, 2026",
+      "raw": "alright so I want to throw a surprise party for my friend Marco, he turns 25 on November 14th, no wait that's a Saturday and he works Saturdays, let's do Friday the 13th instead, at 8pm, actually make it 7:30 so people can leave by 11. it's at my place, I can fit maybe 15 people max but I'm inviting 12. budget is $200, and I already spent $35.50 on decorations so really it's whatever is left. two people are vegan and one can't eat shellfish, so no shrimp at all. I want to send the invite with the Invitations app on iOS 27 but I've never used it, so walk me through that too. don't tell me to rent a venue, I don't want that. food should be like 60% of the budget and the rest goes to drinks and a cake. I need a timeline for the day of, starting from when I get off work at 3, a shopping list with rough prices, and a text I can send everyone saying keep it a secret. oh and Marco's girlfriend Ana is helping so split the tasks between us, she's free after 5. keep it simple, I've never hosted anything before, honestly kind of nervous lol",
+      "answers": [],
+      "key": [
+        "Friday November 13th (not the 14th)",
+        "Starts 7:30 PM (not 8), guests leave by 11",
+        "Marco turns 25; Ana helping, free after 5",
+        "Room for 15 max, 12 invited",
+        "$200 budget, $35.50 already spent ($164.50 left is correct math)",
+        "Food about 60% of budget, rest drinks and cake",
+        "2 vegan, 1 no shellfish, no shrimp",
+        "iOS 27 Invitations app walkthrough (not iOS 18)",
+        "No venue rental",
+        "Timeline from 3 PM, shopping list with rough prices, secret text, task split with Ana",
+        "Simple, reassuring tone for a first-time host, no lol"
+      ]
+    },
+    {
+      "id": "B9",
+      "name": "Potluck, a Saturday I think",
+      "today": "Friday, October 23, 2026",
+      "raw": "ok so potluck at my place, a saturday I think? my friend Dana is gluten free so I need a few dishes she can eat, like 8 people total, easy stuff I can make the night before",
+      "answers": [
+        {
+          "question": "How many dishes do you want to make yourself?",
+          "answer": "Three"
+        }
+      ],
+      "key": [
+        "Potluck at their place, on a Saturday, kept as a maybe (no invented date, month, or year)",
+        "Dana is gluten free (not made strictly or medical)",
+        "About 8 people total",
+        "Easy dishes they can make the night before",
+        "Three dishes they make themselves"
+      ]
+    },
+    {
+      "id": "B2",
+      "name": "Meal prep, feelings and a time limit",
+      "today": "Wednesday, October 21, 2026",
+      "raw": "ok so i want to set up a weekly meal prep thing for me and my roommate dana, like on sundays. we have maybe $80 a week and she's vegetarian. i want like 5 lunches each. ugh this is a lot honestly. also i hate cooking after 9pm",
+      "answers": [
+        {
+          "question": "What kitchen appliances do you have to use for prep?",
+          "answer": "Slow cooker or Instant Pot"
+        }
+      ],
+      "key": [
+        "Weekly meal prep on Sundays for me and roommate Dana",
+        "Budget maybe $80 a week (hedge kept)",
+        "Dana is vegetarian",
+        "5 lunches each",
+        "No cooking after 9pm",
+        "Slow cooker or Instant Pot",
+        "The 'ugh this is a lot' feeling not pasted in"
+      ]
+    }
+  ]
+}
