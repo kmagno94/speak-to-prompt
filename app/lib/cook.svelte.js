@@ -3,15 +3,17 @@
    never anything typed. Memory only.
    - place: which tracker is cooking ('build' = reading your thoughts, 'result' = writing)
    - stage: 'read' | 'write'      pct: the progress %      over: past the usual time
-   - el, left, elLbl: the timer's own text, shown inside the ring
+   - el, left: the timer and a short status, shown inside the ring
+   - note: the longer extra (includes 6s polish and check, total, both rounds), shown just
+     under the ring so it never runs into the ring's edge (v2.1.20 fix)
    - ingredients: plain labels that fly into the pot (Your thoughts, Your answers, ...)
    - switches: a model stalled or ran out and another took over (the boil-over)
    - back: when you came back to the page mid-build (#4: "welcome back")
    - done: plated */
-export const cook = $state({ place: null, stage: 'read', pct: 0, over: false, el: '0:00', left: '', elLbl: 'elapsed', ingredients: [], switches: 0, back: 0, done: false, run: 0 });
+export const cook = $state({ place: null, stage: 'read', pct: 0, over: false, el: '0:00', left: '', elLbl: 'elapsed', note: '', ingredients: [], switches: 0, back: 0, done: false, run: 0 });
 
 export function cookStart(place, stage, ingredients) {
-  Object.assign(cook, { place, stage, pct: 2, over: false, el: '0:00', left: '', elLbl: 'elapsed', ingredients, switches: 0, back: 0, done: false, run: cook.run + 1 });
+  Object.assign(cook, { place, stage, pct: 2, over: false, el: '0:00', left: '', elLbl: 'elapsed', note: '', ingredients, switches: 0, back: 0, done: false, run: cook.run + 1 });
 }
 export function cookStop() { cook.place = null; }
 
@@ -22,7 +24,9 @@ export function cookClock(track) {
   const left = t('.left'), lbl = t('.leftlbl');
   cook.el = t('.el') || '0:00';
   cook.elLbl = t('.nums small') || 'elapsed';
-  cook.left = left === 'Done' ? (lbl ? 'Done, ' + lbl : 'Done') : left === 'Almost there' ? 'Almost there' : left ? 'about ' + left + ' left' : '';
+  cook.left = left === 'Done' ? 'Done' : left === 'Almost there' ? 'Almost there' : left ? 'about ' + left + ' left' : '';
+  const extra = [cook.elLbl !== 'elapsed' ? cook.elLbl : '', left === 'Done' ? lbl : ''].filter(Boolean).join(' \u00b7 ');
+  cook.note = extra ? extra.charAt(0).toUpperCase() + extra.slice(1) : '';
 }
 
 /* Staging only: open /staging/#cookdemo to watch one full cook without calling Gemini:

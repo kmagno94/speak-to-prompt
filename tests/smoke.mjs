@@ -110,6 +110,7 @@ async function page(opts = {}) {
     /* Stand-in AI test: no gaps unless opts.gaps (array per round, or one array) */
     if (/^STAND-IN TEST\./.test(ask)) {
       (p.standins = p.standins || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.standinDelay) await new Promise(res => setTimeout(res, opts.standinDelay));
       if (opts.standinFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const per = opts.gaps && Array.isArray(opts.gaps[0]) ? opts.gaps[Math.min(p.standins.length - 1, opts.gaps.length - 1)] : (opts.gaps || []);
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 120 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ gaps: per.map(q => ({ question: q })) }) }] } }] }) });

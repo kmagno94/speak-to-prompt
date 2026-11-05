@@ -94,14 +94,14 @@
           </g>
         </g>
 
-        <text class="clock" x="100" y="163" text-anchor="middle">{cook.el}</text>
-        <text class="sub" x="100" y="177" text-anchor="middle">{cook.left}</text>
-        {#if cook.elLbl && cook.elLbl !== 'elapsed'}<text class="sub" x="100" y="188" text-anchor="middle">{cook.elLbl}</text>{/if}
+        <text class="clock" x="100" y="161" text-anchor="middle">{cook.el}</text>
+        <text class="sub" x="100" y="175" text-anchor="middle">{cook.left}</text>
       </svg>
       <div class="fly" aria-hidden="true">
         {#each cook.ingredients as name, i}<span style="--i:{i}; --sx:{i % 2 ? 150 : -150}px">{name}</span>{/each}
       </div>
     </div>
+    {#if cook.note}<small class="ringnote">{cook.note}</small>{/if}
 
     {#key caption}
       <b class="cap" id="cookCap-{place}" role="status" in:fade={{ duration: ms(220) }}>{caption}</b>
@@ -155,6 +155,7 @@
 
   .clock { font-family: var(--mono); font-size: 24px; fill: var(--ink); font-variant-numeric: tabular-nums; }
   .sub { font-size: 10.5px; fill: var(--muted); }
+  .ringnote { font-size: 13px; color: var(--muted); margin-top: -4px; text-align: center; }
 
   .fly { position: absolute; inset: 0; pointer-events: none; }
   .fly span { position: absolute; left: 50%; top: 34%; white-space: nowrap; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
