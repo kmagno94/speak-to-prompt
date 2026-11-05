@@ -268,6 +268,9 @@ export function repairPrompt(prompt, raw, answers, problems) {
   if (problems.stray.length) {
     out.push("", n++ + ". These numbers are in the prompt but the person never said them: " + problems.stray.join(", ") + ". Remove them. If the idea still matters, say it in words without a number, and never leave a sentence unfinished or a blank where the number was.");
   }
+  if (problems.strict && problems.strict.length) {
+    out.push("", n++ + ". These words make the person's preference stricter, safer, or more medical than they said: " + problems.strict.join(", ") + ". Take them out and say the preference at the strength they said it (for example \"Dana is gluten-free, so I need dishes she can eat\"). Remove any safety tips or rules they didn't ask for, and never leave a sentence unfinished.");
+  }
   if (problems.missingNums.length) {
     out.push("", n++ + ". These numbers the person said are missing. Put each one back exactly as written: " + problems.missingNums.join(", ") + ".");
   }

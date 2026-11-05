@@ -1555,17 +1555,18 @@ export function startApp() {
       var check = flow === "new" ? fullCheck : qualityCheck, draft = cleanPrompt(r.text), before = check(draft);
       out.model = r.model; out.prompt = draft; out.repair = "none";
       if (!before.score) return;
-      return step("polish", askGemini(repairPrompt(draft, s.raw, withMem(s.answers), { dropped: before.dropped.concat(before.facts || []), stray: before.stray, missingNums: before.missingNums }), false, writeModels(true), "low", null, 60000)).then(function (r2) {
+      return step("polish", askGemini(repairPrompt(draft, s.raw, withMem(s.answers), { dropped: before.dropped.concat(before.facts || []), stray: before.stray, missingNums: before.missingNums, strict: before.strict }), false, writeModels(true), "low", null, 60000)).then(function (r2) {
         var fixed = cleanPrompt(r2.text), after = check(fixed);
         if (isBetter(after, before, fixed, draft)) { out.prompt = fixed; out.repair = "fixed"; } else out.repair = "kept original";
       }, function () { out.repair = "failed"; });
     }).then(function () {
       if (flow !== "new") return;
+      if (words(c.raw) < STANDIN_MIN_WORDS) { out.standin = "skipped (short note, like the app)"; out.open = 0; return; }
       return step("stand-in", standIn(out.prompt)).then(function (st) { if (st.prompt) out.prompt = st.prompt; out.standin = st.status; out.open = st.open.length; });
     }).then(function () {
       var x = qualityCheck(out.prompt), nf = promptFlags(out.prompt);
       out.secs = (Date.now() - t0) / 1000; out.steps = steps; out.words = words(out.prompt);
-      out.xray = x.pct; out.dropped = x.dropped.length; out.numflags = nf.extra.length + nf.missing.length + nf.dates.length;
+      out.xray = x.pct; out.dropped = x.dropped.length; out.numflags = nf.extra.length + nf.missing.length + nf.dates.length; out.strict = (x.strict || []).length;
       if (flow === "new") { out.clean = s.clean ? s.clean.status : ""; out.ledger = s.ledger && s.ledger.items ? s.ledger.items.length : 0; out.ledgerMissing = missingFacts(out.prompt).length; }
       return out;
     });
@@ -1629,7 +1630,7 @@ export function startApp() {
     var map = {}, blind = [], reveal = [], when = new Date(at).toLocaleString("en-US"), ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
     function sum(o) {
       if (!o || o.err) return "error: " + (o && o.err);
-      return secsText(o.secs) + ", " + o.words + " words, X-ray " + o.xray + "%, " + o.dropped + " dropped, " + o.numflags + " number flags, repair " + o.repair +
+      return secsText(o.secs) + ", " + o.words + " words, X-ray " + o.xray + "%, " + o.dropped + " dropped, " + o.numflags + " number flags, " + (o.strict || 0) + " stricter words, repair " + o.repair +
         (o.flow === "new" ? ", clean " + o.clean + ", ledger " + o.ledger + " items (" + o.ledgerMissing + " missing), stand-in " + (o.standin || "none") + (o.open ? " (" + o.open + " open)" : "") : "") +
         " [" + (o.model || "").replace(/^gemini-/, "") + "; " + (o.steps || []).join(", ") + "]";
     }
@@ -2013,7 +2014,7 @@ export function startApp() {
       askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT).then(function (r) {
         var seen = {}, all = cleanPrompt(r.text).split("\n").map(function (l) { return l.replace(/^\s*[-*\u2022\d.)]+\s*/, "").trim(); }).filter(function (l) { return l && words(l) <= 16; });
         /* The phone keeps only items the raw words back up (every number, most of the meaning). */
-        var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.5); }).slice(0, 12);
+        var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.5) && !strictAddsVs(l, raw).length; }).slice(0, 12);
         mine.ledger = { status: items.length ? "ok" : "empty", items: items, dropped: all.length - items.length, model: r.model, ms: r.ms };
       }, function () { mine.ledger = { status: "failed", ms: Date.now() - t0 }; }),
       new Promise(function (res) { timer = setTimeout(function () { if (mine.ledger.status === "running") mine.ledger = { status: "failed", why: "slow" }; res(); }, LEDGER_LIMIT + 2000); })
@@ -2130,7 +2131,7 @@ export function startApp() {
     var items = session.ledger && session.ledger.items || [];
     if (items.length) text += "\n\nMUST-KEEP CHECKLIST (listed from the raw thoughts by an earlier step; it adds nothing new. Every item has to be in the prompt, written cleanly in your own sentences where it fits, never pasted as a raw line):\n- " + items.join("\n- ");
     /* Success + format up front (#46): the intake's suggestions, a default only. */
-    var sh = session.shape || {};
+    var sh0 = session.shape || {}, sh = { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format };
     if (sh.success || sh.format) text += "\n\nSUGGESTED SHAPE (suggested by an earlier step, not the person's words. Use it only where they didn't say otherwise; their own words always win. It never makes a preference stronger and never adds safety, health, or strictness rules):" + (sh.success ? "\nA great result: " + sh.success : "") + (sh.format ? "\nFormat and length: " + sh.format : "");
     if (bare) return text;
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
@@ -2157,7 +2158,7 @@ export function startApp() {
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
   var CYCLE_PAUSE = 20000;
   var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 30000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */
-  var STANDIN_SECS = 5, STANDIN_MAX = 8000, STANDIN_MIN_WORDS = 60;   /* flow bench run 1: 13s for no gaps on short notes, so long notes only, 8s cap */
+  var STANDIN_SECS = 5, STANDIN_MAX = 8000, STANDIN_MIN_WORDS = 60, STANDIN_FILL_MS = 5000;   /* flow bench run 2: long notes hit the cap 3 of 3 times mid-fill, so the fill only starts with 5s left */   /* flow bench run 1: 13s for no gaps on short notes, so long notes only, 8s cap */
 
   /* Stand-in AI test (v2.1.20, #45), the first part of Check on Normal and Rework prompts:
      a Flash-Lite model plays the AI that will receive the prompt and lists what it would
@@ -2184,11 +2185,13 @@ export function startApp() {
         if (gaps === null) { st.status = st.added ? "added " + st.added : "failed"; return; }
         if (st.rounds === 1) st.gaps = gaps.length;
         if (!gaps.length) { st.open = []; st.status = st.added ? "added " + st.added : "no gaps"; return; }
+        st.open = gaps;   /* found gaps count even if the fill runs out of time */
+        if (Date.now() - t0 > STANDIN_MAX * TIME_SCALE - STANDIN_FILL_MS * TIME_SCALE) { st.status = st.added ? "added " + st.added : "gaps only"; return; }   /* no time to fill: skip the call */
         return askGemini(gapFillPrompt(cur, gaps, session.raw, withMem(session.answers)), false, liteCrew(0), "low", null, 15000).then(function (r2) {
           var fixed = cleanPrompt(r2.text);
           if (!fixed || fixed === cur || !onlyAdded(fixed, cur, gaps.length)) { st.open = gaps; st.status = st.added ? "added " + st.added : "kept"; return; }
           st.added += Math.max(1, lines(fixed) - lines(cur));
-          cur = fixed; st.prompt = cur;
+          cur = fixed; st.prompt = cur; st.open = [];
           if (st.rounds < 2) return round();
           st.open = []; st.status = "added " + st.added;
         }, function () { st.open = gaps; st.status = st.added ? "added " + st.added : "failed"; });
@@ -2196,7 +2199,7 @@ export function startApp() {
     }
     return Promise.race([
       round().catch(function () {}),
-      new Promise(function (res) { timer = setTimeout(function () { if (!st.added && st.status === "failed") st.status = "slow"; res(); }, STANDIN_MAX * TIME_SCALE); })
+      new Promise(function (res) { timer = setTimeout(function () { if (!st.added && st.status === "failed") st.status = st.open.length ? "gaps only" : "slow"; res(); }, STANDIN_MAX * TIME_SCALE); })
     ]).then(function () {
       clearTimeout(timer);
       var out = { model: st.model || "", prompt: st.prompt, gaps: st.gaps, added: st.added, open: st.open.slice(), rounds: st.rounds, status: st.status, secs: Math.round((Date.now() - t0) / 100) / 10 };
@@ -2341,7 +2344,7 @@ export function startApp() {
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
       document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
       var t0 = Date.now();
-      var asks = { dropped: before.dropped.concat(before.facts), stray: before.stray, missingNums: before.missingNums };
+      var asks = { dropped: before.dropped.concat(before.facts), stray: before.stray, missingNums: before.missingNums, strict: before.strict };
       return askGemini(repairPrompt(draft, session.raw, withMem(session.answers), asks), false, writeModels(true), "low", null, 60000).then(function (r2) {
         if (run !== writeRun) { setBusy(false); return; }
         var fixed = cleanPrompt(r2.text), after = fullCheck(fixed);
@@ -2421,7 +2424,7 @@ export function startApp() {
           if (session.polished) rows.push({ name: "Polish", who: "Flash-Lite", model: rep.model, secs: rep.secs || 0,
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
           if (st) rows.push({ name: "Stand-in AI", who: "Flash-Lite", model: st.model, secs: st.secs,
-            what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + " you didn't answer, shown under the prompt" : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
+            what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + (st.status === "gaps only" ? " found, no time to fill, shown under the prompt" : " you didn't answer, shown under the prompt") : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
           if (session.checked && testLog.on()) rows.push({ name: "Grade", who: "Flash-Lite or Flash (never the writer)", model: gf ? "gemini-" + String(gf.grade_model || "").split(" ")[0] : "", secs: gf ? gf.grade_s : null,
             what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "") : "Still grading, it finishes in the background" });
           return rows;
@@ -2822,9 +2825,27 @@ export function startApp() {
   function qualityCheck(prompt) {
     var x = analyze(prompt, session.raw, withMem(session.answers));
     var dropped = x.sources.filter(function (s) { return !s.used && words(s.text) >= 4 && !isAside(s.text); }).map(function (s) { return s.text; });
-    var n = numberIssues(prompt);
-    return { pct: x.pct, dropped: dropped, stray: n.extra, missingNums: n.missing, score: dropped.length + n.extra.length + n.missing.length };
+    var n = numberIssues(prompt), strict = strictAdds(prompt);
+    return { pct: x.pct, dropped: dropped, stray: n.extra, missingNums: n.missing, strict: strict, score: dropped.length + n.extra.length + n.missing.length + strict.length };
   }
+  /* Strictness guard (flow bench run 2, B9: "gluten free" became "safely eat" and
+     cross-contamination tips; T2: "can't eat shellfish" became an allergy). Free, on the phone:
+     words that make a preference stricter or more medical than the person said. Polish takes
+     them out, and the ledger and the suggested shape can't carry them in. A word they said
+     themselves (or one from the same family) is always fine. */
+  var STRICT = [
+    { re: /\b(safe|safely|safety)\b/i, said: /\bsaf(e|ely|ety)\b/i },
+    { re: /\bcross[- ]?contaminat\w*/i, said: /contaminat/i },
+    { re: /\ballerg\w*/i, said: /allerg/i },
+    { re: /\b(celiac|coeliac)\b/i, said: /\b(celiac|coeliac)\b/i },
+    { re: /\bmedical(ly)?\b/i, said: /\bmedical/i },
+    { re: /\bstrict(ly)?\b/i, said: /\bstrict/i }
+  ];
+  function strictAddsVs(text, said) {
+    var t = String(text || ""), heard = String(said || "");
+    return STRICT.filter(function (s) { return s.re.test(t) && !s.said.test(heard); }).map(function (s) { return t.match(s.re)[0].toLowerCase(); });
+  }
+  function strictAdds(text) { return strictAddsVs(text, saidText()); }
   /* Keep a fix only if it solved something, added no new made-up numbers, didn't
      lose numbers, and didn't shrink or balloon the prompt. */
   /* #34: a sentence that stops right where a value belongs ("totaling.", "each person owes.", "= ,"). */
@@ -2836,7 +2857,7 @@ export function startApp() {
     /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
     var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
     var lost = Object.keys(had).some(function (n) { return said[n] && !kept[n]; });
-    return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && len >= 0.7 && len <= 1.8;
+    return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && (after.strict || []).length <= (before.strict || []).length && len >= 0.7 && len <= 1.8;
   }
   function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
   function showRepairNote(rep) {
@@ -2846,8 +2867,10 @@ export function startApp() {
     if (rep.status === "fixed") {
       var added = rep.before.dropped.length - rep.after.dropped.length + rep.before.missingNums.length - rep.after.missingNums.length + (rep.before.facts || []).length - (rep.after.facts || []).length;
       var removed = rep.before.stray.length - rep.after.stray.length;
+      var eased = (rep.before.strict || []).length - (rep.after.strict || []).length;
       if (added > 0) parts.push("added " + plural(added, "detail you said", "details you said"));
       if (removed > 0) parts.push("removed " + plural(removed, "made-up number", "made-up numbers"));
+      if (eased > 0) parts.push("took out " + plural(eased, "word that made it stricter than you said", "words that made it stricter than you said"));
       el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Tap X-ray to see.";
     } else {
       el.textContent = "\ud83d\udd27 The check found " + plural(rep.before.score, "thing", "things") + " to fix, but " + (rep.status === "failed" ? "the fix didn't come through" : "the fix wasn't better") + ", so this is the original. Tap X-ray to see what to check.";

@@ -343,6 +343,37 @@ await check('bench fixes: Auto-Repair never pastes raw lines or leaves a sentenc
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('bench fixes run 2: a strictness guard takes out "safely", cross-contamination and allergies you never said, and the stand-in keeps the gaps it found when time runs short (v2.1.20, flow bench run 2)', async () => {
+  const P = await import('../app/lib/prompts.js');
+  const rp = P.repairPrompt('X', 'raw', [], { dropped: [], stray: [], missingNums: [], strict: ['safely'] });
+  expect(/stricter, safer, or more medical/.test(rp) && /safely/.test(rp) && /never leave a sentence unfinished/.test(rp), 'Polish is told which stricter words to take out');
+  // B9: "gluten free" must not turn into "safely eat" and cross-contamination tips
+  const RAW = 'ok so potluck at my place, a saturday I think? my friend Dana is gluten free so I need a few dishes she can eat, like 8 people total, easy stuff I can make the night before';
+  const STRICT = 'Context: Potluck at my place, a saturday I think. My friend Dana is gluten free so I need a few dishes she can safely eat, like 8 people total, easy stuff I can make the night before.\nTask: Suggest 3 easy dishes, with tips to prevent cross-contamination.';
+  const EASED = STRICT.replace(' safely', '').replace(', with tips to prevent cross-contamination', '');
+  const intake = { title: 'Potluck', need: 'N', category: 'Food', complexity: 'simple', questions: [], shape: { success: 'every dish is completely safe for Dana', format: 'a short list, one screen' } };
+  const p = await page({ intake, write: STRICT, repair: EASED, ledger: ['Potluck at my place on a Saturday maybe', 'Dana must eat safely gluten free', 'About 8 people total'] });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  const w = p.calls.filter(c => !c.intake).pop();
+  expect(!/completely safe/.test(w.text) && /a short list, one screen/.test(w.text), 'a suggested success line that adds strictness is left out, the format stays');
+  expect(!/eat safely/.test(w.text) && /About 8 people total/.test(w.text), 'a ledger item that adds strictness is thrown out, the rest stay');
+  expect(p.repairs.length === 1 && /safely/.test(p.repairs[0].text) && /cross-contamination/.test(p.repairs[0].text), 'Polish runs once and is asked to take out the stricter words');
+  expect(await p.inputValue('#output') === EASED, 'the eased prompt is kept');
+  expect(/stricter than you said/.test(await p.textContent('#repairNote')), 'the note says it took out stricter words: ' + await p.textContent('#repairNote'));
+  // A word they said themselves is fine: no Polish for it
+  const SAID = 'My friend Dana has celiac so every dish has to be safe for her, 8 people, night before';
+  const q = await page({ intake: { ...intake, shape: {} }, write: SAID });
+  await withKey(q); await q.fill('#thoughts', SAID); await q.click('#build'); await done(q);
+  expect(!q.repairs.length && await q.inputValue('#output') === SAID, 'celiac and safe were their words, so nothing is flagged');
+  // Stand-in on a long note: the gaps come back late, so it skips the fill call and still shows them
+  const LONG = 'ok so um I want to plan a small birthday dinner for my mom next month at home, nothing fancy. she likes italian food and hates anything too spicy. there will be maybe 6 of us, my two aunts, my cousin, my dad, me and mom. I have about $90 for groceries and I want to cook most of it the day before because I work that morning until noon.';
+  const s = await page({ intake: { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] }, write: LONG, gaps: ['Which day is the dinner?'], standinDelay: 3500 });
+  await withKey(s); await s.fill('#thoughts', LONG); await s.click('#build'); await done(s);
+  expect((s.standins || []).length === 1 && !(s.fills || []).length, 'the gaps came back with under 5 seconds left, so no fill call: ' + (s.fills || []).length);
+  expect(/Your AI may still ask: Which day is the dinner\?/.test(await s.textContent('#gapNote')), 'the late gaps still show under the prompt: ' + await s.textContent('#gapNote'));
+  expect(!p.errors.length && !q.errors.length && !s.errors.length, 'page errors: ' + p.errors.concat(q.errors, s.errors).join('; '));
+});
+
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   const p = await page({ fail: { 'gemini-3.8-flash': 429 }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);

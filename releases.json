@@ -20,7 +20,9 @@
         "Flow bench rerun (dev tools, folded in to stay at 5 builds): after Rerun failed notes, Copy for Claude has only the notes that were redone, so Claude does not rescore pairs it already scored. Copy reveal still covers all 5 notes and marks the rerun ones.",
         "Flow bench rerun (folded in to stay at 5 builds): Each pair keeps its A and B letters for the whole run, so scores Claude gave before a rerun still match the reveal. Runs saved before this build keep the letters they already had.",
         "Flow bench rerun (folded in to stay at 5 builds): Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload.",
-        "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2."
+        "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2.",
+        "Fixes from flow bench run 2 (new flow won 3 of 5): a free strictness guard on the phone flags words that make a preference stricter or more medical than you said (safe, safely, cross-contamination, allergy, celiac, medical, strictly). Polish takes them out, and the fact ledger and the suggested shape can no longer carry them in. A word you said yourself is fine.",
+        "Stand-in fixes from run 2 (it ran out of time on all 3 long notes): the gaps it finds now show under the prompt even when time runs short, and it skips the fill step when under 5 seconds are left, so no Gemini call gets thrown away. The flow bench runs the stand-in only on 60+ word notes, like the app, so its times match what you wait."
       ],
       "checks": [
         {
@@ -44,6 +46,11 @@
         {
           "say": "Untick every note except the ones to redo (like T4 and T2), then tap Rerun failed notes (after the daily Gemini limit resets, around 3 AM). Keep the screen open.",
           "see": "It only works through the ticked notes, then says Copy for Claude has just those notes and Copy reveal covers all 5. Unticked notes keep their boxes for later."
+        },
+        {
+          "say": "Tap Normal, paste the second Try it note, and build.",
+          "paste": "ok so um game night at my apartment friday, like 7 people maybe, my buddy Theo is dairy free so I need a couple snacks he can eat, nothing fancy, I can prep it the afternoon before, honestly just chips level easy lol",
+          "see": "The prompt says Theo is dairy-free and keeps 7 people maybe, Friday, and the afternoon before. No safely, allergy, or cross-contamination. If the writer added one, the note under the prompt says Polish took out a word that made it stricter than you said."
         },
         {
           "say": "Tap Copy for Claude and paste it into Claude.",
