@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, CLEAN, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -242,7 +242,9 @@ export function startApp() {
       context: context.active ? context.chosen.length : 0, context_tok: context.tokens,   /* My context: counts only */
       context_raw_tok: context.active && context.rawTokens !== context.tokens ? context.rawTokens : null, squeeze: session.squeeze || null,
       clean: session.clean ? session.clean.status + (session.clean.why ? " (" + session.clean.why + ")" : "") : null,   /* prep crew: status, model, time, word count only */
-      clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null
+      clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null,
+      ledger: session.ledger ? session.ledger.status : null, ledger_items: session.ledger && session.ledger.items ? session.ledger.items.length : null, ledger_model: session.ledger && session.ledger.model || null,
+      shape: session.shape ? !!(session.shape.success || session.shape.format) : null
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -330,6 +332,7 @@ export function startApp() {
     document.getElementById("madeBy").textContent = "";
     document.getElementById("numWarn").hidden = true;
     document.getElementById("repairNote").hidden = true;
+    document.getElementById("gapNote").hidden = true;
     setChatName(title);
     setReady(false);
     qa.hidden = true;
@@ -911,7 +914,7 @@ export function startApp() {
     }
     function names(list) { return list.map(function (m) { return m.name.replace(/^models\//, ""); }); }
     var flashes = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest).slice(0, 3));
-    var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 2));
+    var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 3));   /* up to 3, so the Flash-Lite crew can spread out (v2.1.20) */
     var all = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest))
       .concat(names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest)));
     return { write: flashes.concat(lites), intake: lites.concat(flashes), all: all };
@@ -1576,7 +1579,7 @@ export function startApp() {
      then Ready. Clean keeps its own state because it can finish during Ask. */
   var STEPS = ["read", "clean", "ask", "write", "polish", "check", "ready"];
   function setSteps(track, active, skipAsk) {
-    var at = STEPS.indexOf(active), cs = session && session.clean ? session.clean.status : "";
+    var at = STEPS.indexOf(active), cs = prepStatus();
     Array.prototype.forEach.call(track.querySelectorAll("li"), function (li) {
       var step = li.getAttribute("data-step"), i = STEPS.indexOf(step);
       var cls = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
@@ -1587,10 +1590,19 @@ export function startApp() {
       if (cls === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
   }
+  /* Prep (the "clean" step on the tracker) is the clean step plus the fact ledger, side by side. */
+  function prepStatus() {
+    var c = session && session.clean ? session.clean.status : "", l = session && session.ledger ? session.ledger.status : "";
+    if (!c && !l) return "";
+    if (c === "running" || l === "running") return "running";
+    if ((c || "skipped") === "skipped" && (l || "skipped") === "skipped") return "skipped";
+    return "done";
+  }
+  function prepRunning() { return prepStatus() === "running"; }
   /* The clean step finished: tick it on whichever tracker is showing. */
   function refreshClean() {
     ["buildTrack", "resultTrack"].forEach(function (id) {
-      var li = document.querySelector("#" + id + " li[data-step='clean']"), cs = session && session.clean ? session.clean.status : "";
+      var li = document.querySelector("#" + id + " li[data-step='clean']"), cs = prepStatus();
       if (!li || !cs) return;
       li.className = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
     });
@@ -1683,6 +1695,7 @@ export function startApp() {
           transcript: String(n.clean_transcript || "").trim()
         };
       })(data.note),
+      shape: (function (sh) { sh = sh && typeof sh === "object" ? sh : {}; return { success: String(sh.success || "").trim().slice(0, 240), format: String(sh.format || "").trim().slice(0, 240) }; })(data.shape),
       memUse: Array.isArray(data.use_memory) ? data.use_memory : [],
       memRemember: (Array.isArray(data.remember) ? data.remember : []).map(function (x) { return String(x || "").trim(); }).filter(Boolean).slice(0, 2),
       questions: qs.slice(0, 5).map(function (q) {
@@ -1747,10 +1760,59 @@ export function startApp() {
     var lost = (raw.replace(/,(?=\d{3}\b)/g, "").match(/\d+(?:[.:/]\d+)*/g) || []).filter(function (n) { return have.indexOf(n) === -1; });
     return lost.length ? "lost a number" : "";
   }
+  /* The Flash-Lite crew: each job starts on a different Flash-Lite model when the key has
+     more than one (Read on the 1st, Clean on the 2nd, the ledger on the 3rd or back to the
+     1st), and falls back to the others. */
+  function liteCrew(i) {
+    var l = gemini.plan.intake.filter(function (m) { return /lite/.test(m); });
+    if (!l.length) return [];
+    var k = i % l.length;
+    return l.slice(k).concat(l.slice(0, k));
+  }
+  /* Words that carry meaning, cut to 5 letters so "budgets" matches "budget". */
+  var LEDGER_STOP = /^(that|this|with|from|have|want|need|about|around|maybe|they|their|them|then|just|like|some|into|your|will|would|should|could|really|very|also|what|when|make|sure|think|probably|thing|things|there|here|been|were|each)$/;
+  function keyWords(t) { return (String(t).toLowerCase().match(/[a-z][a-z']{3,}/g) || []).filter(function (w) { return !LEDGER_STOP.test(w); }).map(function (w) { return w.slice(0, 5); }); }
+  function numsIn(t) { return String(t).replace(/,(?=\d{3}\b)/g, "").match(/\d+(?:[.:/]\d+)*/g) || []; }
+  /* Is this item in that text? Every number in it, and at least `need` of its meaning words. */
+  function hasItem(item, text, need) {
+    var low = String(text).toLowerCase().replace(/,(?=\d{3}\b)/g, "");
+    if (numsIn(item).some(function (n) { return low.indexOf(n) === -1; })) return false;
+    var kw = keyWords(item);
+    if (!kw.length) return true;
+    return kw.filter(function (w) { return low.indexOf(w) !== -1; }).length / kw.length >= need;
+  }
+  var LEDGER_LIMIT = 15000;
+  function startLedger(raw) {
+    var order = liteCrew(2), mine = session, t0 = Date.now(), timer;
+    if (words(raw) < CLEAN_MIN_WORDS || !order.length) { mine.ledger = { status: "skipped" }; return Promise.resolve(); }
+    mine.ledger = { status: "running" };
+    return Promise.race([
+      askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT).then(function (r) {
+        var seen = {}, all = cleanPrompt(r.text).split("\n").map(function (l) { return l.replace(/^\s*[-*\u2022\d.)]+\s*/, "").trim(); }).filter(function (l) { return l && words(l) <= 16; });
+        /* The phone keeps only items the raw words back up (every number, most of the meaning). */
+        var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.6); }).slice(0, 20);
+        mine.ledger = { status: items.length ? "ok" : "empty", items: items, dropped: all.length - items.length, model: r.model, ms: r.ms };
+      }, function () { mine.ledger = { status: "failed", ms: Date.now() - t0 }; }),
+      new Promise(function (res) { timer = setTimeout(function () { if (mine.ledger.status === "running") mine.ledger = { status: "failed", why: "slow" }; res(); }, LEDGER_LIMIT + 2000); })
+    ]).then(function () { clearTimeout(timer); if (session === mine) refreshClean(); });
+  }
+  /* Coverage check (free): which ledger items the prompt is missing. */
+  function missingFacts(prompt) {
+    var items = session && session.ledger && session.ledger.items || [];
+    return items.filter(function (it) { return !hasItem(it, prompt, 0.5); });
+  }
+  /* The phone's checks plus the ledger: what Polish gets asked to fix. */
+  function fullCheck(prompt) {
+    var c = qualityCheck(prompt), miss = missingFacts(prompt);
+    var extra = miss.filter(function (m) { return !c.dropped.some(function (d) { return hasItem(m, d, 0.6); }); });
+    c.facts = extra;
+    c.score += extra.length;
+    return c;
+  }
   function startClean(raw) {
-    var lites = gemini.plan.intake.filter(function (m) { return /lite/.test(m); });
+    var lites = liteCrew(0);
     if (words(raw) < CLEAN_MIN_WORDS || !lites.length) { session.clean = { status: "skipped" }; return Promise.resolve(); }
-    var order = lites.length > 1 ? [lites[1], lites[0]] : lites, mine = session, t0 = Date.now();
+    var order = liteCrew(1), mine = session, t0 = Date.now();
     mine.clean = { status: "running" };
     var timer;
     return Promise.race([
@@ -1779,7 +1841,7 @@ export function startApp() {
     }).then(function () {
       /* My context goes in after any squeeze, so the question step sees the same version the writer will. */
       intakeText = (context.active ? withContext(base, context.block) : base) + "\n" + raw + '\n"""';
-      session.cleanP = startClean(raw);
+      session.cleanP = Promise.all([startClean(raw), startLedger(raw)]);
       setSteps(document.getElementById("buildTrack"), "read", false);
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
@@ -1795,6 +1857,7 @@ export function startApp() {
       session.title = intake.title;
       session.questions = addStackChoice(intake.questions);
       session.note = intake.note;
+      session.shape = intake.shape;
       if (session.note && !session.note.transcript && session.cleanP) session.cleanP.then(function () { if (session && session.note && !session.note.transcript && session.clean && session.clean.text) session.note.transcript = session.clean.text; });
       /* memory: only the facts the intake picked go into writing the prompt. */
       session.memFacts = memory.active ? memory.pick(intake.memUse) : [];
@@ -1839,6 +1902,12 @@ export function startApp() {
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + (cleaned ? "\n\nThe raw thoughts below were lightly cleaned by an earlier step: filler, false starts, and repeats removed, every detail kept." : "") + "\n\nRAW THOUGHTS:\n\"\"\"\n" + (cleaned || session.raw) + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
+    /* Fact ledger (#44): what this prompt must keep, listed by Flash-Lite from the raw words. */
+    var items = session.ledger && session.ledger.items || [];
+    if (items.length) text += "\n\nMUST-KEEP CHECKLIST (listed from the raw thoughts by an earlier step; it adds nothing new. Every item has to be in the prompt, in plain words, where it fits):\n- " + items.join("\n- ");
+    /* Success + format up front (#46): the intake's suggestions, a default only. */
+    var sh = session.shape || {};
+    if (sh.success || sh.format) text += "\n\nSUGGESTED SHAPE (suggested by an earlier step, not the person's words. Use it only where they didn't say otherwise; their own words always win):" + (sh.success ? "\nA great result: " + sh.success : "") + (sh.format ? "\nFormat and length: " + sh.format : "");
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
     if (core.active) text += "\n\nTHE PERSON'S CORE (their standing context. It is NOT attached to the prompt, so the prompt has to stand on its own. Use it to shape the prompt: who they are, how they like answers, how the AI should work with them, and the AI's role, wherever it fits this request, in plain words. Never paste it in as a block, never list it back, and never mention \"my core\"):\n" + core.block;
     if (session.reworkText) text += "\n\nROUND " + session.round + ": THE PERSON REWORKED THE PROMPT FROM ROUND " + (session.reworkOf || 1) + ". Their edited version is below, with what was weak noted at the top. Start from it: keep what works and every change they made, fix what was weak, and follow every rule above. The raw thoughts and answers above stay the source of truth for facts. Never copy the \"What was weak\" line into the prompt.\nEDITED PROMPT:\n\"\"\"\n" + session.reworkText + "\n\"\"\"";
@@ -1862,7 +1931,60 @@ export function startApp() {
   var SLOW_OFFER_MS = 2 * 60000;
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
   var CYCLE_PAUSE = 20000;
-  var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 25000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */   /* every Flash said busy: wait this long, then go around again */
+  var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 30000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */
+  var STANDIN_SECS = 6, STANDIN_MAX = 15000;
+
+  /* Stand-in AI test (v2.1.20, #45), the first part of Check on Normal and Rework prompts:
+     a Flash-Lite model plays the AI that will receive the prompt and lists what it would
+     still have to ask or guess. Another Flash-Lite model fills only the gaps the person
+     already answered (the phone keeps it only if every line stayed and no new numbers came
+     in). Up to 2 rounds; it stops at no gaps or nothing filled. Gaps nobody answered are
+     shown to the person. Targeted lines, never a rewrite. */
+  function parseGaps(text) {
+    try {
+      var t = String(text).replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, ""), a = t.indexOf("{"), b = t.lastIndexOf("}");
+      var d = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
+      return (Array.isArray(d.gaps) ? d.gaps : []).map(function (g) { return String((g && g.question) || (typeof g === "string" ? g : "")).trim(); }).filter(Boolean).slice(0, 4);
+    } catch (e) { return null; }
+  }
+  function standIn(prompt) {
+    var t0 = Date.now(), cur = prompt, timer;
+    var st = { prompt: "", gaps: 0, added: 0, open: [], rounds: 0, status: "failed" };
+    function lines(t) { return t.split("\n").filter(function (l) { return l.trim(); }).length; }
+    function round() {
+      st.rounds++;
+      return askGemini(STANDIN + "\n" + cur + '\n"""', true, liteCrew(1), "low", null, 12000).then(function (r) {
+        var gaps = parseGaps(r.text);
+        if (gaps === null) { st.status = st.added ? "added " + st.added : "failed"; return; }
+        if (st.rounds === 1) st.gaps = gaps.length;
+        if (!gaps.length) { st.open = []; st.status = st.added ? "added " + st.added : "no gaps"; return; }
+        return askGemini(gapFillPrompt(cur, gaps, session.raw, withMem(session.answers)), false, liteCrew(0), "low", null, 15000).then(function (r2) {
+          var fixed = cleanPrompt(r2.text);
+          if (!fixed || fixed === cur || !onlyAdded(fixed, cur, gaps.length)) { st.open = gaps; st.status = st.added ? "added " + st.added : "kept"; return; }
+          st.added += Math.max(1, lines(fixed) - lines(cur));
+          cur = fixed; st.prompt = cur;
+          if (st.rounds < 2) return round();
+          st.open = []; st.status = "added " + st.added;
+        }, function () { st.open = gaps; st.status = st.added ? "added " + st.added : "failed"; });
+      });
+    }
+    return Promise.race([
+      round().catch(function () {}),
+      new Promise(function (res) { timer = setTimeout(function () { if (!st.added && st.status === "failed") st.status = "slow"; res(); }, STANDIN_MAX * TIME_SCALE); })
+    ]).then(function () {
+      clearTimeout(timer);
+      var out = { prompt: st.prompt, gaps: st.gaps, added: st.added, open: st.open.slice(), rounds: st.rounds, status: st.status, secs: Math.round((Date.now() - t0) / 100) / 10 };
+      if (out.status === "failed" && out.added) out.status = "added " + out.added;
+      return out;
+    });
+  }
+  function showGapNote(st) {
+    var el = document.getElementById("gapNote");
+    if (!st || (!st.added && !st.open.length)) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = "\ud83e\udd16 Stand-in AI test: " + (st.added ? "filled " + plural(st.added, "gap", "gaps") + " from what you said. " : "") +
+      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") : "Your AI can start right away.");
+    el.hidden = false;
+  }   /* every Flash said busy: wait this long, then go around again */
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
@@ -1934,7 +2056,7 @@ export function startApp() {
     stopFlashWait();
     stopSlowWrite();
     /* The clean step is still going (rare, it started with the questions): wait for it. */
-    if (session.cleanP && session.clean && session.clean.status === "running") {
+    if (session.cleanP && prepRunning()) {
       setBusy(true, "Finishing the cleanup...");
       showWriting(session.title);
       setSteps(document.getElementById("resultTrack"), "clean", session.mode === "Quick mode" || !(session.questions && session.questions.length));
@@ -1944,7 +2066,7 @@ export function startApp() {
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
-    session.polished = false; session.checked = false; session.cooking = false;
+    session.polished = false; session.checked = false; session.cooking = false; session.standin = null;
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
     session.today = todayText();
@@ -1983,7 +2105,7 @@ export function startApp() {
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
       /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
-      var before = qualityCheck(draft);
+      var before = fullCheck(draft);
       if (!before.score) return showWritten(draft, r, { status: "none" }, before);
       session.polished = true;
       setSteps(resultProg.closest(".tracker"), "polish", skipAsk);
@@ -1991,9 +2113,10 @@ export function startApp() {
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
       document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
       var t0 = Date.now();
-      return askGemini(repairPrompt(draft, session.raw, withMem(session.answers), before), false, writeModels(true), "low", null, 60000).then(function (r2) {
+      var asks = { dropped: before.dropped.concat(before.facts), stray: before.stray, missingNums: before.missingNums };
+      return askGemini(repairPrompt(draft, session.raw, withMem(session.answers), asks), false, writeModels(true), "low", null, 60000).then(function (r2) {
         if (run !== writeRun) { setBusy(false); return; }
-        var fixed = cleanPrompt(r2.text), after = qualityCheck(fixed);
+        var fixed = cleanPrompt(r2.text), after = fullCheck(fixed);
         var secs = Math.round((Date.now() - t0) / 100) / 10;
         if (isBetter(after, before, fixed, draft)) return showWritten(fixed, r, { status: "fixed", secs: secs, model: r2.model, before: before, after: after }, after);
         showWritten(draft, r, { status: "kept original", secs: secs, model: r2.model, before: before }, before);
@@ -2013,7 +2136,7 @@ export function startApp() {
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, write_model: r.model, thinking: depthWords(depth, r.model), write_s: Math.round(r.ms / 100) / 10, write_tokens: r.tokens, thinking_tokens: r.thinkingTokens,
           hidden_s: (session.intakeAway || 0) + r.away >= 1000 ? Math.round(((session.intakeAway || 0) + r.away) / 100) / 10 : null,
           detours: (r.history || []).join("; ").replace(/gemini-/g, ""), words_out: words(prompt), core: core.active, outcome: "ok",
-          coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length,
+          coach: assess(session.raw).score, xray_pct: check.pct, xray_dropped: check.dropped.length, xray_stray: check.stray.length, ledger_missing: (check.facts || []).length,
           repair: rep.status, repair_s: rep.secs != null ? rep.secs : null, lessons_v: session.lessonsV || 0, busy_plan: session.busyPlan || null,
           round: session.round || null, total_s: offset ? Math.round(session.workSecs * 10) / 10 : null, slow_switch: session.slowSwitch || null });
         session.slowSwitch = null;
@@ -2021,16 +2144,28 @@ export function startApp() {
            the bar, run inside the timer. The prompt comes up when they're done, or after
            CHECK_MAX at most; anything still going then finishes in the background like before. */
         session.cooking = true;
-        var job = gradeRun(prompt, run, r.model);
-        if (!job) return reveal(0);
+        var doStand = !quick, grading = testLog.on();
+        if (!doStand && !grading) return reveal(0);
         session.checked = true;
         setSteps(resultProg.closest(".tracker"), "check", skipAsk);
-        eta.phase("Check \u00b7 grading the prompt" + (lessons.list.length ? " against " + lessons.list.length + " lessons" : ""), CHECK_SECS);
-        setBusy(true, "\ud83c\udfaf Checking the quality...");
-        document.getElementById("resultHead").textContent = "\ud83c\udfaf Checking the quality...";
+        setBusy(true, "\ud83c\udfaf Checking it like your AI would...");
+        document.getElementById("resultHead").textContent = "\ud83c\udfaf Checking it like your AI would...";
         var t0 = Date.now(), shown = false;
         var cap = setTimeout(go, CHECK_MAX * TIME_SCALE);
-        job.then(go, go);
+        if (doStand) eta.phase("Check \u00b7 a stand-in AI looks for gaps", STANDIN_SECS, techOn() ? liteCrew(1)[0] : "");
+        (doStand ? standIn(prompt) : Promise.resolve(null)).then(function (st) {
+          if (shown || run !== writeRun) return;
+          if (st) {
+            session.standin = st;
+            if (st.prompt) session.basePrompt = st.prompt;
+            if (pendingRun) { pendingRun.standin = st.status; pendingRun.standin_gaps = st.gaps; pendingRun.standin_added = st.added; pendingRun.standin_open = st.open.length; pendingRun.standin_s = st.secs; pendingRun.words_out = words(session.basePrompt); }
+          }
+          if (!grading) return go();
+          eta.phase("Check \u00b7 grading the prompt" + (lessons.list.length ? " against " + lessons.list.length + " lessons" : ""), CHECK_SECS);
+          var job = gradeRun(session.basePrompt, run, r.model);
+          if (!job) return go();
+          job.then(go, go);
+        });
         function go() {
           if (shown) return;
           shown = true;
@@ -2058,6 +2193,7 @@ export function startApp() {
           session.writeStart = null;
           if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
           showRepairNote(rep);
+          showGapNote(session.standin);
           /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
           if (memory.active) {
             var offer = [];
@@ -2447,7 +2583,7 @@ export function startApp() {
     if (!rep || rep.status === "none") { el.hidden = true; el.textContent = ""; return; }
     var parts = [];
     if (rep.status === "fixed") {
-      var added = rep.before.dropped.length - rep.after.dropped.length + rep.before.missingNums.length - rep.after.missingNums.length;
+      var added = rep.before.dropped.length - rep.after.dropped.length + rep.before.missingNums.length - rep.after.missingNums.length + (rep.before.facts || []).length - (rep.after.facts || []).length;
       var removed = rep.before.stray.length - rep.after.stray.length;
       if (added > 0) parts.push("added " + plural(added, "detail you said", "details you said"));
       if (removed > 0) parts.push("removed " + plural(removed, "made-up number", "made-up numbers"));

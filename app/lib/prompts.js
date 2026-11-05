@@ -77,7 +77,7 @@ export const ANALYZE = [
   "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
   "",
   "Respond with JSON only, in exactly this shape:",
-  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}}',
+  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}, "shape": {"success": "one plain line on what a great result would look like for them, judged by what they said (a suggestion, never a new requirement)", "format": "a fitting format and length for the answer, in words, fitted to this request (for example: a short numbered plan, about one screen)"}}',
   "",
   "RAW THOUGHTS:",
   '"""'
@@ -97,6 +97,47 @@ export const CLEAN = [
   "RAW THOUGHTS:",
   '"""'
 ].join("\n");
+
+/* Fact ledger (v2.1.20, #44): a Flash-Lite model lists what the prompt must keep while the
+   intake and the clean step run. Flash gets it as a must-include list, and the phone checks
+   the finished prompt against it for free. The phone drops any item the raw words don't back. */
+export const LEDGER = [
+  "LEDGER STEP. Below are a person's raw thoughts. List every item a prompt built from them must keep so nothing they said gets lost.",
+  "Include facts, names, places, numbers, dates, times, amounts, versions, limits, preferences, things to avoid, and each thing they ask for. Keep a hedge with its item (for example: budget maybe $60).",
+  "One item per line, starting with \"- \". Each item under 12 words, in their own words, with every number exactly as they wrote it.",
+  "At most 20 items. Skip filler, feelings, and small talk. Never add anything they did not say. No intro and no closing line.",
+  "",
+  "RAW THOUGHTS:",
+  '"""'
+].join("\n");
+
+/* Stand-in AI test (v2.1.20, #45): a Flash-Lite model plays the AI that will receive the
+   prompt and lists what it would still have to ask or guess. Answered gaps get filled from
+   the person's own words; the rest are shown to the person. */
+export const STANDIN = [
+  "STAND-IN TEST. You are the AI assistant that will receive the prompt below from a person. Before you start, list what you would still have to ask them, or would have to guess, to do an excellent job.",
+  "Only real gaps that would clearly change your answer. Not style choices, not things the prompt already says, and not things a good assistant can sensibly decide on its own.",
+  "At most 4. If you could start right away and do an excellent job, return an empty list.",
+  'Respond with JSON only, in exactly this shape: {"gaps": [{"question": "the short question you would ask them"}]}',
+  "",
+  "PROMPT YOU RECEIVED:",
+  '"""'
+].join("\n");
+export function gapFillPrompt(prompt, gaps, raw, answers) {
+  const out = [
+    "You are improving a prompt by adding a few short lines. Keep every existing line exactly as written, word for word, in the same order. Do not reword, merge, or remove anything.",
+    "An AI reading this prompt said it would still need to know the things below. For each one, look in the person's raw thoughts and answers. If they already said it, add one short line with that fact, in their meaning, where it fits. If they did not say it, skip it: never guess or invent.",
+    "Do not add numbers, people, devices, or requirements they did not say. If none of these are answered below, return the prompt unchanged. Output only the full prompt: no title, no commentary, and no code fences.",
+    "",
+    "GAPS AN AI FOUND:"
+  ];
+  gaps.forEach((g, i) => out.push((i + 1) + ". " + g));
+  out.push("", "RAW THOUGHTS:", '"""', raw, '"""');
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT TO IMPROVE:", '"""', prompt, '"""');
+  return out.join("\n");
+}
 
 export const WRITE = [
   "You are a world-class prompt engineer. Turn a person's raw thoughts and their answers into one complete, ready-to-paste prompt for any AI assistant, such as ChatGPT, Claude, or Gemini.",

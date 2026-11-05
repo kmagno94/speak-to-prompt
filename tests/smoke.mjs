@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'grader: never the model',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
@@ -100,6 +100,25 @@ async function page(opts = {}) {
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
+    }
+    /* Fact ledger: no items unless opts.ledger (array of lines) */
+    if (/^LEDGER STEP\./.test(ask)) {
+      (p.ledgers = p.ledgers || []).push({ model, text: ask });
+      const out = (opts.ledger || []).map(l => '- ' + l).join('\n') || 'none';
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 120 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
+    }
+    /* Stand-in AI test: no gaps unless opts.gaps (array per round, or one array) */
+    if (/^STAND-IN TEST\./.test(ask)) {
+      (p.standins = p.standins || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.standinFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const per = opts.gaps && Array.isArray(opts.gaps[0]) ? opts.gaps[Math.min(p.standins.length - 1, opts.gaps.length - 1)] : (opts.gaps || []);
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 120 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ gaps: per.map(q => ({ question: q })) }) }] } }] }) });
+    }
+    if (/GAPS AN AI FOUND:/.test(ask)) {
+      const cur = (ask.split('PROMPT TO IMPROVE:\n\"\"\"\n')[1] || '').replace(/\n\"\"\"\s*$/, '');
+      (p.fills = p.fills || []).push({ model, text: ask });
+      const out = opts.gapFillFn ? opts.gapFillFn(cur, p.fills.length) : cur;
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
     }
     /* Prep crew clean step: echoes the raw thoughts unless opts.clean / cleanFn says otherwise */
     if (/^CLEAN STEP\./.test(ask)) {
@@ -243,10 +262,10 @@ await check('cooking: Polish and Check run inside the timer, and the prompt only
   const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
   expect(cls.includes('polish:done') && cls.includes('check:done') && cls.includes('ready:done'), 'Polish and Check are steps on the timer: ' + cls.join());
   expect(p.grades.length >= 1 && await p.isVisible('#output') && await p.isVisible('#gradeNote'), 'graded before it showed, and everything shows at Ready');
-  // Run stats off: no grade, so Check stays hidden
+  // Quick mode with run stats off: no stand-in and no grade, so Check stays hidden
   const q = await page({ intake });
-  await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
-  expect(await q.$eval('#resultTrack li[data-step=check]', el => el.hidden) && !q.grades.length, 'no Check step without run stats');
+  await withKey(q); await q.check('#quickMode'); await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#resultTrack li[data-step=check]', el => el.hidden) && !q.grades.length && !(q.standins || []).length, 'no Check step in Quick mode without run stats');
   // A slow grade never holds the prompt past 25 seconds
   const r = await page({ intake, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
   await r.route(/relay\.test/, x => x.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
@@ -256,6 +275,39 @@ await check('cooking: Polish and Check run inside the timer, and the prompt only
   await withKey(r); await r.fill('#thoughts', 'plan my week'); await r.click('#build');
   for (let i = 0; i < 40 && !(await r.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await r.clock.runFor(1000); await r.waitForTimeout(30); }
   expect(await r.evaluate(() => document.getElementById('madeBy').textContent.length > 0) && await r.isVisible('#output'), 'the prompt comes up after the check cap even if the grade hangs');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('quality crew: the fact ledger is a must-keep list the phone checks, the intake suggests success and format, and a stand-in AI fills gaps you already answered (v2.1.20)', async () => {
+  const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite'];
+  const memo = 'ok so I want to plan a taco night for 6 people on friday around 7 and I think the budget is maybe $60 and my cousin Ana is vegetarian, oh and it is at my place in Albertson';
+  const intake = { title: 'Taco Night', need: 'N', category: 'Ideas', complexity: 'simple', questions: [], shape: { success: 'a plan I can shop from today', format: 'a short checklist, about one screen' } };
+  const W = 'You are a party planner.\nContext: I am hosting a taco night for 6 people on Friday around 7 with a budget of maybe $60.\nTask: Plan the menu and a shopping list.\nStart right away.';
+  const ledger = ['taco night for 6 people', 'Friday around 7', 'budget maybe $60', 'cousin Ana is vegetarian', 'hosted at my place in Albertson', 'a made up thing about 99 balloons'];
+  const p = await page({ models, intake, write: W, ledger, repair: W.replace('Task:', 'My cousin Ana is vegetarian, and it is at my place in Albertson.\nTask:'),
+    gaps: [['Does anyone else have diet limits?', 'Do you want a timeline for the night?'], []], gapFillFn: (cur, n) => n === 1 ? cur.replace('Start right away.', 'Ana is the only vegetarian I mentioned.\nStart right away.') : cur });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', memo); await p.click('#build'); await done(p);
+  const w = p.calls.filter(c => !c.intake).pop();
+  // 1. Ledger: on a third Flash-Lite model, an item the raw words don't back (99 balloons) is dropped, the rest go to Flash as a must-keep list
+  expect(p.ledgers && p.ledgers[0].model === 'gemini-2.5-flash-lite' && p.cleans[0].model === 'gemini-3.1-flash-lite', 'ledger on the 3rd Lite, clean on the 2nd: ' + (p.ledgers || []).map(c => c.model).join());
+  expect(/MUST-KEEP CHECKLIST[\s\S]*cousin Ana is vegetarian/.test(w.text) && !/99 balloons/.test(w.text), 'must-keep list reaches the writer, minus the unbacked item');
+  // 2. Coverage check: what the prompt missed from the ledger goes to Polish by name
+  expect(p.repairs.length && /cousin Ana is vegetarian/.test(p.repairs[0].text) && /Albertson/.test(p.repairs[0].text), 'missing ledger items go to Polish');
+  // 3. Shape: success and format suggestions reach the writer as a default
+  expect(/SUGGESTED SHAPE[\s\S]*a plan I can shop from today[\s\S]*about one screen/.test(w.text), 'shape reaches the writer');
+  // 4. Stand-in: JSON on Flash-Lite, the answered gap is filled, round 2 finds none, and the prompt shows with the line
+  expect(p.standins && p.standins.length === 2 && p.standins.every(x => /lite/.test(x.model) && x.json), 'stand-in runs twice on Flash-Lite: ' + (p.standins || []).map(x => x.model).join());
+  expect(/Ana is the only vegetarian I mentioned/.test(await p.inputValue('#output')), 'filled gap is in the prompt at Ready');
+  expect(/Stand-in AI test: filled 1 gap/.test(await p.textContent('#gapNote')), 'gap note says what it did: ' + await p.textContent('#gapNote'));
+  // 5. A gap nobody answered is never guessed: it's shown to you instead
+  const q = await page({ models, intake, write: W, gaps: ['Do you want drinks included?'] });
+  await withKey(q); await q.fill('#thoughts', memo); await q.click('#build'); await done(q);
+  expect(await q.inputValue('#output') === W && /Your AI may still ask: Do you want drinks included\?/.test(await q.textContent('#gapNote')), 'unanswered gap is shown, not guessed');
+  // 6. A fill that rewrites lines or adds a number is thrown away
+  const r = await page({ models, intake, write: W, gaps: ['How much spice?'], gapFillFn: (cur) => cur.replace('budget of maybe $60', 'budget of $75') + '\nMake it spicy.' });
+  await withKey(r); await r.fill('#thoughts', memo); await r.click('#build'); await done(r);
+  expect(await r.inputValue('#output') === W, 'a fill that changed a line is not kept');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
 });
 

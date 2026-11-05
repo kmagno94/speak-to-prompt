@@ -2,6 +2,33 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.20",
+      "date": "2026-11-04",
+      "title": "Quality crew: fact ledger, stand-in AI, shape up front",
+      "items": [
+        "Fact ledger (#44): while Read and Clean run, another Flash-Lite model lists everything the prompt must keep (facts, numbers, dates, limits, hedges, asks). The phone drops any item your words don't back, Flash writes with the rest as a must-keep list, and then the phone ticks each one off in the finished prompt. Anything missing goes to Polish by name.",
+        "Stand-in AI test (#45): in Check, a Flash-Lite model pretends to be the AI that will get your prompt and lists what it would still have to ask or guess. Another Flash-Lite model adds lines only for gaps you already answered, and the phone keeps them only if every original line stayed and no new numbers came in. Up to 2 rounds. Gaps you never answered are never guessed; a note under the prompt tells you what your AI may still ask.",
+        "Success + format up front (#46): Read now also suggests what a great result looks like and a fitting format and length, so Flash writes them in the first time. They're marked as suggestions, and your own words always win.",
+        "The Flash-Lite work is spread out: Read on the 1st Flash-Lite model, Clean on the 2nd, the ledger on a 3rd when your key has one, the stand-in on the 2nd, and fixes on the 1st. The page now uses up to 3 Flash-Lite models. Flash still only writes.",
+        "Check now runs on every Normal and Rework prompt (the stand-in), with the grade added when run stats are on. The tracker's Clean step is now called Prep, since it covers Clean and the ledger. Quick mode stays fast: no stand-in."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "Prep, then Ask, Write, maybe Polish, then Check with the clock running. At Ready the prompt keeps 6 tacos, 4 to 5 bucks, March, Instagram only, and La Esquinita, and says what a great result looks like and how long it should be."
+        },
+        {
+          "say": "Look under the prompt.",
+          "see": "If the stand-in found gaps: a Stand-in AI test note saying what it filled, or what your AI may still ask. No note when it found none."
+        },
+        {
+          "say": "Switch to Quick mode and build the same note.",
+          "see": "No Check step (unless run stats is on), and it's as fast as before."
+        }
+      ]
+    },
+    {
       "version": "2.1.19",
       "date": "2026-11-04",
       "title": "Polish and Check inside the timer",
