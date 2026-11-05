@@ -1577,19 +1577,52 @@ export function startApp() {
      Ask, then Write on Flash, then Polish (Auto-Repair on Flash-Lite, shown only on runs that
      need it, #36), then Check (the quality grade and its label fix, run stats on, v2.1.19),
      then Ready. Clean keeps its own state because it can finish during Ask. */
+  /* Sections (v2.1.20): the seven cooking steps are grouped into four dots so the row stays
+     calm on a phone: Prep (Read + Clean + the fact ledger), Ask, Write, and Finish (Polish +
+     Check, shown only when either runs). The step inside a section shows on the detail line,
+     and at Ready a time strip shows how long each part took. */
   var STEPS = ["read", "clean", "ask", "write", "polish", "check", "ready"];
+  var GROUP = { read: "prep", clean: "prep", ask: "ask", write: "write", polish: "finish", check: "finish", ready: "done" };
+  var GROUPS = ["prep", "ask", "write", "finish", "done"];
   function setSteps(track, active, skipAsk) {
-    var at = STEPS.indexOf(active), cs = prepStatus();
+    var at = GROUPS.indexOf(GROUP[active] || active), cs = prepStatus();
     Array.prototype.forEach.call(track.querySelectorAll("li"), function (li) {
-      var step = li.getAttribute("data-step"), i = STEPS.indexOf(step);
-      var cls = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
-      if (step === "clean" && cs) cls = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
-      if (step === "polish") li.hidden = !(active === "polish" || (session && session.polished));
-      if (step === "check") li.hidden = !(active === "check" || (session && session.checked));
+      var g = li.getAttribute("data-step"), i = GROUPS.indexOf(g);
+      var cls = g === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
+      if (g === "prep" && cs === "running") cls = "active";   /* Clean or the ledger can still be going during Ask */
+      if (g === "finish") li.hidden = !(GROUP[active] === "finish" || (session && (session.polished || session.checked)));
       li.className = cls;
       if (cls === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
     });
+    var strip = track.querySelector(".timestrip");
+    if (strip && active !== "ready") strip.hidden = true;
   }
+  /* Time strip at Ready: one bar split by how long each part took (Prep, Write, Polish,
+     Check), with a small legend. Machine time only; your answering time isn't counted. */
+  function showTimeStrip(track, parts) {
+    var strip = track.querySelector(".timestrip");
+    if (!strip) return;
+    parts = parts.filter(function (x) { return x[3]; });   /* every part that ran, even a quick one */
+    var total = parts.reduce(function (a, x) { return a + x[1]; }, 0);
+    strip.textContent = "";
+    if (parts.length < 2) { strip.hidden = true; return; }
+    total = total || parts.length;
+    var bar = document.createElement("div"); bar.className = "tsbar";
+    var legend = document.createElement("div"); legend.className = "tslegend";
+    parts.forEach(function (x) {
+      var seg = document.createElement("i"); seg.className = "ts-" + x[0];
+      seg.style.flexGrow = String(Math.max(x[1] || 0, total * 0.04));
+      seg.title = x[2] + " " + secsText(x[1]);
+      bar.appendChild(seg);
+      var item = document.createElement("span"); item.className = "ts-" + x[0];
+      item.textContent = x[2] + " " + secsText(x[1]);
+      legend.appendChild(item);
+    });
+    strip.appendChild(bar); strip.appendChild(legend);
+    strip.setAttribute("aria-label", "Time per part: " + parts.map(function (x) { return x[2] + " " + secsText(x[1]); }).join(", "));
+    strip.hidden = false;
+  }
+  function secsText(s) { return s < 10 ? (Math.round(s * 10) / 10) + "s" : Math.round(s) + "s"; }
   /* Prep (the "clean" step on the tracker) is the clean step plus the fact ledger, side by side. */
   function prepStatus() {
     var c = session && session.clean ? session.clean.status : "", l = session && session.ledger ? session.ledger.status : "";
@@ -1602,11 +1635,13 @@ export function startApp() {
   /* The clean step finished: tick it on whichever tracker is showing. */
   function refreshClean() {
     ["buildTrack", "resultTrack"].forEach(function (id) {
-      var li = document.querySelector("#" + id + " li[data-step='clean']"), cs = prepStatus();
-      if (!li || !cs) return;
-      li.className = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
+      var li = document.querySelector("#" + id + " li[data-step='prep']");
+      /* Prep ticks done once Read is back and Clean and the ledger are finished. */
+      if (!li || li.className !== "active" || prepRunning() || !session || session.intakeMs == null) return;
+      li.className = "done"; li.removeAttribute("aria-current");
     });
   }
+
   /* offset: seconds already spent (Rework round 1), so elapsed shows the running total. */
   function startEstimate(bar, label, usual, step, skipAsk, offset) {
     var track = bar.closest(".tracker");
@@ -1659,7 +1694,7 @@ export function startApp() {
     stopTicker();
     cook.done = true;
     setSteps(track, "ready", skipAsk);
-    track.querySelector("li[data-step='ready']").className = "done";
+    track.querySelectorAll("li:not([hidden])").forEach(function (li) { if (li.className !== "skip") li.className = "done"; });
     setProgress(bar, "pct", 100);
     track.querySelector(".el").textContent = clock(secs);
     var right = track.querySelector(".right");
@@ -2061,8 +2096,9 @@ export function startApp() {
       showWriting(session.title);
       setSteps(document.getElementById("resultTrack"), "clean", session.mode === "Quick mode" || !(session.questions && session.questions.length));
       document.getElementById("resultTrack").hidden = false;
-      var waitRun = ++writeRun;
-      return session.cleanP.then(function () { if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick); } });
+      var waitRun = ++writeRun, waitT0 = Date.now();
+      return session.cleanP.then(function () {
+        session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick); } });
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
@@ -2183,7 +2219,10 @@ export function startApp() {
           var secs = Math.max(1, Math.round(r.ms / 1000 + more)) + "s";
           /* Elapsed matches the total: Polish and Check count, and the line under Done says how much they added. */
           finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset);
-          resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");   /* at Ready, the line says how it was written again, not the last step */
+          resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");
+          showTimeStrip(resultProg.closest(".tracker"), [
+            ["prep", ((session.intakeMs || 0) + (session.prepWaitMs || 0)) / 1000, "Prep", !(session.round >= 2) && session.intakeMs != null],
+            ["write", r.ms / 1000, "Write", true], ["polish", rep.secs || 0, "Polish", !!session.polished], ["check", checkSecs || 0, "Check", !!session.checked]]);   /* at Ready, the line says how it was written again, not the last step */
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
           showResult(extras(finalPrompt), techOn()   /* core */

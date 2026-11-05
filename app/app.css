@@ -272,6 +272,19 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .tracker { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
 .tracker li[hidden] { display: none; }
+/* Time strip at Ready (v2.1.20): how long each part took. */
+.timestrip { margin-top: 10px; display: grid; gap: 6px; }
+.timestrip[hidden] { display: none; }
+.tsbar { display: flex; height: 10px; border-radius: var(--r-pill); overflow: hidden; gap: 2px; background: var(--line); }
+.tsbar i { display: block; flex-basis: 0; min-width: 6px; }
+.tslegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: var(--fs-xs); color: var(--muted); }
+.tslegend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
+.tslegend span { color: var(--muted); }
+.ts-prep { background: var(--muted); } .tslegend .ts-prep::before { background: var(--muted); }
+.ts-write { background: var(--accent); } .tslegend .ts-write::before { background: var(--accent); }
+.ts-polish { background: var(--warn); } .tslegend .ts-polish::before { background: var(--warn); }
+.ts-check { background: var(--ok); } .tslegend .ts-check::before { background: var(--ok); }
+.tslegend span[class^="ts-"] { background: none; }
 /* Cooking (v2.1.19): the prompt card shows only its heading, the tracker, round banner, and messages until the prompt is ready. */
 #result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round) { display: none !important; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }

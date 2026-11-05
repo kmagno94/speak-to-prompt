@@ -218,11 +218,14 @@ await check('prep crew: the second Flash-Lite cleans the thoughts while the firs
   expect(!/\bum\b/.test(write.text.split('RAW THOUGHTS:')[1]) && /lightly cleaned by an earlier step/.test(write.text) && /budget is maybe 60 bucks/.test(write.text), 'writer should get the clean words with every detail and hedge');
   expect(!/Flash/.test(p.cleans[0].model.replace('flash-lite', '')) , 'clean never uses Flash');
   const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
-  expect(cls.includes('clean:done') && cls.includes('ready:done') && (p.repairs.length ? cls.includes('polish:done') : cls.some(c => c.startsWith('polish') && c.endsWith(':hidden'))), 'tracker: Clean done, Polish only when Auto-Repair ran: ' + cls.join());
+  expect(cls.join() === 'prep:done,ask:skip,write:done,finish:done', 'tracker: four sections, Prep and Finish done: ' + cls.join());
+  const legend = await p.textContent('#resultTrack .timestrip');
+  expect(/Prep [\d.]+s/.test(legend) && /Write [\d.]+s/.test(legend) && (p.repairs.length ? /Polish/.test(legend) : !/Polish/.test(legend)), 'time strip lists each part, Polish only when it ran: ' + legend);
   const s2 = await page({ intake, models, write: 'Act as a party planner. Context: I am hosting a taco night for 6 people on Friday around 7, budget maybe $60, one vegetarian guest. Task: plan the menu and shopping list. Format: a short checklist under 200 words. A great result is a plan I can shop from today. Start right away and ask at most one short question only if something essential is missing.' });
   await withKey(s2); await s2.fill('#thoughts', memo); await s2.click('#build'); await done(s2);
   const cls2 = await s2.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
-  expect(s2.repairs.length || cls2.some(c => c === 'polish::hidden'), 'Polish stays hidden when Auto-Repair does not run: ' + cls2.join() + ' repairs ' + s2.repairs.length);
+  const legend2 = await s2.textContent('#resultTrack .timestrip');
+  expect(s2.repairs.length || !/Polish/.test(legend2), 'no Polish in the time strip when Auto-Repair does not run: ' + legend2 + ' repairs ' + s2.repairs.length);
   // 2. A clean version that lost a number is not used: the raw words go to the writer
   const q = await page({ intake, models, cleanFn: (raw) => unfill(raw).replace('60', 'sixty') });
   await withKey(q); await q.fill('#thoughts', memo); await q.click('#build'); await done(q);
@@ -230,8 +233,8 @@ await check('prep crew: the second Flash-Lite cleans the thoughts while the firs
   // 3. A short note skips the clean step, and the tracker shows it skipped
   const r = await page({ intake, models });
   await withKey(r); await r.fill('#thoughts', 'plan a taco night'); await r.click('#build'); await done(r);
-  const rc = await r.$$eval('#resultTrack li[data-step=clean]', l => l[0].className);
-  expect(!(r.cleans || []).length && rc === 'skip', 'short notes skip it: ' + rc);
+  const rc = await r.$$eval('#resultTrack li[data-step=prep]', l => l[0].className);
+  expect(!(r.cleans || []).length && rc === 'done', 'short notes skip the clean step, Prep still ticks off after Read: ' + rc);
   // 4. Clean fails: the prompt still gets written from the raw words
   const f = await page({ intake, models, cleanFail: true });
   await withKey(f); await f.fill('#thoughts', memo); await f.click('#build'); await done(f);
@@ -256,17 +259,19 @@ await check('cooking: Polish and Check run inside the timer, and the prompt only
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build');
   // While it polishes: the card shows the tracker with Polish, and no prompt or Quality check yet
-  await p.waitForFunction(() => document.querySelector('#resultTrack li[data-step=polish]')?.className === 'active', null, { timeout: 15000 });
+  await p.waitForFunction(() => document.querySelector('#resultTrack li[data-step=finish]')?.className === 'active' && /Polish/.test(document.querySelector('#resultTrack .detail').textContent), null, { timeout: 15000 });
   expect(!(await p.isVisible('#output')) && !(await p.isVisible('#gradeNote')) && !(await p.textContent('#madeBy')), 'nothing shows while it polishes');
   expect(!/Done/.test(await p.textContent('#resultTrack .left')), 'the timer is still running');
   await done(p);
   const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
-  expect(cls.includes('polish:done') && cls.includes('check:done') && cls.includes('ready:done'), 'Polish and Check are steps on the timer: ' + cls.join());
+  expect(cls.includes('finish:done') && !cls.some(c => /active/.test(c)), 'Finish (Polish + Check) is a section on the timer: ' + cls.join());
+  const strip = await p.textContent('#resultTrack .timestrip');
+  expect(/Write [\d.]+s/.test(strip) && /Polish [\d.]+s/.test(strip) && /Check [\d.]+s/.test(strip) && await p.isVisible('#resultTrack .tsbar'), 'time strip shows how long Write, Polish and Check took: ' + strip);
   expect(p.grades.length >= 1 && await p.isVisible('#output') && await p.isVisible('#gradeNote'), 'graded before it showed, and everything shows at Ready');
   // Quick mode with run stats off: no stand-in and no grade, so Check stays hidden
   const q = await page({ intake });
   await withKey(q); await q.check('#quickMode'); await q.fill('#thoughts', 'plan my week'); await q.click('#build'); await done(q);
-  expect(await q.$eval('#resultTrack li[data-step=check]', el => el.hidden) && !q.grades.length && !(q.standins || []).length, 'no Check step in Quick mode without run stats');
+  expect(await q.$eval('#resultTrack li[data-step=finish]', el => el.hidden) && !q.grades.length && !(q.standins || []).length, 'no Finish section in Quick mode without run stats');
   // A slow grade never holds the prompt past 25 seconds
   const r = await page({ intake, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
   await r.route(/relay\.test/, x => x.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
