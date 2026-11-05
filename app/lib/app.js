@@ -2088,7 +2088,8 @@ export function startApp() {
     var models = busyP ? busyOrder(baseModels, busyP.start) : baseModels;
     var movedStart = busyP && models[0] !== baseModels[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
-    var eta = startEstimate(resultProg, (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : ""), est.secs, "write", skipAsk, offset);
+    var writeLabel = (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : "");
+    var eta = startEstimate(resultProg, writeLabel, est.secs, "write", skipAsk, offset);
     snapTo(document.getElementById("resultTrack"));
     /* Each writer gets 30 seconds on its own (SPEC 11/04), then the next one starts too
        and the first good prompt wins. Busy hours can start the backup sooner. */
@@ -2182,6 +2183,7 @@ export function startApp() {
           var secs = Math.max(1, Math.round(r.ms / 1000 + more)) + "s";
           /* Elapsed matches the total: Polish and Check count, and the line under Done says how much they added. */
           finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset);
+          resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");   /* at Ready, the line says how it was written again, not the last step */
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
           showResult(extras(finalPrompt), techOn()   /* core */
