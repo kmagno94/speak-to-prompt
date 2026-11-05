@@ -2,6 +2,39 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.18",
+      "date": "2026-11-04",
+      "title": "Prep crew + cooking steps, no rest times",
+      "items": [
+        "Prep crew (backlog #42): while one Flash-Lite model reads your thoughts and picks questions, the other Flash-Lite model cleans them at the same time (filler, false starts, and repeats out; every fact, number, and hedge kept). Flash then writes the prompt from the clean words. It adds no wait, because it runs during the reading and your answers.",
+        "A free check on the phone keeps your raw words instead if the clean version lost a number or came out much shorter or longer. Notes under 20 words skip it. It never uses Flash, so the small Flash allowance is saved for writing.",
+        "The progress tracker shows the cooking steps: Read, Clean, Ask, Write, Polish, Ready. Clean ticks off on its own, even mid-questions, and Polish only shows on runs where Auto-Repair fixes something (#36).",
+        "No more rest times. A busy or slow Flash model is just tried again: all three get a turn, then it goes around again every 20 seconds until it writes, you tap Switch to quick at 2:00, or the quick model takes over at 3:00. The only thing remembered is a model Google says is used up for today.",
+        "The questions step asks Gemini for less (the clean transcript moved to the clean step), so questions can show up a bit faster. Save to Notes uses the clean step's version.",
+        "Staging only: #flashbusy now makes every Flash model say busy for 5 minutes without sending anything. Combine with #slowtest (like #flashbusy-slowtest) to see it all in 18 seconds."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "The tracker shows Read and Clean together; Clean gets a check mark. Ask, then Write; Polish shows only if a fix runs. The prompt has no um or like in its Context."
+        },
+        {
+          "say": "Type a short note (under 20 words) and build.",
+          "see": "Clean is crossed out (skipped) and everything else works like before."
+        },
+        {
+          "say": "Open the staging page with #flashbusy-slowtest on the end, tap Normal, build the Try it note.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "A note says the busy Flash test is on. Switch to quick shows around 0:12, and at 0:18 the quick model writes it with a note saying so."
+        },
+        {
+          "say": "Reload the plain staging page and build again.",
+          "see": "A Flash model writes it right away: nothing from the busy test was remembered."
+        }
+      ]
+    },
+    {
       "version": "2.1.17",
       "date": "2026-11-04",
       "title": "30 second turns, Switch to quick at 2:00",

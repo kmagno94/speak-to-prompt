@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, CLEAN, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -150,7 +150,7 @@ export function startApp() {
           detail = s.calls + " request" + (s.calls === 1 ? "" : "s") + " counted, " + n(s.tokens) + " tokens";
         }
         if (lim && s.calls >= lim) s.out = true;
-        /* What's true right now beats the count: a daily limit, Google being busy, or a per-minute pause. */
+        /* What's true right now beats the count: a model Google says is used up for today. */
         var rest = restInfo(m);
         if (rest && rest.why === "day") s.out = true;
         var used = s.out && lim ? lim : s.calls;
@@ -162,10 +162,7 @@ export function startApp() {
         var t = document.createElement("span");
         var assumed = studio && studio.assumed ? studio.assumed.indexOf(m) !== -1 : ASSUMED[m];
         t.textContent = s.out ? "used up today" + (rest && rest.why === "day" ? ", back at 3 AM" : "")
-          : rest && rest.why === "busy" ? "busy at Google, retry in " + rest.mins + " min"
-          : rest && rest.why === "minute" ? "per-minute limit, back in " + rest.secs + "s"
           : lim ? "~" + Math.max(0, lim - s.calls) + " of " + lim + (assumed ? " (assumed)" : "") + " left" : "limit unknown";
-        if (rest && rest.why !== "day" && !s.out) row.className = "m busy";
         var bar = document.createElement("div"); bar.className = "bar";
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
@@ -243,7 +240,9 @@ export function startApp() {
       questions: (session.questions || []).length,
       answered: (session.answers || []).length,
       context: context.active ? context.chosen.length : 0, context_tok: context.tokens,   /* My context: counts only */
-      context_raw_tok: context.active && context.rawTokens !== context.tokens ? context.rawTokens : null, squeeze: session.squeeze || null
+      context_raw_tok: context.active && context.rawTokens !== context.tokens ? context.rawTokens : null, squeeze: session.squeeze || null,
+      clean: session.clean ? session.clean.status + (session.clean.why ? " (" + session.clean.why + ")" : "") : null,   /* prep crew: status, model, time, word count only */
+      clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -653,28 +652,26 @@ export function startApp() {
   }
   setShortcutMode(false);
   window.addEventListener("hashchange", function () { if (location.hash === "#paste") enterPasteMode(); });
-  /* Staging only: #flashbusy rests every Flash model for 5 minutes, to test the
-     "Flash models are busy" ask (#35) and its 3 minute cap without waiting for a real busy hour. */
-  function fakeFlashBusy() {
-    if (!IS_STAGING || location.hash !== "#flashbusy") return;
+  /* Staging test switches (staging only, this tab only, nothing saved). Put either word
+     after # (or both, like #flashbusy-slowtest):
+     - flashbusy: for 5 minutes every Flash model answers "busy" without anything being
+       sent, to see the page keep cycling, Switch to quick at 2:00, and the quick model at 3:00.
+     - slowtest: the timing runs 10x faster (next Flash every 3 seconds, Switch to quick
+       at 0:12, quick model at 0:18). A reload goes back to normal. */
+  var fakeBusyUntil = 0;
+  function stagingSwitches() {
+    var h = location.hash || "";
+    if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    var names = Object.keys(LIMITS).concat(gemini.plan ? gemini.plan.write : []).filter(function (m, i, a) { return !/lite/.test(m) && a.indexOf(m) === i; });
-    names.forEach(function (m) { restModel(m, 5 * 60000, "busy"); });
-    notify("form", "info", "Flash models are resting for 5 minutes", "Staging test. Tap Normal and build a prompt: it waits 3 minutes at most, then the quick model writes it.");
+    var fb = /flashbusy/.test(h), st = /slowtest/.test(h);
+    if (fb) fakeBusyUntil = Date.now() + 5 * 60000;
+    if (st) TIME_SCALE = 0.1;
+    var at = st ? ["0:12", "0:18"] : ["2:00", "3:00"];
+    notify("form", "info", fb && st ? "Busy Flash + 10x timing test is on" : fb ? "Flash models will say busy for 5 minutes" : "Slow-write test is on (10x faster)",
+      "Staging test. Tap Normal and build" + (fb ? ": every Flash model says busy, the page keeps trying them" : " something with a few details") + ", Switch to quick shows at " + at[0] + ", and the quick model writes it at " + at[1] + ". Reload to go back to normal.");
   }
-  window.addEventListener("hashchange", fakeFlashBusy);
-  setTimeout(fakeFlashBusy, 0);
-  /* Staging only: #slowtest runs the slow-write timing 10x faster for this tab (next Flash
-     joins every 3 seconds, Switch to quick at 0:12, quick model at 0:18), so a normal
-     Standard or Complex build is "slow" enough to see it. A reload goes back to normal. */
-  function fakeSlowTest() {
-    if (!IS_STAGING || location.hash !== "#slowtest") return;
-    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    TIME_SCALE = 0.1;
-    notify("form", "info", "Slow-write test is on (10x faster)", "Staging test. Pick Normal and build something with a few details: a new Flash model joins every 3 seconds, Switch to quick shows at 0:12, and the quick model takes over at 0:18. Reload to go back to normal.");
-  }
-  window.addEventListener("hashchange", fakeSlowTest);
-  setTimeout(fakeSlowTest, 0);
+  window.addEventListener("hashchange", stagingSwitches);
+  setTimeout(stagingSwitches, 0);
   window.addEventListener("pageshow", function (e) { if (e.persisted && location.hash === "#paste") enterPasteMode(); });
   (function () {
     var h = location.hash || "";
@@ -1091,13 +1088,13 @@ export function startApp() {
      sees plain words and times. */
   function techOn() { return testLog.on(); }
   function planText(c, model) { var d = depthOf(c); return d.label + (techOn() ? " \u00b7 " + model + " with " + d.words : "") + " \u00b7 " + writeEstimate(DEPTH[c] ? c : "standard").range; }
-  /* Model rest list: a model that just said it was busy (or timed out) sits out
-     for 3 minutes (was 10, too long to sit and wait, v2.1.15 fix), and one at its limit sits out for an hour, so the next run
-     goes straight to a model that's working instead of waiting on the same one.
-     Google has no way to ask "how much is left" with a key, so the page learns
-     from what each model just did. Stored on this device: model names and times only. */
+  /* Used up for today (v2.1.18): rest times are gone. A busy, slow, or per-minute-limited
+     model is simply tried again on the next pass of the cycle. The only thing remembered is
+     a model Google says has hit today's limit, until the daily reset (3 AM Eastern), so a
+     build doesn't keep knocking on a model that can't answer and the page can say when
+     Flash is back. Stored on this device: model names and times only. Older busy and
+     per-minute entries are ignored. */
   var REST_KEY = "stp-model-rest";
-  var REST_BUSY = 3 * 60000;
   function restList() { try { return JSON.parse(localStorage.getItem(REST_KEY) || "{}") || {}; } catch (e) { return {}; } }
   /* why: "busy" (Google overloaded), "minute" (per-minute limit), "day" (daily limit, until 3 AM Eastern). */
   function restModel(model, ms, why) {
@@ -1108,6 +1105,7 @@ export function startApp() {
   function restInfo(model) {
     var x = restList()[model];
     if (typeof x === "number") x = { until: x, why: "busy" };   // older format
+    if (x && x.why && x.why !== "day") return null;   // busy and per-minute rests are retired
     return x && x.until > Date.now() ? { mins: Math.ceil((x.until - Date.now()) / 60000), secs: Math.ceil((x.until - Date.now()) / 1000), why: x.why } : null;
   }
   /* Milliseconds until daily limits reset (midnight Pacific). */
@@ -1141,7 +1139,11 @@ export function startApp() {
   function resting(model) { var r = restInfo(model); return r ? r.mins : 0; }
 
   /* Tries each model in order and resolves to { text, model, ms, history, ... }.
-     - Models resting from a recent problem go to the back of the line.
+     - Models used up for today go to the back of the line.
+     - handle.cycle (Normal and Rework writes): when every model has said busy, it waits
+       a moment and goes around again, until handle.stop() (Switch to quick, or 3:00).
+       Models used up for today drop out of the cycle; a per-minute limit is waited out
+       for that model only. No rest times are saved.
      - Moves on when a model is out of its limit, busy, slower than its limit,
        or sends back nothing.
      - hedgeAfter (writes only): if the model hasn't answered after that many ms,
@@ -1189,7 +1191,7 @@ export function startApp() {
     var history = [];
     var fresh = models.filter(function (m) { return !resting(m); });
     var tired = models.filter(function (m) { return resting(m); });
-    tired.forEach(function (m) { history.push(m + " skipped (resting " + resting(m) + " more min)"); });
+    tired.forEach(function (m) { history.push(m + " skipped (used up today)"); });
     var list = fresh.concat(tired);
     function payload(withThinking, model) {
       var cfg = {};
@@ -1202,9 +1204,11 @@ export function startApp() {
     }
     return new Promise(function (resolve, reject) {
       var next = 0, running = 0, done = false, lastErr = null, live = [], awayTried = {};
+      var dead = {}, waitUntil = {}, pass = 1, pauseT = null;
       function finish(ok, value) {
         if (done) return;
         done = true;
+        clearTimeout(pauseT);
         live.forEach(function (c) { try { c.abort(); } catch (e) {} });
         if (ok) resolve(value); else reject(value);
       }
@@ -1230,8 +1234,27 @@ export function startApp() {
       }
       function startNext() {
         if (done) return;
-        if (next >= list.length) { if (!running) giveUp(); return; }
+        if (next >= list.length) { if (!running) { if (handle && handle.cycle) goAround(); else giveUp(); } return; }
+        var m = list[next];
+        if (dead[m] && handle && handle.cycle) { next++; return startNext(); }
         run(next++, true);
+      }
+      /* Every model said busy: pause, then try them all again (only the ones not used up). */
+      function goAround() {
+        var alive = list.filter(function (m) { return !dead[m]; });
+        if (!alive.length) return giveUp();
+        var now = Date.now(), soonest = Math.min.apply(null, alive.map(function (m) { return waitUntil[m] || 0; }));
+        var wait = Math.max(CYCLE_PAUSE * TIME_SCALE, soonest - now);
+        history.push("every model busy, trying again in " + Math.round(wait / 1000) + "s");
+        pauseT = setTimeout(function () {
+          if (done) return;
+          pass++;
+          var t = Date.now();
+          list = alive.filter(function (m) { return (waitUntil[m] || 0) <= t; }).concat(alive.filter(function (m) { return (waitUntil[m] || 0) > t; }));
+          next = 0;
+          cookSwitch();
+          startNext();
+        }, wait);
       }
       function run(i, withThinking) {
         var model = list[i];
@@ -1249,12 +1272,16 @@ export function startApp() {
         }, hedgeAfter) : null;
         var settled = false;
         function settle() { if (settled) return; settled = true; running--; clearTimeout(timer); clearTimeout(hedge); }
-        callGoogle("models/" + model + ":generateContent", gemini.key, {
+        /* Staging #flashbusy: Flash answers "busy" without anything being sent. */
+        var call = fakeBusyUntil > Date.now() && !/lite/.test(model)
+          ? new Promise(function (res, rej) { setTimeout(function () { var b = new Error("Staging test: Flash busy."); b.status = 503; rej(b); }, 300); })
+          : callGoogle("models/" + model + ":generateContent", gemini.key, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: payload(withThinking, model),
           signal: ctrl ? ctrl.signal : undefined
-        }).then(function (res) {
+        });
+        call.then(function (res) {
           settle();
           if (done) return;
           var um = res.usageMetadata || {};
@@ -1280,22 +1307,22 @@ export function startApp() {
             return run(i, withThinking);
           }
           /* "after Ns" shows how long a model made you wait before the next one took over */
-          if (e.status === "timeout") { history.push(model + " timed out at " + secs + "s"); restModel(model, REST_BUSY, "busy"); }
+          if (e.status === "timeout") history.push(model + " timed out at " + secs + "s");
           else if (e.status === 429) {
             var k = limitKind(e);
             if (k.daily) {
               history.push(model + " was at its daily limit" + (k.value ? " (" + k.value + ")" : ""));
               if (k.value) learnLimit(model, k.value);
-              testLog.request(model, 0, true); restModel(model, msToReset(), "day");
+              testLog.request(model, 0, true); restModel(model, msToReset(), "day"); dead[model] = true;
             } else {
               e.perMinute = true;
               history.push(model + " hit its per-minute limit" + (k.wait ? ", back in " + Math.round(k.wait) + "s" : ""));
-              restModel(model, Math.max(15, k.wait || 60) * 1000, "minute");
+              waitUntil[model] = Date.now() + Math.max(15, k.wait || 60) * 1000 * TIME_SCALE;   /* this build only, nothing saved */
             }
           }
           else if (e.status === "empty") history.push(model + " sent an incomplete answer after " + secs + "s");
           else if (e.status === "network") history.push(model + " couldn't be reached after " + secs + "s");   // not the model's fault, so no rest
-          else if (RETRY.indexOf(e.status) !== -1) { history.push(model + " was unavailable after " + secs + "s"); if (e.status === 503 || e.status === 500) restModel(model, REST_BUSY, "busy"); }
+          else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable after " + secs + "s");
           /* A model that rejects the thinking setting gets one more try without it. */
           if (e.status === 400 && withThinking) return run(i, false);
           if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
@@ -1540,12 +1567,27 @@ export function startApp() {
 
   /* Step tracker with time-based progress: elapsed and an honest estimate of
      what's left. The bar never claims done early (it stops at 95%). */
+  /* Cooking steps (v2.1.18): Read and Clean run side by side on two Flash-Lite models, then
+     Ask, then Write on Flash, then Polish (Auto-Repair on Flash-Lite, shown only on runs that
+     need it, #36), then Ready. Clean keeps its own state because it can finish during Ask. */
+  var STEPS = ["read", "clean", "ask", "write", "polish", "ready"];
   function setSteps(track, active, skipAsk) {
-    var order = ["read", "ask", "write", "ready"], at = order.indexOf(active);
-    Array.prototype.forEach.call(track.querySelectorAll("li"), function (li, i) {
-      var step = li.getAttribute("data-step");
-      li.className = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
-      if (i === at) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    var at = STEPS.indexOf(active), cs = session && session.clean ? session.clean.status : "";
+    Array.prototype.forEach.call(track.querySelectorAll("li"), function (li) {
+      var step = li.getAttribute("data-step"), i = STEPS.indexOf(step);
+      var cls = step === "ask" && skipAsk ? "skip" : i < at ? "done" : i === at ? "active" : "";
+      if (step === "clean" && cs) cls = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
+      if (step === "polish") li.hidden = !(active === "polish" || (session && session.polished));
+      li.className = cls;
+      if (cls === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    });
+  }
+  /* The clean step finished: tick it on whichever tracker is showing. */
+  function refreshClean() {
+    ["buildTrack", "resultTrack"].forEach(function (id) {
+      var li = document.querySelector("#" + id + " li[data-step='clean']"), cs = session && session.clean ? session.clean.status : "";
+      if (!li || !cs) return;
+      li.className = cs === "skipped" ? "skip" : cs === "running" ? "active" : "done";
     });
   }
   /* offset: seconds already spent (Rework round 1), so elapsed shows the running total. */
@@ -1680,6 +1722,37 @@ export function startApp() {
     }, function () { if (session) session.squeeze = "failed"; }).then(function () { setBusy(true, "Reading your thoughts..."); });
   }
 
+  /* Prep crew (v2.1.18, backlog #42): while one Flash-Lite model reads the thoughts and
+     picks questions, the other Flash-Lite model cleans them (filler, false starts, repeats
+     out; every fact, number, and hedge kept). Flash then writes from the clean version.
+     A phone check (free) keeps the raw words instead if the clean version lost a number or
+     came out much shorter or longer. Short notes (under 20 words) skip it. Never Flash, so
+     it never spends the small Flash allowance. Memory only. */
+  var CLEAN_MIN_WORDS = 20, CLEAN_LIMIT = 15000;
+  function cleanOk(raw, text) {
+    if (!text) return "empty";
+    var a = words(raw), b = words(text);
+    if (b < a * 0.35) return "too short";
+    if (b > a * 1.25 + 5) return "too long";
+    var have = text.replace(/,(?=\d{3}\b)/g, "");
+    var lost = (raw.replace(/,(?=\d{3}\b)/g, "").match(/\d+(?:[.:/]\d+)*/g) || []).filter(function (n) { return have.indexOf(n) === -1; });
+    return lost.length ? "lost a number" : "";
+  }
+  function startClean(raw) {
+    var lites = gemini.plan.intake.filter(function (m) { return /lite/.test(m); });
+    if (words(raw) < CLEAN_MIN_WORDS || !lites.length) { session.clean = { status: "skipped" }; return Promise.resolve(); }
+    var order = lites.length > 1 ? [lites[1], lites[0]] : lites, mine = session, t0 = Date.now();
+    mine.clean = { status: "running" };
+    var timer;
+    return Promise.race([
+      askGemini(CLEAN + "\n" + raw + '\n"""', false, order, "auto", null, CLEAN_LIMIT).then(function (r) {
+        var text = cleanPrompt(r.text), why = cleanOk(raw, text);
+        mine.clean = why ? { status: "kept raw", why: why, model: r.model, ms: r.ms } : { status: "ok", text: text, model: r.model, ms: r.ms, words: words(text) };
+      }, function () { mine.clean = { status: "failed", ms: Date.now() - t0 }; }),
+      new Promise(function (res) { timer = setTimeout(function () { if (mine.clean.status === "running") mine.clean = { status: "failed", why: "slow", ms: Date.now() - t0 }; res(); }, CLEAN_LIMIT + 2000); })
+    ]).then(function () { clearTimeout(timer); if (session === mine) refreshClean(); });
+  }
+
   function geminiFlow(raw, key) {
     session = { raw: raw, known: knownText() };
     result.hidden = true;
@@ -1697,6 +1770,8 @@ export function startApp() {
     }).then(function () {
       /* My context goes in after any squeeze, so the question step sees the same version the writer will. */
       intakeText = (context.active ? withContext(base, context.block) : base) + "\n" + raw + '\n"""';
+      session.cleanP = startClean(raw);
+      setSteps(document.getElementById("buildTrack"), "read", false);
       return askGemini(intakeText, true, gemini.plan.intake, "auto", onIntakeModel);
     }).then(function (r) {
       session.intakeModel = r.model; session.intakeMs = r.ms; session.intakeAway = r.away || 0; session.intakeTokens = r.tokens;
@@ -1711,6 +1786,7 @@ export function startApp() {
       session.title = intake.title;
       session.questions = addStackChoice(intake.questions);
       session.note = intake.note;
+      if (session.note && !session.note.transcript && session.cleanP) session.cleanP.then(function () { if (session && session.note && !session.note.transcript && session.clean && session.clean.text) session.note.transcript = session.clean.text; });
       /* memory: only the facts the intake picked go into writing the prompt. */
       session.memFacts = memory.active ? memory.pick(intake.memUse) : [];
       session.memRemember = memory.active ? intake.memRemember : [];
@@ -1749,7 +1825,9 @@ export function startApp() {
   /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
   function writerText() {
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
-    var text = withToday(withLessons(WRITE, lessons.list), session.today) + "\n\nRAW THOUGHTS:\n\"\"\"\n" + session.raw + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    /* Prep crew: the clean step's version (filler out, every detail kept) when it passed the phone check. */
+    var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
+    var text = withToday(withLessons(WRITE, lessons.list), session.today) + (cleaned ? "\n\nThe raw thoughts below were lightly cleaned by an earlier step: filler, false starts, and repeats removed, every detail kept." : "") + "\n\nRAW THOUGHTS:\n\"\"\"\n" + (cleaned || session.raw) + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
     /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     if (context.active) text += "\n\nCONTEXT THE PERSON PICKED FOR THIS REQUEST (it is NOT attached to the prompt, so the prompt has to stand on its own. Work in only the facts from it that this request needs, in plain words, where they fit. Leave out anything that doesn't matter here, never paste it in as a block, and never point to it by its title):\n" + context.block;
@@ -1774,22 +1852,21 @@ export function startApp() {
   var ROTATE_MS = 30000;
   var SLOW_OFFER_MS = 2 * 60000;
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
+  var CYCLE_PAUSE = 20000;   /* every Flash said busy: wait this long, then go around again */
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }
   /* Slow write (11/04): a Flash write still going at 2:00 gets the Switch to quick note,
      and at 3:00 the quick model takes over by itself. The 3 minutes count from the first
-     Write tap of this round; a write that comes back after a busy-Flash wait keeps that
-     wait's deadline (at least 20 seconds more, so it gets a fair try). Memory only. */
+     Write tap of this round (at least 20 seconds more for a write that starts late). Memory only. */
   var slowWrite = null;
   function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } }
   function watchSlowWrite(run, handle) {
     stopSlowWrite();
     var key = session.round || 1, now = Date.now();
     if (!session.writeStart || session.writeStart.round !== key) session.writeStart = { round: key, at: now };
-    var fd = session.flashDeadline && session.flashDeadline.round === key ? session.flashDeadline.at : 0;
     var cap = FLASH_WAIT_MAX * TIME_SCALE;
-    var autoAt = Math.max(now + 20000 * TIME_SCALE, fd || session.writeStart.at + cap);
+    var autoAt = Math.max(now + 20000 * TIME_SCALE, session.writeStart.at + cap);
     var offerAt = Math.max(now, autoAt - (cap - SLOW_OFFER_MS * TIME_SCALE));
     slowWrite = {
       run: run, handle: handle, autoAt: autoAt,
@@ -1818,11 +1895,9 @@ export function startApp() {
     setBusy(false);
     writeFinal(session.answers, true);
   }
-  function flashRestMs() {
-    var ms = Infinity;
-    fullWriters().forEach(function (m) { var r = restInfo(m); ms = Math.min(ms, r ? r.secs * 1000 : 0); });
-    return ms === Infinity ? 0 : ms;
-  }
+
+  /* Only one case left (v2.1.18): every Flash model is used up for today. Busy Flash keeps
+     cycling until Switch to quick or 3:00, so there is no busy wait any more. */
   function askFlashWait(why) {
     stopFlashWait();
     stopTicker();
@@ -1831,61 +1906,35 @@ export function startApp() {
     setBusy(false);
     setBuild("");
     qaStatus.textContent = "";
-    var head = document.getElementById("resultHead"), run = writeRun, ms = Math.max(60000, flashRestMs());
-    var quickBtn = { label: "Use quick model now", act: "flashquick" };   /* not primary: waiting is the default (#35) */
     session.flashAsked = (session.flashAsked || 0) + 1;
-    logRun({ outcome: "flash busy, asked: " + why, round: session.round || null });
-    if (ms > 60 * 60000) {
-      head.textContent = "Flash is used up for today";
-      return notify("result", "warn", "Today's Flash limit is used up", "Flash comes back around 3 AM Eastern. The quick model can write it now: faster, but not as strong.", [quickBtn]);
-    }
-    /* 3 minute cap per round: the clock starts at the first ask and keeps running if a
-       Flash try at 0:00 comes back busy again, so the total wait stays under 3 minutes. */
-    var key = session.round || 1;
-    if (!session.flashDeadline || session.flashDeadline.round !== key) {
-      /* Time already spent on a slow Flash write counts toward the 3 minutes (at least 1 more
-         minute). A fast fail keeps the full 3, so Flash still gets its try at 0:00. */
-      var spent = session.writeStart && session.writeStart.round === key ? Date.now() - session.writeStart.at : 0;
-      if (spent < ROTATE_MS) spent = 0;
-      session.flashDeadline = { round: key, at: Date.now() + Math.max(60000, FLASH_WAIT_MAX - spent) };
-    }
-    var left = session.flashDeadline.at - Date.now();
-    if (left <= 1000) return autoQuick();
-    var toQuick = ms > left;   /* no Flash model is due back before the 3 minutes are up */
-    ms = Math.min(ms, left);
-    /* The note shows once with a live m:ss countdown and a draining bar (Message.svelte
-       ticks it every second), so it's clear it will write on its own even with the button
-       there. Re-sending the note every 30 seconds made it blink back in, so it no longer does. */
-    head.textContent = "Waiting for a Flash model...";
-    notify("result", "info", "Flash models are busy. It will write on its own",
-      toQuick ? "No Flash model is free yet, so at 0:00 the quick model writes it: faster, but not as strong. You never wait more than 3 minutes. Or tap to use it now."
-              : "A Flash model writes it at 0:00. If none is free by then, the quick model does, so you never wait more than 3 minutes. Or use the quick model now.",
-      [quickBtn], { until: Date.now() + ms, total: ms, label: toQuick ? "until the quick model writes it" : "until a Flash model writes it", done: "Writing now..." });
-    flashWait = {
-      tick: setInterval(function () { if (run !== writeRun) stopFlashWait(); }, 1000),
-      timer: setTimeout(function () {
-        var ok = run === writeRun && !busy && session;
-        stopFlashWait();
-        if (!ok) return;
-        notify("result");
-        /* Decided now, not when the wait started: a Flash model that's free gets a try,
-           and if it comes back busy the cap sends it straight to the quick model. */
-        if (fullWriters().some(function (m) { return !resting(m); })) writeFinal(session.answers, false); else autoQuick();
-      }, ms)
-    };
-    /* 3 minutes is up and Flash is still busy: the quick model writes it, no tap needed. */
-    function autoQuick() {
-      session.autoQuick = true;
-      logRun({ outcome: "flash busy 3 min, quick model wrote it", round: session.round || null });
-      notify("result");
-      writeFinal(session.answers, true);
-    }
+    logRun({ outcome: "flash used up, asked: " + why, round: session.round || null });
+    document.getElementById("resultHead").textContent = "Flash is used up for today";
+    return notify("result", "warn", "Today's Flash limit is used up", "Flash comes back around 3 AM Eastern. The quick model can write it now: faster, but not as strong.", [{ label: "Use quick model now", act: "flashquick" }]);
+  }
+  function flashUsedUp() { return fullWriters().every(function (m) { var r = restInfo(m); return r && r.why === "day"; }); }
+  /* Flash said busy every time until it ran out of models (cycling stops only when a model
+     is used up for the day, so this is rare): the quick model writes it, with a note. */
+  function quickAfterBusy() {
+    session.autoQuick = true;
+    logRun({ outcome: "flash busy, quick model wrote it", round: session.round || null });
+    notify("result");
+    writeFinal(session.answers, true);
   }
   function writeFinal(answers, quick) {
     stopFlashWait();
     stopSlowWrite();
+    /* The clean step is still going (rare, it started with the questions): wait for it. */
+    if (session.cleanP && session.clean && session.clean.status === "running") {
+      setBusy(true, "Finishing the cleanup...");
+      showWriting(session.title);
+      setSteps(document.getElementById("resultTrack"), "clean", session.mode === "Quick mode" || !(session.questions && session.questions.length));
+      document.getElementById("resultTrack").hidden = false;
+      var waitRun = ++writeRun;
+      return session.cleanP.then(function () { if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick); } });
+    }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
+    session.polished = false;
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
     session.today = todayText();
@@ -1913,9 +1962,9 @@ export function startApp() {
        and the first good prompt wins. Busy hours can start the backup sooner. */
     var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
-    /* Every Flash model is resting: ask before anything is sent (#35). */
-    if (!quick && flashOnly() && models.every(function (m) { return resting(m); })) { askFlashWait("all resting"); return Promise.resolve(); }
-    var handle = {};
+    /* Every Flash model is used up for today: say so before anything is sent (#35). */
+    if (!quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
+    var handle = { cycle: !quick && flashOnly() };
     if (!quick) watchSlowWrite(run, handle);
     return askGemini(text, false, models, depth.level, function (m) {
       if (run === writeRun) eta(m);
@@ -1927,6 +1976,8 @@ export function startApp() {
       /* Auto-Repair: check the draft on the phone; only a real problem costs a Gemini call. */
       var before = qualityCheck(draft);
       if (!before.score) return showWritten(draft, r, { status: "none" }, before);
+      session.polished = true;
+      setSteps(resultProg.closest(".tracker"), "polish", skipAsk);
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
       document.getElementById("resultHead").textContent = "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...";
       var t0 = Date.now();
@@ -1948,6 +1999,7 @@ export function startApp() {
         qaStatus.textContent = "";
         var secs = Math.max(1, Math.round(r.ms / 1000 + (rep.secs || 0))) + "s";
         /* Elapsed matches the total: the Auto-Repair time counts as the finishing touch (report #5). */
+        if (!rep.secs && session.polished) finishTrack(resultProg, r.ms / 1000, skipAsk, offset);   /* Polish ticks done even when it took under 0.1s */
         if (rep.secs) { finishTrack(resultProg, r.ms / 1000 + rep.secs, skipAsk, offset); resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(rep.secs)) + "s finishing touch"; cookClock(resultProg.closest(".tracker")); }
         session.repair = rep;
         session.write = { model: r.model, thinking: depthWords(depth, r.model), secs: Math.round(r.ms / 100) / 10, detours: (r.history || []).join("; "), depth: depthKey };
@@ -1960,7 +2012,7 @@ export function startApp() {
         if (session.round >= 2 && ui.round) roundBuilt(session.round);
         /* Left mid-build and came back before it finished: say it picked back up. */
         if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
-        session.flashDeadline = null; session.writeStart = null;
+        session.writeStart = null;
         if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
         showRepairNote(rep);
         /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
@@ -1995,8 +2047,8 @@ export function startApp() {
       signal("gemini-failed", "While writing");
       /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).
          Offline and key problems keep their own messages below. */
-      if (!quick && flashOnly() && flashBusy(e)) return askFlashWait(e && e.message ? e.message : "unknown");
-      session.flashDeadline = null; session.writeStart = null;
+      if (!quick && flashOnly() && flashBusy(e)) return flashUsedUp() ? askFlashWait(e && e.message ? e.message : "unknown") : quickAfterBusy();
+      session.writeStart = null;
       if (session.round >= 2 && rounds.length) {   /* A Rework round failed: the round it came from comes back, nothing lost */
         var why = e && e.message ? e.message : "unknown", failedN = session.round, backN = reworkFrom + 1;
         logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + why, round: failedN });

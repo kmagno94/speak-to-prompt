@@ -270,7 +270,8 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
 /* Step tracker: where the run is, how long it's been, and about how long is left. */
 .tracker { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.tracker li[hidden] { display: none; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }
 .tracker li::before { content: ""; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); box-sizing: border-box; }
 .tracker li.done { color: var(--ink); }

@@ -129,7 +129,7 @@
     </div>
     <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
     <div class="tracker" id="buildTrack" hidden>
-      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="clean">Clean</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="polish" hidden>Polish</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
       <div class="cookslot" data-keep><CookPot place="build" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
@@ -148,7 +148,7 @@
   <section class="card" id="result" hidden aria-live="polite">
     <h2 id="resultHead">Your prompt is ready</h2>
     <div class="tracker" id="resultTrack" hidden>
-      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="clean">Clean</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="polish" hidden>Polish</li><li data-step="ready">Ready</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>
       <div class="cookslot" data-keep><CookPot place="result" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>

@@ -77,7 +77,22 @@ export const ANALYZE = [
   "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
   "",
   "Respond with JSON only, in exactly this shape:",
-  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
+  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}}',
+  "",
+  "RAW THOUGHTS:",
+  '"""'
+].join("\n");
+
+/* Prep crew (v2.1.18): a second Flash-Lite model cleans the raw thoughts while the intake
+   reads them, so Flash writes from clean words. The phone checks the result (numbers kept,
+   length close) and uses the raw words if it fails. Plain text only. */
+export const CLEAN = [
+  "CLEAN STEP. Below are a person's raw thoughts, often a messy voice transcript. Rewrite them as clean, readable text for a prompt writer.",
+  "Remove filler words (um, uh, like, you know, I mean, so yeah), false starts, stutters, and accidental repeats. Fix an obvious transcription slip only when the meaning is certain.",
+  "Keep everything else, in their own words and order: every fact, name, number, version, date, time, price, amount, limit, preference, question, and side note. Keep every number exactly as written, as digits, even if it looks odd.",
+  "Keep their hedges and doubts (maybe, probably, I think, around, not sure) and every request they make, as they said it.",
+  "Never add facts, guesses, advice, headings, or bullet points. Never answer their question and never summarize.",
+  "Write in first person, as them. Plain text only: no intro, no closing line, no note about what you changed.",
   "",
   "RAW THOUGHTS:",
   '"""'

@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash wait:', 'flash wait cap:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'grader: never the model',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
@@ -100,6 +100,15 @@ async function page(opts = {}) {
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
+    }
+    /* Prep crew clean step: echoes the raw thoughts unless opts.clean / cleanFn says otherwise */
+    if (/^CLEAN STEP\./.test(ask)) {
+      const raw = (ask.split('RAW THOUGHTS:\n\"\"\"\n')[1] || '').replace(/\n\"\"\"\s*$/, '');
+      (p.cleans = p.cleans || []).push({ model, text: ask, at: Date.now() });
+      if (opts.cleanDelay) await new Promise(res => setTimeout(res, opts.cleanDelay));
+      if (opts.cleanFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const out = opts.cleanFn ? opts.cleanFn(raw) : opts.clean != null ? opts.clean : raw;
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
     }
     if (/CONTEXT SQUEEZE STEP/.test(ask)) {
       (p.squeezes = p.squeezes || []).push({ model, text: ask });
@@ -175,76 +184,103 @@ await check('Quick mode writes on Flash-Lite at medium thinking', async () => {
   expect(/lite/.test(write.model) && write.level === 'medium', `got ${write.model} ${write.level}`);
 });
 
+await check('prep crew: the second Flash-Lite cleans the thoughts while the first reads them, Flash writes from the clean words, and the tracker shows Clean (v2.1.18)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const models = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+  const memo = 'um so like I want to plan a um little taco night for 6 people on friday around 7 and uh I think the budget is maybe 60 bucks and um my cousin is vegetarian so yeah';
+  const unfill = (raw) => raw.replace(/\b(um|uh|like|so yeah)\b\s*/g, '').replace(/\s+/g, ' ').trim();
+  // 1. Clean runs on the other Flash-Lite, at the same time as the intake; the writer gets the clean version
+  const p = await page({ intake, models, cleanFn: unfill, intakeDelay: 300 });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', memo); await p.click('#build'); await done(p);
+  const write = p.calls.filter(c => !c.intake).pop(), intakeCall = p.calls.find(c => c.intake);
+  expect(p.cleans && p.cleans.length === 1 && p.cleans[0].model === 'gemini-3.1-flash-lite' && intakeCall.model === 'gemini-3.5-flash-lite', 'clean on 3.1 Lite, intake on 3.5 Lite: ' + (p.cleans || []).map(c => c.model).join());
+  expect(!/\bum\b/.test(write.text.split('RAW THOUGHTS:')[1]) && /lightly cleaned by an earlier step/.test(write.text) && /budget is maybe 60 bucks/.test(write.text), 'writer should get the clean words with every detail and hedge');
+  expect(!/Flash/.test(p.cleans[0].model.replace('flash-lite', '')) , 'clean never uses Flash');
+  const cls = await p.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  expect(cls.includes('clean:done') && cls.includes('ready:done') && (p.repairs.length ? cls.includes('polish:done') : cls.some(c => c.startsWith('polish') && c.endsWith(':hidden'))), 'tracker: Clean done, Polish only when Auto-Repair ran: ' + cls.join());
+  const s2 = await page({ intake, models, write: 'Act as a party planner. Context: I am hosting a taco night for 6 people on Friday around 7, budget maybe $60, one vegetarian guest. Task: plan the menu and shopping list. Format: a short checklist under 200 words. A great result is a plan I can shop from today. Start right away and ask at most one short question only if something essential is missing.' });
+  await withKey(s2); await s2.fill('#thoughts', memo); await s2.click('#build'); await done(s2);
+  const cls2 = await s2.$$eval('#resultTrack li', l => l.map(x => x.getAttribute('data-step') + ':' + x.className + (x.hidden ? ':hidden' : '')));
+  expect(s2.repairs.length || cls2.some(c => c === 'polish::hidden'), 'Polish stays hidden when Auto-Repair does not run: ' + cls2.join() + ' repairs ' + s2.repairs.length);
+  // 2. A clean version that lost a number is not used: the raw words go to the writer
+  const q = await page({ intake, models, cleanFn: (raw) => unfill(raw).replace('60', 'sixty') });
+  await withKey(q); await q.fill('#thoughts', memo); await q.click('#build'); await done(q);
+  expect(/\bum\b/.test(q.calls.filter(c => !c.intake).pop().text) && !/lightly cleaned/.test(q.calls.filter(c => !c.intake).pop().text), 'lost number: raw words go to the writer');
+  // 3. A short note skips the clean step, and the tracker shows it skipped
+  const r = await page({ intake, models });
+  await withKey(r); await r.fill('#thoughts', 'plan a taco night'); await r.click('#build'); await done(r);
+  const rc = await r.$$eval('#resultTrack li[data-step=clean]', l => l[0].className);
+  expect(!(r.cleans || []).length && rc === 'skip', 'short notes skip it: ' + rc);
+  // 4. Clean fails: the prompt still gets written from the raw words
+  const f = await page({ intake, models, cleanFail: true });
+  await withKey(f); await f.fill('#thoughts', memo); await f.click('#build'); await done(f);
+  expect(await f.inputValue('#output') === 'THE PROMPT' && /\bum\b/.test(f.calls.filter(c => !c.intake).pop().text), 'a failed clean falls back to the raw words');
+  // 5. Quick mode waits for a slow clean before writing, so the writer still gets the clean words
+  const k = await page({ intake, models, cleanFn: unfill, cleanDelay: 1500 });
+  await withKey(k); await k.check('#quickMode'); await k.fill('#thoughts', memo); await k.click('#build'); await done(k);
+  const kw = k.calls.filter(c => !c.intake).pop();
+  expect(/lite/.test(kw.model) && !/\bum\b/.test(kw.text.split('RAW THOUGHTS:')[1]), 'Quick mode waited for the clean words');
+  // 6. Run log has numbers and labels only
+  const log = await p.evaluate(() => localStorage.getItem('stp-testlog') || '');
+  expect(!/taco|vegetarian/.test(log), 'nothing anyone said goes in the run log');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length && !f.errors.length && !k.errors.length, 'page errors: ' + [p, q, r, f, k].flatMap(x => x.errors).join('; '));
+});
+
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {
   const p = await page({ fail: { 'gemini-3.8-flash': 429 }, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'memo'); await p.click('#build'); await done(p);
   expect(p.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash', 'did not fall back to 3.7 Flash');
 });
 
-await check('flash wait: a busy Flash model rests 3 minutes, and the countdown ticks live without the note blinking (v2.1.15 fix)', async () => {
+await check('flash cycle: busy Flash keeps cycling with no rest saved, Switch to quick at 2:00, quick model at 3:00 (v2.1.18)', async () => {
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
   const fail = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
   const p = await page({ intake, fail });
   await p.clock.install();
   await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
-  for (let i = 0; i < 40 && !(await p.isVisible('#notice-result [data-countdown]')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
-  // 1. Busy models rest 3 minutes, not 10
+  const t = async (ms) => { await p.clock.runFor(ms); await p.waitForTimeout(40); };
+  for (let i = 0; i < 20 && p.calls.filter(c => !c.intake).length < 3; i++) await t(500);
+  // 1. All 3 tried, nothing saved as resting, no Flash-Lite yet, still working
+  expect(p.calls.filter(c => !c.intake).length === 3, 'all three Flash models tried first: ' + p.calls.map(c => c.model).join());
   const rest = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-model-rest') || '{}'));
-  const left = Object.values(rest).map((x) => x.until - Date.now());
-  expect(left.length && left.every((ms) => ms > 2 * 60000 && ms <= 3 * 60000 + 5000), 'busy rest should be about 3 min: ' + left.join());
-  // 2. A live m:ss timer, a progress bar, and the button is not the main action
-  const clockOf = async () => (await p.textContent('#notice-result .mclock')).trim();
-  const c1 = await clockOf();
-  expect(/^[23]:\d\d$/.test(c1), 'timer should start near 3:00, got ' + c1);
-  expect(await p.isVisible('#notice-result .mbar'), 'draining bar missing');
-  expect(/on its own/.test(await p.textContent('#notice-result')), 'should say it writes on its own');
-  expect(!(await p.getAttribute('#notice-result button:has-text("Use quick model now")', 'class') || '').includes('primary'), 'waiting is the default, so the quick button is not primary');
-  // 3. It ticks every second, and the note is not rebuilt (no blink) when time passes
-  await p.evaluate(() => { window.__note = document.getElementById('notice-result'); });
-  await p.clock.runFor(5000); await p.waitForTimeout(50);
-  const c2 = await clockOf();
-  const secs = (c) => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
-  expect(secs(c1) - secs(c2) >= 4, `timer should count down by the second: ${c1} -> ${c2}`);
-  await p.clock.runFor(35000); await p.waitForTimeout(50);
-  expect(await p.evaluate(() => window.__note === document.getElementById('notice-result')), 'the note should stay put, not blink back in every 30 seconds');
-  // 4. At 0:00 a Flash model writes it by itself
-  for (const k of Object.keys(fail)) delete fail[k];
-  await p.clock.runFor(3 * 60000);
-  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
-  expect(!/lite/.test(p.calls.filter(c => !c.intake).pop().model) && await p.inputValue('#output') === 'THE PROMPT', 'a Flash model writes it after the countdown');
-  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  expect(!Object.keys(rest).length, 'busy models are not saved as resting: ' + JSON.stringify(rest));
+  expect(!(await p.isVisible('#notice-result:has-text("Flash models are busy")')) && !(await p.inputValue('#output')), 'no wait note, no prompt yet');
+  // 2. It goes around again after the pause
+  await t(21000);
+  expect(p.calls.filter(c => !c.intake).length >= 4 && !p.calls.some(c => !c.intake && /lite/.test(c.model)), 'second pass on Flash, never Flash-Lite: ' + p.calls.map(c => c.model).join());
+  // 3. 2:00 note, then the quick model at 3:00 with a note
+  await t(100000);
+  expect(await p.isVisible('#notice-result:has-text("Taking longer than usual")'), 'Switch to quick note at 2:00');
+  await t(61000);
+  for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(500);
+  const w = p.calls.filter(c => !c.intake);
+  expect(/lite/.test(w[w.length - 1].model) && await p.inputValue('#output') === 'THE PROMPT', 'quick model writes it at 3:00: ' + w.map(c => c.model).join());
+  expect(/The quick model wrote this one/.test(await p.evaluate(() => document.getElementById('notice-result')?.textContent || '')), 'a note says so');
+  // 4. A Flash model that comes back during the cycle writes it
+  const fail2 = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
+  const q = await page({ intake, fail: fail2 });
+  await q.clock.install();
+  await withKey(q); await q.fill('#thoughts', 'plan my roast week'); await q.click('#build');
+  for (let i = 0; i < 20 && q.calls.filter(c => !c.intake).length < 3; i++) { await q.clock.runFor(500); await q.waitForTimeout(40); }
+  delete fail2['gemini-3.7-flash'];
+  await q.clock.runFor(21000);
+  await q.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
+  expect(q.calls.filter(c => !c.intake).pop().model === 'gemini-3.7-flash' && await q.inputValue('#output') === 'THE PROMPT', 'Flash came back, so Flash wrote it');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
-await check('flash wait cap: after 3 minutes of busy Flash the quick model writes it on its own (v2.1.15 fix)', async () => {
+await check('staging switches: #flashbusy makes Flash say busy without sending anything, #slowtest runs 10x faster (v2.1.18)', async () => {
+  if (process.env.APP_CHANNEL !== 'staging') return;
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-  // 1. Flash rests 5 minutes (like #flashbusy): the timer says the quick model, and at 0:00 it writes with no tap
   const p = await page({ intake });
-  await p.clock.install();
-  await p.evaluate(() => { const u = Date.now() + 5 * 60000; localStorage.setItem('stp-model-rest', JSON.stringify({ 'gemini-3.8-flash': { until: u, why: 'busy' }, 'gemini-3.7-flash': { until: u, why: 'busy' }, 'gemini-3.6-flash': { until: u, why: 'busy' } })); });
-  await withKey(p); await p.fill('#thoughts', 'plan a chill bowling night'); await p.click('#build');
-  for (let i = 0; i < 40 && !(await p.isVisible('#notice-result [data-countdown]')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
-  const c = (await p.textContent('#notice-result .mclock')).trim(), t = await p.textContent('#notice-result');
-  expect(/^(3:00|2:5\d)$/.test(c), 'the wait is capped at 3 minutes, got ' + c);
-  expect(/until the quick model writes it/.test(t) && /never wait more than 3 minutes/.test(t), 'should say the quick model writes it at 0:00: ' + t);
-  expect(!p.calls.some(c => !c.intake), 'nothing written yet');
-  await p.clock.runFor(3 * 60000 + 2000);
-  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
-  const w = p.calls.filter(c => !c.intake);
-  expect(w.length === 1 && /lite/.test(w[0].model) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it on its own: ' + w.map(c => c.model).join());
-  expect(/The quick model wrote this one/.test(await p.textContent('#notice-result')), 'a note says the quick model wrote it');
-  // 2. Flash keeps coming back busy: one Flash try when it's due, then the quick model, all within about 3 minutes
-  const fail = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
-  const q = await page({ intake, fail });
-  await q.clock.install();
-  await withKey(q); await q.fill('#thoughts', 'plan a chill bowling night'); await q.click('#build');
-  for (let i = 0; i < 40 && !(await q.isVisible('#notice-result [data-countdown]')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(50); }
-  const t0 = await q.evaluate(() => Date.now());
-  for (let i = 0; i < 200 && !(await q.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await q.clock.runFor(2000); await q.waitForTimeout(20); }
-  const waited = (await q.evaluate(() => Date.now())) - t0;
-  const last = q.calls.filter(c => !c.intake).pop();
-  expect(last && /lite/.test(last.model) && await q.inputValue('#output') === 'THE PROMPT', 'Flash stayed busy, so the quick model wrote it: ' + (last && last.model));
-  expect(waited <= 3 * 60000 + 30000, 'never much past 3 minutes, waited ' + Math.round(waited / 1000) + 's');
-  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+  await p.goto(BASE + '#flashbusy-slowtest'); await p.waitForTimeout(400);
+  expect(/Busy Flash \+ 10x timing test is on/.test(await p.evaluate(() => document.body.textContent)), 'switch note shows');
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 30000 });
+  expect(!p.calls.some(c => !c.intake && !/lite/.test(c.model)), 'nothing sent to Flash: ' + p.calls.map(c => c.model).join());
+  expect(/lite/.test(p.calls.filter(c => !c.intake).pop().model), 'the quick model wrote it at 0:18');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('slow write: each Flash gets 30s, Switch to quick shows at 2:00, the quick model takes over at 3:00 (SPEC 11/04)', async () => {
@@ -322,39 +358,31 @@ await check('grader: never the model that wrote the prompt, so Quick mode prompt
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
-await check('model switching: Flash-Lite never writes a Normal prompt right away; it waits for Flash on its own (3 minute cap), or uses the quick model on a tap (#35)', async () => {
+await check('model switching: Flash-Lite never writes a Normal prompt on its own before 3:00, a tap on Switch to quick uses it, and used-up Flash offers only the quick model (#35)', async () => {
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-  // 1. Every Flash model busy: no silent Flash-Lite write, the page asks, then writes on Flash by itself once one is back
+  // 1. Every Flash model busy: no Flash-Lite write until a tap on Switch to quick at 2:00
   const fail = { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 };
   const p = await page({ intake, fail });
   await p.clock.install();
   await withKey(p); await p.fill('#thoughts', 'it goes pretty fast and wow 13 14 94'); await p.click('#build');
-  for (let i = 0; i < 40 && !(await p.isVisible('#notice-result:has-text("Flash models are busy")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(50); }
-  const t = await p.textContent('#notice-result');
-  expect(/Flash models are busy/.test(t) && /on its own/.test(t) && /\b[23]:\d\d\b/.test(t), 'should say it is waiting, with a 3 minute countdown: ' + t);
-  expect(/Waiting for a Flash model/.test(await p.textContent('#resultHead')) && !(await p.inputValue('#output')), 'no prompt yet, heading says it is waiting');
+  for (let i = 0; i < 130 && !(await p.isVisible('#notice-result:has-text("Taking longer")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(20); }
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write without asking: ' + p.calls.map(c => c.model).join());
-  for (const k of Object.keys(fail)) delete fail[k];
-  await p.clock.runFor(3 * 60000 + 2000);
-  await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 });
-  const last = p.calls.filter(c => !c.intake).pop().model;
-  expect(!/lite/.test(last) && await p.inputValue('#output') === 'THE PROMPT', 'after the wait a Flash model writes it: ' + last);
-  // 2. Every Flash model already resting: asks before sending anything; one tap uses the quick model
-  const q = await page({ intake });
-  await q.evaluate(() => { const u = Date.now() + 120000; localStorage.setItem('stp-model-rest', JSON.stringify({ 'gemini-3.8-flash': { until: u, why: 'busy' }, 'gemini-3.7-flash': { until: u, why: 'busy' }, 'gemini-3.6-flash': { until: u, why: 'busy' } })); });
-  await withKey(q); await q.fill('#thoughts', 'plan my week'); await q.click('#build');
-  await q.waitForFunction(() => /\b[12]:\d\d\b/.test(document.querySelector('#notice-result [data-countdown]')?.textContent || ''), null, { timeout: 15000 });
-  expect(!q.calls.some(c => !c.intake), 'nothing should be sent to a writer while every Flash model rests');
-  await q.click('#notice-result button:has-text("Use quick model now")'); await done(q);
-  expect(/lite/.test(q.calls.filter(c => !c.intake).pop().model) && !(await q.isVisible('#notice-result:has-text("Flash models")')), 'quick model writes it and the ask goes away');
-  // 3. Flash used up for the day: no wait offered, only the quick model
+  await p.click('#notice-result button:has-text("Switch to quick")');
+  for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
+  expect(/lite/.test(p.calls.filter(c => !c.intake).pop().model) && await p.inputValue('#output') === 'THE PROMPT', 'a tap uses the quick model');
+  // 2. Flash used up for the day: no wait offered, only the quick model
   const r = await page({ intake, fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 429 } });
   await withKey(r); await r.fill('#thoughts', 'plan my week'); await r.click('#build');
   await r.waitForSelector('#notice-result:has-text("Flash limit is used up")', { timeout: 15000 });
   expect(!(await r.isVisible('#notice-result [data-countdown]')) && !r.calls.some(c => !c.intake && /lite/.test(c.model)), 'used up: no wait, no silent Flash-Lite');
   await r.click('#notice-result button:has-text("Use quick model now")'); await done(r);
   expect(await r.inputValue('#output') === 'THE PROMPT', 'the quick model writes it');
-  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+  // 3. The next build knows Flash is used up and asks before sending anything
+  const n = r.calls.length;
+  await menuTap(r, '#reset'); await r.fill('#thoughts', 'plan my week again'); await r.click('#build');
+  await r.waitForSelector('#notice-result:has-text("Flash limit is used up")', { timeout: 15000 });
+  expect(!r.calls.slice(n).some(c => !c.intake), 'nothing sent to a writer when every Flash is used up');
+  expect(!p.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(r.errors).join('; '));
 });
 
 await check('Couldn\'t reach Google on one model tries the next model', async () => {
@@ -1259,21 +1287,20 @@ await check('X-ray keeps "vs." and "e.g." inside one sentence, but never joins l
   expect(texts.length === 4 && texts[0] === 'Flag the Saturday work shift vs. exam conflict, e.g. a swap.' && texts[2] === 'Next line vs.', 'sentences split wrong: ' + JSON.stringify(texts));
 });
 
-await check('busy models: a resting model is skipped next time, and a slow writer gets a backup racing it', async () => {
+await check('busy models: a busy model is tried again next time (no rest), and a slow writer gets a backup racing it', async () => {
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] };
-  // 1. 3.8 says it's busy: 3.7 writes, and 3.8 rests, so the next run skips it
+  // 1. 3.8 says it's busy: 3.7 writes, nothing is saved, and the next run starts on 3.8 again (no rest times, v2.1.18)
   let p = await page({ intake, fail: { 'gemini-3.8-flash': 503 } });
   await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build'); await done(p);
   const first = p.calls.filter(c => !c.intake).map(c => c.model);
   expect(first[0] === 'gemini-3.8-flash' && first[1] === 'gemini-3.7-flash', 'first run order wrong: ' + first.join(', '));
   const rest = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-model-rest') || '{}'));
-  expect(rest['gemini-3.8-flash'] && rest['gemini-3.8-flash'].until > Date.now() && rest['gemini-3.8-flash'].why === 'busy', 'busy model should be resting: ' + JSON.stringify(rest));
-  expect(!/plan my week/.test(JSON.stringify(rest)), 'rest list must hold model names only');
+  expect(!rest['gemini-3.8-flash'], 'a busy model is not saved as resting: ' + JSON.stringify(rest));
   p.calls.length = 0;
   await menuTap(p, '#reset'); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
   for (let i = 0; i < 100 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
   const second = p.calls.filter(c => !c.intake).map(c => c.model);
-  expect(second[0] === 'gemini-3.7-flash', 'resting model should go to the back of the line: ' + second.join(', '));
+  expect(second[0] === 'gemini-3.8-flash', 'next run starts on 3.8 again: ' + second.join(', '));
   // 2. Hedge: 3.8 hangs; after the hedge time 3.7 starts too and wins; 3.8 is stopped
   p = await page({ intake, hold: 'gemini-3.8-flash' });
   await p.clock.install();
@@ -1341,22 +1368,28 @@ await check('Glow-Up: before and after slider, short by default, no core, saves 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('limits: per-minute is a pause, daily is used up (and learned), busy says busy; version pill shows Latest or Update ready and reloads', async () => {
+await check('limits: per-minute and busy are tried again, daily is used up (and learned); version pill shows Latest or Update ready and reloads', async () => {
   const minute = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier' }] }, { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '30s' }];
   const daily = [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests', quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', quotaValue: '25' }] }];
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] },
     fail: { 'gemini-3.8-flash': 429, 'gemini-3.7-flash': 429, 'gemini-3.6-flash': 503 }, failDetails: { 'gemini-3.8-flash': minute, 'gemini-3.7-flash': daily } });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.clock.install();   /* before Build, so the 2:00 and 3:00 timers run on the test clock */
   await withKey(p); await p.fill('#thoughts', 'plan my week'); await p.click('#build');
-  await p.waitForSelector('#notice-result:has-text("Flash models are busy")', { timeout: 15000 });
+  for (let i = 0; i < 200 && !(await p.isVisible('#notice-result:has-text("Taking longer")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(30); }
+  expect(await p.isVisible('#notice-result:has-text("Taking longer")'), 'the 2:00 note should show: ' + await p.evaluate(() => (document.getElementById('notice-result') || {}).textContent || 'no note') + ' | out: ' + await p.inputValue('#output') + ' | calls: ' + p.calls.map(c => c.model).join());
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write a Normal prompt without asking (#35)');
-  await p.click('#notice-result button:has-text("Use quick model now")'); await done(p);
-  expect(await p.inputValue('#output') === 'THE PROMPT' && /lite/.test(p.calls.filter(c => !c.intake).pop().model), 'after Use quick model now, Flash-Lite writes it');
+  const tries = (m) => p.calls.filter(c => !c.intake && c.model === m).length;
+  expect(tries('gemini-3.7-flash') === 1 && tries('gemini-3.6-flash') >= 3, 'used up drops out of the cycle, busy keeps getting tried: 3.7 x' + tries('gemini-3.7-flash') + ', 3.6 x' + tries('gemini-3.6-flash'));
+  await p.click('#notice-result button:has-text("Switch to quick")');
+  for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
+  expect(await p.inputValue('#output') === 'THE PROMPT' && /lite/.test(p.calls.filter(c => !c.intake).pop().model), 'after Switch to quick, Flash-Lite writes it');
+  await p.clock.resume();
   await p.click('#testLog summary').catch(() => {});
   const rows = await p.$$eval('#usage .m', l => Object.fromEntries(l.map(r => [r.querySelector('b').firstChild.textContent.trim(), r.querySelector(':scope > span').textContent])));
-  expect(/per-minute limit, back in \d+s/.test(rows['gemini-3.8-flash']), 'per-minute should be a pause, not used up: ' + rows['gemini-3.8-flash']);
+  expect(!/used up|busy|per-minute/.test(rows['gemini-3.8-flash']), 'a per-minute limit is not saved: ' + rows['gemini-3.8-flash']);
   expect(/used up today, back at 3 AM/.test(rows['gemini-3.7-flash']), 'daily limit should say used up: ' + rows['gemini-3.7-flash']);
-  expect(/busy at Google, retry in \d+ min/.test(rows['gemini-3.6-flash']), 'a busy model should say busy: ' + rows['gemini-3.6-flash']);
+  expect(!/used up|busy/.test(rows['gemini-3.6-flash']), 'a busy model is not saved: ' + rows['gemini-3.6-flash']);
   expect(await p.evaluate(() => JSON.parse(localStorage.getItem('stp-learned-limits') || '{}')['gemini-3.7-flash']) === 25, 'the daily limit Google reported should be learned');
   // Version pill, top right: Latest now; Update ready when a newer build is live; tapping reloads (asks twice if a prompt is on screen)
   await p.waitForFunction(() => document.getElementById('versionPill').dataset.state === 'latest');
@@ -2248,10 +2281,11 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   expect(await p.inputValue('#thoughts') === draft, 'Rework again should bring back your round 2 edits');
   const q = await reworkPage({ grade: low, failRound2: true });
   await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
+  await q.clock.install();
   await q.click('#build');
-  await q.waitForSelector('#notice-result:has-text("Flash models are busy")', { timeout: 15000 });
-  await q.click('#notice-result button:has-text("Use quick model now")');
-  await q.waitForSelector('#notice-result:has-text("Round 2 didn")', { timeout: 15000 });
+  for (let i = 0; i < 130 && !(await q.isVisible('#notice-result:has-text("Taking longer")')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(20); }
+  await q.click('#notice-result button:has-text("Switch to quick")');
+  for (let i = 0; i < 40 && !(await q.isVisible('#notice-result:has-text("Round 2 didn")')); i++) { await q.clock.runFor(500); await q.waitForTimeout(20); }
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
