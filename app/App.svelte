@@ -279,7 +279,7 @@
           <button type="button" id="flowReveal" class="linkish" disabled>Copy reveal</button>
           <button type="button" id="flowRetry" class="linkish" disabled>Rerun failed notes</button>
         </div>
-        <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open.</p>
+        <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
       </div>
       <div class="stats" id="myShortcutsRow" hidden>

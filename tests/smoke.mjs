@@ -2072,6 +2072,38 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const mapAfter = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
   expect(/all 5 notes/.test(reReveal) && (reReveal.match(/^\w+: A=(new|old)/gm) || []).length === 5 && failedIds.every(id => new RegExp('^' + id + ': .*\\(rerun\\)', 'm').test(reReveal)), 'the reveal covers all 5 notes and marks the rerun ones: ' + reReveal.slice(0, 300));
   expect(Object.keys(mapBefore).every(id => mapBefore[id] === mapAfter[id]), 'every pair keeps its A/B letters through the rerun, so earlier scores still match');
+  // Every note errored (daily limit): untick T3, B9 and B2, and Rerun redoes only T4 and T2
+  const w = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await w.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await devOn(w); await w.click('#moreOpts summary'); await withKey(w);
+  let allFail = true;
+  await w.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
+    const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';
+    if (!allFail || /intake step|PROMPT TO|CLEAN STEP|LEDGER STEP|STAND-IN|GAPS AN AI/.test(ask)) return r.fallback();
+    return r.fulfill({ status: 400, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: JSON.stringify({ error: { code: 400, message: 'Every free model on your key has hit today\'s limit.' } }) });
+  });
+  await w.click('#flowRun');
+  await w.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
+  expect(await w.$$eval('#flowOut .flowPick:checked', l => l.length) === 5, 'every errored note gets a ticked rerun box');
+  for (const id of ['T3', 'B9', 'B2']) await w.uncheck(`#flowOut .flowPick[data-id="${id}"]`);
+  allFail = false;
+  const wBefore = w.calls.filter(c => !c.intake).length;
+  await w.click('#flowRetry');
+  await w.waitForFunction(() => /Done/.test(document.getElementById('flowInfo').textContent) && !document.getElementById('flowRun').disabled, null, { timeout: 60000 });
+  const wWrites = w.calls.filter(c => !c.intake).length - wBefore;
+  expect(wWrites === 4, 'only T4 and T2 ran, two Flash writes each: ' + wWrites);
+  await w.click('#flowCopy');
+  const wBlind = await w.evaluate(() => navigator.clipboard.readText());
+  expect([...wBlind.matchAll(/^== (\w+) /gm)].map(m => m[1]).join() === 'T4,T2' && /2 of 5 notes/.test(wBlind), 'the copy has just T4 and T2: ' + wBlind.slice(0, 160));
+  await w.click('#flowReveal');
+  const wReveal = await w.evaluate(() => navigator.clipboard.readText());
+  expect((wReveal.match(/^\w+: A=(new|old)/gm) || []).length === 5 && /T3: .*\n  old: error/.test(wReveal), 'the reveal still lists all 5, with the skipped ones still errored');
+  expect(await w.$$eval('#flowOut .flowPick', l => l.map(b => b.getAttribute('data-id')).join()) === 'T3,B9,B2' && await w.isEnabled('#flowRetry'), 'the skipped notes keep their boxes and Rerun stays on for later');
+  for (const id of ['T3', 'B9', 'B2']) await w.uncheck(`#flowOut .flowPick[data-id="${id}"]`);
+  const wNone = w.calls.filter(c => !c.intake).length;
+  await w.click('#flowRetry');
+  expect(/Tick at least one/.test(await w.textContent('#flowInfo')) && w.calls.filter(c => !c.intake).length === wNone, 'nothing ticked: Rerun asks for a tick and runs nothing');
+  expect(!w.errors.length, 'page errors: ' + w.errors.join('; '));
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 

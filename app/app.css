@@ -211,6 +211,8 @@ footer { font-size: 13px; color: var(--muted); }
 .benchout table { width: 100%; border-collapse: collapse; }
 .benchout th, .benchout td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .benchout td small { display: block; color: var(--muted); }
+.benchout .flowpick { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 6px 0; font-size: 14px; color: var(--muted); }
+.benchout .flowpick input { width: 20px; height: 20px; margin: 0; }
 .benchout tr.hold td:first-child::after { content: " \1F512"; }
 .srchead { margin: 0; font-weight: 700; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }

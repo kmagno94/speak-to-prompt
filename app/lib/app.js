@@ -1578,6 +1578,10 @@ export function startApp() {
     var saved = session, results = [], prior = {}, redone = [];
     if (onlyFailed === true && flowLast && flowLast.results) flowLast.results.forEach(function (r) { prior[r.c.id] = r; });
     else onlyFailed = false;
+    /* Rerun redoes only the errored notes that are ticked in the table (all ticked by default), so
+       a note can sit out a rerun to save Gemini calls. */
+    var picked = onlyFailed ? Array.prototype.map.call(document.querySelectorAll("#flowOut .flowPick:checked"), function (b) { return b.getAttribute("data-id"); }) : null;
+    if (onlyFailed && !picked.length) { info.textContent = "Tick at least one note to rerun."; return; }
     btn.disabled = true; document.getElementById("flowRetry").disabled = true;
     setBusy(true, "Flow bench running...");
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
@@ -1587,6 +1591,7 @@ export function startApp() {
         cases.forEach(function (c, i) {
           var tag = "Note " + (i + 1) + " of " + cases.length + " (" + c.name + "): ", had = prior[c.id];
           if (onlyFailed && had && had.old && !had.old.err && had.new && !had.new.err) { results[i] = had; return; }   /* this pair already worked */
+          if (onlyFailed && picked.indexOf(c.id) < 0) { results[i] = had || { c: c }; return; }   /* not ticked: sits this rerun out */
           if (onlyFailed) redone.push(c.id);
           chain = chain.then(function () {
             if (had && had.c && had.c._complexity) { c._complexity = had.c._complexity; c._shape = had.c._shape; return; }
@@ -1650,13 +1655,15 @@ export function startApp() {
     flowReveal = ["FLOW BENCH reveal \u00b7 app " + ver + " \u00b7 " + when + " \u00b7 all " + results.length + " notes"].concat(reveal).join("\n");
     var rows = results.map(function (r) {
       function cell(o) { return !o || o.err ? "\u26a0\ufe0f error" : secsText(o.secs) + "<small>" + o.dropped + " dropped \u00b7 " + o.numflags + " flags" + (o.flow === "new" ? " \u00b7 ledger " + o.ledgerMissing + "/" + o.ledger + " missing" : "") + "</small>"; }
-      return "<tr><td>" + esc(r.c.id) + "<small>" + esc(r.c.name) + "</small></td><td>" + cell(r.old) + "</td><td>" + cell(r.new) + "</td></tr>";
+      var bad = !r.old || r.old.err || !r.new || r.new.err;
+      var pick = bad ? '<label class="flowpick"><input type="checkbox" class="flowPick" data-id="' + esc(r.c.id) + '" checked> rerun</label>' : "";
+      return "<tr><td>" + esc(r.c.id) + "<small>" + esc(r.c.name) + "</small>" + pick + "</td><td>" + cell(r.old) + "</td><td>" + cell(r.new) + "</td></tr>";
     }).join("");
     var el = document.getElementById("flowOut");
     el.innerHTML = "<table><thead><tr><th>Note</th><th>Old flow</th><th>New flow</th></tr></thead><tbody>" + rows + "</tbody></table>";
     el.hidden = false;
     document.getElementById("flowInfo").textContent = restore
-      ? "Your last run (" + when + ") is loaded" + (flowFailed() ? ". Some halves errored: tap Rerun failed notes to redo just those." : ". Copy reveal covers all " + results.length + " notes.")
+      ? "Your last run (" + when + ") is loaded" + (flowFailed() ? ". Some halves errored: untick any note you want to skip, then tap Rerun failed notes." : ". Copy reveal covers all " + results.length + " notes.")
       : ids
       ? "Done. Copy for Claude has just the " + ids.length + " rerun note" + (ids.length === 1 ? "" : "s") + "; Copy reveal covers all " + results.length + ". Copy reveal only after Claude has scored."
       : "Done. Tap Copy for Claude and paste it into a chat. Copy reveal only after Claude has scored.";

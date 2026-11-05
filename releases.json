@@ -19,7 +19,8 @@
         "Check now runs on every Normal and Rework prompt (the stand-in), with the grade added when run stats are on. The tracker's Clean step is now called Prep, since it covers Clean and the ledger. Quick mode stays fast: no stand-in.",
         "Flow bench rerun (dev tools, folded in to stay at 5 builds): after Rerun failed notes, Copy for Claude has only the notes that were redone, so Claude does not rescore pairs it already scored. Copy reveal still covers all 5 notes and marks the rerun ones.",
         "Flow bench rerun (folded in to stay at 5 builds): Each pair keeps its A and B letters for the whole run, so scores Claude gave before a rerun still match the reveal. Runs saved before this build keep the letters they already had.",
-        "Flow bench rerun (folded in to stay at 5 builds): Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload."
+        "Flow bench rerun (folded in to stay at 5 builds): Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload.",
+        "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2."
       ],
       "checks": [
         {
@@ -41,8 +42,8 @@
           "see": "Your last run is loaded: the old vs new table shows, Copy reveal is on, and Rerun failed notes is on if anything errored."
         },
         {
-          "say": "Tap Rerun failed notes (after the daily Gemini limit resets, around 3 AM). Keep the screen open.",
-          "see": "It only works through the notes that errored, then says Copy for Claude has just those notes and Copy reveal covers all 5."
+          "say": "Untick every note except the ones to redo (like T4 and T2), then tap Rerun failed notes (after the daily Gemini limit resets, around 3 AM). Keep the screen open.",
+          "see": "It only works through the ticked notes, then says Copy for Claude has just those notes and Copy reveal covers all 5. Unticked notes keep their boxes for later."
         },
         {
           "say": "Tap Copy for Claude and paste it into Claude.",
