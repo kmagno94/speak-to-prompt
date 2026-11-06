@@ -2773,6 +2773,28 @@ await check('my context: the question step sees picked context so it can skip wh
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
+/* #3 (idea mvu5r9qgmx5v): numbers in picked context are background. Using one is fine, skipping one
+   is fine; only numbers you said for this prompt can be "left out". Before, a roasting context's
+   375, 393, 820 showed as "leaves out" and docked the grade under the bar. */
+await check('my context: numbers in picked context are never "left out" when the writer skips them, but your own are', async () => {
+  const ctx = [{ id: 'a', title: 'Roastery', text: 'Roast to 375 then drop at 393. Batch is 820 g. Costs 3.85 and 3.87 a pound, 63.49 a bag.' }];
+  const p = await page({ intake: { questions: [] }, write: 'Plan my bake sale for Friday at 9:30 in the gym lobby.' });
+  await p.evaluate((c) => localStorage.setItem('stp-context', JSON.stringify(c)), ctx);
+  await devOn(p); await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  await p.fill('#thoughts', 'plan a bake sale friday at 9:30, gym lobby'); await p.click('#build'); await done(p);
+  const warn = await p.evaluate(() => { const el = document.getElementById('numWarn'); return el.hidden ? '' : el.textContent; });
+  expect(!/leaves out/.test(warn) && !/375|393|820|3\.85|63\.49/.test(warn), 'skipped context numbers must not be flagged: ' + warn);
+  const q = await page({ intake: { questions: [] }, write: 'Plan my bake sale for Friday in the gym lobby.' });
+  await q.evaluate((c) => localStorage.setItem('stp-context', JSON.stringify(c)), ctx);
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Roastery")');
+  await q.fill('#thoughts', 'plan a bake sale friday at 9:30, gym lobby'); await q.click('#build'); await done(q);
+  const warn2 = await q.evaluate(() => { const el = document.getElementById('numWarn'); return el.hidden ? '' : el.textContent; });
+  expect(/leaves out 9:30/.test(warn2) && !/375|820/.test(warn2), 'a number you said should still be flagged when left out, and only that one: ' + warn2);
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
 await check('my context: shows about how many tokens picking adds, and run stats log it', async () => {
   const p = await page();
   await p.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday, 6 to 10 am. Two blends.' }])));
@@ -2988,6 +3010,24 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
 });
 
 /* Kevin's Test lab report, 10/28: Build under the box, and the dock's Build only once you scroll past it. */
+/* #1 (idea mvu5bffsox6n): once every question is answered or skipped, Write my prompt wears the white halo. */
+await check('next step dock: Write my prompt gets the white halo once every question is answered', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'Who is it for?', choices: ['Kids', 'Adults'] }, { question: 'How long?', choices: ['1 hour', '2 hours'] }] } });
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan a pumpkin carving night'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  await p.waitForSelector('#qaList .chips button');
+  expect(!(await p.$('#qaGo.ready')), 'no halo while questions are still open');
+  await p.click('#qaList .chips button');
+  await p.waitForFunction(() => document.querySelectorAll('#qaList .chips button').length > 0 && !document.getElementById('qaGo').classList.contains('ready'));
+  await p.waitForTimeout(400);
+  await p.click('#qaList .chips button >> nth=-1');
+  await p.waitForSelector('#qaGo.ready', { timeout: 5000 });
+  const ring = await p.$eval('#qaGo', (b) => getComputedStyle(b).boxShadow);
+  expect(/255, 255, 255/.test(ring), 'the ready button should wear the white halo: ' + ring);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('next step dock: Build my prompt sits under the box, and the dock shows its own only once you scroll past it', async () => {
   const p = await page({ intakeDelay: 1500, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await p.setViewportSize({ width: 390, height: 640 });   /* about what Safari leaves on an iPhone */

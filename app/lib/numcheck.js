@@ -31,12 +31,17 @@ const IMPLIED = [[/\btwo weeks?\b/i, ["14"]], [/\bthree weeks?\b/i, ["21"]], [/\
 /* "October 30th, wait no, the 31st": the part before the correction isn't something to keep. */
 export const CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|correction|or rather|actually it'?s|actually make it)\b/gi;
 
-/* said: everything the person said (raw thoughts, answers, memory, picked context). */
-export function numberIssuesFor(promptText, said) {
+/* said: what the person said for this prompt (raw thoughts, answers, memory facts picked for it).
+   background (optional): standing background they picked, like My context pieces and Your core.
+   Its numbers count as theirs, so using one is never "made up", but the writer is told to work in
+   only what this request needs, so a background number it skips is never "left out" (#3, idea
+   mvu5r9qgmx5v: a roasting context's 375, 393, 820 showed as left out and docked the grade). */
+export function numberIssuesFor(promptText, said, background) {
   said = String(said || "");
-  const have = numberTokens(said, true), given = numberTokens(said.replace(CORRECTION, " "), false);
-  IMPLIED.forEach((x) => { if (x[0].test(said)) x[1].forEach((n) => { have[n] = true; }); });
-  const got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(said)));
+  const bg = String(background || ""), all = bg ? said + "\n" + bg : said;
+  const have = numberTokens(all, true), given = numberTokens(said.replace(CORRECTION, " "), false);
+  IMPLIED.forEach((x) => { if (x[0].test(all)) x[1].forEach((n) => { have[n] = true; }); });
+  const got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(all)));
   conversions(promptText, Object.keys(have)).forEach((n) => { have[n] = true; });   /* 140 miles is about 225 km */
   const money = {}; (String(promptText || "").match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach((m) => { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
   return {
@@ -106,8 +111,8 @@ export function dateMismatches(text, today) {
 }
 
 /* Everything the phone flags for one prompt. */
-export function numberFlags(promptText, said, today) {
-  const n = numberIssuesFor(promptText, said);
+export function numberFlags(promptText, said, today, background) {
+  const n = numberIssuesFor(promptText, said, background);
   return { extra: n.extra, missing: n.missing, dates: dateMismatches(promptText, today) };
 }
 /* Plain words for what the number check found, or "" when it's clean. */

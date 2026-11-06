@@ -2968,10 +2968,14 @@ export function startApp() {
     var mem = (session && session.memFacts) || [];
     return (answers || []).concat(mem.map(function (f) { return { question: "Your saved memory", answer: f }; }));
   }
-  function saidText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n") + (session.known ? "\n" + session.known : ""); }
+  function saidText() { return ownText() + (session.known ? "\n" + session.known : ""); }
+  /* What you said for this prompt only: your thoughts, answers, and the memory facts picked for
+     it. Picked context and your core are background (session.known): their numbers count as
+     yours, but a skipped one is never "left out" (#3). */
+  function ownText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n"); }
   /* Number check: lib/numcheck.js (shared with the grader bench). */
-  function numberIssues(promptText) { return numberIssuesFor(promptText, saidText()); }
-  function promptFlags(promptText) { return numberFlags(promptText, saidText(), session.today || new Date()); }
+  function numberIssues(promptText) { return numberIssuesFor(promptText, ownText(), session.known || ""); }
+  function promptFlags(promptText) { return numberFlags(promptText, ownText(), session.today || new Date(), session.known || ""); }
   /* The Heads up note: made-up or missing numbers, and a weekday that doesn't match its date. */
   function showNumberCheck(promptText) {
     var el = document.getElementById("numWarn");
