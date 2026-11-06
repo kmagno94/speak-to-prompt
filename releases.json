@@ -2,6 +2,62 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.21",
+      "date": "2026-11-05",
+      "title": "Fix session: halo, instant Rework, context number fix, My context for everyone",
+      "items": [
+        "Write my prompt glows (#1): once every follow-up question is answered or skipped, Write my prompt in the dock wears the white halo (with one small pop) so the next tap is obvious.",
+        "Number check fix (#3): numbers in the My context pieces you pick (and Your core) count as yours, so using one is never \"made up\", but skipping one is never \"left out\" any more. Before, a roasting context's numbers showed up as a long \"leaves out 375, 393, 820...\" list and docked the grade under the bar, which could push you to Rework for no reason. Auto-Repair also stops trying to stuff those numbers into the prompt.",
+        "Rework builds right away (#2): tap Rework and round 2 starts cooking from your prompt plus the What was weak line, no second Build tap. ✏️ Edit first next to it keeps the old way: the prompt waits in the box for your changes.",
+        "My context for everyone (#4): out of dev tools and into the main app, under Build. Saving is opt-in: pieces stay in this tab until you turn on Save on this phone (turning it off deletes them from the phone). A phone that already had saved pieces stays opted in. Each piece shows its size against a 3,800 character cap and turns amber with how far over; its chip says over 3,800 too. Typing past the cap never cuts anything off."
+      ],
+      "checks": [
+        {
+          "say": "With your key on and Normal mode, type a note like \"plan a pumpkin carving night\", tap Build my prompt, then answer or skip every question.",
+          "see": "After the last answer, Write my prompt (N of N) in the dock gets a white halo with one small pop. While questions are still open it has no halo.",
+          "paste": "ok so um I wanna do a pumpkin carving night for like my cousins and their kids, maybe a Saturday, not sure how many people yet, we need snacks and some kind of contest I guess, help me plan it"
+        },
+        {
+          "say": "Turn on Reduce Motion, run the same questions again to the end.",
+          "see": "The white halo shows on Write my prompt with no pop."
+        },
+        {
+          "say": "In My context, pick a piece with numbers in it (like roast temps or prices) for a note that doesn't need them, and build with your key.",
+          "see": "No Heads up saying the prompt leaves out your context's numbers, and the Quality check isn't docked for it. A number you said in the box that goes missing still gets flagged.",
+          "paste": "plan a bake sale for the robotics club friday at 9:30 in the gym lobby, we have like three tables and I want it to feel organized not chaotic lol"
+        },
+        {
+          "say": "On a prompt whose Quality check is under 4.5, tap 🔁 Rework from this prompt.",
+          "see": "Round 2 starts cooking right away with no Build tap, then the card says Round 2 with the before and after scores."
+        },
+        {
+          "say": "On a prompt under the bar, tap ✏️ Edit first instead, add a line, then tap Build my prompt.",
+          "see": "The prompt waits in the box with What was weak on top, and only builds after you tap Build my prompt."
+        },
+        {
+          "say": "With Show my dev tools OFF, look under Build my prompt.",
+          "see": "My context shows with + Add context you can reuse."
+        },
+        {
+          "say": "Tap + Add context you can reuse, give it a title and some text, leave Save on this phone off, tap Done, then refresh with the version pill.",
+          "see": "The chip works before the refresh and is gone after it. Nothing saved."
+        },
+        {
+          "say": "Add a piece again, turn on Save on this phone, tap Done, refresh.",
+          "see": "The chip comes back after the refresh, and Save on this phone is still on in the editor."
+        },
+        {
+          "say": "In the editor, paste a long chunk into a piece until it's past 3,800 characters.",
+          "see": "Under it, the counter turns amber: Over the 3,800 character cap by N. After Done, that chip says over 3,800. Under the cap it reads like 1,240 / 3,800 characters.",
+          "paste": "Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and"
+        },
+        {
+          "say": "Open the editor and turn Save on this phone off, then refresh.",
+          "see": "Pieces are still there until the refresh, then gone (deleted from the phone)."
+        }
+      ]
+    },
+    {
       "version": "2.1.20",
       "date": "2026-11-04",
       "title": "Quality crew: fact ledger, stand-in AI, shape up front",
