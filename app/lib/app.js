@@ -364,6 +364,7 @@ export function startApp() {
     setCategoryLine();
     setReady(true);
     output.value = text;
+    document.getElementById("gapNote").hidden = true; document.getElementById("gapAsk").hidden = true;   /* a new result never shows old stand-in questions */
     status.className = "status";
     status.textContent = "";
     document.getElementById("madeBy").textContent = madeBy;
@@ -2213,9 +2214,81 @@ export function startApp() {
     /* Test lab 11/05: say what the stand-in is in plain words, every time (it read as jargon). */
     el.textContent = "\ud83e\udd16 Test run: before showing you this, a stand-in AI read your prompt like your AI will. " +
       (st.added ? "It needed " + (st.added === 1 ? "one thing" : st.added + " things") + " you had already said, so we added " + (st.added === 1 ? "it" : "them") + ". " : "") +
-      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") + " If you know, add it to your note and build again, or just answer when it asks." : "Your AI can start right away.");
+      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") + " Answer below to add it to your prompt, or skip it." : "Your AI can start right away.");
     el.hidden = false;
-  }   /* every Flash said busy: wait this long, then go around again */
+    showGapAsk(st.open.slice(0, 2));
+  }
+  /* #48, SPEC LOCKED 11/05 (A, AI fits it in; no re-check after): each open stand-in question
+     gets an answer box. Add to prompt puts the answer with the follow-up answers (so its
+     numbers count as yours) and runs one Flash-Lite gap fill that may only add lines and has to
+     include the answer. If that fails or adds anything else, the phone adds a plain line, so
+     the answer is never lost. Skip costs nothing. Cheaper than rebuilding: 1 small call vs 4. */
+  var gapBusy = false;
+  function showGapAsk(qs) {
+    var box = document.getElementById("gapAsk");
+    box.innerHTML = (qs || []).map(function (q, i) {
+      return '<div class="gaprow" data-q="' + esc(q) + '"><label for="gapIn' + i + '">' + esc(q) + '</label>' +
+        '<div class="gapline"><input type="text" id="gapIn' + i + '" class="gapin" placeholder="Your answer" autocomplete="off" enterkeyhint="done">' +
+        '<button type="button" class="gapadd" disabled>Add to prompt</button><button type="button" class="gapskip linkish">Skip</button></div>' +
+        '<small class="gapmsg" role="status"></small></div>';
+    }).join("");
+    box.hidden = !(qs && qs.length);
+  }
+  function gapPlainLine(cur, q, a) {
+    var line = String(q).trim() + " " + String(a).trim().replace(/[.\s]+$/, "") + ".";
+    var lines = cur.split("\n"), last = lines.length - 1;
+    while (last > 0 && !lines[last].trim()) last--;
+    if (/start right away|ask at most one/i.test(lines[last] || "")) lines.splice(last, 0, line, ""); else lines.push("", line);
+    return lines.join("\n");
+  }
+  function gapSetPrompt(text) {
+    if (!session) return;
+    session.basePrompt = text;
+    output.value = extras(text);
+    xray.set({ prompt: output.value, raw: session.raw, answers: withMem(session.answers), core: extraBlock(), known: sessionKnown() });
+    showNumberCheck(text);
+  }
+  function gapAdd(row) {
+    var input = row.querySelector(".gapin"), q = row.getAttribute("data-q"), a = input.value.trim();
+    if (!a || !session || gapBusy) return;
+    var addBtn = row.querySelector(".gapadd"), msg = row.querySelector(".gapmsg"), mine = session, cur = output.value;
+    gapBusy = true;
+    input.disabled = true; addBtn.disabled = true; row.querySelector(".gapskip").disabled = true;
+    addBtn.textContent = "Adding...";
+    session.answers = (session.answers || []).concat([{ question: q, answer: a }]);
+    askGemini(gapFillPrompt(cur, [q], session.raw, withMem(session.answers)), false, liteCrew(0), "low", null, 15000).then(function (r) {
+      var fixed = cleanPrompt(r.text);
+      return fixed && fixed !== cur && onlyAdded(fixed, cur, 1) && hasItem(a, fixed, 0.5) ? fixed : "";
+    }, function () { return ""; }).then(function (fixed) {
+      gapBusy = false;
+      if (session !== mine || output.value !== cur) return;   /* they moved on or edited it: leave it alone */
+      var fit = !!fixed;
+      gapSetPrompt(fit ? fixed : gapPlainLine(cur, q, a));
+      row.classList.add("done");
+      row.innerHTML = "";
+      var done = document.createElement("small");
+      done.setAttribute("role", "status");
+      done.textContent = "\u2705 Added to your prompt" + (fit ? "" : " as its own line") + ": " + q + " " + a;
+      row.appendChild(done);
+      if (pendingRun) pendingRun.standin_answered = (pendingRun.standin_answered || 0) + 1;
+    });
+  }
+  (function () {
+    var box = document.getElementById("gapAsk");
+    box.addEventListener("input", function (e) {
+      var row = e.target.closest(".gaprow"); if (!row || !e.target.classList.contains("gapin")) return;
+      row.querySelector(".gapadd").disabled = !e.target.value.trim() || gapBusy;
+    });
+    box.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || !e.target.classList.contains("gapin")) return;
+      e.preventDefault(); gapAdd(e.target.closest(".gaprow"));
+    });
+    box.addEventListener("click", function (e) {
+      var row = e.target.closest(".gaprow"); if (!row) return;
+      if (e.target.classList.contains("gapadd")) gapAdd(row);
+      else if (e.target.classList.contains("gapskip")) { row.hidden = true; if (!box.querySelector(".gaprow:not([hidden])")) box.hidden = true; }
+    });
+  })();   /* every Flash said busy: wait this long, then go around again */
   var flashWait = null;
   function flashBusy(e) { var s = e && e.status; return s === 429 || s === 500 || s === 503 || s === 404 || s === "timeout" || s === "empty"; }
   function stopFlashWait() { if (flashWait) { clearInterval(flashWait.tick); clearTimeout(flashWait.timer); flashWait = null; } }

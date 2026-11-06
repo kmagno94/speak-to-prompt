@@ -385,7 +385,7 @@ await check('everyone gets the new flow: with run stats and dev tools off, Norma
   expect((p.standins || []).length >= 1 && !p.grades.length, 'the stand-in ran on the long note; no grade without run stats');
   expect(!(await p.isHidden('#resultTrack li[data-step=finish]')), 'the Finish step shows, because Check ran');
   const note = await p.textContent('#gapNote');
-  expect(/Test run: before showing you this, a stand-in AI read your prompt like your AI will\. Your AI may still ask: Which day is the dinner\? If you know, add it to your note and build again/.test(note) && !/Stand-in AI test:/.test(note), 'the gap note explains itself in plain words: ' + note);
+  expect(/Test run: before showing you this, a stand-in AI read your prompt like your AI will\. Your AI may still ask: Which day is the dinner\? Answer below to add it to your prompt, or skip it\./.test(note) && !/Stand-in AI test:/.test(note), 'the gap note explains itself in plain words: ' + note);
   // A short note: Clean and the ledger still run, but no stand-in and no Check step
   const SHORT = 'potluck at my place a saturday I think, my friend Dana is gluten free, like 8 people total, easy stuff I can make the night before';
   const q = await page({ intake, write: SHORT });
@@ -393,6 +393,39 @@ await check('everyone gets the new flow: with run stats and dev tools off, Norma
   expect((q.cleans || []).length === 1 && (q.ledgers || []).length === 1 && !(q.standins || []).length && !q.grades.length, 'short note: Clean and ledger yes, stand-in and grade no');
   expect(await q.isHidden('#resultTrack li[data-step=finish]') && await q.isHidden('#gapNote'), 'no Check step and no note on a short note');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('#48 answer the stand-in: type an answer and Add to prompt fits it in with one Flash-Lite call, a bad fill falls back to a plain line, and Skip costs nothing (SPEC LOCKED 11/05)', async () => {
+  const LONG = 'ok so um I want to plan a small birthday dinner for my mom next month at home, nothing fancy. she likes italian food and hates anything too spicy. there will be maybe 6 of us, my two aunts, my cousin, my dad, me and mom. I have about $90 for groceries and I want to cook most of it the day before because I work that morning until noon.';
+  const PROMPT = 'Context: ' + LONG + '\nTask: Plan the menu and a cooking schedule.\nStart right away, and ask at most one short question only if something essential is missing.';
+  const intake = { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] };
+  // 1. The fill fits it in: one more Flash-Lite call, the answer's number counts as theirs
+  const p = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : cur.replace('Task:', 'The dinner is on Saturday the 14th.\nTask:') });
+  await withKey(p); await p.fill('#thoughts', LONG); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#gapAsk .gaprow') && await p.isDisabled('#gapAsk .gapadd'), 'an answer box shows under the note, Add is off until you type');
+  await p.fill('#gapAsk .gapin', 'Saturday the 14th');
+  await p.click('#gapAsk .gapadd');
+  await p.waitForFunction(() => document.querySelector('#gapAsk .gaprow.done'), null, { timeout: 15000 });
+  const fill = (p.fills || [])[1];
+  expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && /Saturday the 14th/.test(fill.text), 'one Flash-Lite fill with the question and the answer');
+  expect(/The dinner is on Saturday the 14th\./.test(await p.inputValue('#output')) && /Added to your prompt: Which day is the dinner\? Saturday the 14th/.test(await p.textContent('#gapAsk')), 'the answer is in the prompt and the row says so');
+  expect(await p.isHidden('#numWarn'), 'the 14th is their number now, so no number warning');
+  expect((p.standins || []).length === 1, 'no re-check after adding');
+  // 2. The fill comes back wrong: the phone adds a plain line before the last line
+  const q = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : 'Something else entirely.' });
+  await withKey(q); await q.fill('#thoughts', LONG); await q.click('#build'); await done(q);
+  await q.fill('#gapAsk .gapin', 'Saturday');
+  await q.press('#gapAsk .gapin', 'Enter');
+  await q.waitForFunction(() => document.querySelector('#gapAsk .gaprow.done'), null, { timeout: 15000 });
+  const out = await q.inputValue('#output');
+  expect(/Which day is the dinner\? Saturday\.\n\nStart right away/.test(out) && /as its own line/.test(await q.textContent('#gapAsk')), 'a plain line goes in before the last line: ' + out.slice(-160));
+  // 3. Skip: no call, the box goes away
+  const s = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'] });
+  await withKey(s); await s.fill('#thoughts', LONG); await s.click('#build'); await done(s);
+  const fillsBefore = (s.fills || []).length;
+  await s.click('#gapAsk .gapskip');
+  expect(await s.isHidden('#gapAsk') && (s.fills || []).length === fillsBefore && await s.inputValue('#output') === PROMPT, 'Skip hides it, spends nothing, and leaves the prompt alone');
+  expect(!p.errors.length && !q.errors.length && !s.errors.length, 'page errors: ' + p.errors.concat(q.errors, s.errors).join('; '));
 });
 
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {

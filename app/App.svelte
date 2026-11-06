@@ -160,6 +160,7 @@
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="gapNote" class="repairnote" role="status" hidden></p>
+    <div id="gapAsk" class="gapask" hidden></div>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
     <RoundBanner place="result" />
     <QualityCheck />

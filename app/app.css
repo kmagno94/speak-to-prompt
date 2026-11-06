@@ -473,6 +473,16 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* Auto-Repair note under "Ready in ..." */
 .repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }
+.gapask { display: flex; flex-direction: column; gap: 10px; }
+.gapask[hidden] { display: none; }
+.gaprow { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.gaprow[hidden] { display: none; }
+.gaprow label { font-size: 14px; font-weight: 600; }
+.gapline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gapline input { flex: 1 1 160px; min-width: 0; min-height: 44px; font-size: 16px; }
+.gapline button { min-height: 44px; }
+.gaprow small { color: var(--muted); font-size: 13px; }
+.gaprow.done small { color: var(--ok); font-weight: 600; }
 .gradenote { margin: 0; font-size: 13px; color: var(--muted); }
 
 /* STAGING badge: only the staging build adds it (lib/channel.js). Amber with dark text
