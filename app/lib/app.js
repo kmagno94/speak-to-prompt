@@ -275,7 +275,8 @@ export function startApp() {
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
-    else if (act === "rework") startRework();
+    else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
+    else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
     else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
@@ -2660,7 +2661,10 @@ export function startApp() {
     ui.compare = compareRounds(list);
     ui.round = Object.assign({}, ui.round, { scores: list.map(function (x) { return x.g ? Math.round(x.g.craft * 10) / 10 : null; }) });
   }
-  function startRework() {
+  /* edit false (Rework, #2, idea mvu5g66pdbqo): the round builds right away from the weak line
+     plus the prompt, no second Build tap. edit true (Edit first): the prompt waits in the box
+     for your changes, then Build my prompt. */
+  function startRework(edit) {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
     if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan) return;
     if ((ui.round && ui.round.stage !== "built") || rounds.length >= ROUND_MAX) return;
@@ -2675,6 +2679,7 @@ export function startApp() {
     ideasSync();
     ui.round = Object.assign({}, ui.round || {}, { n: rounds.length + 1, stage: "edit", from: from + 1, count: rounds.length, max: ROUND_MAX });
     result.hidden = true;
+    if (!edit) { form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); return; }
     form.scrollIntoView({ behavior: "smooth", block: "start" });
     try { thoughts.focus({ preventScroll: true }); thoughts.setSelectionRange(0, 0); } catch (e) {}
   }

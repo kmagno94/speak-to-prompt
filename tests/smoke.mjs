@@ -2517,10 +2517,29 @@ async function reworkPage(opts) {
 }
 const RAW_BAKE = 'plan a bake sale for the robotics club, friday, gym lobby';
 const round2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT with a $40 budget' : 'First prompt');
-await check('rework: round 2 puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
+/* #2 (idea mvu5g66pdbqo): Rework builds round 2 right away, no second Build tap. */
+await check('rework: tapping Rework builds round 2 right away from the weak line and the prompt, with no Build tap and no new questions', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const quick2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT, sharper this time' : 'First prompt');
+  const p = await reworkPage({ writeFn: quick2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
+  expect(await p.isVisible('#reworkEditBtn'), 'Edit first should sit next to Rework');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#reworkBtn');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT, sharper this time', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && /EDITED PROMPT:[\s\S]*What was weak: It reads like your words rearranged[\s\S]*First prompt/.test(w.text) && w.text.includes(RAW_BAKE), 'round 2 should write from the weak line, the prompt, and your first words');
+  expect(!/What I changed when reworking/.test(w.text), 'nothing was edited, so no edits should be counted as yours');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'round 2 asks no new questions');
+  expect(/Round 2/.test(await p.textContent('#madeBy')), 'the card should say Round 2: ' + await p.textContent('#madeBy'));
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: Edit first puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
-  await p.click('#reworkBtn');
+  await p.click('#reworkEditBtn');
   await p.waitForSelector('#roundForm');
   const box = await p.inputValue('#thoughts');
   const lines = box.split('\n');
@@ -2551,7 +2570,7 @@ await check('rework: round 2 puts the prompt in the box with one weak line, buil
 await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back and forth with each score, and a new prompt clears them', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   const edited = (await p.inputValue('#thoughts')) + '\nBudget is $40 total.';
   await p.fill('#thoughts', edited);
   await p.click('#build'); await done(p);
@@ -2580,16 +2599,16 @@ await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back an
 await check('rework: Back to round 1 from the box, and a failed round 2 brings round 1 back and says so', async () => {
   const low = { craft: 3, rearranged: true, invented: false, missing: [] };
   const p = await reworkPage({ grade: low });
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nMake it fun.');
   const draft = await p.inputValue('#thoughts');
   await p.click('#roundBackForm');
   await p.waitForSelector('#roundForm', { state: 'detached' });
   expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   expect(await p.inputValue('#thoughts') === draft, 'Rework again should bring back your round 2 edits');
   const q = await reworkPage({ grade: low, failRound2: true });
-  await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
+  await q.click('#reworkEditBtn'); await q.waitForSelector('#roundForm');
   await q.clock.install();
   await q.click('#build');
   for (let i = 0; i < 130 && !(await q.isVisible('#notice-result:has-text("Taking longer")')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(20); }
@@ -2607,14 +2626,14 @@ await check('rework: up to 3 rounds, Rework from the round you are viewing, max 
   const gradeFn = (ask) => (/ROUND THREE PROMPT/.test(ask) ? g3 : /SECOND ROUND PROMPT/.test(ask) ? g2 : g1);
   const p = await reworkPage({ writeFn, gradeFn });
   // Round 2
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nKeep it friendly.');
   await p.click('#build'); await done(p);
   await p.waitForSelector('#roundResult:has-text("2.0 → 3.6")', { timeout: 5000 });
   expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 should show');
   // Round 3, reworked from round 1
   await p.click('#round1Result');
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   expect(/Round 3/.test(await p.textContent('#roundForm')) && /Back to round 1/.test(await p.textContent('#roundBackForm')), 'the box banner should say Round 3, back to round 1');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nIt is for my cousin.');
   await p.click('#build'); await done(p);
