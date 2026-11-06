@@ -1,19 +1,25 @@
 /* My context: reusable pieces of background (a title and some text each) that you pick
    per prompt, so the AI can refer to them without you retyping them.
 
-   DEVELOPMENT ONLY, like Your core: shown only with "Show my dev tools" on, saved in this
-   browser (localStorage) on this phone only. Picks are per visit and never saved.
+   In the main app since v2.1.21 (#4, idea mvxaikmmygq5). The hard rule is that the site never
+   saves your words, so saving is opt-in, like Remember my key: pieces live in this tab only
+   until you turn on "Save on this phone" (KEEP_KEY), which keeps them in this browser
+   (localStorage, stp-context) on this phone only. Turning it off deletes what it saved and
+   keeps the pieces for this visit. A phone that already had saved pieces from the dev tools
+   days counts as opted in. Picks are per visit and never saved.
+   Each piece has a CAP of 3,800 characters: you can type past it (up to MAX_TEXT) so nothing
+   gets cut off mid-thought, but the editor and the chip say it's over so you can trim it.
    The picked pieces are never tacked onto the prompt: the writer sees them and works in only
    the facts the request needs, so Copy gives the prompt alone (then the core at the end).
    The no-key quick version puts them inside the prompt, before the raw thoughts.
    Budget: picks should stay under BUDGET tokens. Past 100%, a build with a key runs one
    Flash-Lite squeeze (app.js) and keeps the shorter version here in memory only, for these
    exact picks: the saved pieces never change, and a reload or a new pick drops it. */
-import { core } from './core.svelte.js';
-
 const KEY = 'stp-context';
+const KEEP_KEY = 'stp-context-keep';
 const MAX_TITLE = 60;
-const MAX_TEXT = 4000;
+export const CAP = 3800;      /* characters per piece; past it the editor and chip say so */
+const MAX_TEXT = 6000;        /* hard stop, well past the cap, so typing never gets cut off */
 export const BUDGET = 1500;   /* tokens; about 4 characters per token */
 const HEAD = '---\nMY CONTEXT (background I picked for this request; use it and refer to it by title)';
 export const tokensOf = (t) => (t ? Math.ceil((t.length + 2) / 4) : 0);
@@ -22,16 +28,21 @@ export const blockTokens = (body) => tokensOf(HEAD + '\n\n' + body);
 
 function read() { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
 function write(v) { try { if (v.length) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch (e) {} }
+/* Opted in: the flag, or pieces already saved before saving became opt-in. */
+function readKeep() { try { return localStorage.getItem(KEEP_KEY) === '1' || !!localStorage.getItem(KEY); } catch (e) { return false; } }
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 class Context {
   list = $state([]);       // [{ id, title, text }]
   picked = $state([]);     // ids picked for the next prompt (memory only)
   open = $state(false);    // the My context editor
+  keep = $state(false);    // Save on this phone (opt-in)
 
   usable = $derived(this.list.filter((c) => c.text.trim()));
   chosen = $derived(this.usable.filter((c) => this.picked.includes(c.id)));
-  active = $derived(core.dev && this.chosen.length > 0);
+  active = $derived(this.chosen.length > 0);
+  /* Pieces past the 3,800 character cap (ids), for the editor counter and the chips. */
+  overCap = $derived(this.list.filter((c) => c.text.trim().length > CAP).map((c) => c.id));
 
   /* Changes whenever the picks or their words change, so an old squeeze can't be reused. */
   sig = $derived(this.chosen.map((c) => c.id + '\u0001' + c.title.trim() + '\u0001' + c.text.trim()).join('\u0002'));
@@ -48,9 +59,15 @@ class Context {
   pct = $derived(Math.round((this.tokens / BUDGET) * 100));
   over = $derived(this.active && !this.squeezed && this.rawTokens > BUDGET);
 
-  constructor() { this.list = read(); }
+  constructor() { this.keep = readKeep(); this.list = this.keep ? read() : []; }
 
-  save() { write(this.list.filter((c) => c.title.trim() || c.text.trim())); }
+  save() { if (this.keep) write(this.list.filter((c) => c.title.trim() || c.text.trim())); }
+  /* On: saves what's here now. Off: deletes what it saved; the pieces stay for this visit. */
+  setKeep(on) {
+    this.keep = !!on;
+    try { if (on) localStorage.setItem(KEEP_KEY, '1'); else { localStorage.removeItem(KEEP_KEY); localStorage.removeItem(KEY); } } catch (e) {}
+    this.save();
+  }
 
   add() {
     const c = { id: newId(), title: '', text: '' };

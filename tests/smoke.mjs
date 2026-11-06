@@ -2719,18 +2719,29 @@ await check('wake lock: the screen stays awake only while Gemini works, and phon
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
-/* My context (dev tools): reusable background picked per prompt. */
-await check('my context: hidden without dev tools; write, edit, delete, and it survives a reload', async () => {
+/* My context: reusable background picked per prompt. In the main app since v2.1.21 (#4, idea
+   mvxaikmmygq5): shown without dev tools, saved only after Save on this phone is on. */
+await check('my context: shown without dev tools, saves nothing until Save on this phone is on, then write, edit, delete, and it survives a reload', async () => {
   const p = await page();
-  expect(!(await p.$('#contextRow')), 'My context should be hidden without dev tools');
-  await devOn(p);
+  expect(await p.isVisible('#contextRow'), 'My context should show without dev tools');
   await p.click('#contextNew');
+  expect(!(await p.isChecked('#contextKeep')), 'saving should start off');
+  await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
+  await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
+  expect(!(await p.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'nothing should be saved before opting in');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'the piece works for this visit without saving');
+  await p.reload();
+  expect(!(await p.$('#contextRow .ctxchip')), 'unsaved pieces go away on refresh');
+  await p.click('#contextNew');
+  await p.check('#contextKeep');
   await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
   await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
   await p.click('#contextEditor button:text-is("Done")');
   await p.reload();
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'saved context should come back as a chip');
   await p.click('#contextEdit');
+  expect(await p.isChecked('#contextKeep'), 'Save on this phone should stay on after a reload');
   await p.fill('#contextEditor .ctxtitle', 'Roastery');
   await p.click('#contextEditor button:text-is("Done")');
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
@@ -2739,6 +2750,31 @@ await check('my context: hidden without dev tools; write, edit, delete, and it s
   await p.click('#contextEditor button:text-is("Tap again to delete")');
   await p.reload();
   expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');
+  // Turning saving off deletes what it saved but keeps the pieces for this visit
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'WGU');
+  await p.fill('#contextEditor .ctxtext', 'Taking D522 Python.');
+  expect(!!(await p.evaluate(() => localStorage.getItem('stp-context'))), 'saved while on');
+  await p.uncheck('#contextKeep');
+  expect(!(await p.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'turning it off should delete what it saved');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("WGU")'), 'the piece stays for this visit');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* The 3,800 character cap (#4): a counter on each piece, amber with the overage past it, and the chip says so. */
+await check('my context: each piece shows its size against the 3,800 character cap and says when it went over', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Roast log');
+  await p.fill('#contextEditor .ctxtext', 'x'.repeat(1200));
+  expect(/1,200 \/ 3,800 characters/.test(await p.textContent('#contextEditor .size')), 'counter should read 1,200 / 3,800: ' + await p.textContent('#contextEditor .size'));
+  await p.fill('#contextEditor .ctxtext', 'x'.repeat(4040));
+  const over = await p.textContent('#contextEditor .size');
+  expect(/Over the 3,800 character cap by 240/.test(over), 'should say how far over: ' + over);
+  expect((await p.inputValue('#contextEditor .ctxtext')).length === 4040, 'typing past the cap should not cut anything off');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(/over 3,800/.test(await p.textContent('#contextRow .ctxchip:has-text("Roast log")')), 'the chip should flag it too');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2769,7 +2805,7 @@ await check('my context: only picked pieces reach the prompt and the writer, not
   const r = await page();
   await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
   await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
-  expect(!/MY CONTEXT/.test(await r.inputValue('#output')), 'dev tools off should add no context');
+  expect(!/MY CONTEXT|Tuesday and Friday/.test(await r.inputValue('#output')), 'nothing picked should add no context');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 

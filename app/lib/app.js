@@ -10,7 +10,7 @@ import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';
 import { compareRounds } from './compare.js';   /* core: dev-only, see core.svelte.js */
-import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
+import { context, blockTokens } from './context.svelte.js';   /* My context: main app, opt-in save, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';

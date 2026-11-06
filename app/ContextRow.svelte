@@ -1,11 +1,12 @@
 <script>
-  /* My context (dev tools): pick saved pieces of background for this prompt, or open the
-     editor to write a new one (a title and a big text box). See lib/context.svelte.js. */
+  /* My context: pick pieces of background for this prompt, or open the editor to write a new
+     one (a title and a big text box). In the main app since v2.1.21 (#4): saving is opt-in
+     (Save on this phone), and each piece shows its size against the 3,800 character cap.
+     See lib/context.svelte.js. */
   import { tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ms } from './lib/motion.js';
-  import { core } from './lib/core.svelte.js';
-  import { context, BUDGET } from './lib/context.svelte.js';
+  import { context, BUDGET, CAP } from './lib/context.svelte.js';
   import { ui } from './lib/ui.svelte.js';
 
   const n = (x) => x.toLocaleString('en-US');
@@ -17,6 +18,8 @@
     if (!context.over) return base;
     return base + (ui.hasKey ? ' · squeezes to fit when you build' : ' · over budget, used in full');
   });
+
+  const len = (c) => c.text.trim().length;
 
   let armed = $state('');
   let editor = $state();
@@ -43,41 +46,44 @@
   });
 </script>
 
-{#if core.dev}
-  <div class="ctxrow" id="contextRow">
-    <div class="ctxhead">
-      <span class="ctxlabel">My context</span>
-      {#if context.chosen.length}<span class="ctxcount" class:over={context.over} id="contextCount" title={`Budget: ${n(BUDGET)} tokens`}>{context.chosen.length} added to this prompt · {budget}</span>{/if}
-      <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
-    </div>
-    <div class="chips" role="group" aria-label="Context to add to this prompt">
-      {#each context.usable as c (c.id)}
-        <button type="button" class="ctxchip" aria-pressed={context.picked.includes(c.id)} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{c.title.trim() || 'Untitled'}</button>
-      {/each}
-      <button type="button" class="ctxnew" id="contextNew" onclick={addNew}>+ {context.usable.length ? 'New' : 'Add context you can reuse'}</button>
-    </div>
-
-    {#if context.open}
-      <div class="ctxeditor" id="contextEditor" bind:this={editor} transition:slide={{ duration: ms(220) }}>
-        <p class="hint">Each piece is saved on this phone only. Tap its chip above to use it for this prompt: the facts this request needs get worked into the prompt, nothing tacked on.</p>
-        {#each context.list as c, i (c.id)}
-          <div class="ctxitem" data-id={c.id}>
-            <label class="sr" for="ctxTitle-{i}">Title</label>
-            <input id="ctxTitle-{i}" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={c.title} oninput={(e) => context.update(c.id, 'title', e.currentTarget.value)}>
-            <label class="sr" for="ctxText-{i}">Context</label>
-            <textarea id="ctxText-{i}" class="ctxtext" rows="6" maxlength="4000" placeholder="Everything the AI should know about this. Messy is fine." value={c.text} oninput={(e) => context.update(c.id, 'text', e.currentTarget.value)}></textarea>
-            <button type="button" class="link del" onclick={() => del(c.id)}>{armed === c.id ? 'Tap again to delete' : 'Delete'}</button>
-          </div>
-        {/each}
-        <!-- Floats at the bottom of the screen (on top of the keyboard) while the editor is open. -->
-        <div class="row ctxbar" id="contextBar">
-          <button type="button" onclick={addNew}>+ Add another</button>
-          <button type="button" class="primary" id="contextDone" onclick={done}>Done</button>
-        </div>
-      </div>
-    {/if}
+<div class="ctxrow" id="contextRow">
+  <div class="ctxhead">
+    <span class="ctxlabel">My context</span>
+    {#if context.chosen.length}<span class="ctxcount" class:over={context.over} id="contextCount" title={`Budget: ${n(BUDGET)} tokens`}>{context.chosen.length} added to this prompt · {budget}</span>{/if}
+    <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
   </div>
-{/if}
+  <div class="chips" role="group" aria-label="Context to add to this prompt">
+    {#each context.usable as c (c.id)}
+      <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={context.overCap.includes(c.id) ? `Over the ${n(CAP)} character cap` : ''} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{c.title.trim() || 'Untitled'}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
+    {/each}
+    <button type="button" class="ctxnew" id="contextNew" onclick={addNew}>+ {context.usable.length ? 'New' : 'Add context you can reuse'}</button>
+  </div>
+
+  {#if context.open}
+    <div class="ctxeditor" id="contextEditor" bind:this={editor} transition:slide={{ duration: ms(220) }}>
+      <label class="keep" for="contextKeep">
+        <input type="checkbox" id="contextKeep" checked={context.keep} onchange={(e) => context.setKeep(e.currentTarget.checked)}>
+        <span><b>Save on this phone</b><small>{context.keep ? 'Saved in this browser on this phone only, never sent anywhere except inside prompts you build. Turn off to delete them from this phone.' : 'Off: these pieces go away when you close or refresh. Turn on to keep them on this phone only.'}</small></span>
+      </label>
+      <p class="hint">Tap a chip above to use that piece for this prompt: the facts this request needs get worked into the prompt, nothing tacked on. Keep each piece under {n(CAP)} characters.</p>
+      {#each context.list as c, i (c.id)}
+        <div class="ctxitem" data-id={c.id}>
+          <label class="sr" for="ctxTitle-{i}">Title</label>
+          <input id="ctxTitle-{i}" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={c.title} oninput={(e) => context.update(c.id, 'title', e.currentTarget.value)}>
+          <label class="sr" for="ctxText-{i}">Context</label>
+          <textarea id="ctxText-{i}" class="ctxtext" class:overcap={len(c) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize-{i}" placeholder="Everything the AI should know about this. Messy is fine." value={c.text} oninput={(e) => context.update(c.id, 'text', e.currentTarget.value)}></textarea>
+          <p class="size" class:overcap={len(c) > CAP} id="ctxSize-{i}" aria-live="polite">{#if len(c) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(c) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(c))} / {n(CAP)} characters{/if}</p>
+          <button type="button" class="link del" onclick={() => del(c.id)}>{armed === c.id ? 'Tap again to delete' : 'Delete'}</button>
+        </div>
+      {/each}
+      <!-- Floats at the bottom of the screen (on top of the keyboard) while the editor is open. -->
+      <div class="row ctxbar" id="contextBar">
+        <button type="button" onclick={addNew}>+ Add another</button>
+        <button type="button" class="primary" id="contextDone" onclick={done}>Done</button>
+      </div>
+    </div>
+  {/if}
+</div>
 
 <style>
   .ctxrow { grid-column: 1 / -1; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
@@ -101,6 +107,16 @@
   .ctxtitle { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
   .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); min-height: 150px; }
   .ctxtitle:focus-visible, .ctxtext:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .keep { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--accent-soft); cursor: pointer; }
+  .keep input { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--accent); }
+  .keep span { display: grid; gap: 2px; }
+  .keep small { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
+  /* The 3,800 cap: a quiet counter, amber with the overage once a piece goes past it. */
+  .size { margin: -4px 0 0; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .size.overcap { color: var(--warn); font-weight: 700; }
+  .ctxtext.overcap { border-color: var(--warn); }
+  .ctxchip.overcap { border-color: var(--warn); }
+  .capflag { color: var(--warn); font-weight: 700; }
   .del { justify-self: start; color: var(--danger); min-height: 40px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>
