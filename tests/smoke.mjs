@@ -305,7 +305,7 @@ await check('quality crew: the fact ledger is a must-keep list the phone checks,
   // 4. Stand-in: JSON on Flash-Lite, the answered gap is filled, round 2 finds none, and the prompt shows with the line
   expect(p.standins && p.standins.length === 2 && p.standins.every(x => /lite/.test(x.model) && x.json), 'stand-in runs twice on Flash-Lite: ' + (p.standins || []).map(x => x.model).join());
   expect(/Ana is the only vegetarian I mentioned/.test(await p.inputValue('#output')), 'filled gap is in the prompt at Ready');
-  expect(/Test run: .*stand-in AI read your prompt like your AI will\. It needed one thing you had already said, so we added it\./.test(await p.textContent('#gapNote')), 'gap note says what it did, in plain words: ' + await p.textContent('#gapNote'));
+  expect(/Test run/.test(await p.textContent('#gapNote .gaphead')) && /stand-in AI read your prompt the way your AI will/.test(await p.textContent('#gapNote .gapsub')) && /Added one thing you had already said/.test(await p.textContent('#gapNote')), 'gap note says what it did, in short plain lines: ' + await p.textContent('#gapNote'));
   // Step by step: a closed box under the time strip lists every step that ran, with time and what happened
   expect(!(await p.isVisible('#resultTrack .tsdetail ol')), 'Step by step starts closed');
   await p.click('#resultTrack .tsdetail summary');
@@ -316,7 +316,7 @@ await check('quality crew: the fact ledger is a must-keep list the phone checks,
   // 5. A gap nobody answered is never guessed: it's shown to you instead
   const q = await page({ models, intake, write: W, gaps: ['Do you want drinks included?'] });
   await withKey(q); await q.fill('#thoughts', memo); await q.click('#build'); await done(q);
-  expect(await q.inputValue('#output') === W && /Your AI may still ask: Do you want drinks included\?/.test(await q.textContent('#gapNote')), 'unanswered gap is shown, not guessed');
+  expect(await q.inputValue('#output') === W && /Your AI may still ask this:/.test(await q.textContent('#gapNote')) && /Do you want drinks included\?/.test(await q.textContent('#gapAsk label')), 'unanswered gap is shown, not guessed');
   // 6. A fill that rewrites lines or adds a number is thrown away
   const r = await page({ models, intake, write: W, gaps: ['How much spice?'], gapFillFn: (cur) => cur.replace('budget of maybe $60', 'budget of $75') + '\nMake it spicy.' });
   await withKey(r); await r.fill('#thoughts', memo); await r.click('#build'); await done(r);
@@ -370,7 +370,7 @@ await check('bench fixes run 2: a strictness guard takes out "safely", cross-con
   const s = await page({ intake: { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] }, write: LONG, gaps: ['Which day is the dinner?'], standinDelay: 3500 });
   await withKey(s); await s.fill('#thoughts', LONG); await s.click('#build'); await done(s);
   expect((s.standins || []).length === 1 && !(s.fills || []).length, 'the gaps came back with under 5 seconds left, so no fill call: ' + (s.fills || []).length);
-  expect(/Your AI may still ask: Which day is the dinner\?/.test(await s.textContent('#gapNote')), 'the late gaps still show under the prompt: ' + await s.textContent('#gapNote'));
+  expect(/Your AI may still ask this:/.test(await s.textContent('#gapNote')) && /Which day is the dinner\?/.test(await s.textContent('#gapAsk label')), 'the late gaps still show under the prompt: ' + await s.textContent('#gapNote'));
   expect(!p.errors.length && !q.errors.length && !s.errors.length, 'page errors: ' + p.errors.concat(q.errors, s.errors).join('; '));
 });
 
@@ -385,7 +385,9 @@ await check('everyone gets the new flow: with run stats and dev tools off, Norma
   expect((p.standins || []).length >= 1 && !p.grades.length, 'the stand-in ran on the long note; no grade without run stats');
   expect(!(await p.isHidden('#resultTrack li[data-step=finish]')), 'the Finish step shows, because Check ran');
   const note = await p.textContent('#gapNote');
-  expect(/Test run: before showing you this, a stand-in AI read your prompt like your AI will\. Your AI may still ask: Which day is the dinner\? Answer below to add it to your prompt, or skip it\./.test(note) && !/Stand-in AI test:/.test(note), 'the gap note explains itself in plain words: ' + note);
+  const parts = await p.$$eval('#gapNote > *', l => l.map(e => e.textContent));
+  expect(parts.join('|') === '\u{1F916} Test run|A stand-in AI read your prompt the way your AI will.|Your AI may still ask this:|Answer to add it to your prompt, or skip.' && !/Which day/.test(note) && !/Stand-in AI test:/.test(note), 'the note is short separate lines, and the question shows only in its box: ' + parts.join(' | '));
+  expect((await p.$$eval('#gapAsk label', l => l.map(e => e.textContent))).join() === 'Which day is the dinner?', 'the question shows once, in its answer box');
   // A short note: Clean and the ledger still run, but no stand-in and no Check step
   const SHORT = 'potluck at my place a saturday I think, my friend Dana is gluten free, like 8 people total, easy stuff I can make the night before';
   const q = await page({ intake, write: SHORT });
@@ -408,7 +410,7 @@ await check('#48 answer the stand-in: type an answer and Add to prompt fits it i
   await p.waitForFunction(() => document.querySelector('#gapAsk .gaprow.done'), null, { timeout: 15000 });
   const fill = (p.fills || [])[1];
   expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && /Saturday the 14th/.test(fill.text), 'one Flash-Lite fill with the question and the answer');
-  expect(/The dinner is on Saturday the 14th\./.test(await p.inputValue('#output')) && /Added to your prompt: Which day is the dinner\? Saturday the 14th/.test(await p.textContent('#gapAsk')), 'the answer is in the prompt and the row says so');
+  expect(/The dinner is on Saturday the 14th\./.test(await p.inputValue('#output')) && /Added to your prompt/.test(await p.textContent('#gapAsk .done strong')) && (await p.textContent('#gapAsk .gapsaid')) === 'Saturday the 14th', 'the answer is in the prompt and the row says so');
   expect(await p.isHidden('#numWarn'), 'the 14th is their number now, so no number warning');
   expect((p.standins || []).length === 1, 'no re-check after adding');
   // 2. The fill comes back wrong: the phone adds a plain line before the last line

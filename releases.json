@@ -23,6 +23,7 @@
         "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2.",
         "Fixes from flow bench run 2 (new flow won 3 of 5): a free strictness guard on the phone flags words that make a preference stricter or more medical than you said (safe, safely, cross-contamination, allergy, celiac, medical, strictly). Polish takes them out, and the fact ledger and the suggested shape can no longer carry them in. A word you said yourself is fine.",
         "Test lab fixes (11/05): the stand-in note now explains itself in plain words (Test run: a stand-in AI read your prompt like your AI will), and the old 2.1.19 run stats check is updated, since the new flow (Clean, fact ledger, shape, Polish, stand-in on 60+ word notes) is for everyone and only the grade needs run stats.",
+        "Test run note split into short lines (Test lab 11/05): a Test run heading, one line on what it is, then what happened, with each question shown once in its answer box instead of repeated in a big block.",
         "Answer the stand-in (#48, SPEC LOCKED 11/05): each question your AI may still ask gets an answer box under the note. Add to prompt fits your answer in with one Flash-Lite call (only lines added, your answer has to be in it); if that fails, it goes in as its own line. Skip costs nothing, and it never re-checks after. Cheaper than rebuilding: 1 small call instead of 4.",
         "Stand-in fixes from run 2 (it ran out of time on all 3 long notes): the gaps it finds now show under the prompt even when time runs short, and it skips the fill step when under 5 seconds are left, so no Gemini call gets thrown away. The flow bench runs the stand-in only on 60+ word notes, like the app, so its times match what you wait."
       ],
@@ -34,7 +35,7 @@
         },
         {
           "say": "Look under the prompt.",
-          "see": "If the stand-in found gaps, a note starting Test run: says a stand-in AI read your prompt like your AI will, then what it added from what you said, or what your AI may still ask, with an answer box for each question. No note when it found none."
+          "see": "If the stand-in found gaps, a note in short lines: Test run, then one line on what it is, then what it added or Your AI may still ask this:, with each question shown once, in its own answer box. No note when it found none."
         },
         {
           "say": "On a run with a question under the note, type an answer and tap Add to prompt. On the next one, tap Skip.",

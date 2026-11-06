@@ -2211,10 +2211,12 @@ export function startApp() {
   function showGapNote(st) {
     var el = document.getElementById("gapNote");
     if (!st || (!st.added && !st.open.length)) { el.hidden = true; el.textContent = ""; return; }
-    /* Test lab 11/05: say what the stand-in is in plain words, every time (it read as jargon). */
-    el.textContent = "\ud83e\udd16 Test run: before showing you this, a stand-in AI read your prompt like your AI will. " +
-      (st.added ? "It needed " + (st.added === 1 ? "one thing" : st.added + " things") + " you had already said, so we added " + (st.added === 1 ? "it" : "them") + ". " : "") +
-      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") + " Answer below to add it to your prompt, or skip it." : "Your AI can start right away.");
+    /* Test lab 11/05: plain words, split into short lines (heading, what it is, what happened);
+       an open question shows once, in its answer box, not repeated here. */
+    var lines = ['<strong class="gaphead">\ud83e\udd16 Test run</strong>', '<span class="gapsub">A stand-in AI read your prompt the way your AI will.</span>'];
+    if (st.added) lines.push('<span class="gapres">\u2705 Added ' + (st.added === 1 ? "one thing" : st.added + " things") + ' you had already said.</span>');
+    lines.push(st.open.length ? '<span class="gapres">Your AI may still ask ' + (st.open.slice(0, 2).length === 1 ? "this" : "these") + ':</span><span class="gapsub">Answer to add it to your prompt, or skip.</span>' : '<span class="gapres">\u2705 Your AI can start right away.</span>');
+    el.innerHTML = lines.join("");
     el.hidden = false;
     showGapAsk(st.open.slice(0, 2));
   }
@@ -2266,9 +2268,11 @@ export function startApp() {
       gapSetPrompt(fit ? fixed : gapPlainLine(cur, q, a));
       row.classList.add("done");
       row.innerHTML = "";
-      var done = document.createElement("small");
+      var done = document.createElement("small"), head = document.createElement("strong"), said = document.createElement("span");
       done.setAttribute("role", "status");
-      done.textContent = "\u2705 Added to your prompt" + (fit ? "" : " as its own line") + ": " + q + " " + a;
+      head.textContent = "\u2705 Added to your prompt" + (fit ? "" : " as its own line");
+      said.className = "gapsaid"; said.textContent = a;
+      done.appendChild(head); done.appendChild(said);
       row.appendChild(done);
       if (pendingRun) pendingRun.standin_answered = (pendingRun.standin_answered || 0) + 1;
     });
