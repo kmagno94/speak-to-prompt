@@ -211,6 +211,8 @@ footer { font-size: 13px; color: var(--muted); }
 .benchout table { width: 100%; border-collapse: collapse; }
 .benchout th, .benchout td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .benchout td small { display: block; color: var(--muted); }
+.benchout .flowpick { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 6px 0; font-size: 14px; color: var(--muted); }
+.benchout .flowpick input { width: 20px; height: 20px; margin: 0; }
 .benchout tr.hold td:first-child::after { content: " \1F512"; }
 .srchead { margin: 0; font-weight: 700; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
@@ -270,7 +272,23 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .buildstatus { margin: 0; font-size: 14px; color: var(--muted); min-height: 1.2em; }
 /* Step tracker: where the run is, how long it's been, and about how long is left. */
 .tracker { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
-.tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tracker ol { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.tracker li[hidden] { display: none; }
+/* Time strip at Ready (v2.1.20): how long each part took. */
+.timestrip { margin-top: 10px; display: grid; gap: 6px; }
+.timestrip[hidden] { display: none; }
+.tsbar { display: flex; height: 10px; border-radius: var(--r-pill); overflow: hidden; gap: 2px; background: var(--line); }
+.tsbar i { display: block; flex-basis: 0; min-width: 6px; }
+.tslegend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: var(--fs-xs); color: var(--muted); }
+.tslegend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: currentColor; }
+.tslegend span { color: var(--muted); }
+.ts-prep { background: var(--muted); } .tslegend .ts-prep::before { background: var(--muted); }
+.ts-write { background: var(--accent); } .tslegend .ts-write::before { background: var(--accent); }
+.ts-polish { background: var(--warn); } .tslegend .ts-polish::before { background: var(--warn); }
+.ts-check { background: var(--ok); } .tslegend .ts-check::before { background: var(--ok); }
+.tslegend span[class^="ts-"] { background: none; }
+/* Cooking (v2.1.19): the prompt card shows only its heading, the tracker, round banner, and messages until the prompt is ready. */
+#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round) { display: none !important; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }
 .tracker li::before { content: ""; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); box-sizing: border-box; }
 .tracker li.done { color: var(--ink); }
@@ -455,6 +473,23 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* Auto-Repair note under "Ready in ..." */
 .repairnote { margin: 0; font-size: 14px; font-weight: 600; color: var(--ok); }
+#gapNote { display: flex; flex-direction: column; gap: 4px; }
+#gapNote[hidden] { display: none; }
+#gapNote .gaphead { font-size: 15px; }
+#gapNote .gapsub { font-weight: 400; color: var(--muted); }
+#gapNote .gapres { font-weight: 600; color: var(--ink); margin-top: 4px; }
+.gaprow.done small { display: flex; flex-direction: column; gap: 2px; }
+.gaprow .gapsaid { font-weight: 400; color: var(--muted); }
+.gapask { display: flex; flex-direction: column; gap: 10px; }
+.gapask[hidden] { display: none; }
+.gaprow { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.gaprow[hidden] { display: none; }
+.gaprow label { font-size: 14px; font-weight: 600; }
+.gapline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gapline input { flex: 1 1 160px; min-width: 0; min-height: 44px; font-size: 16px; }
+.gapline button { min-height: 44px; }
+.gaprow small { color: var(--muted); font-size: 13px; }
+.gaprow.done small { color: var(--ok); font-weight: 600; }
 .gradenote { margin: 0; font-size: 13px; color: var(--muted); }
 
 /* STAGING badge: only the staging build adds it (lib/channel.js). Amber with dark text
@@ -487,3 +522,16 @@ body.dock-on.undo-on #ideaTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
 body.dock-on.undo-on #labTab { bottom: calc(var(--dock-lift) + 12px + 60px); }
 body.dock-on.undo-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 60px + 56px); }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab, #guide { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out, bottom var(--dur-reveal) var(--ease); } }
+/* Step by step under the time strip (v2.1.20) */
+.tsdetail { margin-top: 2px; font-size: var(--fs-xs); }
+.tsdetail summary { cursor: pointer; color: var(--accent); font-weight: 700; text-align: center; list-style-position: inside; padding: 6px 0; min-height: var(--tap); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tsdetail ol { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.tsdetail .ts-row { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); text-align: left; }
+.tsdetail .ts-row.skipped { opacity: 0.6; }
+.tsr-head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }
+.tsr-time { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.tsr-who { color: var(--muted); }
+.tsr-what { color: var(--ink); }
+.tsdetail ol { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
+.tsdetail .ts-row { display: grid; flex-direction: initial; align-items: stretch; font-size: var(--fs-xs); color: var(--ink); }
+.tsdetail .ts-row::before { content: none; display: none; }

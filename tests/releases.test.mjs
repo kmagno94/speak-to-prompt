@@ -134,3 +134,16 @@ test('test notes: every check from v2.1.8 on that asks you to paste or type a no
   const q = plan.steps.find((s) => s.key === '2.1.8#2');
   assert.ok(q && /trip/.test(q.paste) && !/\d/.test(q.paste), 'the questions check carries a note with no dates or budget numbers, so the app has to ask');
 });
+
+/* Promote tags itself (v2.1.16): the live deploy tags main, so Roll back always has a tag. */
+test('deploy tags main after a green live deploy, never on staging, never moves a tag', () => {
+  const yml = readFileSync(path.join(root, '.github/workflows/deploy.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  tag:'));
+  assert.ok(job.length > 10, 'deploy.yml has a tag job');
+  assert.match(job, /needs: \[build, deploy\]/, 'runs only after the deploy');
+  assert.match(job, /github\.ref == 'refs\/heads\/main'/, 'main pushes only, so staging never tags');
+  assert.match(job, /needs\.build\.outputs\.live == 'main'/, 'skipped while live is pinned by a roll back');
+  assert.match(job, /contents: write/);
+  assert.match(job, /already tagged, left alone/, 'an existing tag is never moved');
+  assert.doesNotMatch(job, /push -f|--force/, 'no force pushes');
+});

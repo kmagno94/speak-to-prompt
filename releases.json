@@ -2,6 +2,183 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.20",
+      "date": "2026-11-04",
+      "title": "Quality crew: fact ledger, stand-in AI, shape up front",
+      "items": [
+        "Fact ledger (#44): while Read and Clean run, another Flash-Lite model lists everything the prompt must keep (facts, numbers, dates, limits, hedges, asks). The phone drops any item your words don't back, Flash writes with the rest as a must-keep list, and then the phone ticks each one off in the finished prompt. Anything missing goes to Polish by name.",
+        "Stand-in AI test (#45): in Check, a Flash-Lite model pretends to be the AI that will get your prompt and lists what it would still have to ask or guess. Another Flash-Lite model adds lines only for gaps you already answered, and the phone keeps them only if every original line stayed and no new numbers came in. Up to 2 rounds. Gaps you never answered are never guessed; a note under the prompt tells you what your AI may still ask.",
+        "Success + format up front (#46): Read now also suggests what a great result looks like and a fitting format and length, so Flash writes them in the first time. They're marked as suggestions, and your own words always win.",
+        "The Flash-Lite work is spread out: Read on the 1st Flash-Lite model, Clean on the 2nd, the ledger on a 3rd when your key has one, the stand-in on the 2nd, and fixes on the 1st. The page now uses up to 3 Flash-Lite models. Flash still only writes.",
+        "Fixes from flow bench run 1 (the old flow won both complete pairs): Auto-Repair (#34) no longer has an example phrase to copy (\"a daily budget that fits the total\"), rewrites added lines in plain English instead of pasting raw sentences with \"lol\" or Spanish, rejects a fix that leaves a sentence hanging (\"totaling.\", \"each person owes.\"), and never treats sign-offs like \"I think that's it\" as dropped details. The fact ledger writes clean facts in plain English, 12 at most; Clean drops \"lol\". The suggested shape can never make a preference stronger or add safety rules. The stand-in only runs on notes of 60+ words, with an 8 second cap. The flow bench retries a busy flow once and has Rerun failed notes.",
+        "Flow bench (dev tools, #47): one button runs the 5 hardest notes (moving day, camping trip, surprise party, potluck, meal prep) through the old flow (like live) and the new flow, with the same answers and without your core or My context. Copy for Claude gives the pairs labeled A and B at random, so Claude scores them blind; Copy reveal says which was which, plus times and checks. About 10 Flash writes.",
+        "Step by step: a closed box under the time strip lists every step that ran (Read, Clean, Fact ledger, Ask, Write, Polish, Stand-in AI, and Grade with run stats on), with who did it (Flash-Lite, Flash, or You), how long it took, and what happened. Model names show only with run stats on.",
+        "Calmer tracker: the steps are grouped into four sections, Prep (Read, Clean, and the fact ledger), Ask, Write, and Finish (Polish and Check, shown only when either runs). The step inside a section shows on the line under the ring. At Ready, a time strip shows one bar split by how long each part took (Prep, Write, Polish, Check) with a small legend.",
+        "Fix: the cooking ring only shows the clock and a short status inside it now (Done, about 0:12 left). The longer part, like \"Includes 2s check\" or \"Total, both rounds\", moved just under the ring, so it no longer runs into the ring's edge on phones.",
+        "Fix for v2.1.19: at Ready, the line under the tracker goes back to saying how the prompt was written (depth, thinking, busy hours plan) instead of showing the last Check step.",
+        "Check now runs on every Normal and Rework prompt (the stand-in), with the grade added when run stats are on. The tracker's Clean step is now called Prep, since it covers Clean and the ledger. Quick mode stays fast: no stand-in.",
+        "Flow bench rerun (dev tools, folded in to stay at 5 builds): after Rerun failed notes, Copy for Claude has only the notes that were redone, so Claude does not rescore pairs it already scored. Copy reveal still covers all 5 notes and marks the rerun ones.",
+        "Flow bench rerun (folded in to stay at 5 builds): Each pair keeps its A and B letters for the whole run, so scores Claude gave before a rerun still match the reveal. Runs saved before this build keep the letters they already had.",
+        "Flow bench rerun (folded in to stay at 5 builds): Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload.",
+        "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2.",
+        "Fixes from flow bench run 2 (new flow won 3 of 5): a free strictness guard on the phone flags words that make a preference stricter or more medical than you said (safe, safely, cross-contamination, allergy, celiac, medical, strictly). Polish takes them out, and the fact ledger and the suggested shape can no longer carry them in. A word you said yourself is fine.",
+        "Test lab fixes (11/05): the stand-in note now explains itself in plain words (Test run: a stand-in AI read your prompt like your AI will), and the old 2.1.19 run stats check is updated, since the new flow (Clean, fact ledger, shape, Polish, stand-in on 60+ word notes) is for everyone and only the grade needs run stats.",
+        "Test run note split into short lines (Test lab 11/05): a Test run heading, one line on what it is, then what happened, with each question shown once in its answer box instead of repeated in a big block.",
+        "Answer the stand-in (#48, SPEC LOCKED 11/05): each question your AI may still ask gets an answer box under the note. Add to prompt fits your answer in with one Flash-Lite call (only lines added, your answer has to be in it); if that fails, it goes in as its own line. Skip costs nothing, and it never re-checks after. Cheaper than rebuilding: 1 small call instead of 4.",
+        "Stand-in fixes from run 2 (it ran out of time on all 3 long notes): the gaps it finds now show under the prompt even when time runs short, and it skips the fill step when under 5 seconds are left, so no Gemini call gets thrown away. The flow bench runs the stand-in only on 60+ word notes, like the app, so its times match what you wait."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "Prep, Ask, Write, then Finish with the clock running, and a time strip under the tracker at Ready. At Ready the prompt keeps 6 tacos, 4 to 5 bucks, March, Instagram only, and La Esquinita, and says what a great result looks like and how long it should be."
+        },
+        {
+          "say": "Look under the prompt.",
+          "see": "If the stand-in found gaps, a note in short lines: Test run, then one line on what it is, then what it added or Your AI may still ask this:, with each question shown once, in its own answer box. No note when it found none."
+        },
+        {
+          "say": "On a run with a question under the note, type an answer and tap Add to prompt. On the next one, tap Skip.",
+          "paste": "ok so um my cousin Rafa wants to do a little beach cleanup with like 10 friends, maybe at the north end of the boardwalk, nothing official, he has some gloves and bags already but not enough for everyone, and he wants a short flyer for instagram and a simple checklist so people know what to bring and where to meet, oh and some of them are bringing their kids so keep it easy",
+          "see": "Add: Adding... for a few seconds, then a green line saying it was added (or added as its own line), and your answer is in the prompt. No new check runs. Skip: the box disappears and the prompt stays the same."
+        },
+        {
+          "say": "Switch to Quick mode and build the same note.",
+          "see": "No Check step (unless run stats is on), and it's as fast as before."
+        },
+        {"say": "With Show my dev tools on, open More options, scroll to Flow bench, and tap Run flow bench. Keep the screen open about 5 minutes.", "see": "It works through Note 1 of 5 to Note 5 of 5, then shows a table of old vs new times and checks. Copy for Claude and Copy reveal turn on."},
+        {
+          "say": "With Show my dev tools on, open More options and scroll to Flow bench.",
+          "see": "Your last run is loaded: the old vs new table shows, Copy reveal is on, and Rerun failed notes is on if anything errored."
+        },
+        {
+          "say": "Untick every note except the ones to redo (like T4 and T2), then tap Rerun failed notes (after the daily Gemini limit resets, around 3 AM). Keep the screen open.",
+          "see": "It only works through the ticked notes, then says Copy for Claude has just those notes and Copy reveal covers all 5. Unticked notes keep their boxes for later."
+        },
+        {
+          "say": "Tap Normal, paste the second Try it note, and build.",
+          "paste": "ok so um game night at my apartment friday, like 7 people maybe, my buddy Theo is dairy free so I need a couple snacks he can eat, nothing fancy, I can prep it the afternoon before, honestly just chips level easy lol",
+          "see": "The prompt says Theo is dairy-free and keeps 7 people maybe, Friday, and the afternoon before. No safely, allergy, or cross-contamination. If the writer added one, the note under the prompt says Polish took out a word that made it stricter than you said."
+        },
+        {
+          "say": "Tap Copy for Claude and paste it into Claude.",
+          "see": "The header says blind, rerun and N of 5 notes, and only the redone notes are in it."
+        },
+        {
+          "say": "After Claude scores, tap Copy reveal.",
+          "see": "All 5 notes, the rerun ones marked (rerun), and the same A/B letters as the first run for the notes Claude already scored."
+        }
+      ]
+    },
+    {
+      "version": "2.1.19",
+      "date": "2026-11-04",
+      "title": "Polish and Check inside the timer",
+      "items": [
+        "The prompt no longer shows up while it's still being polished and graded. The timer keeps running through Polish (Auto-Repair) and a new Check step (the quality grade, plus its label fix when it's under the bar), and the prompt, Quality check, and buttons all come up together at Ready.",
+        "While it cooks, the card shows only the heading, the tracker, and any messages. The line under Done says how much Polish and Check added, like \"includes 6s polish and check\", and Ready in Ns counts it all.",
+        "Check only runs with Show run stats on (that's when the grade runs), so for everyone else the steps stay Read, Clean, Ask, Write, Ready, with Polish only when a fix runs.",
+        "The prompt never waits more than 25 seconds on Check. If the grade is slow, the prompt comes up and the grade finishes in the background like before."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "After Write, the tracker moves to Check (and Polish first if a fix runs) with the clock still going. The prompt and Quality check show up together at Ready, never before."
+        },
+        {
+          "say": "Look at the line under Done.",
+          "see": "It says includes Ns check (or polish and check), and Ready in Ns matches the elapsed time."
+        },
+        {
+          "say": "Turn Show run stats off. Build the Try it note again (it is long), then build a short note like: potluck saturday, Dana is gluten free, 8 people, easy stuff I can make the night before.",
+          "see": "Long note: Check still runs (the stand-in is for everyone since 2.1.20), but no grade. Short note: no Check step; the prompt shows right after Write (or Polish). Either way, everyone gets the new flow: only the grade needs run stats."
+        }
+      ]
+    },
+    {
+      "version": "2.1.18",
+      "date": "2026-11-04",
+      "title": "Prep crew + cooking steps, no rest times",
+      "items": [
+        "Prep crew (backlog #42): while one Flash-Lite model reads your thoughts and picks questions, the other Flash-Lite model cleans them at the same time (filler, false starts, and repeats out; every fact, number, and hedge kept). Flash then writes the prompt from the clean words. It adds no wait, because it runs during the reading and your answers.",
+        "A free check on the phone keeps your raw words instead if the clean version lost a number or came out much shorter or longer. Notes under 20 words skip it. It never uses Flash, so the small Flash allowance is saved for writing.",
+        "The progress tracker shows the cooking steps: Read, Clean, Ask, Write, Polish, Ready. Clean ticks off on its own, even mid-questions, and Polish only shows on runs where Auto-Repair fixes something (#36).",
+        "No more rest times. A busy or slow Flash model is just tried again: all three get a turn, then it goes around again every 20 seconds until it writes, you tap Switch to quick at 2:00, or the quick model takes over at 3:00. The only thing remembered is a model Google says is used up for today.",
+        "The questions step asks Gemini for less (the clean transcript moved to the clean step), so questions can show up a bit faster. Save to Notes uses the clean step's version.",
+        "Staging only: #flashbusy now makes every Flash model say busy for 5 minutes without sending anything. Combine with #slowtest (like #flashbusy-slowtest) to see it all in 18 seconds."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats (More options). Tap Normal, paste the Try it note, and build.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "The tracker shows Read and Clean together; Clean gets a check mark. Ask, then Write; Polish shows only if a fix runs. The prompt has no um or like in its Context."
+        },
+        {
+          "say": "Type a short note (under 20 words) and build.",
+          "see": "Clean is crossed out (skipped) and everything else works like before."
+        },
+        {
+          "say": "Open the staging page with #flashbusy-slowtest on the end, tap Normal, build the Try it note.",
+          "paste": "um ok so like my buddy Marco is opening a taco truck in uh march and he wants help with a menu board and a launch post, he's got like 6 tacos, carnitas birria and a veggie one, prices around 4 to 5 bucks, and he wants it fun but not cheesy, um he only has instagram, no website, and the truck is called La Esquinita I think",
+          "see": "A note says the busy Flash test is on. Switch to quick shows around 0:12, and at 0:18 the quick model writes it with a note saying so."
+        },
+        {
+          "say": "Reload the plain staging page and build again.",
+          "see": "A Flash model writes it right away: nothing from the busy test was remembered."
+        }
+      ]
+    },
+    {
+      "version": "2.1.17",
+      "date": "2026-11-04",
+      "title": "30 second turns, Switch to quick at 2:00",
+      "items": [
+        "Each Flash model now gets 30 seconds on its own while writing a Normal or Rework prompt, then the next one starts too and the first good prompt wins. All 3 Flash models are working by 1:00. (It used to wait 30 to 90 seconds depending on the request.)",
+        "If Flash is still writing at 2:00, a note says \"Taking longer than usual\" with a Switch to quick button and a live countdown. At 0:00 (3:00 total) the quick model takes over on its own, with a note saying so. If Flash finishes first, its prompt shows and the note goes away.",
+        "The 3 minutes count from your Write tap. Time spent on a slow Flash write now counts toward the busy-Flash wait too, so a slow write followed by a busy spell doesn't stack two full waits.",
+        "Staging only: open the staging page with #slowtest on the end to run this 10x faster (a new Flash model every 3 seconds, Switch to quick at 0:12, quick model at 0:18). Reload to go back to normal."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging page with #slowtest on the end. Tap Normal and build the Try it note.",
+          "see": "A note says Slow-write test is on. While it writes, Switch to quick shows around 0:12 with a countdown, unless Flash finishes first."
+        },
+        {
+          "say": "Tap Switch to quick when it shows.",
+          "see": "The note goes away and a prompt shows a few seconds later. No \"quick model wrote this one\" note, since you chose it."
+        },
+        {
+          "say": "Reload with #slowtest again and build again, but don't tap anything.",
+          "see": "Either Flash finishes (the note clears) or at 0:18 the quick model writes it and a note says The quick model wrote this one."
+        },
+        {
+          "say": "Reload the plain staging page (no #slowtest) and build a normal prompt.",
+          "see": "Works like before; no Taking longer note on a normal run."
+        }
+      ]
+    },
+    {
+      "version": "2.1.16",
+      "date": "2026-11-04",
+      "title": "Promote tags itself",
+      "items": [
+        "After a promote, the live deploy tags main with its version by itself (like v2.1.16), once every check passed and live changed. Chat sessions can't push tags or releases, so the version tag kept getting skipped and Roll back had nothing to pin to.",
+        "It also tags the version live had right before, if that one never got a tag, so the untagged v2.1.15 gets fixed on the next promote. A tag that already exists is never moved.",
+        "Nothing changes in the app itself, and staging pushes never tag anything."
+      ],
+      "checks": [
+        {
+          "say": "On GitHub, open Actions, then the Test and deploy run for this staging push (Promote tags itself, v2.1.16).",
+          "see": "The run is green, and the Tag live version job shows as skipped (it only runs after a live deploy from main)."
+        },
+        {
+          "say": "Open the staging Test lab (the staging link ending in #testlab).",
+          "see": "It loads like before and lists v2.1.16 Promote tags itself with these checks."
+        }
+      ]
+    },
+    {
       "version": "2.1.15",
       "date": "2026-10-30",
       "title": "Flash writes your prompt, or it asks first (#35 widened)",

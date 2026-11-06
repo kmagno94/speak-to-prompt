@@ -77,11 +77,67 @@ export const ANALYZE = [
   "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
   "",
   "Respond with JSON only, in exactly this shape:",
-  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"], "clean_transcript": "their raw thoughts, lightly cleaned: remove filler words, false starts and accidental repeats, keep their wording and every detail"}}',
+  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}, "shape": {"success": "one plain line on what a great result would look like for them, judged by what they said (a suggestion, never a new requirement, never stricter or more safety-minded than they said)", "format": "a fitting format and length for the answer, in words, fitted to this request (for example: a short numbered plan, about one screen)"}}',
   "",
   "RAW THOUGHTS:",
   '"""'
 ].join("\n");
+
+/* Prep crew (v2.1.18): a second Flash-Lite model cleans the raw thoughts while the intake
+   reads them, so Flash writes from clean words. The phone checks the result (numbers kept,
+   length close) and uses the raw words if it fails. Plain text only. */
+export const CLEAN = [
+  "CLEAN STEP. Below are a person's raw thoughts, often a messy voice transcript. Rewrite them as clean, readable text for a prompt writer.",
+  "Remove filler words and fillers like um, uh, like, you know, I mean, so yeah, lol, lmao, haha, and sign-offs like \"ok that's it\", plus false starts, stutters, and accidental repeats. Fix an obvious transcription slip only when the meaning is certain.",
+  "Keep everything else, in their own words and order: every fact, name, number, version, date, time, price, amount, limit, preference, question, and side note. Keep every number exactly as written, as digits, even if it looks odd.",
+  "Keep their hedges and doubts (maybe, probably, I think, around, not sure) and every request they make, as they said it.",
+  "Never add facts, guesses, advice, headings, or bullet points. Never answer their question and never summarize.",
+  "Write in first person, as them. Plain text only: no intro, no closing line, no note about what you changed.",
+  "",
+  "RAW THOUGHTS:",
+  '"""'
+].join("\n");
+
+/* Fact ledger (v2.1.20, #44): a Flash-Lite model lists what the prompt must keep while the
+   intake and the clean step run. Flash gets it as a must-include list, and the phone checks
+   the finished prompt against it for free. The phone drops any item the raw words don't back. */
+export const LEDGER = [
+  "LEDGER STEP. Below are a person's raw thoughts. List every item a prompt built from them must keep so nothing they said gets lost.",
+  "Include facts, names, places, numbers, dates, times, amounts, versions, limits, preferences, things to avoid, and each thing they ask for. Keep a hedge with its item (for example: budget maybe $60).",
+  "One item per line, starting with \"- \". Each item is a short, clean fact in plain English, under 12 words: no filler, no \"lol\", and words from another language put in English. Keep every number, name, address, code, and link exactly as they wrote it.",
+  "At most 12 items, the most important first. Skip filler, feelings, and small talk. Never add anything they did not say, and never make a preference stronger than they said. No intro and no closing line.",
+  "",
+  "RAW THOUGHTS:",
+  '"""'
+].join("\n");
+
+/* Stand-in AI test (v2.1.20, #45): a Flash-Lite model plays the AI that will receive the
+   prompt and lists what it would still have to ask or guess. Answered gaps get filled from
+   the person's own words; the rest are shown to the person. */
+export const STANDIN = [
+  "STAND-IN TEST. You are the AI assistant that will receive the prompt below from a person. Before you start, list what you would still have to ask them, or would have to guess, to do an excellent job.",
+  "Only real gaps that would clearly change your answer. Not style choices, not things the prompt already says, and not things a good assistant can sensibly decide on its own.",
+  "At most 4. If you could start right away and do an excellent job, return an empty list.",
+  'Respond with JSON only, in exactly this shape: {"gaps": [{"question": "the short question you would ask them"}]}',
+  "",
+  "PROMPT YOU RECEIVED:",
+  '"""'
+].join("\n");
+export function gapFillPrompt(prompt, gaps, raw, answers) {
+  const out = [
+    "You are improving a prompt by adding a few short lines. Keep every existing line exactly as written, word for word, in the same order. Do not reword, merge, or remove anything.",
+    "An AI reading this prompt said it would still need to know the things below. For each one, look in the person's raw thoughts and answers. If they already said it, add one short line with that fact, in their meaning, where it fits. If they did not say it, skip it: never guess or invent.",
+    "Do not add numbers, people, devices, or requirements they did not say. If none of these are answered below, return the prompt unchanged. Output only the full prompt: no title, no commentary, and no code fences.",
+    "",
+    "GAPS AN AI FOUND:"
+  ];
+  gaps.forEach((g, i) => out.push((i + 1) + ". " + g));
+  out.push("", "RAW THOUGHTS:", '"""', raw, '"""');
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT TO IMPROVE:", '"""', prompt, '"""');
+  return out.join("\n");
+}
 
 export const WRITE = [
   "You are a world-class prompt engineer. Turn a person's raw thoughts and their answers into one complete, ready-to-paste prompt for any AI assistant, such as ChatGPT, Claude, or Gemini.",
@@ -197,7 +253,7 @@ export function labelFixPrompt(prompt, missing, raw, answers) {
    if the fix isn't better. */
 /* A short reaction or feeling ("this sounds like a lot of work honestly") is not a
    detail the AI needs. Auto-Repair skips these so it never pastes them in. */
-const ASIDE = /\b(honestly|tbh|lol|lmao|haha|ugh|sounds like a lot|that's a lot|this is a lot|kind of a pain|kinda a pain|so annoying|kinda annoying|i'm tired of|i guess)\b/i;
+const ASIDE = /\b(honestly|tbh|lol|lmao|haha|ugh|sorry|sounds like a lot|that's a lot|this is a lot|kind of a pain|kinda a pain|so annoying|kinda annoying|i'm tired of|i guess|that'?s it|what else)\b/i;   /* sign-offs like "I think that's it" too (flow bench run 1) */
 export function isAside(text) {
   const t = String(text || "").trim();
   return t.split(/\s+/).length <= 10 && ASIDE.test(t);
@@ -206,11 +262,14 @@ export function repairPrompt(prompt, raw, answers, problems) {
   const out = ["You are fixing a prompt that was written from a person's raw thoughts. Make only the fixes listed below. Keep everything else exactly as written, word for word, in the same order and format."];
   let n = 1;
   if (problems.dropped.length) {
-    out.push("", n++ + ". These things the person said are missing. Add each one where it fits naturally, in the person's meaning. If one is clearly small talk, a feeling, or a reaction (how they feel about the work), or doesn't matter to the request, skip it. Never paste feelings and reactions in:");
+    out.push("", n++ + ". These things the person said are missing. Add each one where it fits naturally, rewritten as a clean line in plain English: no filler, no \"lol\" or \"um\", no sign-offs like \"I think that's it\", and words from another language put in English. Never paste their raw sentence in. If one is clearly small talk, a feeling, or a reaction (how they feel about the work), or doesn't matter to the request, skip it. Never paste feelings and reactions in:");
     problems.dropped.forEach((d) => out.push('- "' + d + '"'));
   }
   if (problems.stray.length) {
-    out.push("", n++ + ". These numbers are in the prompt but the person never said them: " + problems.stray.join(", ") + ". Remove them. If the idea still matters, say it without a made-up number (for example \"a daily budget that fits the total\").");
+    out.push("", n++ + ". These numbers are in the prompt but the person never said them: " + problems.stray.join(", ") + ". Remove them. If the idea still matters, say it in words without a number, and never leave a sentence unfinished or a blank where the number was.");
+  }
+  if (problems.strict && problems.strict.length) {
+    out.push("", n++ + ". These words make the person's preference stricter, safer, or more medical than they said: " + problems.strict.join(", ") + ". Take them out and say the preference at the strength they said it (for example \"Dana is gluten-free, so I need dishes she can eat\"). Remove any safety tips or rules they didn't ask for, and never leave a sentence unfinished.");
   }
   if (problems.missingNums.length) {
     out.push("", n++ + ". These numbers the person said are missing. Put each one back exactly as written: " + problems.missingNums.join(", ") + ".");

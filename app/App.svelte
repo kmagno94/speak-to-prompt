@@ -129,11 +129,12 @@
     </div>
     <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
     <div class="tracker" id="buildTrack" hidden>
-      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <ol aria-label="Progress"><li data-step="prep">Prep</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="finish" hidden>Finish</li></ol>
       <div class="progress" id="buildProg"><div class="bar"></div></div>
       <div class="cookslot" data-keep><CookPot place="build" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
+      <div class="timestrip" hidden></div>
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
     <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
@@ -148,15 +149,18 @@
   <section class="card" id="result" hidden aria-live="polite">
     <h2 id="resultHead">Your prompt is ready</h2>
     <div class="tracker" id="resultTrack" hidden>
-      <ol aria-label="Progress"><li data-step="read">Read</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="ready">Ready</li></ol>
+      <ol aria-label="Progress"><li data-step="prep">Prep</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="finish" hidden>Finish</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>
       <div class="cookslot" data-keep><CookPot place="result" /></div>
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
+      <div class="timestrip" hidden></div>
     </div>
     <p id="madeBy" class="madeby"></p>
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
+    <p id="gapNote" class="repairnote" role="status" hidden></p>
+    <div id="gapAsk" class="gapask" hidden></div>
     <p id="numWarn" class="numwarn" role="status" hidden></p>
     <RoundBanner place="result" />
     <QualityCheck />
@@ -269,6 +273,15 @@
         </div>
         <p class="hint" id="benchInfo">Grades the same fixed prompts with the grader above and compares with Claude's answer key. Uses your Gemini key, a few small calls.</p>
         <div id="benchOut" class="benchout" hidden></div>
+        <p class="srchead">Flow bench</p>
+        <div class="row">
+          <button type="button" id="flowRun">Run flow bench</button>
+          <button type="button" id="flowCopy" disabled>Copy for Claude</button>
+          <button type="button" id="flowReveal" class="linkish" disabled>Copy reveal</button>
+          <button type="button" id="flowRetry" class="linkish" disabled>Rerun failed notes</button>
+        </div>
+        <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
+        <div id="flowOut" class="benchout" hidden></div>
       </div>
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
