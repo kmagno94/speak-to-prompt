@@ -59,7 +59,8 @@ export function startApp() {
   var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log", TEST_USAGE = "stp-test-usage";
   /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). Models not
      listed here show their count without a limit. */
-  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500 };
+  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500, "gemini-3.1-flash-lite": 500,
+    "gemma-4-31b-it": 1500, "gemma-4-26b-a4b-it": 1500, "gemma-4-26b-it": 1500 };   /* Gemma 4 (v2.1.22): about 1,500 a day each on the free tier (Nov 2026) */
   var ASSUMED = { "gemini-3.7-flash": true };
   /* Daily limits: from a Usage Check, else what Google itself said in a limit error
      (learned on this device), else the usual free-tier number. */
@@ -105,6 +106,7 @@ export function startApp() {
       if (i === 0) return "writes full prompts";
       if (i > 0) return "backup " + i + " for full prompts";
       if (plan.intake[0] === m) return "questions and Quick prompts";
+      if ((plan.gemma || []).indexOf(m) !== -1) return "grades prompts and lists your facts";
       if (plan.intake.indexOf(m) !== -1) return "backup for questions";
       return "available, not used by the page";
     }
@@ -128,10 +130,10 @@ export function startApp() {
       document.getElementById("usageSource").textContent = st
         ? "From your AI Studio screenshots at " + clockTime(st.updated) + " (Usage Check), plus runs on this device since then. Chart readings are approximate."
         : "Counted from runs on this device while stats were on. Send Usage Check with AI Studio screenshots for the full picture.";
-      /* Just the 4 models the page uses: 3 Flash models for full prompts, plus the
-         Flash-Lite that handles questions and Quick prompts. */
+      /* The models the page leans on: 3 Flash models for full prompts, the Flash-Lite that
+         handles questions and Quick prompts, and any Gemma that grades (v2.1.22). */
       var names = gemini.plan
-        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.slice(0, 1))
+        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.slice(0, 1), gemini.plan.gemma || [])
         : Object.keys(LIMITS);
       if (!gemini.plan && !planLoading) {
         var k = gemini.key || (document.getElementById("gkey").value || "").trim();
@@ -919,7 +921,38 @@ export function startApp() {
     var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 3));   /* up to 3, so the Flash-Lite crew can spread out (v2.1.20) */
     var all = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest))
       .concat(names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest)));
-    return { write: flashes.concat(lites), intake: lites.concat(flashes), all: all };
+    /* Gemma 4 (v2.1.22): a different model family with a much bigger free allowance
+       (about 1,500 a day each). It never writes your prompt (Flash only, #35); it grades
+       and lists your facts, so those jobs stop eating Flash-Lite's allowance. Biggest first. */
+    var gemmas = names(models.filter(function (m) {
+      var methods = m.supportedGenerationMethods || m.supportedActions || [];
+      var g = /gemma-(\d+)-(\d+)b/.exec(m.name || "");
+      return methods.indexOf("generateContent") !== -1 && g && Number(g[1]) >= 4 && Number(g[2]) >= 20;
+    }).sort(function (a, b) { return gemmaSize(b.name) - gemmaSize(a.name); })).slice(0, 2);
+    return { write: flashes.concat(lites), intake: lites.concat(flashes), gemma: gemmas, all: all.concat(gemmas) };
+  }
+  function gemmaSize(name) { var g = /gemma-\d+-(\d+)b/.exec(name || ""); return g ? Number(g[1]) : 0; }
+  function isGemma(model) { return /gemma/.test(model || ""); }
+
+  /* ROUTES (v2.1.22): which models do each job, best fit first. One place to change it.
+       read        questions step           Flash-Lite, then Flash         speed, JSON
+       clean/ledger prep crew               ledger: Gemma raced by Flash-Lite after 6s; clean: Flash-Lite
+       write       Normal and Rework        Flash only (#35)               best writing
+       quick       Quick prompts, Polish    Flash-Lite, then Flash         speed
+       standin     Check's test run (8s)    Flash-Lite                     has to be fast
+       grade       quality grade + bench    Gemma, then Flash-Lite/Flash   a different family than the writer, big allowance
+       squeeze     My context too long      Flash-Lite, then Gemma         you're waiting, so fast first
+       labelfix    add a missing label      Flash-Lite, then Gemma
+     The grader is never the model that wrote the prompt. A key without Gemma keeps the old routes. */
+  function route(job, writer) {
+    var p = gemini.plan || { write: [], intake: [], gemma: [] }, g = p.gemma || [];
+    var lites = p.intake.filter(function (m) { return /lite/.test(m); });
+    if (job === "grade") return g.concat(graderModels(writer)).filter(function (m, i, a) { return m !== writer && a.indexOf(m) === i; });
+    /* The smaller, quicker Gemma first; if it's slow, Flash-Lite races it (hedge), the bigger Gemma is last. */
+    if (job === "ledger") return g.length ? [g[g.length - 1]].concat(liteCrew(2), g.slice(0, g.length - 1)) : liteCrew(2);
+    if (job === "squeeze") return lites.slice(0, 1).concat(g, lites.slice(1));
+    if (job === "labelfix") return p.intake.concat(g);
+    return p.intake;
   }
 
   var saved = storeGet();
@@ -979,7 +1012,8 @@ export function startApp() {
       if (remember.checked) storeSet(key);
       var backups = plan.write.length - 1;
       setKeyStatus(techOn() ? "Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
-        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days." : ".")
+        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days" : "") +
+        (plan.gemma.length ? ". Grading and fact lists on " + plan.gemma.join(" and ") + "." : ".")
         : "Key works. You're all set: Gemini will ask a few quick questions, then write your prompt.", "good");
       return gemini.model;
     });
@@ -1202,11 +1236,14 @@ export function startApp() {
     tired.forEach(function (m) { history.push(m + " skipped (used up today)"); });
     var list = fresh.concat(tired);
     function payload(withThinking, model) {
-      var cfg = {};
-      if (asJson) cfg.responseMimeType = "application/json";
-      var lvl = withThinking ? (level === "auto" ? levelFor(model) : level === "quick" ? quickLevel(model) : level) : "";
+      var cfg = {}, gem = isGemma(model);
+      /* Gemma (v2.1.22) doesn't take Gemini's JSON switch or thinking level, so it gets
+         neither and is asked in words for bare JSON instead (pulled out below). */
+      if (asJson && !gem) cfg.responseMimeType = "application/json";
+      var lvl = withThinking && !gem ? (level === "auto" ? levelFor(model) : level === "quick" ? quickLevel(model) : level) : "";
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
-      var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
+      var ask = asJson && gem ? text + "\n\nReply with only the JSON object: no code fences, no other words." : text;
+      var p = { contents: [{ role: "user", parts: [{ text: ask }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
       return JSON.stringify(p);
     }
@@ -1281,7 +1318,7 @@ export function startApp() {
         var settled = false;
         function settle() { if (settled) return; settled = true; running--; clearTimeout(timer); clearTimeout(hedge); }
         /* Staging #flashbusy: Flash answers "busy" without anything being sent. */
-        var call = fakeBusyUntil > Date.now() && !/lite/.test(model)
+        var call = fakeBusyUntil > Date.now() && /flash/.test(model) && !/lite/.test(model)
           ? new Promise(function (res, rej) { setTimeout(function () { var b = new Error("Staging test: Flash busy."); b.status = 503; rej(b); }, 300); })
           : callGoogle("models/" + model + ":generateContent", gemini.key, {
           method: "POST",
@@ -1297,6 +1334,10 @@ export function startApp() {
           var c = res.candidates && res.candidates[0];
           var parts = (c && c.content && c.content.parts) || [];
           var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
+          if (out && asJson && isGemma(model)) {   /* Gemma: keep just the JSON object, so every reader gets clean JSON */
+            var ja = out.indexOf("{"), jb = out.lastIndexOf("}");
+            out = ja >= 0 && jb > ja ? out.slice(ja, jb + 1) : "";
+          }
           if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
           /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
           if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
@@ -1332,8 +1373,10 @@ export function startApp() {
           else if (e.status === "network") history.push(model + " couldn't be reached after " + secs + "s");   // not the model's fault, so no rest
           else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable after " + secs + "s");
           /* A model that rejects the thinking setting gets one more try without it. */
-          if (e.status === 400 && withThinking) return run(i, false);
-          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
+          if (e.status === 400 && withThinking && !isGemma(model)) return run(i, false);
+          /* A Gemma model that turns the request down (400) just hands it to the next model. */
+          if (e.status === 400 && isGemma(model)) history.push(model + " turned the request down, so the next model took it");
+          if (RETRY.indexOf(e.status) !== -1 || (e.status === 400 && isGemma(model))) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
           finish(false, e);
         });
       }
@@ -1458,7 +1501,7 @@ export function startApp() {
         info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
         /* A busy server (503) or a full per-minute limit gets one retry after a short wait. */
         function ask(c, retried) {
-          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, gemini.plan.intake, "low", null, 45000).catch(function (e) {
+          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, route("grade"), "low", null, 45000).catch(function (e) {
             var busy = e && (e.status === 503 || e.status === 500 || (e.status === 429 && e.perMinute) || /high demand|overloaded/i.test(e.message || ""));
             if (retried || !busy) throw e;
             return new Promise(function (res) { setTimeout(res, BENCH_RETRY_MS); }).then(function () { return ask(c, true); });
@@ -1953,14 +1996,14 @@ export function startApp() {
     return verifyKey(key);
   }
 
-  /* My context budget: past 1,500 tokens, one Flash-Lite call (the question models, Lite
-     first) makes the picks shorter for this build. Kept in memory only for these exact picks;
-     if it fails or doesn't come out shorter, the full pieces are used. Never retried. */
+  /* My context budget: past 1,500 tokens, one Flash-Lite call (Gemma as backup, v2.1.22)
+     makes the picks shorter for this build. Kept in memory only for these exact picks;
+     if it fails or doesn't come out shorter, the full pieces are used. Not retried after that. */
   function squeezeContext(onModel) {
     if (!context.over) return Promise.resolve();
     var sig = context.sig, before = context.rawTokens;
     setBusy(true, "Squeezing your context to fit...");
-    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, gemini.plan.intake.slice(0, 1), "auto", onModel, 45000).then(function (r) {
+    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, route("squeeze"), "auto", onModel, 45000).then(function (r) {
       var text = cleanPrompt(r.text);
       if (context.sig !== sig) return;
       var after = blockTokens(text);
@@ -2007,13 +2050,13 @@ export function startApp() {
     if (!kw.length) return true;
     return kw.filter(function (w) { return low.indexOf(w) !== -1; }).length / kw.length >= need;
   }
-  var LEDGER_LIMIT = 15000;
+  var LEDGER_LIMIT = 15000, LEDGER_RACE_MS = 6000;   /* v2.1.22: Gemma lists the facts; a Flash-Lite joins if it takes over 6s */
   function startLedger(raw) {
-    var order = liteCrew(2), mine = session, t0 = Date.now(), timer;
+    var order = route("ledger"), mine = session, t0 = Date.now(), timer;
     if (words(raw) < CLEAN_MIN_WORDS || !order.length) { mine.ledger = { status: "skipped" }; return Promise.resolve(); }
     mine.ledger = { status: "running" };
     return Promise.race([
-      askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT).then(function (r) {
+      askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT, LEDGER_RACE_MS).then(function (r) {
         var seen = {}, all = cleanPrompt(r.text).split("\n").map(function (l) { return l.replace(/^\s*[-*\u2022\d.)]+\s*/, "").trim(); }).filter(function (l) { return l && words(l) <= 16; });
         /* The phone keeps only items the raw words back up (every number, most of the meaning). */
         var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.5) && !strictAddsVs(l, raw).length; }).slice(0, 12);
@@ -2505,7 +2548,7 @@ export function startApp() {
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
           if (st) rows.push({ name: "Stand-in AI", who: "Flash-Lite", model: st.model, secs: st.secs,
             what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + (st.status === "gaps only" ? " found, no time to fill, shown under the prompt" : " you didn't answer, shown under the prompt") : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
-          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: "Flash-Lite or Flash (never the writer)", model: gf ? "gemini-" + String(gf.grade_model || "").split(" ")[0] : "", secs: gf ? gf.grade_s : null,
+          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: "Gemma first, then Flash-Lite or Flash (never the writer)", model: gf ? (function (m) { return isGemma(m) ? m : "gemini-" + m; })(String(gf.grade_model || "").split(" ")[0]) : "", secs: gf ? gf.grade_s : null,
             what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "") : "Still grading, it finishes in the background" });
           return rows;
         }
@@ -2762,7 +2805,7 @@ export function startApp() {
   }
   function gradeOnce(prompt, raw, answers, today, items, grader, writer) {
     return function () {
-      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, graderModels(writer), "low", null, 30000).then(function (r) {
+      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, route("grade", writer), "low", null, 30000).then(function (r) {
         var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade.");
         g = numberDock(g, session ? promptFlags(prompt) : null);   /* the number check flagged: docked */
         g.model = r.model; return g;
@@ -2862,7 +2905,7 @@ export function startApp() {
       tries++;
       var list = fixList(best), what = andList(list);
       el.textContent = gradeText(best, fields, "\ud83d\udd27 adding " + what + (tries > 1 ? ", try 2" : "") + "...");
-      return askGemini(labelFixPrompt(cur, list, session.raw, withMem(session.answers)), false, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      return askGemini(labelFixPrompt(cur, list, session.raw, withMem(session.answers)), false, route("labelfix"), "low", null, 30000).then(function (r) {
         var fixed = cleanPrompt(r.text);
         if (!onlyAdded(fixed, cur, list.length)) return again("kept original", "tried adding " + what + ", but it changed other lines");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");

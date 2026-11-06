@@ -34,7 +34,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model', 'model routing:',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
@@ -77,6 +77,8 @@ async function page(opts = {}) {
     const model = (u.match(/models\/([^:]+):/) || [])[1];
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
+    /* opts.failAny: model -> status for every kind of call (opts.fail only covers intake and writes) */
+    if (opts.failAny && opts.failAny[model]) { (p.failed = p.failed || []).push(model); return r.fulfill({ status: opts.failAny[model], headers: h, body: JSON.stringify({ error: { code: opts.failAny[model], message: 'mock' } }) }); }
     const intake = /intake step/.test(ask);
     if (intake && opts.intakeDelay) await new Promise(res => setTimeout(res, opts.intakeDelay));
     if (/PROMPT TO FIX:/.test(ask)) {
@@ -559,6 +561,35 @@ await check('grader: never the model that wrote the prompt, so Quick mode prompt
   const w2 = q.calls.filter(c => !c.intake).pop().model, g2 = q.grades[0] && q.grades[0].model;
   expect(!/lite/.test(w2) && /lite/.test(g2), `Normal: written by ${w2}, graded by ${g2}`);
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('model routing: Gemma grades and lists facts with no thinking or JSON switch, Flash still writes, and a Gemma that says no hands off (v2.1.22)', async () => {
+  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it', 'gemma-4-e4b-it'];
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const memo = 'ok so I want to plan a chill bowling night for 8 friends next friday around 7, budget maybe $120 for lanes and food, and my friend Rae can only stay until 9 so we should start on time';
+  const p = await page({ models, intake, ledger: ['bowling night for 8 friends', 'budget maybe $120'] });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', memo); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  const w = p.calls.filter(c => !c.intake).pop();
+  expect(/flash/.test(w.model) && !/lite/.test(w.model), 'Flash still writes: ' + w.model);
+  expect(p.ledgers && p.ledgers[0].model === 'gemma-4-26b-a4b-it', 'facts listed by the smaller Gemma: ' + (p.ledgers || []).map(c => c.model).join());
+  const g = p.grades[0];
+  expect(g && g.model === 'gemma-4-31b-it' && !g.level && !g.json && /only the JSON object/.test(g.text), 'grade on Gemma 31B, no thinking level, no JSON switch, asked in words: ' + JSON.stringify(g && { m: g.model, l: g.level, j: g.json }));
+  expect(!p.grades.concat(p.ledgers || [], p.calls).some(c => /e4b/.test(c.model)), 'tiny Gemma models are never used');
+  // Gemma 31B turns grades down (400): the other Gemma grades instead, and the run still finishes
+  const q = await page({ models, intake, failAny: { 'gemma-4-31b-it': 400 } });
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'plan a chill bowling night'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  expect((q.failed || []).includes('gemma-4-31b-it') && q.grades[0] && q.grades[0].model === 'gemma-4-26b-a4b-it', 'a 400 from Gemma hands the grade to the next model: ' + (q.grades[0] && q.grades[0].model));
+  // No Gemma on the key: grading stays on Flash-Lite, like before
+  const r = await page({ intake });
+  await r.click('#moreOpts summary'); await r.check('#statsToggle');
+  await withKey(r); await r.fill('#thoughts', 'plan a chill bowling night'); await r.click('#build'); await done(r);
+  await r.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  expect(r.grades[0] && /lite/.test(r.grades[0].model) && r.grades[0].json, 'no Gemma: Flash-Lite grades with the JSON switch: ' + (r.grades[0] && r.grades[0].model));
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
 });
 
 await check('model switching: Flash-Lite never writes a Normal prompt on its own before 3:00, a tap on Switch to quick uses it, and used-up Flash offers only the quick model (#35)', async () => {

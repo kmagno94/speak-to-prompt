@@ -2,6 +2,37 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.22",
+      "date": "2026-11-05",
+      "title": "Model routing: each job on its best model, Gemma joins the crew",
+      "items": [
+        "Jobs now go to the model that fits them best, all set in one routing table: Flash still writes Normal and Rework prompts, Flash-Lite still asks the questions, writes Quick prompts, and runs the stand-in test.",
+        "Gemma 4 joins (when your key has it): it grades prompts and lists your facts. It's a different model family from the writer, so it can't go easy on its own work, and it has a much bigger free daily allowance (about 1,500), so those jobs stop eating Flash-Lite's.",
+        "The fact list starts on the smaller, quicker Gemma, and a Flash-Lite jumps in if it takes over 6 seconds, so it never holds you up.",
+        "Squeezing My context and adding a missing label keep Flash-Lite first, with Gemma as a backup.",
+        "If a Gemma model turns a request down, the next model takes it. A key without Gemma works exactly like before."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show run stats, open the key panel and tap Check key.",
+          "see": "The key message names the Flash writer, the Flash-Lite for questions, and ends with \"Grading and fact lists on\" plus the Gemma models. The usage list shows the Gemma models with about 1,500 a day."
+        },
+        {
+          "say": "With run stats on and Normal mode, paste the note below, tap Build my prompt, and answer or skip the questions.",
+          "see": "The prompt finishes as usual. The grade note names a Gemma model (gemma-4-31b-it), not the writer. In the run log, the Grade row says Gemma first, and the ledger ran on gemma-4-26b (or a Flash-Lite if Gemma was slow).",
+          "paste": "ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who've never played anything, oh and two people are coming late from work"
+        },
+        {
+          "say": "In dev tools, run the grader bench.",
+          "see": "Every case gets graded by Gemma. Compare each grade to Claude's answer key: if Gemma lands far from the key (more than about half a point on several cases), tell Claude before promoting."
+        },
+        {
+          "say": "Build the same note in Quick mode.",
+          "see": "Flash-Lite writes it fast, and Gemma (not Flash-Lite) grades it."
+        }
+      ]
+    },
+    {
       "version": "2.1.21",
       "date": "2026-11-05",
       "title": "Fix session: halo, instant Rework, context number fix, My context for everyone",
