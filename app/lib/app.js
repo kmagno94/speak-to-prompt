@@ -2210,8 +2210,10 @@ export function startApp() {
   function showGapNote(st) {
     var el = document.getElementById("gapNote");
     if (!st || (!st.added && !st.open.length)) { el.hidden = true; el.textContent = ""; return; }
-    el.textContent = "\ud83e\udd16 Stand-in AI test: " + (st.added ? "filled " + plural(st.added, "gap", "gaps") + " from what you said. " : "") +
-      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") : "Your AI can start right away.");
+    /* Test lab 11/05: say what the stand-in is in plain words, every time (it read as jargon). */
+    el.textContent = "\ud83e\udd16 Test run: before showing you this, a stand-in AI read your prompt like your AI will. " +
+      (st.added ? "It needed " + (st.added === 1 ? "one thing" : st.added + " things") + " you had already said, so we added " + (st.added === 1 ? "it" : "them") + ". " : "") +
+      (st.open.length ? "Your AI may still ask: " + st.open.slice(0, 2).join(" ") + " If you know, add it to your note and build again, or just answer when it asks." : "Your AI can start right away.");
     el.hidden = false;
   }   /* every Flash said busy: wait this long, then go around again */
   var flashWait = null;

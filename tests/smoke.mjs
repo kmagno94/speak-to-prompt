@@ -305,7 +305,7 @@ await check('quality crew: the fact ledger is a must-keep list the phone checks,
   // 4. Stand-in: JSON on Flash-Lite, the answered gap is filled, round 2 finds none, and the prompt shows with the line
   expect(p.standins && p.standins.length === 2 && p.standins.every(x => /lite/.test(x.model) && x.json), 'stand-in runs twice on Flash-Lite: ' + (p.standins || []).map(x => x.model).join());
   expect(/Ana is the only vegetarian I mentioned/.test(await p.inputValue('#output')), 'filled gap is in the prompt at Ready');
-  expect(/Stand-in AI test: filled 1 gap/.test(await p.textContent('#gapNote')), 'gap note says what it did: ' + await p.textContent('#gapNote'));
+  expect(/Test run: .*stand-in AI read your prompt like your AI will\. It needed one thing you had already said, so we added it\./.test(await p.textContent('#gapNote')), 'gap note says what it did, in plain words: ' + await p.textContent('#gapNote'));
   // Step by step: a closed box under the time strip lists every step that ran, with time and what happened
   expect(!(await p.isVisible('#resultTrack .tsdetail ol')), 'Step by step starts closed');
   await p.click('#resultTrack .tsdetail summary');
@@ -372,6 +372,27 @@ await check('bench fixes run 2: a strictness guard takes out "safely", cross-con
   expect((s.standins || []).length === 1 && !(s.fills || []).length, 'the gaps came back with under 5 seconds left, so no fill call: ' + (s.fills || []).length);
   expect(/Your AI may still ask: Which day is the dinner\?/.test(await s.textContent('#gapNote')), 'the late gaps still show under the prompt: ' + await s.textContent('#gapNote'));
   expect(!p.errors.length && !q.errors.length && !s.errors.length, 'page errors: ' + p.errors.concat(q.errors, s.errors).join('; '));
+});
+
+await check('everyone gets the new flow: with run stats and dev tools off, Normal still runs Clean, the fact ledger, and the stand-in on long notes; only the grade needs run stats (Test lab 11/05)', async () => {
+  const LONG = 'ok so um I want to plan a small birthday dinner for my mom next month at home, nothing fancy. she likes italian food and hates anything too spicy. there will be maybe 6 of us, my two aunts, my cousin, my dad, me and mom. I have about $90 for groceries and I want to cook most of it the day before because I work that morning until noon.';
+  const intake = { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] };
+  const p = await page({ intake, write: LONG, gaps: ['Which day is the dinner?'], ledger: ['Birthday dinner for mom at home', 'About $90 for groceries', 'Maybe 6 people'] });
+  expect(!(await p.evaluate(() => localStorage.getItem('stp-dev'))), 'dev tools are off');
+  await withKey(p); await p.fill('#thoughts', LONG); await p.click('#build'); await done(p);
+  const w = p.calls.filter(c => !c.intake).pop();
+  expect((p.cleans || []).length === 1 && (p.ledgers || []).length === 1 && /MUST-KEEP CHECKLIST/.test(w.text) && /lightly cleaned/.test(w.text), 'Clean and the fact ledger ran, and the writer got both');
+  expect((p.standins || []).length >= 1 && !p.grades.length, 'the stand-in ran on the long note; no grade without run stats');
+  expect(!(await p.isHidden('#resultTrack li[data-step=finish]')), 'the Finish step shows, because Check ran');
+  const note = await p.textContent('#gapNote');
+  expect(/Test run: before showing you this, a stand-in AI read your prompt like your AI will\. Your AI may still ask: Which day is the dinner\? If you know, add it to your note and build again/.test(note) && !/Stand-in AI test:/.test(note), 'the gap note explains itself in plain words: ' + note);
+  // A short note: Clean and the ledger still run, but no stand-in and no Check step
+  const SHORT = 'potluck at my place a saturday I think, my friend Dana is gluten free, like 8 people total, easy stuff I can make the night before';
+  const q = await page({ intake, write: SHORT });
+  await withKey(q); await q.fill('#thoughts', SHORT); await q.click('#build'); await done(q);
+  expect((q.cleans || []).length === 1 && (q.ledgers || []).length === 1 && !(q.standins || []).length && !q.grades.length, 'short note: Clean and ledger yes, stand-in and grade no');
+  expect(await q.isHidden('#resultTrack li[data-step=finish]') && await q.isHidden('#gapNote'), 'no Check step and no note on a short note');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('falls back to the next Flash when 3.8 is out (429)', async () => {

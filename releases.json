@@ -22,6 +22,7 @@
         "Flow bench rerun (folded in to stay at 5 builds): Your last flow bench run reloads with the page, so Copy reveal and Rerun failed notes still work after a reload.",
         "Flow bench rerun (dev tools, folded in to stay at 5 builds): each errored note gets a rerun tick box in the table, all ticked at first. Untick a note to skip it, and Rerun failed notes redoes only the ticked ones, so a rerun can be just T4 and T2.",
         "Fixes from flow bench run 2 (new flow won 3 of 5): a free strictness guard on the phone flags words that make a preference stricter or more medical than you said (safe, safely, cross-contamination, allergy, celiac, medical, strictly). Polish takes them out, and the fact ledger and the suggested shape can no longer carry them in. A word you said yourself is fine.",
+        "Test lab fixes (11/05): the stand-in note now explains itself in plain words (Test run: a stand-in AI read your prompt like your AI will), and the old 2.1.19 run stats check is updated, since the new flow (Clean, fact ledger, shape, Polish, stand-in on 60+ word notes) is for everyone and only the grade needs run stats.",
         "Stand-in fixes from run 2 (it ran out of time on all 3 long notes): the gaps it finds now show under the prompt even when time runs short, and it skips the fill step when under 5 seconds are left, so no Gemini call gets thrown away. The flow bench runs the stand-in only on 60+ word notes, like the app, so its times match what you wait."
       ],
       "checks": [
@@ -32,7 +33,7 @@
         },
         {
           "say": "Look under the prompt.",
-          "see": "If the stand-in found gaps: a Stand-in AI test note saying what it filled, or what your AI may still ask. No note when it found none."
+          "see": "If the stand-in found gaps, a note starting Test run: says a stand-in AI read your prompt like your AI will, then what it added from what you said, or what your AI may still ask and what to do about it. No note when it found none."
         },
         {
           "say": "Switch to Quick mode and build the same note.",
@@ -83,8 +84,8 @@
           "see": "It says includes Ns check (or polish and check), and Ready in Ns matches the elapsed time."
         },
         {
-          "say": "Turn Show run stats off and build again.",
-          "see": "No Check step; the prompt shows right after Write (or Polish)."
+          "say": "Turn Show run stats off. Build the Try it note again (it is long), then build a short note like: potluck saturday, Dana is gluten free, 8 people, easy stuff I can make the night before.",
+          "see": "Long note: Check still runs (the stand-in is for everyone since 2.1.20), but no grade. Short note: no Check step; the prompt shows right after Write (or Polish). Either way, everyone gets the new flow: only the grade needs run stats."
         }
       ]
     },
