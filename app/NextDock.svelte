@@ -233,7 +233,7 @@
   <div class="bar">
     <button type="button" class="primary main copybig" class:alt={showBuild} id="copy" hidden={!showCopy}>Copy prompt</button>
     <button type="submit" form="form" class="primary main" id="dockBuild" hidden={!showBuild} disabled={busy}>{busy ? busyLabel : moment === 'redo' ? 'Rebuild' : 'Build my prompt'}</button>
-    <button type="button" class="primary main" id="qaGo" hidden={moment !== 'qa'} disabled={chat.busy} onclick={() => chat.finish(false)}>Write my prompt{total ? ` (${answered} of ${total})` : ''}</button>
+    <button type="button" class="primary main" id="qaGo" class:ready={chat.done && !chat.busy} hidden={moment !== 'qa'} disabled={chat.busy} onclick={() => chat.finish(false)}>Write my prompt{total ? ` (${answered} of ${total})` : ''}</button>
     <button type="button" class="more" id="dockMore" hidden={moment === 'input'} aria-haspopup="menu" aria-expanded={menu} aria-controls="dockMenu" aria-label="More" bind:this={more} onclick={() => (menu = !menu)}>⋯</button>
   </div>
 </div>
@@ -266,6 +266,14 @@
   .bar button.main { flex: 1 1 auto; min-width: 0; padding: 8px 18px; font-size: var(--fs-md); font-family: var(--display); font-weight: 700; line-height: 1.2;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: auto; }
   .bar button.main:disabled { opacity: 0.7; }
+  /* Every question answered (#1, idea mvu5bffsox6n): Write my prompt wears the Start here white
+     halo, so the next tap is obvious. The ring itself never animates; it pops in once (transform
+     only), and with Reduce Motion it just appears. */
+  .bar button.main.ready { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 26px 8px var(--halo-glow), 0 10px 26px var(--halo-drop); }
+  @media (prefers-reduced-motion: no-preference) {
+    .bar button.main.ready { animation: readypop 420ms var(--ease) 1; }
+    @keyframes readypop { 0% { transform: scale(1); } 45% { transform: scale(1.05); } 100% { transform: scale(1); } }
+  }
   /* Redo: Copy prompt (the prompt you already have) sits beside Rebuild as the lighter button. */
   .bar button.alt { flex: 0 1 auto; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); box-shadow: none; padding: 8px 14px; }
   .bar button.alt + button.main { padding: 8px 14px; }
