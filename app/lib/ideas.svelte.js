@@ -29,7 +29,7 @@ export const SOON = [
 /* Areas of Speak to Prompt, each with a few starter topics. Keys are permanent;
    labels and starters can change. `sel` maps taps on the page to an area. */
 export const AREAS = [
-  { key: 'input', label: 'Thoughts box', group: 'Before', sel: '#thoughts, #ideas, #ideasShow, #pasteWrap, #voiceRow, #coach, #handoff',
+  { key: 'input', label: 'Thoughts box', group: 'Before', sel: '#thoughts, #ideas, #ideasShow, #pasteWrap, #voiceRow, #micBtn, #micNote, #coach, #handoff',
     topics: [['paste', 'Paste or transcript', 'Pasting in a transcript '], ['strip', 'Idea strip', 'The swipe ideas '], ['talk', 'Talk it out shortcut', 'The Talk it out shortcut ']] },
   { key: 'start', label: 'Not sure where to start?', group: 'Before', sel: '.starterwrap',
     topics: [['cats', 'Categories', 'The categories '], ['answers', 'Tap answers', 'The tap answers '], ['sliders', 'Sliders', 'The sliders ']] },

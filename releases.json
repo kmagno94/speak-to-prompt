@@ -2,6 +2,37 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.26",
+      "date": "2026-11-07",
+      "title": "Talk here: a mic button right by the box",
+      "items": [
+        "Talk here (AGT-2): a mic button next to Talk it out uses your browser's own speech-to-text (Safari on iPhone and Mac, Chrome). No key, no Gemini requests, nothing extra to install.",
+        "Tap Talk here and talk: your words show up in the box live and add to whatever is already there. Tap Stop listening to finish. Building, leaving the page, or locking the phone stops it too.",
+        "If the browser stops listening on its own while the button is still on, it quietly starts again and keeps your words. If it keeps stopping with nothing heard, it gives up with a note instead of looping.",
+        "While the mic is on, a line says your voice goes to Apple's (Safari, any iPhone browser) or Google's (Chrome on a computer or Android) speech service, and nothing is saved here. The idea strip stays out of the way while listening.",
+        "Only shows where the browser supports it, so Firefox and others just keep the box. If iPhone blocks it, the note says to turn on Siri in Settings or use the keyboard's mic; in the Home Screen app it says to open the page in Safari."
+      ],
+      "checks": [
+        {
+          "say": "On staging in Safari (not the Home Screen app), tap Talk here, allow the mic, and read this out loud.",
+          "paste": "ok so my cousin Marco's birthday is saturday and I want to plan a small dinner for like six people, budget around 150 total, he hates seafood, maybe somewhere near Mineola",
+          "see": "Your words appear in the box as you talk, the button turns red and says Stop listening, and the note mentions Apple's speech service. Tap Stop listening: the words stay."
+        },
+        {
+          "say": "Type \"Quick note first:\" in the box, then tap Talk here and say a sentence, pause about 10 seconds, then say another.",
+          "see": "Both sentences land after \"Quick note first:\" with a space, and nothing you said earlier disappears after the pause."
+        },
+        {
+          "say": "Tap Talk here, say a few words, then tap Build my prompt without stopping.",
+          "see": "The mic stops on its own (button back to Talk here) and the build runs with what you said."
+        },
+        {
+          "say": "Open staging from the Home Screen app and tap Talk here.",
+          "see": "Either it works, or a note says the mic works in Safari, not the Home Screen app yet. No endless spinning."
+        }
+      ]
+    },
+    {
       "version": "2.1.25",
       "date": "2026-11-06",
       "title": "Test lab fixes 11/06-07: bigger halo, honest prompts left, Gemma dropped, key pastes itself",
