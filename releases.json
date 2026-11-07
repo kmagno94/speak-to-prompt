@@ -4,7 +4,7 @@
     {
       "version": "2.1.25",
       "date": "2026-11-06",
-      "title": "Test lab fixes 11/06: bigger halo, honest prompts left, Gemma dropped, Flash-Lite grades",
+      "title": "Test lab fixes 11/06-07: bigger halo, honest prompts left, Gemma dropped, key pastes itself",
       "items": [
         "Write my prompt's halo now zooms in with a small bounce and its glow breathes twice, so the last answer is impossible to miss. Reduce Motion gets a thicker ring and no movement (Test lab #1).",
         "Run stats' header counts only Flash writes as full prompts left (about 60 a day, not 4,560, which had Gemma's allowance added in) (Test lab #2).",
@@ -12,7 +12,8 @@
         "Grading never uses Flash: a Flash-Lite grades Normal prompts, and the other Flash-Lite grades Quick prompts, so no model grades its own words. A slow Flash-Lite gets the other one alongside after 12 seconds. Only a key with a single Flash-Lite falls back to one Flash for a Quick grade.",
         "The usage list shows every Flash-Lite on the key with its job, and counts requests that never answered (timed out, busy, slower than a backup).",
         "The grade note and Step by step say who graded and any hand-off before it. The grader bench names the grader on every case and how many cases land more than half a point from Claude's key.",
-        "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5)."
+        "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5).",
+        "Key catcher (Test lab 11/07): coming back from AI Studio pastes your key and runs Check key by itself where the browser allows it. iPhone Safari always needs a tap plus its own Paste bubble (Apple's rule), so there Paste my key pulses and the note says so. Once the key works with Remember my key off, Remember wears the white halo and scrolls into view until it's ticked."
       ],
       "checks": [
         {
@@ -36,6 +37,14 @@
         {
           "say": "Build the same dumpling note in Quick mode with run stats on, then open Step by step.",
           "see": "One Flash-Lite writes it and the other Flash-Lite grades it (the Grade row names it with a score). If it says still grading, wait a few seconds: the row fills in by itself without closing."
+        },
+        {
+          "say": "On the iPhone, tap Remove key, tap Get my free key, copy your key in AI Studio, then switch back to Safari.",
+          "see": "The key panel is open, Paste my key pulses, and the note says to tap it plus Safari's Paste bubble (Apple's rule). On a computer in Chrome, the key goes in and gets checked by itself, no tap."
+        },
+        {
+          "say": "With Remember my key off, tap Paste my key and allow Safari's Paste bubble.",
+          "see": "\"🎉 You're in!\" with \"Tick Remember my key (glowing below)\", and Remember my key wears a white halo that pulses a few times and stays until you tick it. Ticking it makes the halo go away."
         }
       ]
     },
@@ -88,7 +97,7 @@
         },
         {
           "say": "Tap Paste my key (allow Safari's Paste bubble).",
-          "see": "\"Got it. Checking with Google...\" then \"🎉 You're in!\" plus a reminder to tick Remember my key if it's off. The two steps, the Quick mode line and the result card all disappear."
+          "see": "\"Got it. Checking with Google...\" then \"🎉 You're in!\". If Remember my key is off, the note says it's glowing below and Remember my key wears a white halo until ticked (v2.1.25). The two steps, the Quick mode line and the result card all disappear."
         },
         {
           "say": "Copy any normal sentence, tap Remove key, then tap Paste my key.",

@@ -39,7 +39,7 @@ const CORE = [
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
-  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:',
+  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:'
 ];
 const QUICK = process.env.QUICK === '1';
@@ -228,6 +228,61 @@ await check('key catcher: Paste my key reads the clipboard, checks the format, t
   expect(!(await p.$('#pasteKey')) && !(await p.$('#keyNudge')), 'the key steps and the nudge hide once the key works');
   expect(await p.evaluate(() => !Object.keys(localStorage).some(k => /gemini-key/.test(k))), 'nothing saved without Remember');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Test lab 11/07 (v2.1.25): coming back from AI Studio pastes and checks by itself where the browser allows it,
+   and Remember my key wears the white halo until it's ticked. */
+async function backFromStudio(p) {
+  await p.evaluate(() => { const a = document.getElementById('getKey'); a.addEventListener('click', (e) => e.preventDefault(), { once: true }); a.click(); });
+  await p.waitForTimeout(1600);
+  await p.evaluate(() => window.dispatchEvent(new Event('focus')));
+}
+await check('key catcher: coming back from AI Studio pastes and checks the key by itself, and falls back to the pulsing button where the clipboard is closed (Test lab, v2.1.25)', async () => {
+  const fake = 'AIza' + 'y'.repeat(35);
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.evaluate((k) => navigator.clipboard.writeText(k), fake);
+  await backFromStudio(p);
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  expect(await p.inputValue('#gkey') === fake && await p.getAttribute('#keyStatus', 'class') === 'good', 'no tap: the key went in and Check key passed');
+  // Clipboard closed (iPhone Safari without a tap): nothing pasted, the button pulses, the note says to tap
+  const q = await page();
+  await q.click('#keyPanel summary');
+  await q.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('NotAllowedError')); });
+  await backFromStudio(q);
+  await q.waitForFunction(() => /Apple's rule/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 5000 });
+  expect(await q.$('#pasteKey.pulse') && !(await q.inputValue('#gkey')), 'falls back to the pulsing Paste my key, box empty');
+  // Something that isn't a key on the clipboard: no scolding on the way back, just the pulsing button
+  const r = await page();
+  await r.click('#keyPanel summary');
+  await r.evaluate(() => navigator.clipboard.writeText('zxqv parrot marmalade note'));
+  await backFromStudio(r);
+  await r.waitForTimeout(500);
+  expect(/Welcome back/.test(await r.textContent('#catchNote')) && !(await r.inputValue('#gkey')) && await r.$('#pasteKey.pulse'), 'a non-key is left alone: ' + await r.textContent('#catchNote'));
+  expect(!/zxqv parrot/.test(await r.content()), 'clipboard text is never shown');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('key catcher: once the key works with Remember my key off, Remember wears the white halo until it is ticked (Test lab, v2.1.25)', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'z'.repeat(35));
+  await p.click('#pasteKey');
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await p.waitForSelector('label.check.keep-halo', { timeout: 3000 });
+  const ring = await p.$eval('label.check.keep-halo', (l) => getComputedStyle(l).boxShadow);
+  expect(/255, 255, 255/.test(ring) && /glowing below/.test(await p.textContent('#catchNote')), 'white halo on Remember my key, and the note points to it: ' + ring);
+  await p.check('#remember');
+  expect(!(await p.$('label.check.keep-halo')), 'the halo goes once Remember is ticked');
+  // Already ticked before the key worked: no halo
+  const q = await page();
+  await q.click('#keyPanel summary'); await q.check('#remember');
+  await q.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'w'.repeat(35));
+  await q.click('#pasteKey');
+  await q.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await q.waitForTimeout(400);
+  expect(!(await q.$('label.check.keep-halo')), 'no halo when Remember is already on');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('full flow: Lite asks, Flash writes, answers and category shown', async () => {

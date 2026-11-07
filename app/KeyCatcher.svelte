@@ -6,7 +6,12 @@
           puts it in the box and runs Check key (one test call), then celebrates.
      Coming back from AI Studio (the tab shows again) opens the panel, scrolls to it and pulses
      Paste my key, like the Talk it out paste banner. The clipboard text is never shown,
-     logged or saved. All of this is memory only; Remember my key stays your choice. */
+     logged or saved. All of this is memory only; Remember my key stays your choice.
+     v2.1.25 (Test lab 11/07): coming back from AI Studio tries the paste and the check by
+     itself where the browser allows it (Chrome and others). iPhone Safari never lets a page
+     read the clipboard without a tap plus its own Paste bubble, so there it falls back to the
+     pulsing button. Once the key works and Remember my key is off, Remember wears the white
+     halo (and scrolls into view) until it's ticked, so a click-through doesn't lose the key. */
   import { onMount } from 'svelte';
   import { ui } from './lib/ui.svelte.js';
 
@@ -23,14 +28,27 @@
   let busy = $state(false);
 
   function panel() { return document.getElementById('keyPanel'); }
+  let lastBack = 0;
   function bringBack() {
     const p = panel();
-    if (!p) return;
+    if (!p || busy || Date.now() - lastBack < 1500) return;   /* focus and visibilitychange both fire */
+    lastBack = Date.now();
     p.open = true;
     p.scrollIntoView({ behavior: 'smooth', block: 'start' });
     pulse = true;
     note = 'Welcome back! Copied your key? Tap Paste my key.';
     kind = '';
+    pasteKey(true);   /* where the browser allows it, no tap needed */
+  }
+
+  /* Remember my key wears the white halo until it's ticked (v2.1.25). */
+  function haloRemember() {
+    const keep = document.getElementById('remember'), row = keep && keep.closest('label');
+    if (!row || keep.checked) return;
+    row.classList.add('keep-halo');
+    setTimeout(() => row.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+    const off = () => { if (keep.checked) { row.classList.remove('keep-halo'); keep.removeEventListener('change', off); } };
+    keep.addEventListener('change', off);
   }
 
   onMount(() => {
@@ -55,18 +73,24 @@
     });
   }
 
-  async function pasteKey() {
+  /* auto: tried by itself on the way back from AI Studio. Anything that doesn't work out
+     (no permission, no key on the clipboard) quietly leaves the pulsing button to tap. */
+  async function pasteKey(auto = false) {
     if (busy) return;
-    pulse = false;
     const box = document.getElementById('gkey');
     let text = '';
+    if (auto && !(navigator.clipboard && navigator.clipboard.readText)) return;
     try { text = (await navigator.clipboard.readText()) || ''; }
     catch (e) {
+      if (auto) return say('Welcome back! Tap Paste my key. On iPhone, tap the Paste bubble that pops up too, that part is Apple\'s rule.');
+      pulse = false;
       box?.focus();
       return say('Your browser kept the clipboard closed. Long-press the key box below and tap Paste, then Check key.', 'bad');
     }
     const raw = text.trim();
     const key = (raw.match(KEY_RE) || [])[0] || (LOOSE_RE.test(raw) ? raw : '');
+    if (auto && !key) return;   /* clipboard isn't a key yet: leave the button pulsing, say nothing */
+    pulse = false;
     if (!key) {
       return say(raw ? "That doesn't look like a Gemini key (they start with AIza). In AI Studio, tap the copy button next to your key, then come back." : 'Your clipboard is empty. Copy your key in AI Studio first, then tap Paste my key.', 'bad');
     }
@@ -81,7 +105,8 @@
     if (res === 'good') {
       hunting = false;
       const keep = document.getElementById('remember');
-      say('🎉 You\'re in! Your next prompt asks a few quick questions first.' + (keep && !keep.checked ? ' Tick Remember my key below so you never paste it again.' : ''), 'good');
+      say('🎉 You\'re in! Your next prompt asks a few quick questions first.' + (keep && !keep.checked ? ' Tick Remember my key (glowing below) so you never paste it again.' : ''), 'good');
+      haloRemember();
     } else {
       say('Google didn\'t accept that one. The message below says why.', 'bad');
     }
@@ -93,7 +118,7 @@
     <a class="step" id="getKey" href={STUDIO} target="_blank" rel="noopener" onclick={getKey}>
       <span class="n">1</span><span><b>Get my free key</b><small>Opens Google AI Studio. Sign in, tap Create API key, copy it.</small></span>
     </a>
-    <button type="button" class="step paste" class:pulse id="pasteKey" onclick={pasteKey} disabled={busy}>
+    <button type="button" class="step paste" class:pulse id="pasteKey" onclick={() => pasteKey(false)} disabled={busy}>
       <span class="n">2</span><span><b>📋 Paste my key</b><small>Come back here and tap. We check it for you.</small></span>
     </button>
   </div>

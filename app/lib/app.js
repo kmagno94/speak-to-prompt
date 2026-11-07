@@ -1051,6 +1051,7 @@ export function startApp() {
   document.getElementById("removeKey").addEventListener("click", function () {
     gkey.value = "";
     remember.checked = false;
+    if (remember.closest("label")) remember.closest("label").classList.remove("keep-halo");   /* v2.1.25 */
     gemini.key = "";
     gemini.model = ""; gemini.plan = null;
     storeDel();
