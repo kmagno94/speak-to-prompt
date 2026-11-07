@@ -207,6 +207,71 @@ await check('key nudge: Quick mode line and result card point to the key panel, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* Talk here (AGT-2): a fake webkitSpeechRecognition stands in for the browser's speech engine. */
+const FAKE_SPEECH = () => {
+  window.__recs = [];
+  const Fake = class {
+    constructor() { this.started = false; this.stopped = false; window.__recs.push(this); }
+    start() { this.started = true; }
+    stop() { this.stopped = true; setTimeout(() => this.onend && this.onend(), 0); }
+    abort() { this.stop(); }
+  };
+  /* Chromium has its own; define over it so the page gets the fake. */
+  for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: Fake, configurable: true, writable: true });
+  /* say(['words', final?], ...) sends results to the newest recognizer; end() ends it like the browser would. */
+  window.__say = (...parts) => { const r = window.__recs.at(-1); r.onresult({ results: parts.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: !!f })) }); };
+  window.__end = () => { const r = window.__recs.at(-1); r.onend(); };
+  window.__err = (error) => { const r = window.__recs.at(-1); r.onerror({ error }); r.onend && r.onend(); };
+};
+await check('safari mic: Talk here adds live words to the box, restarts quietly, stops on Build, and explains a block (AGT-2, v2.1.26)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.waitForSelector('#micBtn');
+  expect((await p.textContent('#micBtn')).includes('Talk here'), 'the button should say Talk here');
+  await p.fill('#thoughts', 'Quick note first:');
+  await p.click('#micBtn');
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'the button should be pressed while listening');
+  expect(/Stop listening/.test(await p.textContent('#micBtn')), 'the button should say Stop listening');
+  expect(/Apple's|Google's/.test(await p.textContent('#micNote')) && /nothing is saved/.test(await p.textContent('#micNote')), 'privacy note while listening');
+  await p.evaluate(() => window.__say(['plan a dinner', false]));
+  expect((await p.inputValue('#thoughts')) === 'Quick note first: plan a dinner', 'live words add after what was there, got: ' + await p.inputValue('#thoughts'));
+  await p.evaluate(() => window.__say(['plan a dinner for six', true]));
+  // The browser stops on its own: a new recognizer starts and keeps the words
+  await p.evaluate(() => window.__end());
+  await p.waitForFunction(() => window.__recs.length === 2 && window.__recs[1].started);
+  await p.evaluate(() => window.__say([' budget 150', true]));
+  expect((await p.inputValue('#thoughts')) === 'Quick note first: plan a dinner for six budget 150', 'restart keeps earlier words, got: ' + await p.inputValue('#thoughts'));
+  expect(!(await p.isVisible('#ideas:not(.gone)')), 'the idea strip stays away');
+  // Build stops the mic
+  await p.click('#build');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  expect(await p.evaluate(() => window.__recs[1].stopped), 'Build should stop the recognizer');
+  await p.waitForTimeout(100);
+  expect(await p.evaluate(() => window.__recs.length) === 2, 'no restart after stopping');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+
+  // Blocked on iPhone: Siri note, button off
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+  const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await q.addInitScript(FAKE_SPEECH); await q.reload();
+  await q.click('#micBtn');
+  await q.evaluate(() => window.__err('service-not-allowed'));
+  await q.waitForSelector('#micNote:has-text("Siri")');
+  expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'a block turns the mic off');
+  // Ends fast with nothing heard 3 times: gives up instead of looping
+  await q.click('#micBtn');
+  for (let i = 0; i < 3; i++) { await q.waitForFunction((n) => window.__recs.length === n && window.__recs[n - 1].started, i + 2); await q.evaluate(() => window.__end()); }
+  await q.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  await q.waitForTimeout(100);
+  expect(await q.evaluate(() => window.__recs.length) === 4, 'no endless restarts, got ' + await q.evaluate(() => window.__recs.length));
+
+  // No speech engine (Firefox and others): no button at all
+  const f = await page();
+  await f.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await f.reload();
+  await f.waitForSelector('#thoughts');
+  expect(!(await f.$('#micBtn')), 'no mic where the browser has no speech-to-text');
+});
+
 await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
   const p = await page();
   await p.click('#normalMode');

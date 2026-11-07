@@ -35,6 +35,7 @@
   import NextDock from './NextDock.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
+  import MicButton from './MicButton.svelte';
   let tutorial;
   /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
   function noShortcut() {
@@ -94,6 +95,8 @@
   <form id="form" class="field hero" novalidate>
     <label for="thoughts" class="herolabel">What's on your mind?</label>
     <div class="voice" id="voiceRow">
+      <!-- Talk here (AGT-2): the browser's own speech-to-text, only where the browser has it. -->
+      <MicButton />
       <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
       <button type="button" class="getlink nosc" id="noShortcut" onclick={noShortcut}>No shortcut?</button>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
