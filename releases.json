@@ -2,6 +2,44 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.25",
+      "date": "2026-11-06",
+      "title": "Test lab fixes 11/06: bigger halo, honest prompts left, Gemma you can see",
+      "items": [
+        "Write my prompt's halo now zooms in with a small bounce and its glow breathes twice, so the last answer is impossible to miss. Reduce Motion gets a thicker ring and no movement (Test lab #1).",
+        "Run stats' header counts only Flash writes as full prompts left (about 60 a day, not 4,560): Gemma's daily allowance grades and lists facts, it never writes (Test lab #2).",
+        "Grading starts on the quicker Gemma (26B, only 4B active) and the 31B joins after 12 seconds; Flash-Lite or Flash only grade when both Gemmas miss. On real keys the 31B first kept missing the 30 second Check, so grades fell to Flash-Lite or ran late (Test lab #3, #5).",
+        "The fact list gives Gemma 10 seconds before a Flash-Lite joins (was 6, which Flash-Lite won almost every time).",
+        "You can see Gemma now: the grade note says graded by Gemma (or Flash-Lite, plus why Gemma missed), Step by step names who did the ledger and the grade, and the usage list counts requests that never answered (timed out, busy, slower than a backup) (Test lab #3).",
+        "The grader bench names the grader on every case, says how many Gemma graded and its average gap to Claude's key, and runs two at a time when Gemma grades so its per-minute limit doesn't send cases to Flash-Lite (Test lab #4).",
+        "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5)."
+      ],
+      "checks": [
+        {
+          "say": "With your key on and Normal mode, paste the note below, tap Build my prompt, then answer or skip every question.",
+          "see": "After the last answer, Write my prompt (N of N) zooms in with a little bounce, then its white glow pulses twice and settles. While questions are still open it has no halo.",
+          "paste": "ok so um I wanna do a pumpkin carving night for like my cousins and their kids, maybe a Saturday, not sure how many people yet, we need snacks and some kind of contest I guess, help me plan it"
+        },
+        {
+          "say": "Turn on Show run stats, open the key panel and tap Check key, then look at the Run stats header.",
+          "see": "It says about 60 full prompts left today on Flash (fewer if you used some), not thousands. The usage list still shows the Gemma models with about 1,500 a day each."
+        },
+        {
+          "say": "With run stats on and Normal mode, paste the note below, build, and answer or skip the questions. Then open Step by step under the timer.",
+          "see": "The grade note says graded by Gemma gemma-4-26b-a4b-it (or graded by Flash-Lite plus Gemma missed: and why). The Grade and Fact ledger rows say Gemma or say why not. The usage list shows Gemma requests, plus any tries that never answered.",
+          "paste": "ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who've never played anything, oh and two people are coming late from work"
+        },
+        {
+          "say": "In dev tools, run the grader bench.",
+          "see": "A Graded by line under the summary (like gemma-4-26b-a4b-it 9) with Gemma's average gap to Claude's key and how many cases are more than half a point off. Each row names its grader. Tap Copy for Claude and send it to me before promoting."
+        },
+        {
+          "say": "Build the same game night note in Quick mode with run stats on, then open Step by step.",
+          "see": "Flash-Lite writes it. The Grade row names Gemma with a score. If it says still grading, wait a few seconds: the row fills in by itself without closing."
+        }
+      ]
+    },
+    {
       "version": "2.1.24",
       "date": "2026-11-06",
       "title": "Number check catches a made-up \"today is\" weekday",

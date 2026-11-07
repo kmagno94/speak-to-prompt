@@ -60,6 +60,7 @@ async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev',
 async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
+  if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   const p = await ctx.newPage();
   p.errors = [];
@@ -100,6 +101,7 @@ async function page(opts = {}) {
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeBusyOnce) { p.busy = p.busy || new Map(); const k = ask.slice(-300); if (!p.busy.has(k)) p.busy.set(k, Date.now()); if (Date.now() - p.busy.get(k) < 400) { return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) }); } }
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      if (opts.gradeDelay) await new Promise(res => setTimeout(res, opts.gradeDelay));
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
@@ -622,14 +624,14 @@ await check('model routing: Gemma grades and lists facts with no thinking or JSO
   expect(/flash/.test(w.model) && !/lite/.test(w.model), 'Flash still writes: ' + w.model);
   expect(p.ledgers && p.ledgers[0].model === 'gemma-4-26b-a4b-it', 'facts listed by the smaller Gemma: ' + (p.ledgers || []).map(c => c.model).join());
   const g = p.grades[0];
-  expect(g && g.model === 'gemma-4-31b-it' && !g.level && !g.json && /only the JSON object/.test(g.text), 'grade on Gemma 31B, no thinking level, no JSON switch, asked in words: ' + JSON.stringify(g && { m: g.model, l: g.level, j: g.json }));
+  expect(g && g.model === 'gemma-4-26b-a4b-it' && !g.level && !g.json && /only the JSON object/.test(g.text), 'grade on the quicker Gemma 26B first (v2.1.25), no thinking level, no JSON switch, asked in words: ' + JSON.stringify(g && { m: g.model, l: g.level, j: g.json }));
   expect(!p.grades.concat(p.ledgers || [], p.calls).some(c => /e4b/.test(c.model)), 'tiny Gemma models are never used');
-  // Gemma 31B turns grades down (400): the other Gemma grades instead, and the run still finishes
-  const q = await page({ models, intake, failAny: { 'gemma-4-31b-it': 400 } });
+  // Gemma 26B turns grades down (400): the 31B grades instead, and the run still finishes
+  const q = await page({ models, intake, failAny: { 'gemma-4-26b-a4b-it': 400 } });
   await q.click('#moreOpts summary'); await q.check('#statsToggle');
   await withKey(q); await q.fill('#thoughts', 'plan a chill bowling night'); await q.click('#build'); await done(q);
   await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
-  expect((q.failed || []).includes('gemma-4-31b-it') && q.grades[0] && q.grades[0].model === 'gemma-4-26b-a4b-it', 'a 400 from Gemma hands the grade to the next model: ' + (q.grades[0] && q.grades[0].model));
+  expect((q.failed || []).includes('gemma-4-26b-a4b-it') && q.grades[0] && q.grades[0].model === 'gemma-4-31b-it', 'a 400 from Gemma hands the grade to the next model: ' + (q.grades[0] && q.grades[0].model));
   // No Gemma on the key: grading stays on Flash-Lite, like before
   const r = await page({ intake });
   await r.click('#moreOpts summary'); await r.check('#statsToggle');
@@ -637,6 +639,88 @@ await check('model routing: Gemma grades and lists facts with no thinking or JSO
   await r.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
   expect(r.grades[0] && /lite/.test(r.grades[0].model) && r.grades[0].json, 'no Gemma: Flash-Lite grades with the JSON switch: ' + (r.grades[0] && r.grades[0].model));
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+/* v2.1.25 Test lab fixes (11/06): one check per broken item. */
+const GEMMA_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
+const GAME_NIGHT = 'ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who have never played anything';
+
+await check('model routing: full prompts left counts only Flash writes, never Gemma or Flash-Lite (Test lab #2, v2.1.25)', async () => {
+  const p = await page({ models: GEMMA_MODELS });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  // Before the key is checked: the known models show, still only Flash counts (3 x 20)
+  const before = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(before) && !/4560|4,560|3060/.test(before), 'before Check key: ' + before);
+  await withKey(p); await p.click('#checkKey');
+  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus') ? document.getElementById('keyStatus').textContent : document.body.textContent), null, { timeout: 8000 }).catch(() => {});
+  await p.waitForTimeout(300);
+  const after = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(after), 'after Check key, Gemma (1,500 a day) stays out of the count: ' + after);
+  const usage = await p.textContent('#usage');
+  expect(/gemma-4-31b-it/.test(usage) && /1500/.test(usage), 'Gemma still shows on its own usage row: ' + usage.slice(0, 300));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('model routing: a Normal run says Gemma graded and listed facts, by name, in the grade note and Step by step (Test lab #3, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ models: GEMMA_MODELS, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  const note = await p.textContent('#gradeNote');
+  expect(/graded by Gemma gemma-4-26b-a4b-it/.test(note) && !/Gemma missed/.test(note), 'grade note names the Gemma grader: ' + note);
+  await p.click('#resultTrack .tsdetail summary');
+  const who = await p.$$eval('#resultTrack .ts-row', (l) => l.map((x) => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-who').textContent));
+  expect(who.some((x) => /^Grade \| Gemma/.test(x)) && who.some((x) => /^Fact ledger \| Gemma/.test(x)), 'rows name who did it: ' + who.join(' / '));
+  const usage = await p.textContent('#usage');
+  expect(/gemma-4-26b-a4b-it[\s\S]*?[1-9]\d* requests? counted/.test(usage), 'Gemma shows requests on its usage row: ' + usage.slice(0, 500));
+  // Both Gemmas busy: Flash-Lite grades, and the note and the usage list say Gemma missed
+  const q = await page({ models: GEMMA_MODELS, intake, failAny: { 'gemma-4-26b-a4b-it': 503, 'gemma-4-31b-it': 503 } });
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', GAME_NIGHT); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  const qn = await q.textContent('#gradeNote');
+  expect(/graded by Flash-Lite/.test(qn) && /Gemma missed: gemma-4-26b-a4b-it was unavailable/.test(qn), 'note says Gemma missed and why: ' + qn);
+  const qu = await q.textContent('#usage');
+  expect(/more tried, no answer \(\d+ busy\)/.test(qu), 'usage shows the Gemma tries that missed: ' + qu.slice(0, 600));
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('model routing: the grader bench shows which model graded every case and Gemma\'s gap to the key (Test lab #4, v2.1.25)', async () => {
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); return c ? { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke } : null; };
+  const p = await page({ models: GEMMA_MODELS, gradeFn });
+  await devOn(p); await withKey(p); await p.click('#moreOpts summary');
+  await p.click('#benchRun');
+  await p.waitForSelector('#benchOut:not([hidden])', { timeout: 30000 });
+  const n = bench.cases.length, who = await p.textContent('.benchwho');
+  expect(new RegExp('Graded by: gemma-4-26b-a4b-it ' + n).test(who) && /Gemma's avg gap 0\.00, 0 of \d+ more than half a point off the key/.test(who), 'summary says who graded: ' + who);
+  const rows = await p.$$eval('.benchout tbody tr', (r) => r.map((x) => x.textContent));
+  expect(rows.length === n && rows.every((r) => /gemma-4-26b-a4b-it/.test(r)), 'every row names its grader: ' + rows.slice(0, 2).join(' / '));
+  expect(p.grades.every((g) => /gemma/.test(g.model)), 'all bench grades went to Gemma: ' + [...new Set(p.grades.map((g) => g.model))].join());
+  await p.click('#benchCopy'); await p.waitForTimeout(200);
+  const t = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/Graded by: gemma-4-26b-a4b-it/.test(t) && / on gemma-4-26b-a4b-it · missing/.test(t), 'copy for Claude carries the grader: ' + t.slice(0, 300));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('model routing: a Quick mode grade that runs past the Check updates its Step by step row when Gemma lands (Test lab #5, v2.1.25)', async () => {
+  const p = await page({ models: GEMMA_MODELS, gradeDelay: 1500, hooks: { __checkMaxMs: 400 } });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.check('#quickMode');
+  await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  const w = p.calls.filter((c) => !c.intake).pop();
+  expect(/lite/.test(w.model), 'Flash-Lite writes Quick: ' + w.model);
+  await p.click('#resultTrack .tsdetail summary');
+  const grade = async () => p.$eval('#resultTrack', (t) => { const r = [...t.querySelectorAll('.ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r ? r.querySelector('.tsr-who').textContent + ' | ' + r.querySelector('.tsr-what').textContent : ''; });
+  const early = await grade();
+  expect(/still grading\. This row updates when it lands/.test(early), 'past the Check it says it will update: ' + early);
+  await p.waitForFunction(() => { const r = [...document.querySelectorAll('#resultTrack .ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r && /^Scored/.test(r.querySelector('.tsr-what').textContent); }, null, { timeout: 8000 });
+  const late = await grade();
+  expect(/^Gemma/.test(late) && /Scored 4\.0/.test(late), 'the row now names Gemma and the score: ' + late);
+  expect(await p.isVisible('#resultTrack .tsdetail ol'), 'Step by step stays open while it updates');
+  expect(p.grades[0] && /gemma/.test(p.grades[0].model), 'Gemma (not the Flash-Lite writer) graded: ' + (p.grades[0] && p.grades[0].model));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('model switching: Flash-Lite never writes a Normal prompt on its own before 3:00, a tap on Switch to quick uses it, and used-up Flash offers only the quick model (#35)', async () => {
@@ -3159,6 +3243,25 @@ await check('next step dock: Write my prompt gets the white halo once every ques
   const ring = await p.$eval('#qaGo', (b) => getComputedStyle(b).boxShadow);
   expect(/255, 255, 255/.test(ring), 'the ready button should wear the white halo: ' + ring);
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Test lab #1 (11/06): the halo was underwhelming. Now it zooms in with a bounce and the glow breathes twice; Reduce Motion gets a thicker ring and no movement. */
+await check('motion and touch: Write my prompt zooms in and its glow breathes twice when the last question is answered, still with Reduce Motion (Test lab #1, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'Who is it for?', choices: ['Kids', 'Adults'] }] };
+  const run = async (reduced) => {
+    const p = await page({ intake, reduced });
+    await withKey(p); await p.fill('#thoughts', 'plan a pumpkin carving night'); await p.click('#build');
+    await p.waitForSelector('#qaList .chips button');
+    await p.click('#qaList .chips button');
+    await p.waitForSelector('#qaGo.ready', { timeout: 5000 });
+    const st = await p.$eval('#qaGo', (b) => { const c = getComputedStyle(b); return { anim: c.animationName, iter: c.animationIterationCount, ring: c.boxShadow }; });
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    return st;
+  };
+  const m = await run(false);
+  expect(/readyzoom/.test(m.anim) && /readyglow/.test(m.anim) && /2/.test(m.iter), 'zoom plus a glow that breathes twice: ' + JSON.stringify(m));
+  const r = await run(true);
+  expect(!/readyzoom|readyglow/.test(r.anim) && /255, 255, 255\) 0px 0px 0px 5px/.test(r.ring), 'Reduce Motion: no movement, a thicker white ring: ' + JSON.stringify(r));
 });
 
 await check('next step dock: Build my prompt sits under the box, and the dock shows its own only once you scroll past it', async () => {
