@@ -10,7 +10,8 @@
         "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
         "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. Deleted when you Build, empty the box, close the tab, or after 30 minutes. Never sent anywhere.",
         "A Gemini key from a different Google account gets its own fresh daily count, so it no longer says Flash is used up because of your other key.",
-        "My context has 📤 Send to Notes and 📥 Bring in: save your pieces as one Apple Notes note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. Same titles update, nothing is deleted."
+        "My context has 📤 Send to Notes and 📥 Bring in: save your pieces as one Apple Notes note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. Same titles update, nothing is deleted.",
+        "My context is compact: the pieces you used in your last builds go first, only 3 chips show with +N more for the rest, and long titles stay on one line. A piece you picked always shows."
       ],
       "checks": [
         {
@@ -37,6 +38,10 @@
         {
           "say": "In My context, add a piece (like Weekend soccer, practice Saturday 9am), tap 📤 Send to Notes and save it to Notes. Then delete the piece, copy that note in Notes, and tap 📥 Bring in.",
           "see": "The piece comes back as a chip with 1 added. Tap Bring in again and it says 1 already here, no duplicate."
+        },
+        {
+          "say": "Look at My context with Save on this phone on, tap +N more, pick a piece from the bottom, and build a prompt. Then reload.",
+          "see": "Before: 3 one-line chips and +N more, long titles trimmed with an ellipsis. After the reload, the piece you just built with is the first chip."
         }
       ]
     },

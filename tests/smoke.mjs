@@ -287,9 +287,11 @@ await check('safari mic: a red Stop pill with a timer floats at the bottom while
   await p.evaluate(() => window.__say(['word '.repeat(400), false]));
   const onScreen = () => p.$eval('#micStop', (b) => { const r = b.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, body: b.parentElement === document.body, pos: getComputedStyle(b).position }; });
   for (const y of [0, 600, 99999]) {
-    await p.evaluate((y) => window.scrollTo(0, y), y); await p.waitForTimeout(50);
+    await p.evaluate((y) => window.scrollTo(0, y), y); await p.waitForTimeout(400);   /* let the dock finish sliding */
     const box = await onScreen();
-    expect(box.body && box.pos === 'fixed' && box.top >= 0 && box.bottom <= 844 && box.bottom > 700, 'the pill should sit at the bottom of the screen wherever you scroll (not inside the card), got ' + JSON.stringify(box) + ' at ' + y);
+    expect(box.body && box.pos === 'fixed' && box.top >= 0 && box.bottom <= 844 && box.bottom > 560, 'the pill should sit at the bottom of the screen wherever you scroll (not inside the card), got ' + JSON.stringify(box) + ' at ' + y);
+    const dock = await p.evaluate(() => { const d = document.getElementById('nextDock'); if (!d || d.classList.contains('away')) return null; return d.getBoundingClientRect().top; });
+    expect(dock === null || box.bottom <= dock + 1, 'the pill rides above the Build dock, never under it: pill bottom ' + box.bottom + ', dock top ' + dock + ' at ' + y);
   }
   await p.waitForFunction(() => /0:0[1-9]/.test(document.getElementById('micStop').textContent), null, { timeout: 3000 });
   await p.click('#micStop');
@@ -4004,6 +4006,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
   const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
   expect(!/\bhi\b/.test(saved), 'nothing typed may be saved');
+  await p.fill('#thoughts', ''); await p.waitForTimeout(400);   /* an empty box, so the draft net (v2.1.28) has nothing to bring back */
   await p.reload(); await p.waitForTimeout(300);
   expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
   const q = await page({ fresh: true });

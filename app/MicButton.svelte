@@ -29,7 +29,23 @@
   let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
   const clock = $derived(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
   /* The pill sits on the keyboard, or above the keyboard coach bar when that's up. */
-  const lift = $derived(kb.open ? kb.inset + 64 : 0);
+  /* ...and above the Next step dock (its Build my prompt bar) when that's showing, so neither covers the other. */
+  let dockLift = $state(0);
+  $effect(() => {
+    if (!on) { dockLift = 0; return; }
+    let raf = 0;
+    const look = () => {
+      const d = document.getElementById('nextDock');
+      /* Its resting spot (height plus its 16px gap and the home bar), not its sliding edge, so the pill never wobbles. */
+      const h = d && !d.classList.contains('away') && getComputedStyle(d).display !== 'none' && d.offsetHeight
+        ? d.offsetHeight + (parseFloat(getComputedStyle(d).bottom) || 0) - 14 + 8 : 0;
+      if (h !== dockLift) dockLift = h;
+      raf = requestAnimationFrame(look);
+    };
+    look();
+    return () => cancelAnimationFrame(raf);
+  });
+  const lift = $derived(Math.max(kb.open ? kb.inset + 64 : 0, dockLift));
   /* The floating 💡 / 🧪 buttons tuck away while the pill is up, so they never cover it. */
   $effect(() => {
     document.body.classList.toggle('fabs-away-mic', on);
@@ -167,7 +183,7 @@
   @keyframes breathe { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--record) 10%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .mic.on .dot { animation: none; box-shadow: 0 0 0 6px color-mix(in srgb, var(--record) 25%, transparent); } }
   /* The floating Stop pill: red, centered, always on screen while the mic is on. */
-  .micstop { position: fixed; left: 50%; translate: -50% 0; z-index: 31; display: inline-flex; align-items: center; gap: 10px;
+  .micstop { position: fixed; left: 50%; translate: -50% 0; z-index: 37; display: inline-flex; align-items: center; gap: 10px;
     min-height: 52px; padding: 12px 20px 12px 14px; border-radius: 999px; border: 0; cursor: pointer;
     font: inherit; font-weight: 800; color: #fff; background: var(--record);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 22%, transparent), 0 14px 30px -12px rgba(10, 20, 40, 0.6); }
