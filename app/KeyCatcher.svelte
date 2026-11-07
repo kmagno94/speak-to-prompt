@@ -85,6 +85,25 @@
 
   /* auto: tried by itself on the way back from AI Studio. Anything that doesn't work out
      (no permission, no key on the clipboard) quietly leaves the pulsing button to tap. */
+  /* One thing at a time (Test lab 11/07): Remember my key glows first, and the full-version
+     card comes STAGGER_MS later, or as soon as Remember is ticked. With Remember already on,
+     the card comes right away. Typing in the box or building calls off the wait too. */
+  const STAGGER_MS = (typeof window !== 'undefined' && window.__fullStaggerMs) || 3000;
+  let staggerT = 0;
+  function afterKey() {
+    const keep = document.getElementById('remember');
+    if (!keep || keep.checked) return offerFull();
+    haloRemember();
+    const box = document.getElementById('thoughts');
+    const now = () => { clearTimeout(staggerT); staggerT = 0; keep.removeEventListener('change', early); offerFull(); };
+    const early = () => { if (keep.checked) now(); };
+    const off = () => { clearTimeout(staggerT); staggerT = 0; keep.removeEventListener('change', early); };
+    keep.addEventListener('change', early);
+    box?.addEventListener('input', off, { once: true });
+    window.addEventListener('stp-build-start', off, { once: true });
+    staggerT = setTimeout(now, STAGGER_MS);
+  }
+
   /* The quick prompt on screen can rebuild the full way now that the key works. */
   function offerFull() {
     const box = document.getElementById('thoughts');
@@ -139,8 +158,7 @@
       hunting = false;
       const keep = document.getElementById('remember');
       say('🎉 You\'re in! Your next prompt asks a few quick questions first.' + (keep && !keep.checked ? ' Tick Remember my key (glowing below) so you never paste it again.' : ''), 'good');
-      haloRemember();
-      offerFull();
+      afterKey();
     } else {
       say('Google didn\'t accept that one. The message below says why.', 'bad');
     }

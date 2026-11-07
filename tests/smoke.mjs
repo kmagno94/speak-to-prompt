@@ -299,20 +299,20 @@ await check('key catcher: a key that works on a quick prompt offers the full ver
     return p;
   };
   // Waits out the countdown: Normal mode, questions first
-  const p = await quickFirst({ __fullWaitMs: 1200 });
+  const p = await quickFirst({ __fullWaitMs: 1200, __fullStaggerMs: 300 });
   await p.waitForSelector('#fullOffer', { timeout: 3000 });
   expect(/rebuilds the full way in \ds/.test(await p.textContent('#fullOffer')), 'the offer counts down: ' + await p.textContent('#fullOffer'));
   expect(!p.calls.length, 'nothing sent while it counts down');
   await p.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
   expect(p.calls.some((c) => c.intake) && await p.isChecked('#normalMode') && !(await p.$('#fullOffer')), 'rebuilt in Normal with questions first');
   // Build it now: no wait
-  const q = await quickFirst({ __fullWaitMs: 60000 });
-  await q.click('#fullGo');
+  const q = await quickFirst({ __fullWaitMs: 60000, __fullStaggerMs: 300 });
+  await q.waitForSelector('#fullOffer', { timeout: 3000 }); await q.click('#fullGo');
   await q.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
   expect(q.calls.some((c) => c.intake), 'Build it now starts right away');
   // Not now: nothing happens after the wait
-  const r = await quickFirst({ __fullWaitMs: 800 });
-  await r.click('#fullLater');
+  const r = await quickFirst({ __fullWaitMs: 800, __fullStaggerMs: 300 });
+  await r.waitForSelector('#fullOffer', { timeout: 3000 }); await r.click('#fullLater');
   await r.waitForTimeout(1500);
   expect(!r.calls.length && !(await r.$('#fullOffer')), 'Not now calls it off: ' + r.calls.length);
   // A key with no quick prompt on screen: no offer
@@ -341,6 +341,37 @@ await check('key catcher: Get my free key is the highlighted step until you come
   await i.click('#keyPanel summary');
   expect(/tap Paste on the bubble Safari shows/.test(await i.textContent('#pasteHint')), 'iPhone says the bubble needs a tap: ' + await i.textContent('#pasteHint'));
   expect(!p.errors.length && !i.errors.length, 'page errors: ' + p.errors.concat(i.errors).join('; '));
+});
+
+await check('key catcher: Remember my key glows first and the full-version card comes 3 seconds later, or right when Remember is ticked (Test lab, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [{ question: 'Who is coming?', choices: ['Friends', 'Family'] }] };
+  const start = async (hooks, keepOn) => {
+    const p = await page({ intake, hooks });
+    await p.fill('#thoughts', 'ok so um my coworker Jess wants to start a little book club at work, like 6 people, help us get it going');
+    await p.click('#build'); await done(p);
+    await p.click('#keyNudgeResultGo');
+    if (keepOn) await p.check('#remember');
+    await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 't'.repeat(35));
+    await p.click('#pasteKey');
+    await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+    return p;
+  };
+  // Remember off: the halo shows alone, the card waits its turn
+  const p = await start({ __fullStaggerMs: 1500, __fullWaitMs: 60000 });
+  await p.waitForSelector('label.check.keep-halo', { timeout: 2000 });
+  expect(!(await p.$('#fullOffer')), 'the card waits while Remember glows');
+  await p.waitForSelector('#fullOffer', { timeout: 4000 });
+  // Ticking Remember brings the card right away
+  const q = await start({ __fullStaggerMs: 60000, __fullWaitMs: 60000 });
+  await q.waitForSelector('label.check.keep-halo', { timeout: 2000 });
+  await q.check('#remember');
+  await q.waitForSelector('#fullOffer', { timeout: 1500 });
+  expect(!(await q.$('label.check.keep-halo')), 'halo gone, card up');
+  // Remember already on: no halo, the card comes right away
+  const r = await start({ __fullStaggerMs: 60000, __fullWaitMs: 60000 }, true);
+  await r.waitForSelector('#fullOffer', { timeout: 1500 });
+  expect(!(await r.$('label.check.keep-halo')), 'no halo when Remember is already on');
+  expect(![p, q, r].some((x) => x.errors.length), 'page errors: ' + [p, q, r].flatMap((x) => x.errors).join('; '));
 });
 
 await check('full flow: Lite asks, Flash writes, answers and category shown', async () => {
