@@ -320,6 +320,41 @@ await check('first-time tutorial: explains Talk it out where the mic works, and 
   expect(!p.errors.length && !f.errors.length, 'page errors: ' + p.errors.concat(f.errors).join('; '));
 });
 
+await check('new key (v2.1.28): a different Gemini key clears "Flash is used up" and today\'s counts, keeps only a short fingerprint, and the same key keeps them', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.fill('#gkey', 'AIzaFIRSTkeyFromMainAccount000000000000'); await p.click('#checkKey');
+  await p.waitForSelector('#keyStatus.good');
+  expect(!/New key/.test(await p.textContent('#keyStatus')), 'the first key is not called new');
+  const fp1 = await p.evaluate(() => localStorage.getItem('stp-key-fp'));
+  expect(/^[0-9a-f]{8}$/.test(fp1), 'a short fingerprint is kept, got ' + fp1);
+  // Every Flash used up today on the first key, plus some counts
+  const until = Date.now() + 3600e3;
+  await p.evaluate((u) => {
+    const r = {}; for (const m of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) r[m] = { until: u, why: 'day' };
+    localStorage.setItem('stp-model-rest', JSON.stringify(r));
+    localStorage.setItem('stp-test-usage', JSON.stringify({ day: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), models: { 'gemini-3.8-flash': { calls: 20, tokens: 9, out: true } } }));
+  }, until);
+  // Same key again: nothing resets
+  await p.click('#checkKey'); await p.waitForSelector('#keyStatus.good');
+  expect(Object.keys(JSON.parse(await p.evaluate(() => localStorage.getItem('stp-model-rest')) || '{}')).length === 3, 'the same key keeps its used-up list');
+  // A different key: fresh start
+  await p.fill('#gkey', 'AIzaSECONDkeyFromOtherAccount11111111111'); await p.click('#checkKey');
+  await p.waitForSelector('#keyStatus.good');
+  expect(/New key, so today's limits start fresh/.test(await p.textContent('#keyStatus')), 'the status says the new key starts fresh, got: ' + await p.textContent('#keyStatus'));
+  expect(!(await p.evaluate(() => localStorage.getItem('stp-model-rest'))) && !(await p.evaluate(() => localStorage.getItem('stp-test-usage'))), 'the used-up list and today\'s counts are cleared');
+  const fp2 = await p.evaluate(() => localStorage.getItem('stp-key-fp'));
+  expect(fp2 !== fp1 && await p.evaluate(() => localStorage.getItem('stp-studio-fp')) === fp1, 'the new key gets its own fingerprint; AI Studio numbers stay tied to the first key');
+  // The keys themselves never land in storage except where Remember my key puts them
+  const dump = await p.evaluate(() => Object.keys(localStorage).map((k) => k + '=' + localStorage.getItem(k)).join('\n'));
+  expect(!/FIRSTkey|SECONDkey/.test(dump), 'no key text in storage without Remember my key');
+  // Building in Normal no longer says Flash is used up
+  await p.fill('#thoughts', 'plan a small birthday dinner for six'); await p.click('#normalMode').catch(() => {}); await p.click('#build');
+  await p.waitForTimeout(600);
+  expect(!/Flash is used up/.test(await p.textContent('body')), 'a new key should not hear Flash is used up');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
   const p = await page();
   await p.click('#normalMode');

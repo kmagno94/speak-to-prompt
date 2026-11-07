@@ -116,7 +116,8 @@ export function startApp() {
       fetch("usage.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
         .then(function (j) { studio = j && j.models ? j : null; render(); }, function () {});
     }
-    function studioToday() { return studio && studio.day === pacificDay() ? studio : null; }
+    /* AI Studio numbers belong to the key they were read from (v2.1.28): another key gets its own clean count. */
+    function studioToday() { return studio && studio.day === pacificDay() && studioMine() ? studio : null; }
     function since(s, t) { return (s.log || []).filter(function (e) { return e[0] > t; }); }
     function clockTime(iso) { try { return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
     var fullLeft = null;
@@ -241,7 +242,9 @@ export function startApp() {
       });
       document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); store(TEST_USAGE, null); render(); ts.textContent = "Cleared."; });
     }
-    return { init: init, add: add, request: request, miss: miss, runs: runs, on: function () { return on; }, refresh: function () { if (on) render(); } };
+    /* A new Gemini key starts today's count fresh (v2.1.28). Run history stays. */
+    function newKey() { store(TEST_USAGE, null); if (on) render(); }
+    return { init: init, add: add, request: request, miss: miss, runs: runs, newKey: newKey, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -923,6 +926,33 @@ export function startApp() {
   function storeGet() { try { return localStorage.getItem(KEY_NAME) || ""; } catch (e) { return ""; } }
   function storeSet(v) { try { localStorage.setItem(KEY_NAME, v); } catch (e) {} }
   function storeDel() { try { localStorage.removeItem(KEY_NAME); } catch (e) {} }
+  /* Which key the counters belong to (v2.1.28, idea mw4h2n0fwm08). Each Google account's key has
+     its own daily limits, so a different key must not inherit "Flash is used up" or the old
+     counts. Only a short scrambled fingerprint is kept (8 hex characters, can't be turned back
+     into the key), never the key itself.
+     - stp-key-fp: the key the counters are for now. A key with a new fingerprint clears today's
+       used-up list and the run stats counts.
+     - stp-studio-fp: the first key seen, the one the AI Studio screenshots (usage.json) are read
+       from. Those numbers only show while that key is in use. */
+  var FP_KEY = "stp-key-fp", STUDIO_FP = "stp-studio-fp";
+  function keyPrint(key) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return ("0000000" + h.toString(16)).slice(-8);
+  }
+  function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function studioMine() { var home = lsGet(STUDIO_FP), now = lsGet(FP_KEY); return !home || !now || home === now; }
+  /* Called when Google accepts a key. Returns true when it's a different key than last time. */
+  function keyChanged(key) {
+    var fp = keyPrint(key), was = lsGet(FP_KEY);
+    if (!lsGet(STUDIO_FP)) lsSet(STUDIO_FP, was || fp);
+    lsSet(FP_KEY, fp);
+    if (!was || was === fp) return false;
+    try { localStorage.removeItem(REST_KEY); } catch (e) {}
+    testLog.newKey();
+    return true;
+  }
 
   function flashVersion(name) {
     var m = /gemini-(\d+(?:\.\d+)?)-flash/.exec(name);
@@ -1041,14 +1071,16 @@ export function startApp() {
       if (!plan.write.length) throw new Error("Your key works, but no Flash model showed up for it.");
       gemini.key = key;
       gemini.plan = plan;
+      var fresh = keyChanged(key);
       testLog.refresh();
       gemini.model = plan.write[0];
       if (remember.checked) storeSet(key);
       var backups = plan.write.length - 1;
-      setKeyStatus(techOn() ? "Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
+      setKeyStatus((techOn() ? "Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
         (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days" : "") +
         (plan.gemma.length ? ". Grading and fact lists on " + plan.gemma.join(" and ") + "." : ".")
-        : "Key works. You're all set: Gemini will ask a few quick questions, then write your prompt.", "good");
+        : "Key works. You're all set: Gemini will ask a few quick questions, then write your prompt.") +
+        (fresh ? " New key, so today's limits start fresh." : ""), "good");
       return gemini.model;
     });
   }
