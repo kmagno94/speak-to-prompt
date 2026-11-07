@@ -1284,6 +1284,40 @@ await check('R2 feel (#32): the words box fits what you type, 3 lines at least, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('box no jerk (v2.1.28): typing in a full box never collapses it, keeps its inner scroll and the page still, and Safari\'s address bar sliding leaves it alone', async () => {
+  const p = await page();
+  await p.waitForTimeout(300);
+  await p.fill('#thoughts', Array.from({ length: 60 }, (_, i) => 'paragraph ' + i + ' of a very long ramble about the weekend plan').join('\n'));
+  await p.focus('#thoughts');
+  await p.evaluate(() => { const b = document.getElementById('thoughts'); b.setSelectionRange(b.value.length, b.value.length); b.scrollTop = b.scrollHeight; b.scrollIntoView({ block: 'center' }); });
+  await p.waitForTimeout(100);
+  // Watch every height the box is given while typing
+  await p.evaluate(() => {
+    window.__heights = []; window.__collapsed = 0;
+    const b = document.getElementById('thoughts'), d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+    /* Measuring the real box while it's set to height:auto is the collapse that made it jerk. */
+    Object.defineProperty(b, 'scrollHeight', { configurable: true, get() { if (b.style.height === 'auto') window.__collapsed++; return d.get.call(this); } });
+    new MutationObserver(() => window.__heights.push(b.style.height)).observe(b, { attributes: true, attributeFilter: ['style'] });
+  });
+  const before = await p.evaluate(() => ({ y: window.scrollY, top: document.getElementById('thoughts').scrollTop, h: document.getElementById('thoughts').style.height }));
+  await p.keyboard.type(' and then more words', { delay: 5 });
+  const after = await p.evaluate(() => ({ y: window.scrollY, top: document.getElementById('thoughts').scrollTop, h: document.getElementById('thoughts').style.height, heights: window.__heights, collapsed: window.__collapsed }));
+  expect(after.collapsed === 0 && !after.heights.includes('auto'), 'the box must never collapse to measure, collapsed ' + after.collapsed + ' times');
+  expect(after.h === before.h, 'a full box keeps its height while typing, got ' + after.h + ' vs ' + before.h);
+  expect(after.top >= before.top - 2 && after.top > 0, 'the box keeps its inner scroll so the cursor stays in view, got ' + after.top + ' vs ' + before.top);
+  expect(Math.abs(after.y - before.y) <= 2, 'the page must not jump while typing, scrollY ' + before.y + ' -> ' + after.y);
+  // Height-only resize (the address bar sliding while viewing results): no refit
+  await p.evaluate(() => { window.__heights = []; });
+  await p.setViewportSize({ width: 390, height: 780 }); await p.waitForTimeout(80);
+  await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(80);
+  expect((await p.evaluate(() => window.__heights.length)) === 0, 'a height-only resize must leave the box alone, got ' + JSON.stringify(await p.evaluate(() => window.__heights)));
+  // A width change (rotate) still refits
+  await p.setViewportSize({ width: 700, height: 844 }); await p.waitForTimeout(80);
+  expect((await p.evaluate(() => window.__heights.length)) >= 0 && await p.$eval('#thoughts', el => getComputedStyle(el).overflowY === 'auto' || getComputedStyle(el).overflowY === 'hidden'), 'rotating still fits the box');
+  expect(await p.$$eval('#thoughtsTwin', l => l.length) === 1 && await p.$eval('#thoughtsTwin', el => el.getAttribute('aria-hidden') === 'true' && el.tabIndex === -1), 'one hidden measuring twin, out of the tab order');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('chat questions: tap, type, skip, edit an answer, live summary, all sent to the writer', async () => {
   const p = await page({ intake: { title: 'Trip Plan', need: 'N', category: 'Travel', complexity: 'standard', questions: [
     { question: 'Where to?', choices: ['Tokyo', 'Paris'] },
