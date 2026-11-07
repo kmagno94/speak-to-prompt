@@ -8,8 +8,15 @@
        - While listening, a red Stop pill floats at the bottom of the screen (above the keyboard
          and the coach bar) with a running timer, so stopping is always one obvious tap even
          after the box grows and the top button scrolls away (v2.1.28, Test lab report).
+       - Stop, fix a word, tap Talk it out again works (v2.1.28, Test lab report): each run owns its
+         recognizer, so a stopped one that finishes late can't clobber the new one, write old words over
+         your fix, or kick off a second recognizer. Stop tears it down right away (abort), since the
+         words are already in the box live.
+       - Typing in the box while it listens keeps your edit: new words add after it.
+       - If the mic never actually comes on (no audio within a few seconds), it tries once with a fresh
+         recognizer, then stops and says so instead of looking like it's recording.
      Nothing is saved: no audio, no transcript copy. Only the words box gets the text.
-     Test hook: window.__micRestartMs shortens the restart wait. */
+     Test hooks: window.__micRestartMs shortens the restart wait, window.__micWatchMs the no-audio wait. */
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { fly } from 'svelte/transition';
@@ -27,6 +34,8 @@
   let note = $state('');         // a problem to show under the button
   let secs = $state(0);          // how long the mic has been on, for the Stop pill
   let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
+  let said = '', skip = 0;         // this run's words so far, and how much of them is already part of base (after you type)
+  let live = false, watchT = 0, retried = false;   // the mic really came on (audio or words), the no-audio timer, one fresh try used
   const clock = $derived(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
   /* The pill sits on the keyboard, or above the keyboard coach bar when that's up. */
   /* ...and above the Next step dock (its Build my prompt bar) when that's showing, so neither covers the other. */
@@ -62,24 +71,51 @@
     b.scrollTop = b.scrollHeight;
   }
 
+  /* Tear a recognizer down for good: its late events (a final result, onend) can't reach the page anymore. */
+  function kill(r) {
+    if (!r) return;
+    r.onresult = r.onerror = r.onend = r.onaudiostart = null;
+    try { (r.abort || r.stop).call(r); } catch (e) {}
+  }
+
+  /* No audio and no words a few seconds after the mic should be on: it's stuck (it says recording, nothing shows).
+     Try once with a fresh recognizer; if that's stuck too, stop and say so. */
+  function watch() {
+    clearTimeout(watchT);
+    watchT = setTimeout(() => {
+      if (!on || live) return;
+      if (!retried) { retried = true; kill(rec); rec = null; run(); watch(); return; }
+      stop();
+      note = homeScreen
+        ? 'The mic didn\'t come on. It works in Safari, not the Home Screen app yet. Open this page in Safari, or use the mic on your keyboard.'
+        : 'The mic didn\'t come on. Tap Talk it out to try again, or use the mic on your keyboard.';
+    }, window.__micWatchMs ?? 4000);
+  }
+
   /* One recognizer run. Each run starts from what's in the box now, so a restart never loses words. */
   function run() {
     const b = box(); if (!b) return;
     const now = b.value;
     base = now && !/\s$/.test(now) ? now + ' ' : now;
+    said = ''; skip = 0;
     heard = false; startedAt = Date.now();
-    rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = navigator.language || 'en-US';
-    rec.onresult = (e) => {
-      let said = '';
-      for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
-      said = said.replace(/^\s+/, '');
-      if (said) { heard = true; note = ''; }
-      put(base + said);
+    const r = new SR();
+    rec = r;
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = navigator.language || 'en-US';
+    r.onaudiostart = () => { if (r === rec) live = true; };
+    r.onresult = (e) => {
+      if (r !== rec || !on) return;   /* a recognizer we already stopped: ignore it */
+      let all = '';
+      for (let i = 0; i < e.results.length; i++) all += e.results[i][0].transcript;
+      said = all.replace(/^\s+/, '');
+      const fresh = said.slice(skip).replace(/^\s+/, '');
+      if (said) { heard = true; live = true; note = ''; }
+      put(base + fresh);
     };
-    rec.onerror = (e) => {
+    r.onerror = (e) => {
+      if (r !== rec) return;
       const err = e && e.error;
       if (err === 'no-speech' || err === 'aborted') return;   /* quiet room or our own stop: onend handles it */
       stop();
@@ -93,7 +129,8 @@
       else if (err === 'network') note = 'The speech service couldn\'t be reached. Try again, or use the mic on your keyboard.';
       else note = 'The mic stopped (' + (err || 'unknown') + '). Tap Talk it out to try again.';
     };
-    rec.onend = () => {
+    r.onend = () => {
+      if (r !== rec) return;   /* an old recognizer ending late must not null the new one or start another */
       rec = null;
       if (!on) return;
       /* Ended fast with nothing heard, 3 times in a row: the browser won't listen, so stop instead of looping. */
@@ -103,28 +140,45 @@
         note = appleTouch ? 'Speech needs Siri turned on in Settings, or use the mic on your keyboard.' : 'The mic keeps stopping. Tap Talk it out to try again, or type instead.';
         return;
       }
-      restartT = setTimeout(() => { if (on) start(true); }, window.__micRestartMs ?? 250);
+      restartT = setTimeout(() => { if (on && !rec) start(true); }, window.__micRestartMs ?? 250);
     };
-    try { rec.start(); }
-    catch (e) { rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
+    try { r.start(); }
+    catch (e) { if (rec === r) rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
   }
 
   function start(again) {
     if (!SR) return;
-    if (!again) { note = ''; quickEnds = 0; secs = 0; clearInterval(tickT); tickT = setInterval(() => { secs++; }, 1000); }
-    on = true;
+    clearTimeout(restartT);
+    kill(rec); rec = null;   /* never two recognizers at once */
     const b = box();
+    if (!again) {
+      note = ''; quickEnds = 0; secs = 0; live = false; retried = false;
+      clearInterval(tickT); tickT = setInterval(() => { secs++; }, 1000);
+      /* Close the keyboard (you're talking now), so you can watch your words fill in. */
+      if (b && document.activeElement === b) b.blur();
+    }
+    on = true;
     if (b) b.dataset.listening = '1';   /* app.js keeps the idea strip away while listening */
     if (!again && b) { b.dispatchEvent(new Event('input', { bubbles: true })); b.scrollIntoView({ block: 'center', behavior: ms(1) ? 'smooth' : 'auto' }); }
     run();
+    if (!again) watch();
   }
 
   function stop() {
     on = false;
-    clearTimeout(restartT); clearInterval(tickT);
+    clearTimeout(restartT); clearInterval(tickT); clearTimeout(watchT);
     const b = box();
     if (b) { delete b.dataset.listening; b.dispatchEvent(new Event('input', { bubbles: true })); }
-    if (rec) { const r = rec; rec = null; try { r.stop(); } catch (e) {} }
+    const r = rec; rec = null;
+    kill(r);
+  }
+
+  /* You typed in the box while it listens: keep your edit, and add new words after it. */
+  function typed(e) {
+    if (!on || !e.isTrusted) return;   /* our own put() sends untrusted input events */
+    const b = box(); if (!b || e.target !== b) return;
+    base = b.value && !/\s$/.test(b.value) ? b.value + ' ' : b.value;
+    skip = said.length;
   }
 
   const toggle = () => (on ? stop() : start(false));
@@ -140,8 +194,10 @@
     form && form.addEventListener('submit', off, true);
     document.addEventListener('visibilitychange', hide);
     window.addEventListener('pagehide', off);
+    document.addEventListener('input', typed, true);
     return () => {
       off();
+      document.removeEventListener('input', typed, true);
       form && form.removeEventListener('submit', off, true);
       document.removeEventListener('visibilitychange', hide);
       window.removeEventListener('pagehide', off);

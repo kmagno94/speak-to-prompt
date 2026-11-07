@@ -212,9 +212,11 @@ const FAKE_SPEECH = () => {
   window.__recs = [];
   const Fake = class {
     constructor() { this.started = false; this.stopped = false; window.__recs.push(this); }
-    start() { this.started = true; }
+    /* Keeps a copy of the page's handlers (h), so a test can play a stopped engine finishing late.
+       The mic "comes on" (audiostart) right away unless window.__micDeaf is set. */
+    start() { this.started = true; this.h = { onresult: this.onresult, onend: this.onend }; if (!window.__micDeaf) setTimeout(() => this.onaudiostart && this.onaudiostart(), 0); }
     stop() { this.stopped = true; setTimeout(() => this.onend && this.onend(), 0); }
-    abort() { this.stop(); }
+    abort() { this.aborted = true; this.stop(); }
   };
   /* Chromium has its own; define over it so the page gets the fake. */
   for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: Fake, configurable: true, writable: true });
@@ -301,6 +303,75 @@ await check('safari mic: a red Stop pill with a timer floats at the bottom while
   await p.waitForTimeout(100);
   expect(await p.evaluate(() => window.__recs.length) === 1, 'no restart after the pill stops it');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: stop, fix a word, then Talk it out again picks up after your fix, and a late finish from the old mic changes nothing (v2.1.28 Test lab fix)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['plan a dinner for sixx people', true]));
+  await p.click('#micStop');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  expect(await p.evaluate(() => window.__recs[0].aborted), 'Stop should tear the recognizer down right away (abort)');
+  // Fix the typo by hand, then talk again
+  await p.fill('#thoughts', 'plan a dinner for six people');
+  await p.click('#micBtn');
+  await p.waitForSelector('#micStop');
+  expect(await p.evaluate(() => window.__recs.length === 2 && window.__recs[1].started), 'a fresh recognizer should start');
+  // The old engine finishes late: its final words and its end must not touch the box or start a third recognizer
+  await p.evaluate(() => { const old = window.__recs[0].h; old.onresult({ results: [Object.assign([{ transcript: 'plan a dinner for sixx people' }], { isFinal: true })] }); old.onend(); });
+  await p.waitForTimeout(100);
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people', 'the old mic must not write over your fix, got: ' + await p.inputValue('#thoughts'));
+  expect(await p.evaluate(() => window.__recs.length) === 2, 'a late end from the old mic must not start another recognizer, got ' + await p.evaluate(() => window.__recs.length));
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true' && await p.isVisible('#micStop'), 'still listening with the Stop pill up');
+  // New words land after the fix
+  await p.evaluate(() => window.__say(['and a chocolate cake', false]));
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people and a chocolate cake', 'new words add after your fix, got: ' + await p.inputValue('#thoughts'));
+  await p.evaluate(() => window.__say(['and a chocolate cake for dessert', true]));
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people and a chocolate cake for dessert', 'got: ' + await p.inputValue('#thoughts'));
+  // And a third round works too
+  await p.click('#micStop'); await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['at 7pm', true]));
+  expect((await p.inputValue('#thoughts')).endsWith('for dessert at 7pm'), 'a third round keeps going, got: ' + await p.inputValue('#thoughts'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: typing in the box while it listens keeps your edit, and new words add after it (v2.1.28 Test lab fix)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['need a gift for my brotther', false]));
+  expect((await p.inputValue('#thoughts')) === 'need a gift for my brotther', 'got: ' + await p.inputValue('#thoughts'));
+  // Fix the word by typing while the mic is still on
+  await p.focus('#thoughts');
+  await p.evaluate(() => { const b = document.getElementById('thoughts'); b.setSelectionRange(b.value.length, b.value.length); });
+  for (let i = 0; i < 'brotther'.length; i++) await p.keyboard.press('Backspace');
+  await p.keyboard.type('brother');
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'typing does not stop the mic');
+  await p.evaluate(() => window.__say(['need a gift for my brotther who loves fishing', false]));
+  expect((await p.inputValue('#thoughts')) === 'need a gift for my brother who loves fishing', 'your fix stays and new words add after it, got: ' + await p.inputValue('#thoughts'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: a mic that never comes on tries once with a fresh recognizer, then stops and says so instead of looking like it records (v2.1.28 Test lab fix)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20, __micWatchMs: 150, __micDeaf: true } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.waitForFunction(() => window.__recs.length === 2 && window.__recs[1].started, null, { timeout: 3000 });
+  expect(await p.evaluate(() => window.__recs[0].aborted), 'the stuck recognizer is torn down before the fresh try');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  const n = await p.textContent('#micNote');
+  expect(/didn't come on/.test(n) && /keyboard/.test(n) && !/—/.test(n), 'a plain note says the mic did not come on, got: ' + n);
+  await p.waitForTimeout(300);
+  expect(await p.evaluate(() => window.__recs.length) === 2, 'only one fresh try, no loop');
+  // A working mic never trips it
+  const q = await page({ hooks: { __micRestartMs: 20, __micWatchMs: 150 } });
+  await q.addInitScript(FAKE_SPEECH); await q.reload();
+  await q.click('#micBtn'); await q.waitForTimeout(500);
+  expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'true' && await q.evaluate(() => window.__recs.length) === 1, 'a mic that came on keeps listening even in a quiet room');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
 await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {

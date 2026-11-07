@@ -7,7 +7,7 @@
       "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",
       "items": [
         "The words box no longer jerks or snaps around while you type or scroll your results, and you can always see what you're writing.",
-        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
+        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: it picks up right after your fix (it used to say it was listening but nothing showed). You can also fix a word by typing while it listens, and if the mic never really comes on it tries once more, then tells you instead of pretending to record. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
         "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. Deleted when you Build, empty the box, close the tab, or after 30 minutes. Never sent anywhere.",
         "A Gemini key from a different Google account gets its own fresh daily count, so it no longer says Flash is used up because of your other key.",
         "My context has 📤 Send to Notes and 📥 Bring in: save your pieces as one Apple Notes note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. Same titles update, nothing is deleted.",
@@ -20,8 +20,8 @@
           "paste": "ok so I need to plan a surprise 40th for my aunt Rosa, maybe a backyard thing in late spring, like 25 people, she loves salsa music and hates being the center of attention so nothing too big, budget around 800, help me figure out food, music, and how to keep it secret from her"
         },
         {
-          "say": "Tap Talk it out and talk for about 10 seconds, enough to fill the box past the screen.",
-          "see": "A red Tap to stop button with a running timer stays at the bottom of the screen the whole time. Tap it and the mic stops and the button goes away."
+          "say": "Tap Talk it out and talk for about 10 seconds, enough to fill the box past the screen. Tap the red Tap to stop button, fix one word by typing, then tap Talk it out again and keep talking.",
+          "see": "The red Tap to stop button with a running timer stays at the bottom the whole time. After your fix, your new words show up right after it, live, and your fix is still there. Works a third time too."
         },
         {
           "say": "Tap First time? Start here.",
@@ -42,6 +42,10 @@
         {
           "say": "Look at My context with Save on this phone on, tap +N more, pick a piece from the bottom, and build a prompt. Then reload.",
           "see": "Before: 3 one-line chips and +N more, long titles trimmed with an ellipsis. After the reload, the piece you just built with is the first chip."
+        },
+        {
+          "say": "Tap Talk it out, say a sentence, then tap in the box and fix a word by typing while the mic is still on. Keep talking.",
+          "see": "Your typed fix stays put and the new words add after it. The mic keeps listening the whole time."
         }
       ]
     },
