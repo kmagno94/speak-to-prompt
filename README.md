@@ -144,7 +144,8 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
 
 ## Privacy
 
-- **The site saves nothing.** There is no server, no database, no analytics, and no cookies. Close or refresh the tab and everything is gone.
+- **The site saves nothing.** There is no server, no database, no analytics, and no cookies. Close the tab and everything is gone.
+- **Draft safety net (v2.1.28):** what's in the words box is kept in this tab's sessionStorage so a reload (or Safari reloading the tab when you switch apps) brings it back with a Start fresh button. This tab only, never sent anywhere, deleted when you tap Build my prompt, empty the box, close the tab, or after 30 minutes (`app/lib/draft.svelte.js`).
 - **Your Gemini key** is only saved on your phone if you tick "Remember my key," and it is sent only to Google, in a request header.
 - **With a key, your words go to Google** to build the prompt, and nowhere else. On Google's free tier, Google may use what you send to improve its products.
 - **Run stats (optional, for testing):** a "Show run stats and daily usage" toggle under **More options** saves timings, token counts, and today's requests per model on your device, so you can see what's left of each free limit. It never saves your words or prompts, and turning it off deletes everything it saved.

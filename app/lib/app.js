@@ -182,7 +182,7 @@ export function startApp() {
       document.getElementById("statsToggle").checked = on;
       if (typeof updateQuickLabel === "function") updateQuickLabel();
       var f = document.getElementById("footerLead");
-      if (f) f.textContent = on ? "Run stats are on: timings and counts (never your words) are saved on this device until you turn them off. Your words are gone when you close the tab." : "This site saves nothing. Close or refresh the tab and everything is gone.";
+      if (f) f.textContent = on ? "Run stats are on: timings and counts (never your words) are saved on this device until you turn them off. Your words are gone when you close the tab." : "This site saves nothing. What you type stays in this tab only, for up to 30 minutes, so a reload doesn't lose it. Close the tab and it's gone.";
       if (!on) return;
       document.getElementById("usageReset").textContent = "(resets 3 AM Eastern)";
       renderUsage();

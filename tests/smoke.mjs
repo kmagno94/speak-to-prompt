@@ -3435,6 +3435,44 @@ await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, and is deleted on Build, Start fresh, an empty box, and after 30 minutes', async () => {
+  const p = await page();
+  const draftKeys = () => p.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)), l: Object.keys(localStorage).filter((k) => /draft/.test(k)), ls: Object.keys(localStorage).map((k) => localStorage.getItem(k)).join('|') }));
+  await p.focus('#thoughts'); await p.keyboard.type('need a toast for my buddy Marco wedding saturday, funny but not mean');
+  await p.waitForTimeout(450);
+  let k = await draftKeys();
+  expect(k.s.length === 1 && !k.l.length && !/Marco/.test(k.ls), 'the draft is in sessionStorage only, never localStorage: ' + JSON.stringify(k));
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(/Marco wedding/.test(await p.inputValue('#thoughts')), 'the words come back after a reload');
+  expect(await p.isVisible('#draftNote') && /this tab only/.test(await p.textContent('#draftNote')), 'a note says the words came back, this tab only');
+  // Start fresh empties the box and forgets it
+  await p.click('#draftFresh');
+  await p.waitForTimeout(350);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')) && !(await draftKeys()).s.length, 'Start fresh clears the box and the draft: ' + JSON.stringify([await p.inputValue('#thoughts'), !!(await p.$('#draftNote')), await draftKeys()]));
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '', 'nothing comes back after Start fresh');
+  // Build deletes it, and it stays off until you type again
+  await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
+  await p.waitForTimeout(450);
+  expect((await draftKeys()).s.length === 1, 'saved while typing');
+  await p.click('#build'); await done(p);
+  await p.waitForTimeout(450);
+  expect(!(await draftKeys()).s.length, 'Build deletes the draft');
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(!/Bear Mountain/.test(await p.inputValue('#thoughts')), 'nothing comes back after Build');
+  // Emptying the box deletes it
+  await p.focus('#thoughts'); await p.keyboard.type('short note'); await p.waitForTimeout(450);
+  await p.fill('#thoughts', ''); await p.waitForTimeout(450);
+  expect(!(await draftKeys()).s.length, 'an empty box deletes the draft');
+  // Older than 30 minutes: dropped, not restored
+  await p.focus('#thoughts'); await p.keyboard.type('old words from earlier'); await p.waitForTimeout(450);
+  await p.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => /stp-draft/.test(x)).replace(/^stg:/, ''); const d = JSON.parse(sessionStorage.getItem(k)); d.at -= 31 * 60 * 1000; sessionStorage.setItem(k, JSON.stringify(d)); });
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '' && !(await draftKeys()).s.length, 'a draft past 30 minutes is deleted, not brought back');
+  expect(/this tab only/.test(await p.textContent('#footer')), 'the footer says how the words are kept');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('ideas tab: never saves the prompt box, sends nothing, and the fix session lists open ideas with the staging rules', async () => {
   const p = await page();
   const sent = []; p.on('request', r => { if (!/localhost|generativelanguage|fonts\./.test(r.url())) sent.push(r.url()); });

@@ -36,6 +36,8 @@
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
+  import DraftNote from './DraftNote.svelte';
+  import { watchDraft } from './lib/draft.svelte.js';
   import { hasSpeech } from './lib/voice.js';
   let tutorial;
   /* v2.1.27: where the browser has speech-to-text, Talk it out is the mic and the shortcut hides
@@ -52,11 +54,12 @@
     startApp();
     watchKeyboard();   /* lib/keyboard.svelte.js: --kb, so bars can sit on top of the keyboard */
     const stopGrow = growBox(document.getElementById('thoughts'));   /* #32: the words box fits what you type */
+    const stopDraft = watchDraft();   /* v2.1.28: the words box survives a reload, this tab only, 30 min */
     /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
     const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
     demo();
     window.addEventListener('hashchange', demo);
-    return () => { stopGrow(); window.removeEventListener('hashchange', demo); };
+    return () => { stopGrow(); stopDraft(); window.removeEventListener('hashchange', demo); };
   });
 </script>
 
@@ -125,6 +128,7 @@
       <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
       <StartHere />
     </div>
+    <DraftNote />
     <StuckNudge />
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
@@ -333,5 +337,5 @@
   <KeyboardCoach />
   <NextDock />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. What you type stays in this tab only, for up to 30 minutes, so a reload doesn't lose it. Close the tab and it's gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>
