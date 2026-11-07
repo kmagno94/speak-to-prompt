@@ -8,6 +8,7 @@
   import { ms } from './lib/motion.js';
   import { context, BUDGET, CAP } from './lib/context.svelte.js';
   import { ui } from './lib/ui.svelte.js';
+  import { pack, unpack } from './lib/contextsync.js';
 
   const n = (x) => x.toLocaleString('en-US');
   /* The budget chip: size and % of the 1,500 token budget. Past 100% with a key it says a
@@ -37,6 +38,37 @@
   function addNew() { openAt(context.add()); }
   function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
   function done() { context.save(); context.open = false; armed = ''; }
+  /* On all your devices (v2.1.28, lib/contextsync.js): Send to Notes hands the pieces to the share
+     sheet (Notes syncs them through iCloud), or copies them where there's no share sheet.
+     Bring in reads a copied note from the clipboard, or from a paste box if the browser won't. */
+  let syncMsg = $state(''), syncBad = $state(false), pasteOpen = $state(false), pasteText = $state('');
+  const say = (m, bad = false) => { syncMsg = m; syncBad = bad; };
+  async function sendOut() {
+    const pieces = context.list.filter((c) => c.title.trim() || c.text.trim());
+    if (!pieces.length) return say('Add a piece first, then send it.', true);
+    const text = pack(pieces);
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Speak to Prompt · My context', text }); return say('Sent. Pick Notes in the share sheet and it syncs to your other devices with iCloud.'); }
+      catch (e) { if (e && e.name === 'AbortError') return say(''); }
+    }
+    try { await navigator.clipboard.writeText(text); say('Copied. Paste it into a note in Apple Notes and it syncs to your other devices with iCloud.'); }
+    catch (e) { say('This browser won\'t copy. Try Safari.', true); }
+  }
+  function take(text) {
+    const pieces = unpack(text);
+    if (!pieces) return say('No My context code found. Copy the whole note from Notes, including the last line, then tap Bring in.', true);
+    if (!pieces.length) return say('That note has no pieces in it.', true);
+    const r = context.bringIn(pieces);
+    pasteOpen = false; pasteText = '';
+    const bits = [r.added && r.added + ' added', r.updated && r.updated + ' updated', r.same && r.same + ' already here'].filter(Boolean).join(', ');
+    say('Brought in: ' + bits + '.' + (context.keep ? '' : ' Turn on Save on this phone to keep them after you close the tab.'));
+  }
+  async function bringIn() {
+    if (!context.open) await openAt('');
+    try { const t = await navigator.clipboard.readText(); if (t && unpack(t)) return take(t); } catch (e) {}
+    pasteOpen = true;
+    say('Paste the note here, then tap Bring in.');
+  }
   /* While the editor is open, the floating 💡 Ideas and 🧪 Test lab buttons tuck away so they
      don't sit on top of the floating Done bar (Test lab, v2.1.7). */
   $effect(() => {
@@ -57,6 +89,7 @@
       <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={context.overCap.includes(c.id) ? `Over the ${n(CAP)} character cap` : ''} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{c.title.trim() || 'Untitled'}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
     {/each}
     <button type="button" class="ctxnew" id="contextNew" onclick={addNew}>+ {context.usable.length ? 'New' : 'Add context you can reuse'}</button>
+    {#if !context.usable.length}<button type="button" class="link ctxin" id="contextInQuick" onclick={bringIn}>📥 Bring in from another device</button>{/if}
   </div>
 
   {#if context.open}
@@ -65,6 +98,20 @@
         <input type="checkbox" id="contextKeep" checked={context.keep} onchange={(e) => context.setKeep(e.currentTarget.checked)}>
         <span><b>Save on this phone</b><small>{context.keep ? 'Saved in this browser on this phone only, never sent anywhere except inside prompts you build. Turn off to delete them from this phone.' : 'Off: these pieces go away when you close or refresh. Turn on to keep them on this phone only.'}</small></span>
       </label>
+      <div class="sync" id="contextSync">
+        <b>📲 On all your devices</b>
+        <small>Send to Notes, and iCloud puts the note on your iPad and Mac. There, copy the note and tap Bring in. Only goes where you send it.</small>
+        <div class="syncbtns">
+          <button type="button" id="contextSend" onclick={sendOut}>📤 Send to Notes</button>
+          <button type="button" id="contextIn" onclick={bringIn}>📥 Bring in</button>
+        </div>
+        {#if pasteOpen}
+          <label class="sr" for="contextPaste">Paste the note</label>
+          <textarea id="contextPaste" class="ctxtext" rows="4" placeholder="Paste the whole note from Notes here" bind:value={pasteText}></textarea>
+          <button type="button" class="primary" id="contextPasteGo" onclick={() => take(pasteText)}>Bring in</button>
+        {/if}
+        {#if syncMsg}<p class="syncmsg" class:bad={syncBad} id="contextSyncMsg" role="status">{syncMsg}</p>{/if}
+      </div>
       <p class="hint">Tap a chip above to use that piece for this prompt: the facts this request needs get worked into the prompt, nothing tacked on. Keep each piece under {n(CAP)} characters.</p>
       {#each context.list as c, i (c.id)}
         <div class="ctxitem" data-id={c.id}>
@@ -118,5 +165,13 @@
   .ctxchip.overcap { border-color: var(--warn); }
   .capflag { color: var(--warn); font-weight: 700; }
   .del { justify-self: start; color: var(--danger); min-height: 40px; }
+  .ctxin { min-height: var(--tap); font-size: var(--fs-sm); }
+  .sync { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line); }
+  .sync small { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
+  .sync, .syncbtns > * { min-width: 0; }
+  .syncbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+  .syncbtns button { min-height: 44px; padding-inline: var(--sp-2); }
+  .syncmsg { margin: 0; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
+  .syncmsg.bad { color: var(--warn); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>

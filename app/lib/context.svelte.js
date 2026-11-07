@@ -15,6 +15,8 @@
    Budget: picks should stay under BUDGET tokens. Past 100%, a build with a key runs one
    Flash-Lite squeeze (app.js) and keeps the shorter version here in memory only, for these
    exact picks: the saved pieces never change, and a reload or a new pick drops it. */
+import { merge } from './contextsync.js';
+
 const KEY = 'stp-context';
 const KEEP_KEY = 'stp-context-keep';
 const MAX_TITLE = 60;
@@ -83,6 +85,13 @@ class Context {
     this.list = this.list.filter((c) => c.id !== id);
     this.picked = this.picked.filter((p) => p !== id);
     this.save();
+  }
+  /* Bring in pieces from another device (lib/contextsync.js). Saved only if Save on this phone is on. */
+  bringIn(incoming) {
+    const r = merge(this.list, incoming, newId);
+    this.list = r.list;
+    this.save();
+    return r;
   }
   toggle(id) { this.picked = this.picked.includes(id) ? this.picked.filter((p) => p !== id) : [...this.picked, id]; }
 

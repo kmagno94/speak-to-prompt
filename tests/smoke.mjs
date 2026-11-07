@@ -3214,6 +3214,51 @@ await check('wake lock: the screen stays awake only while Gemini works, and phon
 
 /* My context: reusable background picked per prompt. In the main app since v2.1.21 (#4, idea
    mvxaikmmygq5): shown without dev tools, saved only after Save on this phone is on. */
+await check('my context sync (v2.1.28): Send to Notes packs every piece into one note, Bring in on another device reads it back, adds or updates by title, and never saves without opt-in', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Corner bakery orders');
+  await p.fill('#contextEditor .ctxtext', 'Sourdough on Mondays, 40 loaves. Owner is Dana. Café ☕ emoji test, accents: jalapeño.');
+  await p.click('#contextNew');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', 'Weekend soccer team');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice Saturday 9am at Elm Park.');
+  await p.evaluate(() => { delete navigator.share; Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }); });
+  await p.click('#contextSend');
+  await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\nSTPCTX1:[A-Za-z0-9+/=]+$/.test(note), 'the note is readable with the code on the last line:\n' + note);
+  expect(/Copied/.test(await p.textContent('#contextSyncMsg')), 'no share sheet: it copies and says so');
+  expect(!/\u2014/.test(note), 'no em dashes in the note');
+  // Another device: an empty My context, the note on the clipboard
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), note);
+  expect(await q.isVisible('#contextInQuick'), 'an empty My context offers Bring in from another device');
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("2 added")');
+  expect(await q.isVisible('#contextRow .ctxchip:has-text("Corner bakery orders")') && await q.isVisible('#contextRow .ctxchip:has-text("Weekend soccer team")'), 'both pieces come in as chips');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
+  expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
+  // Again, with one piece changed on the first device: 1 updated, 1 already here, no duplicates
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice moved to Sunday 10am at Elm Park.');
+  await p.click('#contextSend');
+  await q.evaluate((n) => navigator.clipboard.writeText(n), await p.evaluate(() => navigator.clipboard.readText()));
+  await q.check('#contextKeep');
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 updated")');
+  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
+  expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
+  expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
+  // A clipboard without the code: the paste box opens, and junk says what to do
+  await q.evaluate(() => navigator.clipboard.writeText('just some random grocery list'));
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextPaste');
+  await q.fill('#contextPaste', 'eggs, milk, STPCTX1:%%%broken');
+  await q.click('#contextPasteGo');
+  expect(/No My context code found/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'junk changes nothing and says to copy the whole note');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
 await check('my context: shown without dev tools, saves nothing until Save on this phone is on, then write, edit, delete, and it survives a reload', async () => {
   const p = await page();
   expect(await p.isVisible('#contextRow'), 'My context should show without dev tools');
