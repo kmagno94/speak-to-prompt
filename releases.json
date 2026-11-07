@@ -14,7 +14,8 @@
         "The grade note and Step by step say who graded and any hand-off before it. The grader bench names the grader on every case and how many cases land more than half a point from Claude's key.",
         "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5).",
         "Key catcher (Test lab 11/07): coming back from AI Studio pastes your key and runs Check key by itself where the browser allows it. iPhone Safari always needs a tap plus its own Paste bubble (Apple's rule), so there Paste my key pulses and the note says so. Once the key works with Remember my key off, Remember wears the white halo and scrolls into view until it's ticked.",
-        "Full version after a key (Test lab 11/07): if the prompt on screen is the quick version when the key starts working, a card by the key says it rebuilds the full way in 5 seconds (questions first), with Build it now and Not now. Typing in the box or building yourself calls it off."
+        "Full version after a key (Test lab 11/07): if the prompt on screen is the quick version when the key starts working, a card by the key says it rebuilds the full way in 5 seconds (questions first), with Build it now and Not now. Typing in the box or building yourself calls it off.",
+        "Key steps in order: Get my free key is the filled, highlighted step until you come back from AI Studio, then Paste my key takes the highlight. On iPhone and iPad, Paste my key says up front to tap Safari's Paste bubble too."
       ],
       "checks": [
         {
@@ -51,6 +52,10 @@
           "say": "Tap Remove key, build the note below in Quick, tap Unlock smarter prompts on the result, then Paste my key.",
           "see": "Under You're in, a card counts down: Your prompt rebuilds the full way in 5s, with Build it now and Not now. Wait it out: the page jumps up and Gemini asks its questions. Try again with Not now: nothing rebuilds.",
           "paste": "ok so um my coworker Jess wants to start a little book club at work, like 6 people, every other thursday at lunch, and nobody can agree on what to read first, help us get it going"
+        },
+        {
+          "say": "Tap Remove key and open the key panel.",
+          "see": "1 Get my free key is the filled, bright step and 2 Paste my key is the quiet one, with a line saying to tap Paste on the bubble Safari shows. After you go to AI Studio and come back, Paste my key is the bright one and pulses."
         }
       ]
     },

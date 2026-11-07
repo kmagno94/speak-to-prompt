@@ -326,6 +326,23 @@ await check('key catcher: a key that works on a quick prompt offers the full ver
   expect(![p, q, r, f].some((x) => x.errors.length), 'page errors: ' + [p, q, r, f].flatMap((x) => x.errors).join('; '));
 });
 
+await check('key catcher: Get my free key is the highlighted step until you come back from AI Studio, then Paste my key takes over; iPhone says to tap Safari\'s Paste bubble (Test lab, v2.1.25)', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  expect(await p.$('#getKey.lead') && !(await p.$('#pasteKey.lead')), 'Get my free key leads first');
+  const bg = await p.$eval('#getKey', (a) => getComputedStyle(a).backgroundColor), pbg = await p.$eval('#pasteKey', (b) => getComputedStyle(b).backgroundColor);
+  expect(bg !== pbg, 'the two steps look different: ' + bg + ' vs ' + pbg);
+  await p.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('NotAllowedError')); });
+  await backFromStudio(p);
+  await p.waitForSelector('#pasteKey.lead', { timeout: 3000 });
+  expect(!(await p.$('#getKey.lead')), 'after AI Studio, Paste my key leads');
+  expect(!/Paste bubble Safari/.test(await p.textContent('#pasteHint')), 'no Safari line off iPhone');
+  const i = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await i.click('#keyPanel summary');
+  expect(/tap Paste on the bubble Safari shows/.test(await i.textContent('#pasteHint')), 'iPhone says the bubble needs a tap: ' + await i.textContent('#pasteHint'));
+  expect(!p.errors.length && !i.errors.length, 'page errors: ' + p.errors.concat(i.errors).join('; '));
+});
+
 await check('full flow: Lite asks, Flash writes, answers and category shown', async () => {
   const p = await page();
   await withKey(p);

@@ -14,7 +14,10 @@
      halo (and scrolls into view) until it's ticked, so a click-through doesn't lose the key.
      Full version after a key (v2.1.25): if the prompt on screen is the quick version, a card
      right here says it rebuilds the full way in 5 seconds (questions first), with Build it now
-     and Not now. Typing in the box, or any build, calls it off. Nothing is saved. */
+     and Not now. Typing in the box, or any build, calls it off. Nothing is saved.
+     Order (Test lab 11/07): Get my free key is the filled, highlighted step until you've been
+     to AI Studio; then Paste my key takes the highlight. On iPhone and iPad the Paste step
+     says up front that Safari's Paste bubble needs one tap (Apple asks every site for it). */
   import { onMount } from 'svelte';
   import { ui } from './lib/ui.svelte.js';
 
@@ -65,6 +68,7 @@
   });
 
   function getKey() { hunting = true; note = ''; kind = ''; }
+  const ios = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 
   function say(text, k = '') { note = text; kind = k; }
 
@@ -145,11 +149,11 @@
 
 {#if !ui.hasKey || busy}
   <div class="catcher" id="keyCatcher">
-    <a class="step" id="getKey" href={STUDIO} target="_blank" rel="noopener" onclick={getKey}>
+    <a class="step" class:lead={!hunting} id="getKey" href={STUDIO} target="_blank" rel="noopener" onclick={getKey}>
       <span class="n">1</span><span><b>Get my free key</b><small>Opens Google AI Studio. Sign in, tap Create API key, copy it.</small></span>
     </a>
-    <button type="button" class="step paste" class:pulse id="pasteKey" onclick={() => pasteKey(false)} disabled={busy}>
-      <span class="n">2</span><span><b>📋 Paste my key</b><small>Come back here and tap. We check it for you.</small></span>
+    <button type="button" class="step paste" class:lead={hunting} class:pulse id="pasteKey" onclick={() => pasteKey(false)} disabled={busy}>
+      <span class="n">2</span><span><b>📋 Paste my key</b><small id="pasteHint">{ios ? 'Come back here, tap, then tap Paste on the bubble Safari shows. We check it for you.' : 'Come back here and tap. We check it for you.'}</small></span>
     </button>
   </div>
 {/if}
@@ -173,8 +177,11 @@
   .step small { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
   .n { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; font-weight: 700;
     color: var(--accent-ink); background: var(--accent); }
-  .paste { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
-  .paste b { color: var(--accent); }
+  /* The step to do now is filled (lead); the other one stays quiet. */
+  .lead { background: var(--accent); border-color: var(--accent); }
+  .lead b, .lead small { color: var(--accent-ink); }
+  .lead small { opacity: 0.85; }
+  .lead .n { background: var(--accent-ink); color: var(--accent); }
   .step:active { transform: scale(0.98); }
   .step:disabled { opacity: 0.6; }
   .pulse { animation: catchpulse 1.2s ease-in-out 3; }
