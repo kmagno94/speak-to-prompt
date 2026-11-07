@@ -2,6 +2,27 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.24",
+      "date": "2026-11-06",
+      "title": "Number check catches a made-up \"today is\" weekday",
+      "items": [
+        "The number check now flags a prompt that says today is a weekday it isn't, like \"Today is Tuesday\" on a Wednesday, even with no date next to it.",
+        "Also catches \"today's Tuesday\", \"it's Monday today\", and \"today (Tuesday)\". A today weekday you said yourself is never flagged.",
+        "The flag docks the grade below the bar like any other number check flag, and the grader bench docks its cases the same way (B4 now shows the dock)."
+      ],
+      "checks": [
+        {
+          "say": "On staging with your key, paste this note and tap Build my prompt.",
+          "paste": "ok so pretend today is monday for this one lol, i have a 3 day study plan to make for my subnetting quiz thursday and i close at the cafe tuesday night so like an hour max that day, keep it chill",
+          "see": "No Heads up about today's weekday, even if the prompt says today is Monday: you said it, so it isn't made up."
+        },
+        {
+          "say": "Open dev tools and run the Grader bench on Live.",
+          "see": "B4's line ends with \"number check docked 3.00 to 3.00 (dates)\"."
+        }
+      ]
+    },
+    {
       "version": "2.1.23",
       "date": "2026-11-06",
       "title": "Key catcher + key nudges: from Quick to the full version in two taps",

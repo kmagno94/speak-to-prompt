@@ -3355,6 +3355,24 @@ await check('number check: flags a weekday that doesn\'t match its date, and a y
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
+await check('number check: flags a made-up "today is" weekday, but not one the person said', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Tuesday, so build me a 3 day study plan before my quiz on Friday.' });
+  await p.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(p); await p.fill('#thoughts', 'i need a 3 day study plan for my quiz on friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#numWarn:not([hidden])');
+  const w = await p.textContent('#numWarn');
+  expect(/says today is Tuesday, but today \(October 21\) is a Wednesday/.test(w), 'Heads up should name the made-up weekday: ' + w);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Tuesday, so build me a 3 day study plan before my quiz on Friday.' });
+  await q.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(q); await q.fill('#thoughts', 'today is tuesday, i need a 3 day study plan for my quiz on friday'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#numWarn', (e) => e.hidden), 'a today weekday the person said themselves should not be flagged');
+  const r = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Wednesday, so build me a study plan before my quiz on Friday.' });
+  await r.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(r); await r.fill('#thoughts', 'study plan for my quiz on friday'); await r.click('#build'); await done(r);
+  expect(await r.$eval('#numWarn', (e) => e.hidden), 'a today weekday that matches today should not be flagged');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
+});
+
 await check('writer: keeps hedges and adds no year, weekday, or extra words to a date', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await withKey(p); await p.fill('#thoughts', 'maybe saturday?'); await p.click('#build'); await done(p);

@@ -176,7 +176,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | `app/lib/ui.svelte.js` | Shared app state that components react to |
   | `app/lib/app.js` | The page's behavior: Gemini calls, questions, results, idea strip, run stats |
   | `app/lib/prompts.js` | What gets sent to Gemini, and the no-key quick version |
-  | `app/lib/numcheck.js` | The number check: made-up or missing numbers, weekdays that don't match their dates, and the grade dock (shared by the page and the grader bench) |
+  | `app/lib/numcheck.js` | The number check: made-up or missing numbers, weekdays that don't match their dates or a made-up "today is" weekday, and the grade dock (shared by the page and the grader bench) |
   | `app/lib/ideas.js` | The idea strip's ideas |
   | `app/app.css` | Styles and color tokens (light and dark) |
   | `ideas-done.json` | Idea ids closed by fix commits (no idea text); the Ideas tab marks them fixed, copied into the build |

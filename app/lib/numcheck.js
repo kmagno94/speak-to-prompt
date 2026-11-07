@@ -107,13 +107,34 @@ export function dateMismatches(text, today) {
       }
     }
   });
+  /* A bare "today is Tuesday" with no date: it must be today's weekday. */
+  TODAY_RES.forEach((re) => {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(t))) {
+      const wd = dayIndex(m[1]);
+      if (wd < 0 || wd === base.getDay()) continue;
+      if (out.some((o) => o.at < m.index + m[0].length && m.index < o.at + o.text.length)) continue;
+      out.push({ at: m.index, text: m[0].trim(), said: DAYS[wd], actual: DAYS[base.getDay()], today: true,
+        date: MONTHS[base.getMonth()][0].toUpperCase() + MONTHS[base.getMonth()].slice(1) + " " + base.getDate() });
+    }
+  });
   return out.sort((a, b) => a.at - b.at);
 }
+/* "Today is Tuesday", "today's Tuesday", "it's Tuesday today", "today (Tuesday)". */
+const TODAY_RES = [
+  new RegExp("\\b(?:today|tonight)(?:\\s+is|'s|\\s+being)\\s+(?:a\\s+)?" + DAY_RE + "(?![a-z])", "gi"),
+  new RegExp("\\b(?:it's|it is)\\s+(?:a\\s+)?" + DAY_RE + "\\s+(?:today|tonight)\\b", "gi"),
+  new RegExp("\\b(?:today|tonight)\\s*\\(\\s*" + DAY_RE + "\\s*\\)", "gi")
+];
 
-/* Everything the phone flags for one prompt. */
+/* Everything the phone flags for one prompt. A "today is X" the person said
+   themselves is theirs, not made up. */
 export function numberFlags(promptText, said, today, background) {
   const n = numberIssuesFor(promptText, said, background);
-  return { extra: n.extra, missing: n.missing, dates: dateMismatches(promptText, today) };
+  const own = dateMismatches(said, today).filter((d) => d.today).map((d) => d.said);
+  const dates = dateMismatches(promptText, today).filter((d) => !(d.today && own.includes(d.said)));
+  return { extra: n.extra, missing: n.missing, dates };
 }
 /* Plain words for what the number check found, or "" when it's clean. */
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -122,7 +143,9 @@ export function flagText(f) {
   const parts = [];
   if (f.extra.length) parts.push("mentions " + list(f.extra) + ", which you never said");
   if (f.missing.length) parts.push("leaves out " + list(f.missing) + ", which you did");
-  (f.dates || []).forEach((d) => parts.push("says " + d.text + ", but " + d.date + " is a " + cap(d.actual)));
+  (f.dates || []).forEach((d) => parts.push(d.today
+    ? "says " + d.text.charAt(0).toLowerCase() + d.text.slice(1) + ", but today (" + d.date + ") is a " + cap(d.actual)
+    : "says " + d.text + ", but " + d.date + " is a " + cap(d.actual)));
   return parts.join(", and ");
 }
 /* Grade dock: when the number check flags, the prompt can't pass. Each kind of flag
