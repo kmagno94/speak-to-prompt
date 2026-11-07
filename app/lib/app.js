@@ -4,13 +4,13 @@ import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
-import { ui, notify } from './ui.svelte.js';
+import { ui, notify, saveMode } from "./ui.svelte.js";
 import { startHere } from './starthere.svelte.js';
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';
 import { compareRounds } from './compare.js';   /* core: dev-only, see core.svelte.js */
-import { context, blockTokens } from './context.svelte.js';   /* My context: dev-only, see context.svelte.js */
+import { context, blockTokens } from './context.svelte.js';   /* My context: main app, opt-in save, see context.svelte.js */
 import { report, RELAY } from './report.svelte.js';
 import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
@@ -59,7 +59,7 @@ export function startApp() {
   var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log", TEST_USAGE = "stp-test-usage";
   /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). Models not
      listed here show their count without a limit. */
-  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500 };
+  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500, "gemini-3.1-flash-lite": 500 };   /* Gemma dropped in v2.1.25 */
   var ASSUMED = { "gemini-3.7-flash": true };
   /* Daily limits: from a Usage Check, else what Google itself said in a limit error
      (learned on this device), else the usual free-tier number. */
@@ -105,6 +105,7 @@ export function startApp() {
       if (i === 0) return "writes full prompts";
       if (i > 0) return "backup " + i + " for full prompts";
       if (plan.intake[0] === m) return "questions and Quick prompts";
+      if (/lite/.test(m) && plan.intake.indexOf(m) !== -1) return "grades prompts, lists your facts, backup for questions";
       if (plan.intake.indexOf(m) !== -1) return "backup for questions";
       return "available, not used by the page";
     }
@@ -128,10 +129,10 @@ export function startApp() {
       document.getElementById("usageSource").textContent = st
         ? "From your AI Studio screenshots at " + clockTime(st.updated) + " (Usage Check), plus runs on this device since then. Chart readings are approximate."
         : "Counted from runs on this device while stats were on. Send Usage Check with AI Studio screenshots for the full picture.";
-      /* Just the 4 models the page uses: 3 Flash models for full prompts, plus the
-         Flash-Lite that handles questions and Quick prompts. */
+      /* The models the page leans on: 3 Flash models for full prompts, the Flash-Lite that
+         handles questions and Quick prompts, and any Gemma that grades (v2.1.22). */
       var names = gemini.plan
-        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.slice(0, 1))
+        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.filter(function (x) { return /lite/.test(x); }))   /* every Flash-Lite: they grade too (v2.1.25) */
         : Object.keys(LIMITS);
       if (!gemini.plan && !planLoading) {
         var k = gemini.key || (document.getElementById("gkey").value || "").trim();
@@ -154,7 +155,9 @@ export function startApp() {
         var rest = restInfo(m);
         if (rest && rest.why === "day") s.out = true;
         var used = s.out && lim ? lim : s.calls;
-        if (lim && !/lite/.test(m)) fullLeft = (fullLeft || 0) + Math.max(0, lim - used);
+        /* Full prompts left (v2.1.25): only the Flash models that write Normal prompts count
+           (it summed Gemma's ~1,500 a day in v2.1.22, so it said ~4,560). */
+        if (lim && isFlashWriter(m)) fullLeft = (fullLeft || 0) + Math.max(0, lim - used);
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
         var role = roleOf(m);
@@ -167,7 +170,8 @@ export function startApp() {
         var fill = document.createElement("i"); fill.style.width = (lim ? Math.min(100, Math.round(used / lim * 100)) : 0) + "%";
         bar.appendChild(fill);
         var d = document.createElement("span"); d.style.gridColumn = "1 / -1"; d.style.textAlign = "left";
-        d.textContent = detail;
+        var mm = local.miss || {}, mk = Object.keys(mm), mn = mk.reduce(function (a, k) { return a + mm[k]; }, 0);
+        d.textContent = detail + (mn ? " · " + mn + " more tried, no answer (" + mk.map(function (k) { return mm[k] + " " + k; }).join(", ") + ")" : "");
         row.appendChild(b); row.appendChild(t); row.appendChild(bar); row.appendChild(d);
         box.appendChild(row);
       });
@@ -183,7 +187,7 @@ export function startApp() {
       renderUsage();
       var list = runs();
       document.getElementById("testLogHead").textContent = "Run stats \u00b7 " + list.length + " run" + (list.length === 1 ? "" : "s") +
-        (fullLeft != null ? " \u00b7 ~" + fullLeft + " full prompts left today" : "");
+        (fullLeft != null ? " \u00b7 ~" + fullLeft + " full prompts left today on Flash" : "");
       document.getElementById("testRuns").textContent = list.length ? list.slice().reverse().map(fmt).join("\n\n") : "No runs yet. Build a prompt and it will show up here.";
     }
     function setOn(v) {
@@ -209,6 +213,17 @@ export function startApp() {
       store(TEST_USAGE, JSON.stringify(u));
       render();
     }
+    /* Requests that never came back with an answer (v2.1.25): timed out, busy, turned down,
+       or a faster backup answered first. They don't count against "left", but showing them
+       means a model that keeps missing (like a slow Gemma) is plain to see, not invisible. */
+    function miss(model, why) {
+      if (!on || !model) return;
+      var u = usage(), s = u.models[model] || (u.models[model] = { calls: 0, tokens: 0, out: false });
+      var m = s.miss || (s.miss = {});
+      m[why] = (m[why] || 0) + 1;
+      store(TEST_USAGE, JSON.stringify(u));
+      render();
+    }
     function asText() {
       var u = usage();
       var head = "usage " + u.day + ": " + Object.keys(u.models).map(function (m) { var s = u.models[m]; return m + " " + s.calls + " req, " + s.tokens + " tok" + (s.out ? ", used up" : ""); }).join(" | ");
@@ -226,7 +241,7 @@ export function startApp() {
       });
       document.getElementById("testClear").addEventListener("click", function () { store(TEST_LOG, null); store(TEST_USAGE, null); render(); ts.textContent = "Cleared."; });
     }
-    return { init: init, add: add, request: request, runs: runs, on: function () { return on; }, refresh: function () { if (on) render(); } };
+    return { init: init, add: add, request: request, miss: miss, runs: runs, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -265,6 +280,15 @@ export function startApp() {
     if (spanish >= 3 || nonLatin > 0.3) return notify("form", "info", "Writing in another language?", "Your words go in exactly as you wrote them. To get the answer in your language, add a line like 'Answer in Spanish'.");
   }
 
+  /* Full version after a key (KeyCatcher, v2.1.25): Normal for this build (questions first),
+     back to the box, and build. The words in the box are the ones the quick prompt came from. */
+  function fullBuild() {
+    if (!ui.hasKey || !thoughts.value.trim()) return;
+    ui.mode = "normal"; ui.modePicked = true; saveMode("normal");
+    notify("result");
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
+  }
   /* Buttons on the shared messages (Notice.svelte) come back here. */
   window.addEventListener("stp-act", function (e) {
     var act = e.detail && e.detail.act;
@@ -275,7 +299,9 @@ export function startApp() {
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
-    else if (act === "rework") startRework();
+    else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
+    else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
+    else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
     else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
@@ -287,6 +313,7 @@ export function startApp() {
     var raw = thoughts.value.trim();
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
+    window.dispatchEvent(new Event("stp-build-start"));   /* calls off the full-version countdown (KeyCatcher, v2.1.25) */
     var key = gemini.key || gkey.value.trim();
     if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(raw); return; }   /* Rework: the next round */
     if (ui.round || rounds.length || reworkDraft) clearRounds();
@@ -358,6 +385,7 @@ export function startApp() {
   }
   function showResult(text, madeBy, title) {
     notify("result");
+    ui.quickResult = false;   /* showQuick turns it back on; KeyNudge reads it */
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
     xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock(), known: sessionKnown() });   /* Prompt X-ray */
@@ -377,8 +405,9 @@ export function startApp() {
   }
   function showQuick(raw, reason) {
     showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */
-      reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
+      reason ? "Quick version. " + reason : "Quick version.",   /* the key pitch lives in KeyNudge.svelte now (v2.1.23) */
       "");
+    ui.quickResult = true;
   }
 
 
@@ -918,7 +947,45 @@ export function startApp() {
     var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 3));   /* up to 3, so the Flash-Lite crew can spread out (v2.1.20) */
     var all = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest))
       .concat(names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest)));
-    return { write: flashes.concat(lites), intake: lites.concat(flashes), all: all };
+    /* Gemma (v2.1.22) is dropped in v2.1.25: on a real free key both Gemma 4 models sat
+       the full 30s without answering, so every grade waited for nothing and then fell
+       to Flash. Flash-Lite has room to spare (about 500 a day per model), so grading and
+       the fact list are back on it. gemma stays an empty list so the routes stay simple. */
+    return { write: flashes.concat(lites), intake: lites.concat(flashes), gemma: [], all: all };
+  }
+  function isGemma(model) { return /gemma/.test(model || ""); }
+  function isFlashWriter(model) { return /flash/.test(model || "") && !/lite/.test(model || "") && !isGemma(model); }
+  /* Plain family name for the run log: Flash-Lite or Flash (Gemma kept for old logs, v2.1.25). */
+  function familyOf(model) { return isGemma(model) ? "Gemma" : /lite/.test(model || "") ? "Flash-Lite" : /flash/.test(model || "") ? "Flash" : ""; }
+  /* What happened before the model that did the job got it, from askGemini's hand-off notes
+     ("gemini-3.5-flash-lite timed out at 30s"). Empty when the first pick did it. */
+  function handoffs(model, history) {
+    return (history || []).join("; ");
+  }
+  /* Step by step's "who" line: the family that did the job, plus any hand-offs before it (v2.1.25). */
+  function crewWho(model, history, fallback) {
+    if (!model) return fallback || "";
+    var why = handoffs(model, history).replace(/gemini-/g, "");
+    return familyOf(model) + (why ? " (hand-off: " + why + ")" : "");
+  }
+
+  /* ROUTES (v2.1.25, Gemma dropped): which models do each job, best fit first. One place to change it.
+       read        questions step           Flash-Lite, then Flash         speed, JSON
+       clean/ledger prep crew               Flash-Lite crew (ledger: a second Flash-Lite joins after 10s)
+       write       Normal and Rework        Flash only (#35)               best writing
+       quick       Quick prompts, Polish    Flash-Lite, then Flash         speed
+       standin     Check's test run (8s)    Flash-Lite                     has to be fast
+       grade       quality grade + bench    Flash-Lite only, never the writer, never Flash; the other joins at 12s
+       squeeze     My context too long      Flash-Lite                     you're waiting, so fast first
+       labelfix    add a missing label      Flash-Lite, then Flash
+     The grader is never the model that wrote the prompt. */
+  function route(job, writer) {
+    var p = gemini.plan || { write: [], intake: [] };
+    var lites = p.intake.filter(function (m) { return /lite/.test(m); });
+    if (job === "grade") return graderModels(writer).filter(function (m, i, a) { return m !== writer && a.indexOf(m) === i; });
+    if (job === "ledger") return liteCrew(2);
+    if (job === "squeeze") return lites;
+    return p.intake;
   }
 
   var saved = storeGet();
@@ -978,7 +1045,8 @@ export function startApp() {
       if (remember.checked) storeSet(key);
       var backups = plan.write.length - 1;
       setKeyStatus(techOn() ? "Key works. Writing with " + plan.write[0] + ", questions with " + plan.intake[0] +
-        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days." : ".")
+        (backups ? ", plus " + backups + " backup model" + (backups > 1 ? "s" : "") + " for busy days" : "") +
+        (plan.gemma.length ? ". Grading and fact lists on " + plan.gemma.join(" and ") + "." : ".")
         : "Key works. You're all set: Gemini will ask a few quick questions, then write your prompt.", "good");
       return gemini.model;
     });
@@ -994,9 +1062,11 @@ export function startApp() {
   document.getElementById("removeKey").addEventListener("click", function () {
     gkey.value = "";
     remember.checked = false;
+    if (remember.closest("label")) remember.closest("label").classList.remove("keep-halo");   /* v2.1.25 */
     gemini.key = "";
     gemini.model = ""; gemini.plan = null;
     storeDel();
+    updateKeyState();   /* the Quick mode nudges come back (v2.1.23) */
     setKeyStatus("Key removed from this page and this phone.");
   });
 
@@ -1201,20 +1271,24 @@ export function startApp() {
     tired.forEach(function (m) { history.push(m + " skipped (used up today)"); });
     var list = fresh.concat(tired);
     function payload(withThinking, model) {
-      var cfg = {};
-      if (asJson) cfg.responseMimeType = "application/json";
-      var lvl = withThinking ? (level === "auto" ? levelFor(model) : level === "quick" ? quickLevel(model) : level) : "";
+      var cfg = {}, gem = isGemma(model);
+      /* Gemma (v2.1.22) doesn't take Gemini's JSON switch or thinking level, so it gets
+         neither and is asked in words for bare JSON instead (pulled out below). */
+      if (asJson && !gem) cfg.responseMimeType = "application/json";
+      var lvl = withThinking && !gem ? (level === "auto" ? levelFor(model) : level === "quick" ? quickLevel(model) : level) : "";
       if (lvl) cfg.thinkingConfig = { thinkingLevel: lvl };
-      var p = { contents: [{ role: "user", parts: [{ text: text }] }] };
+      var ask = asJson && gem ? text + "\n\nReply with only the JSON object: no code fences, no other words." : text;
+      var p = { contents: [{ role: "user", parts: [{ text: ask }] }] };
       if (Object.keys(cfg).length) p.generationConfig = cfg;
       return JSON.stringify(p);
     }
     return new Promise(function (resolve, reject) {
       var next = 0, running = 0, done = false, lastErr = null, live = [], awayTried = {};
-      var dead = {}, waitUntil = {}, pass = 1, pauseT = null;
+      var dead = {}, waitUntil = {}, pass = 1, pauseT = null, raced = false;
       function finish(ok, value) {
         if (done) return;
         done = true;
+        raced = !!ok;   /* anything still in flight now was beaten by a faster model */
         clearTimeout(pauseT);
         live.forEach(function (c) { try { c.abort(); } catch (e) {} });
         if (ok) resolve(value); else reject(value);
@@ -1280,7 +1354,7 @@ export function startApp() {
         var settled = false;
         function settle() { if (settled) return; settled = true; running--; clearTimeout(timer); clearTimeout(hedge); }
         /* Staging #flashbusy: Flash answers "busy" without anything being sent. */
-        var call = fakeBusyUntil > Date.now() && !/lite/.test(model)
+        var call = fakeBusyUntil > Date.now() && /flash/.test(model) && !/lite/.test(model)
           ? new Promise(function (res, rej) { setTimeout(function () { var b = new Error("Staging test: Flash busy."); b.status = 503; rej(b); }, 300); })
           : callGoogle("models/" + model + ":generateContent", gemini.key, {
           method: "POST",
@@ -1296,6 +1370,10 @@ export function startApp() {
           var c = res.candidates && res.candidates[0];
           var parts = (c && c.content && c.content.parts) || [];
           var out = parts.map(function (p) { return p.thought ? "" : (p.text || ""); }).join("").trim();
+          if (out && asJson && isGemma(model)) {   /* Gemma: keep just the JSON object, so every reader gets clean JSON */
+            var ja = out.indexOf("{"), jb = out.lastIndexOf("}");
+            out = ja >= 0 && jb > ja ? out.slice(ja, jb + 1) : "";
+          }
           if (!out) { var e = new Error("Gemini sent back an empty answer."); e.status = "empty"; throw e; }
           /* Only accept answers Gemini marks as finished, so a cut-off prompt is never shown. */
           if (c.finishReason && c.finishReason !== "STOP") { var e2 = new Error("Gemini stopped early (" + c.finishReason + ")."); e2.status = "empty"; throw e2; }
@@ -1304,8 +1382,11 @@ export function startApp() {
           finish(true, { text: out, model: model, ms: Math.max(0, Date.now() - started - away), away: away, history: history, tokens: um.totalTokenCount || null, thinkingTokens: um.thoughtsTokenCount || 0 });
         }).catch(function (e) {
           settle();
-          if (done) return;   // another model already won; this one was stopped on purpose
+          if (done) { if (raced) testLog.miss(model, "slower than a backup"); return; }   // another model already won; this one was stopped on purpose
           var secs = Math.round((Date.now() - tAttempt) / 1000);
+          /* Run stats: every request that didn't answer shows on its model's usage row (v2.1.25). */
+          if (!(e.status === 400 && !isGemma(model))) testLog.miss(model, e.status === "timeout" ? "timed out" : e.status === 429 ? (limitKind(e).daily ? "daily limit" : "per-minute limit")
+            : e.status === 400 && isGemma(model) ? "turned down" : e.status === "empty" ? "incomplete" : e.status === "network" ? "unreachable" : "busy");
           /* Dropped or timed out while you were in another app: not the model's fault, so the
              same model gets one more try (no rest, no backup spent) now that you're back. */
           if ((e.status === "network" || e.status === "timeout") && !awayTried[i] && awayMs(tAttempt) >= 1000) {
@@ -1331,8 +1412,10 @@ export function startApp() {
           else if (e.status === "network") history.push(model + " couldn't be reached after " + secs + "s");   // not the model's fault, so no rest
           else if (RETRY.indexOf(e.status) !== -1) history.push(model + " was unavailable after " + secs + "s");
           /* A model that rejects the thinking setting gets one more try without it. */
-          if (e.status === 400 && withThinking) return run(i, false);
-          if (RETRY.indexOf(e.status) !== -1) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
+          if (e.status === 400 && withThinking && !isGemma(model)) return run(i, false);
+          /* A Gemma model that turns the request down (400) just hands it to the next model. */
+          if (e.status === 400 && isGemma(model)) history.push(model + " turned the request down, so the next model took it");
+          if (RETRY.indexOf(e.status) !== -1 || (e.status === 400 && isGemma(model))) { lastErr = e; if (!running) { if (next < list.length) cookSwitch(); startNext(); } return; }
           finish(false, e);
         });
       }
@@ -1448,7 +1531,7 @@ export function startApp() {
   function benchRun() {
     var info = document.getElementById("benchInfo"), btn = document.getElementById("benchRun");
     var key = gemini.key || gkey.value.trim();
-    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
     btn.disabled = true;
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
     ready.then(function () { return fetch("bench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("bench.json"); return r.json(); }); })
@@ -1457,7 +1540,7 @@ export function startApp() {
         info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
         /* A busy server (503) or a full per-minute limit gets one retry after a short wait. */
         function ask(c, retried) {
-          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, gemini.plan.intake, "low", null, 45000).catch(function (e) {
+          return askGemini(gradePrompt(c.prompt, c.raw, c.answers || [], grader, items, c.today), true, route("grade"), "low", null, 45000).catch(function (e) {
             var busy = e && (e.status === 503 || e.status === 500 || (e.status === 429 && e.perMinute) || /high demand|overloaded/i.test(e.message || ""));
             if (retried || !busy) throw e;
             return new Promise(function (res) { setTimeout(res, BENCH_RETRY_MS); }).then(function () { return ask(c, true); });
@@ -1465,7 +1548,7 @@ export function startApp() {
         }
         /* Same dock as a live run: the phone's number check on the case's own note and answers. */
         function caseFlags(c) { return numberFlags(c.prompt, [c.raw].concat((c.answers || []).map(function (a) { return a.answer; })).join("\n"), c.today); }
-        function once(c) { return function () { return ask(c, false).then(function (r) { var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g = numberDock(g, caseFlags(c)); g.model = r.model; return g; }); }; }
+        function once(c) { return function () { return ask(c, false).then(function (r) { var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade."); g = numberDock(g, caseFlags(c)); g.model = r.model; g.history = r.history || []; return g; }); }; }
         function one(c, i) {
           return gradeConfirmed(once(c)).then(function (g) {
             out[i] = { c: c, g: g, model: g.model };
@@ -1474,9 +1557,9 @@ export function startApp() {
           });
         }
         /* Four at a time, so a free key's per-minute limit isn't hit all at once. */
-        var chain = Promise.resolve();
-        for (var i = 0; i < cases.length; i += 4) (function (start) {
-          chain = chain.then(function () { return Promise.all(cases.slice(start, start + 4).map(function (c, k) { return one(c, start + k); })); });
+        var chain = Promise.resolve(), step = 4;
+        for (var i = 0; i < cases.length; i += step) (function (start) {
+          chain = chain.then(function () { return Promise.all(cases.slice(start, start + step).map(function (c, k) { return one(c, start + k); })); });
         })(i);
         return chain.then(function () { showBench(out, label); });
       })
@@ -1495,6 +1578,11 @@ export function startApp() {
     hist[label] = { pct: pct, gap: Math.round(gap * 100) / 100, at: new Date().toISOString() };
     lsSet(BENCH_KEY, JSON.stringify(hist));
     var sum = label + ": " + agree + " of " + n + " pass/fail agree (" + pct + "%) \u00b7 avg gap " + gap.toFixed(2) + " \u00b7 invented " + inv + "/" + n + " \u00b7 labels exact " + lab + "/" + n;
+    /* Who graded (v2.1.25): a count per model, and how many cases landed far from the key. */
+    var by = {}; ok.forEach(function (o) { var m = String(o.g.model || "?").replace(/^gemini-/, ""); by[m] = (by[m] || 0) + 1; });
+    var far = ok.filter(function (o) { return Math.abs(o.g.craft - o.c.key.score) > 0.5; }).length;
+    var whoLine = "Graded by: " + Object.keys(by).map(function (m) { return m + " " + by[m]; }).join(", ") +
+      " \u00b7 " + far + " of " + n + " more than half a point off the key";
     var rows = out.map(function (o) {
       var k = o.c.key, g = o.g, hold = o.c.holdout ? " class=\"hold\"" : "";
       if (!g) return "<tr" + hold + "><td>" + esc(o.c.id) + "</td><td>" + k.score.toFixed(2) + "</td><td>error</td><td>\u26a0\ufe0f<small>" + esc(o.err) + "</small></td></tr>";
@@ -1505,17 +1593,18 @@ export function startApp() {
       if (g.rearranged !== !!k.rearranged) diff.push("rearranged " + (g.rearranged ? "yes" : "no") + " vs " + (k.rearranged ? "yes" : "no"));
       if (confirmNote(g)) diff.push(confirmNote(g));
       if (g.numCheck) diff.push("number check docked it from " + g.numBefore.toFixed(2));
-      return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "</td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
+      var miss = handoffs(g.model, g.history).replace(/gemini-/g, "");
+      return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "<small>" + esc(String(g.model || "").replace(/^gemini-/, "")) + (miss ? " (hand-off: " + esc(miss) + ")" : "") + "</small></td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
     }).join("");
     var el = document.getElementById("benchOut");
-    el.innerHTML = "<p class=\"benchsum\">" + esc(sum) + "</p>" + (prev.length ? "<p class=\"hint\">Last runs: " + esc(prev.join(" \u00b7 ")) + "</p>" : "") +
+    el.innerHTML = "<p class=\"benchsum\">" + esc(sum) + "</p><p class=\"hint benchwho\">" + esc(whoLine) + "</p>" + (prev.length ? "<p class=\"hint\">Last runs: " + esc(prev.join(" \u00b7 ")) + "</p>" : "") +
       "<table><thead><tr><th>Case</th><th>Claude</th><th>Grader</th><th>Match</th></tr></thead><tbody>" + rows + "</tbody></table>";
     el.hidden = false;
     document.getElementById("benchInfo").textContent = "Done. \ud83d\udd12 cases are the final check: don't tune rules to them.";
-    benchText = ["GRADER BENCH", sum].concat(prev.length ? ["Last runs: " + prev.join(" \u00b7 ")] : []).concat(out.map(function (o) {
+    benchText = ["GRADER BENCH", sum, whoLine].concat(prev.length ? ["Last runs: " + prev.join(" \u00b7 ")] : []).concat(out.map(function (o) {
       var k = o.c.key, g = o.g;
       if (!g) return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": error " + o.err;
-      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + " (" + g.firstCraft.toFixed(2) + " then " + (g.secondCraft != null ? g.secondCraft.toFixed(2) : "none") + ")" : "") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " to " + g.craft.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "");
+      return o.c.id + (o.c.holdout ? " (holdout)" : "") + ": Claude " + k.score.toFixed(2) + " / grader " + g.craft.toFixed(2) + " on " + String(g.model || "?").replace(/^gemini-/, "") + " \u00b7 missing " + (g.missing.join(", ") || "none") + " (key: " + (k.missing.join(", ") || "none") + ") \u00b7 invented " + (g.invented ? "yes" : "no") + " (key: " + (k.invented ? "yes" : "no") + ") \u00b7 broke " + (g.broke.join(", ") || "none") + " \u00b7 rearranged " + (g.rearranged ? "yes" : "no") + (g.confirm ? " \u00b7 pass check " + g.confirm + " (" + g.firstCraft.toFixed(2) + " then " + (g.secondCraft != null ? g.secondCraft.toFixed(2) : "none") + ")" : "") + (g.numCheck ? " \u00b7 number check docked " + g.numBefore.toFixed(2) + " to " + g.craft.toFixed(2) + " (" + g.numCheck.join("+") + ")" : "");
     })).join("\n");
     document.getElementById("benchCopy").disabled = false;
   }
@@ -1575,7 +1664,7 @@ export function startApp() {
   function flowRun(onlyFailed) {
     var info = document.getElementById("flowInfo"), btn = document.getElementById("flowRun");
     var key = gemini.key || gkey.value.trim();
-    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
     if (busy) { info.textContent = "Finish the build that's running first."; return; }
     var saved = session, results = [], prior = {}, redone = [];
     if (onlyFailed === true && flowLast && flowLast.results) flowLast.results.forEach(function (r) { prior[r.c.id] = r; });
@@ -1952,14 +2041,14 @@ export function startApp() {
     return verifyKey(key);
   }
 
-  /* My context budget: past 1,500 tokens, one Flash-Lite call (the question models, Lite
-     first) makes the picks shorter for this build. Kept in memory only for these exact picks;
-     if it fails or doesn't come out shorter, the full pieces are used. Never retried. */
+  /* My context budget: past 1,500 tokens, one Flash-Lite call (Gemma as backup, v2.1.22)
+     makes the picks shorter for this build. Kept in memory only for these exact picks;
+     if it fails or doesn't come out shorter, the full pieces are used. Not retried after that. */
   function squeezeContext(onModel) {
     if (!context.over) return Promise.resolve();
     var sig = context.sig, before = context.rawTokens;
     setBusy(true, "Squeezing your context to fit...");
-    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, gemini.plan.intake.slice(0, 1), "auto", onModel, 45000).then(function (r) {
+    return askGemini(SQUEEZE + "\n\"\"\"\n" + context.body + "\n\"\"\"", false, route("squeeze"), "auto", onModel, 45000).then(function (r) {
       var text = cleanPrompt(r.text);
       if (context.sig !== sig) return;
       var after = blockTokens(text);
@@ -2006,17 +2095,17 @@ export function startApp() {
     if (!kw.length) return true;
     return kw.filter(function (w) { return low.indexOf(w) !== -1; }).length / kw.length >= need;
   }
-  var LEDGER_LIMIT = 15000;
+  var LEDGER_LIMIT = 15000, LEDGER_RACE_MS = 10000;   /* Flash-Lite lists the facts (Gemma dropped, v2.1.25); a second Flash-Lite joins if it takes over 10s */
   function startLedger(raw) {
-    var order = liteCrew(2), mine = session, t0 = Date.now(), timer;
+    var order = route("ledger"), mine = session, t0 = Date.now(), timer;
     if (words(raw) < CLEAN_MIN_WORDS || !order.length) { mine.ledger = { status: "skipped" }; return Promise.resolve(); }
     mine.ledger = { status: "running" };
     return Promise.race([
-      askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT).then(function (r) {
+      askGemini(LEDGER + "\n" + raw + '\n"""', false, order, "auto", null, LEDGER_LIMIT, LEDGER_RACE_MS).then(function (r) {
         var seen = {}, all = cleanPrompt(r.text).split("\n").map(function (l) { return l.replace(/^\s*[-*\u2022\d.)]+\s*/, "").trim(); }).filter(function (l) { return l && words(l) <= 16; });
         /* The phone keeps only items the raw words back up (every number, most of the meaning). */
         var items = all.filter(function (l) { var k = l.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return hasItem(l, raw, 0.5) && !strictAddsVs(l, raw).length; }).slice(0, 12);
-        mine.ledger = { status: items.length ? "ok" : "empty", items: items, dropped: all.length - items.length, model: r.model, ms: r.ms };
+        mine.ledger = { status: items.length ? "ok" : "empty", items: items, dropped: all.length - items.length, model: r.model, ms: r.ms, history: r.history || [] };
       }, function () { mine.ledger = { status: "failed", ms: Date.now() - t0 }; }),
       new Promise(function (res) { timer = setTimeout(function () { if (mine.ledger.status === "running") mine.ledger = { status: "failed", why: "slow" }; res(); }, LEDGER_LIMIT + 2000); })
     ]).then(function () { clearTimeout(timer); if (session === mine) refreshClean(); });
@@ -2158,7 +2247,7 @@ export function startApp() {
   var SLOW_OFFER_MS = 2 * 60000;
   var TIME_SCALE = 1;   /* staging #slowtest: 10x faster (3s, 12s, 18s) to try it without a slow day */
   var CYCLE_PAUSE = 20000;
-  var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = 30000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */
+  var POLISH_SECS = 5, CHECK_SECS = 8, CHECK_MAX = window.__checkMaxMs || 30000;   /* usual Polish and Check times; the prompt never waits past CHECK_MAX for the check */
   var STANDIN_SECS = 5, STANDIN_MAX = 8000, STANDIN_MIN_WORDS = 60, STANDIN_FILL_MS = 5000;   /* flow bench run 2: long notes hit the cap 3 of 3 times mid-fill, so the fill only starts with 5s left */   /* flow bench run 1: 13s for no gaps on short notes, so long notes only, 8s cap */
 
   /* Stand-in AI test (v2.1.20, #45), the first part of Check on Normal and Rework prompts:
@@ -2492,7 +2581,7 @@ export function startApp() {
             rows.push({ name: "Read", who: "Flash-Lite", model: String(session.intakeModel || ""), secs: ms(session.intakeMs), what: q ? "Picked " + plural(q, "question", "questions") + (session.shape && (session.shape.success || session.shape.format) ? ", plus a suggested great result and format" : "") : "Nothing missing, so no questions" + (session.shape && (session.shape.success || session.shape.format) ? "; suggested a great result and format" : "") });
             rows.push({ name: "Clean", who: c.status === "skipped" ? "Skipped" : "Flash-Lite", model: c.model, when: c.status && c.status !== "skipped" ? "alongside Read" : "", secs: ms(c.ms), skip: c.status === "skipped",
               what: c.status === "ok" ? "Filler out, " + words(session.raw) + " to " + c.words + " words, every number kept" : c.status === "kept raw" ? "Used your raw words (the clean version " + (c.why || "didn't pass the check") + ")" : c.status === "skipped" ? "Short note, nothing to clean" : c.status === "failed" ? "Didn't come through, used your raw words" : "Didn't run" });
-            rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : "Flash-Lite", model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
+            rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : crewWho(l.model, l.history, "Flash-Lite"), model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
               what: l.status === "ok" ? plural(l.items.length, "must-keep item", "must-keep items") + (l.dropped ? " (" + plural(l.dropped, "unbacked item", "unbacked items") + " thrown out)" : "") : l.status === "empty" ? "Nothing it listed was backed by your words" : l.status === "skipped" ? "Short note, nothing to list" : l.status === "failed" ? "Didn't come through, skipped" : "Didn't run" });
             if (session.prepWaitMs >= 500) rows.push({ name: "Prep wait", who: "Waiting", secs: session.prepWaitMs / 1000, what: "Clean or the ledger was still going when you finished, so writing waited for it" });
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
@@ -2504,8 +2593,13 @@ export function startApp() {
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
           if (st) rows.push({ name: "Stand-in AI", who: "Flash-Lite", model: st.model, secs: st.secs,
             what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + (st.status === "gaps only" ? " found, no time to fill, shown under the prompt" : " you didn't answer, shown under the prompt") : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
-          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: "Flash-Lite or Flash (never the writer)", model: gf ? "gemini-" + String(gf.grade_model || "").split(" ")[0] : "", secs: gf ? gf.grade_s : null,
-            what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "") : "Still grading, it finishes in the background" });
+          /* Grade (v2.1.25): names who actually graded and any hand-offs. Still running at
+             Ready? This row updates itself when the grade lands (session.refreshSteps). */
+          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: g ? crewWho(g.model, g.history, "") : session.gradeFailed ? "No grader answered" : "Flash-Lite (never the writer, never Flash)",
+            model: g ? String(g.model || "") : "", secs: gf ? gf.grade_s : null,
+            what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "")
+              : session.gradeFailed ? "Every grader missed this time (" + session.gradeFailed + "), so there's no score. The prompt is fine to use."
+              : "Took longer than the Check, still grading. This row updates when it lands." });
           return rows;
         }
         function reveal(checkSecs) {
@@ -2518,9 +2612,18 @@ export function startApp() {
           /* Elapsed matches the total: Polish and Check count, and the line under Done says how much they added. */
           finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset);
           resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");
-          showTimeStrip(resultProg.closest(".tracker"), [
+          var stripTrack = resultProg.closest(".tracker"), stripParts = [
             ["prep", ((session.intakeMs || 0) + (session.prepWaitMs || 0)) / 1000, "Prep", !(session.round >= 2) && session.intakeMs != null],
-            ["write", r.ms / 1000, "Write", true], ["polish", rep.secs || 0, "Polish", !!session.polished], ["check", checkSecs || 0, "Check", !!session.checked]], stepRows(r, rep, checkSecs));   /* at Ready, the line says how it was written again, not the last step */
+            ["write", r.ms / 1000, "Write", true], ["polish", rep.secs || 0, "Polish", !!session.polished], ["check", checkSecs || 0, "Check", !!session.checked]];
+          showTimeStrip(stripTrack, stripParts, stepRows(r, rep, checkSecs));   /* at Ready, the line says how it was written again, not the last step */
+          /* A grade that lands after Ready redraws Step by step, keeping it open if it was (v2.1.25). */
+          var mine = session;
+          session.refreshSteps = function () {
+            if (session !== mine) return;
+            var was = stripTrack.querySelector(".tsdetail"), open = !!(was && was.open);
+            showTimeStrip(stripTrack, stripParts, stepRows(r, rep, checkSecs));
+            var now = stripTrack.querySelector(".tsdetail"); if (now && open) now.open = true;
+          };
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
           showResult(extras(finalPrompt), techOn()   /* core */
@@ -2660,7 +2763,10 @@ export function startApp() {
     ui.compare = compareRounds(list);
     ui.round = Object.assign({}, ui.round, { scores: list.map(function (x) { return x.g ? Math.round(x.g.craft * 10) / 10 : null; }) });
   }
-  function startRework() {
+  /* edit false (Rework, #2, idea mvu5g66pdbqo): the round builds right away from the weak line
+     plus the prompt, no second Build tap. edit true (Edit first): the prompt waits in the box
+     for your changes, then Build my prompt. */
+  function startRework(edit) {
     var g = lastGrade(), key = gemini.key || gkey.value.trim();
     if (!g || g.pass || !session || !session.basePrompt || busy || !key || !gemini.plan) return;
     if ((ui.round && ui.round.stage !== "built") || rounds.length >= ROUND_MAX) return;
@@ -2675,6 +2781,7 @@ export function startApp() {
     ideasSync();
     ui.round = Object.assign({}, ui.round || {}, { n: rounds.length + 1, stage: "edit", from: from + 1, count: rounds.length, max: ROUND_MAX });
     result.hidden = true;
+    if (!edit) { form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); return; }
     form.scrollIntoView({ behavior: "smooth", block: "start" });
     try { thoughts.focus({ preventScroll: true }); thoughts.setSelectionRange(0, 0); } catch (e) {}
   }
@@ -2749,21 +2856,27 @@ export function startApp() {
      work (v2.1.15 fix, 11/04). A Flash-Lite prompt (Quick mode or the quick model after a
      Flash wait) is graded by a Flash model first, then the other Flash-Lite. A Flash prompt
      is graded by Flash-Lite as before. Resting models still go to the back of the line. */
+  /* Graders (v2.1.25): every Flash-Lite but the writer. Flash never grades, so a grade can't
+     spend one of the 20 Flash writes a day. The one exception: a key with a single Flash-Lite
+     that wrote this prompt itself (Quick mode), where only a Flash can grade without the
+     writer grading its own work. */
   function graderModels(writer) {
-    var list = gemini.plan.intake;
-    if (writer && /lite/.test(writer)) list = list.filter(function (m) { return !/lite/.test(m); }).concat(list.filter(function (m) { return /lite/.test(m); }));
-    var others = list.filter(function (m) { return m !== writer; });
-    return others.length ? others : list;
+    var lites = gemini.plan.intake.filter(function (m) { return /lite/.test(m); });
+    var others = lites.filter(function (m) { return m !== writer; });
+    if (others.length) return others;
+    var flashes = gemini.plan.intake.filter(function (m) { return !/lite/.test(m) && m !== writer; });
+    return flashes.length ? flashes.slice(0, 1) : lites;
   }
   function gradeOnce(prompt, raw, answers, today, items, grader, writer) {
     return function () {
-      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, graderModels(writer), "low", null, 30000).then(function (r) {
+      return askGemini(gradePrompt(prompt, raw, answers, grader, items, today), true, route("grade", writer), "low", null, 30000, GRADE_HEDGE_MS).then(function (r) {
         var g = gradeFrom(r.text, items); if (!g) throw new Error("Couldn't read the grade.");
         g = numberDock(g, session ? promptFlags(prompt) : null);   /* the number check flagged: docked */
-        g.model = r.model; return g;
+        g.model = r.model; g.history = r.history || []; return g;
       });
     };
   }
+  var GRADE_HEDGE_MS = window.__gradeHedgeMs || 12000;   /* v2.1.25: the other Flash-Lite joins a slow grade after 12s */
   /* Confirm passes: the grader varies a little run to run, so a borderline prompt
      could pass on one lucky grade. Any grade at or over the bar gets a second look,
      and the lower one wins. Fails need no second look. If the second look doesn't
@@ -2789,8 +2902,9 @@ export function startApp() {
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
-        grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10 };
-      if (target) for (var k in fields) target[k] = fields[k];
+        grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10,
+        grade_by: familyOf(r.model), grade_handoff: handoffs(r.model, g.history).replace(/gemini-/g, "") || "none" };
+      if (target) for (var k in fields) if (k !== "grade_by" && k !== "grade_handoff") target[k] = fields[k];   /* those two are for this phone's notes only */
       if (run !== writeRun) return;
       session.grades = [g];
       session.gradeFields = fields;
@@ -2798,7 +2912,11 @@ export function startApp() {
       el.textContent = gradeText(g, fields, "");
       el.hidden = false;
       if (canFix(g)) return fixLabel(prompt, run, target, g, fields, items, el, writer);
-    }, function () {});
+    }, function (e) {
+      /* Every grader missed (v2.1.25): say so, instead of "Still grading" forever. */
+      if (run !== writeRun || !session) return;
+      session.gradeFailed = (e && e.message) || "no grader answered";
+    }).then(function () { if (run === writeRun && session && session.refreshSteps) session.refreshSteps(); });
     if (target) target._grade = job;
     return job;
   }
@@ -2824,7 +2942,9 @@ export function startApp() {
     if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
     if (g.numCheck) notes.push("docked from " + g.numBefore.toFixed(2) + ": the number check flagged it");
     if (extra) notes.push(extra);
-    return "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (" + fields.grade_model + ", " + fields.grade_s + "s" + (fields.fix_s != null ? " + " + fields.fix_s + "s fix" : "") + ")";
+    /* The first grader didn't answer: say what happened (v2.1.25). */
+    var why = fields.grade_handoff && fields.grade_handoff !== "none" ? ", hand-off: " + fields.grade_handoff : "";
+    return "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (graded by " + (fields.grade_by ? fields.grade_by + " " : "") + fields.grade_model + ", " + fields.grade_s + "s" + (fields.fix_s != null ? " + " + fields.fix_s + "s fix" : "") + why + ")";
   }
   /* Below the bar with a label the app can add (LABEL_FIXES): one small call adds
      those lines, the phone checks nothing else changed, the grader looks again, and
@@ -2844,6 +2964,7 @@ export function startApp() {
       if (session) session.labelFix = { status: status, secs: s, tries: tries };
       fields.fix_s = s;
       if (run === writeRun) el.textContent = gradeText(best, fields, "\ud83d\udd27 " + note);
+      if (run === writeRun && session && session.refreshSteps) session.refreshSteps();
     }
     function finish() {
       if (added.length) return end("added " + added.join("+"), "added " + andList(added) + ", up from " + (Math.round(first.craft * 10) / 10).toFixed(1) + (tries > 1 ? " in " + tries + " tries" : ""));
@@ -2857,7 +2978,7 @@ export function startApp() {
       tries++;
       var list = fixList(best), what = andList(list);
       el.textContent = gradeText(best, fields, "\ud83d\udd27 adding " + what + (tries > 1 ? ", try 2" : "") + "...");
-      return askGemini(labelFixPrompt(cur, list, session.raw, withMem(session.answers)), false, gemini.plan.intake, "low", null, 30000).then(function (r) {
+      return askGemini(labelFixPrompt(cur, list, session.raw, withMem(session.answers)), false, route("labelfix"), "low", null, 30000).then(function (r) {
         var fixed = cleanPrompt(r.text);
         if (!onlyAdded(fixed, cur, list.length)) return again("kept original", "tried adding " + what + ", but it changed other lines");
         if (used()) return end("skipped, already used", "skipped adding " + what + " because you already used this prompt");
@@ -2968,10 +3089,14 @@ export function startApp() {
     var mem = (session && session.memFacts) || [];
     return (answers || []).concat(mem.map(function (f) { return { question: "Your saved memory", answer: f }; }));
   }
-  function saidText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n") + (session.known ? "\n" + session.known : ""); }
+  function saidText() { return ownText() + (session.known ? "\n" + session.known : ""); }
+  /* What you said for this prompt only: your thoughts, answers, and the memory facts picked for
+     it. Picked context and your core are background (session.known): their numbers count as
+     yours, but a skipped one is never "left out" (#3). */
+  function ownText() { return session.raw + "\n" + withMem(session.answers).map(function (a) { return a.answer; }).join("\n"); }
   /* Number check: lib/numcheck.js (shared with the grader bench). */
-  function numberIssues(promptText) { return numberIssuesFor(promptText, saidText()); }
-  function promptFlags(promptText) { return numberFlags(promptText, saidText(), session.today || new Date()); }
+  function numberIssues(promptText) { return numberIssuesFor(promptText, ownText(), session.known || ""); }
+  function promptFlags(promptText) { return numberFlags(promptText, ownText(), session.today || new Date(), session.known || ""); }
   /* The Heads up note: made-up or missing numbers, and a weekday that doesn't match its date. */
   function showNumberCheck(promptText) {
     var el = document.getElementById("numWarn");

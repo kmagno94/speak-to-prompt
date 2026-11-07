@@ -2,6 +2,200 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.25",
+      "date": "2026-11-06",
+      "title": "Test lab fixes 11/06-07: bigger halo, honest prompts left, Gemma dropped, key pastes itself",
+      "items": [
+        "Write my prompt's halo now zooms in with a small bounce and its glow breathes twice, so the last answer is impossible to miss. Reduce Motion gets a thicker ring and no movement (Test lab #1).",
+        "Run stats' header counts only Flash writes as full prompts left (about 60 a day, not 4,560, which had Gemma's allowance added in) (Test lab #2).",
+        "Gemma is dropped: on a real free key both Gemma 4 models sat the full 30 seconds without answering, so every grade waited for nothing and then landed on Flash, spending a Flash write. Grading and the fact list are back on Flash-Lite, which has room for 125+ builds a day (Test lab #3, #4, #5).",
+        "Grading never uses Flash: a Flash-Lite grades Normal prompts, and the other Flash-Lite grades Quick prompts, so no model grades its own words. A slow Flash-Lite gets the other one alongside after 12 seconds. Only a key with a single Flash-Lite falls back to one Flash for a Quick grade.",
+        "The usage list shows every Flash-Lite on the key with its job, and counts requests that never answered (timed out, busy, slower than a backup).",
+        "The grade note and Step by step say who graded and any hand-off before it. The grader bench names the grader on every case and how many cases land more than half a point from Claude's key.",
+        "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5).",
+        "Key catcher (Test lab 11/07): coming back from AI Studio pastes your key and runs Check key by itself where the browser allows it. iPhone Safari always needs a tap plus its own Paste bubble (Apple's rule), so there Paste my key pulses and the note says so. Once the key works with Remember my key off, Remember wears the white halo and scrolls into view until it's ticked.",
+        "Full version after a key (Test lab 11/07): if the prompt on screen is the quick version when the key starts working, a card by the key says it rebuilds the full way in 5 seconds (questions first), with Build it now and Not now. Typing in the box or building yourself calls it off.",
+        "Key steps in order: Get my free key is the filled, highlighted step until you come back from AI Studio, then Paste my key takes the highlight. On iPhone and iPad, Paste my key says up front to tap Safari's Paste bubble too.",
+        "One thing at a time: Remember my key glows first, and the full-version card comes 3 seconds later, or right away once Remember is ticked. With Remember already on, the card comes right away."
+      ],
+      "checks": [
+        {
+          "say": "With your key on and Normal mode, paste the note below, tap Build my prompt, then answer or skip every question.",
+          "see": "After the last answer, Write my prompt (N of N) zooms in with a little bounce, then its white glow pulses twice and settles. While questions are still open it has no halo.",
+          "paste": "ok so um I wanna do a pumpkin carving night for like my cousins and their kids, maybe a Saturday, not sure how many people yet, we need snacks and some kind of contest I guess, help me plan it"
+        },
+        {
+          "say": "Turn on Show run stats, open the key panel and tap Check key, then look at the Run stats header and the usage list.",
+          "see": "The header says about 60 full prompts left today on Flash. The key message has no Gemma line. The usage list shows both Flash-Lite models, the second one labeled grades prompts."
+        },
+        {
+          "say": "With run stats on and Normal mode, paste the note below, build, answer or skip the questions, then open Step by step.",
+          "see": "The grade note says graded by Flash-Lite with its model. The Grade and Fact ledger rows say Flash-Lite. The Grade row's time is a few seconds, not 30 or more, and no Flash model graded.",
+          "paste": "okay so um my friend Priya and I want to do a dumpling folding night at my place, like 8 people, sunday the 15th at maybe 5, budget around $70 for ingredients, two people are vegetarian and one guy is coming late from his shift"
+        },
+        {
+          "say": "In dev tools, run the grader bench.",
+          "see": "A Graded by line under the summary names the Flash-Lite and how many cases are more than half a point off Claude's key. Each row names its grader. Tap Copy for Claude and send it to Claude before promoting."
+        },
+        {
+          "say": "Build the same dumpling note in Quick mode with run stats on, then open Step by step.",
+          "see": "One Flash-Lite writes it and the other Flash-Lite grades it (the Grade row names it with a score). If it says still grading, wait a few seconds: the row fills in by itself without closing."
+        },
+        {
+          "say": "On the iPhone, tap Remove key, tap Get my free key, copy your key in AI Studio, then switch back to Safari.",
+          "see": "The key panel is open, Paste my key pulses, and the note says to tap it plus Safari's Paste bubble (Apple's rule). On a computer in Chrome, the key goes in and gets checked by itself, no tap."
+        },
+        {
+          "say": "With Remember my key off, tap Paste my key and allow Safari's Paste bubble.",
+          "see": "\"🎉 You're in!\" with \"Tick Remember my key (glowing below)\", and Remember my key wears a white halo that pulses and stays until you tick it. If a quick prompt is on screen, the rebuild card shows up only after about 3 seconds, or as soon as you tick Remember."
+        },
+        {
+          "say": "Tap Remove key, build the note below in Quick, tap Unlock smarter prompts on the result, then Paste my key.",
+          "see": "Remember my key glows first. About 3 seconds later (or right when you tick Remember) a card counts down: Your prompt rebuilds the full way in 5s, with Build it now and Not now. Wait it out: the page jumps up and Gemini asks its questions. Try again with Not now: nothing rebuilds.",
+          "paste": "ok so um my coworker Jess wants to start a little book club at work, like 6 people, every other thursday at lunch, and nobody can agree on what to read first, help us get it going"
+        },
+        {
+          "say": "Tap Remove key and open the key panel.",
+          "see": "1 Get my free key is the filled, bright step and 2 Paste my key is the quiet one, with a line saying to tap Paste on the bubble Safari shows. After you go to AI Studio and come back, Paste my key is the bright one and pulses."
+        }
+      ]
+    },
+    {
+      "version": "2.1.24",
+      "date": "2026-11-06",
+      "title": "Number check catches a made-up \"today is\" weekday",
+      "items": [
+        "The number check now flags a prompt that says today is a weekday it isn't, like \"Today is Tuesday\" on a Wednesday, even with no date next to it.",
+        "Also catches \"today's Tuesday\", \"it's Monday today\", and \"today (Tuesday)\". A today weekday you said yourself is never flagged.",
+        "The flag docks the grade below the bar like any other number check flag, and the grader bench docks its cases the same way (B4 now shows the dock)."
+      ],
+      "checks": [
+        {
+          "say": "On staging with your key, paste this note and tap Build my prompt.",
+          "paste": "ok so pretend today is monday for this one lol, i have a 3 day study plan to make for my subnetting quiz thursday and i close at the cafe tuesday night so like an hour max that day, keep it chill",
+          "see": "No Heads up about today's weekday, even if the prompt says today is Monday: you said it, so it isn't made up."
+        },
+        {
+          "say": "Open dev tools and run the Grader bench on Live.",
+          "see": "B4's line ends with \"number check docked 3.00 to 3.00 (dates)\"."
+        }
+      ]
+    },
+    {
+      "version": "2.1.23",
+      "date": "2026-11-06",
+      "title": "Key catcher + key nudges: from Quick to the full version in two taps",
+      "items": [
+        "Key catcher (AGT-15): the key panel now opens with two big steps. Get my free key opens Google AI Studio's key page. Paste my key reads your clipboard (only when you tap it), checks it looks like a Gemini key, puts it in the box, runs Check key, and celebrates.",
+        "Coming back from AI Studio opens the key panel, scrolls to it and pulses Paste my key. The old 4-step list moved under Show me the steps.",
+        "Without a key, a slim line under Build my prompt says you're on Quick mode and offers to unlock follow-up questions. A quick result shows a short card with what a free key would have added. Both open the key panel and disappear once a key works.",
+        "Tapping Normal with no key opens the key panel and goes there, instead of only saying the key is below (Customer Eyes, Nov 06).",
+        "Not now hides the Quick mode line for this tab only. The clipboard text is never shown or saved, and Remember my key stays your choice (the success message reminds you if it's off).",
+        "Remove key now brings the nudges back right away, and two dev tool messages point to the key panel at the bottom instead of the top."
+      ],
+      "checks": [
+        {
+          "say": "On staging with no key (tap Remove key first if you have one), look under Build my prompt.",
+          "see": "A pill line: \"You're on Quick mode. Unlock follow-up questions, free, 1 min →\" with a Not now button beside it."
+        },
+        {
+          "say": "Paste the note below and tap Build my prompt.",
+          "see": "The prompt comes up with \"Quick version.\" and a card under it: \"This was the quick version.\" plus Unlock smarter prompts. Tapping it opens the key panel with 1 Get my free key and 2 📋 Paste my key on top.",
+          "paste": "ok so um my sister Dana wants to start running, she's never done it, she has like 3 mornings a week before work around 6 and she gets bored fast, help her not quit in week two"
+        },
+        {
+          "say": "Tap Get my free key, copy your key in AI Studio, then switch back to the app.",
+          "see": "The key panel is open and in view, Paste my key pulses, and a note says Welcome back."
+        },
+        {
+          "say": "Tap Paste my key (allow Safari's Paste bubble).",
+          "see": "\"Got it. Checking with Google...\" then \"🎉 You're in!\". If Remember my key is off, the note says it's glowing below and Remember my key wears a white halo until ticked (v2.1.25). The two steps, the Quick mode line and the result card all disappear."
+        },
+        {
+          "say": "Copy any normal sentence, tap Remove key, then tap Paste my key.",
+          "see": "\"That doesn't look like a Gemini key (they start with AIza)...\" The sentence is not shown and the key box stays empty."
+        },
+        {
+          "say": "With no key, tap Normal next to Build my prompt.",
+          "see": "The page jumps to the open key panel."
+        }
+      ]
+    },
+    {
+      "version": "2.1.22",
+      "date": "2026-11-05",
+      "title": "Model routing: each job on its best model, Gemma joins the crew",
+      "items": [
+        "Jobs now go to the model that fits them best, all set in one routing table: Flash still writes Normal and Rework prompts, Flash-Lite still asks the questions, writes Quick prompts, and runs the stand-in test.",
+        "Gemma 4 joins (when your key has it): it grades prompts and lists your facts. It's a different model family from the writer, so it can't go easy on its own work, and it has a much bigger free daily allowance (about 1,500), so those jobs stop eating Flash-Lite's.",
+        "The fact list starts on the smaller, quicker Gemma, and a Flash-Lite jumps in if it takes over 6 seconds, so it never holds you up.",
+        "Squeezing My context and adding a missing label keep Flash-Lite first, with Gemma as a backup.",
+        "If a Gemma model turns a request down, the next model takes it. A key without Gemma works exactly like before."
+      ],
+      "checks": [
+        {
+          "say": "Gemma was dropped in v2.1.25, so this build's Gemma checks are replaced. Turn on Show run stats, open the key panel and tap Check key.",
+          "see": "The key message names the Flash writer and the Flash-Lite for questions, with no Gemma line. The v2.1.25 checks cover grading."
+        }
+      ]
+    },
+    {
+      "version": "2.1.21",
+      "date": "2026-11-05",
+      "title": "Fix session: halo, instant Rework, context number fix, My context for everyone",
+      "items": [
+        "Write my prompt glows (#1): once every follow-up question is answered or skipped, Write my prompt in the dock wears the white halo (with one small pop) so the next tap is obvious.",
+        "Number check fix (#3): numbers in the My context pieces you pick (and Your core) count as yours, so using one is never \"made up\", but skipping one is never \"left out\" any more. Before, a roasting context's numbers showed up as a long \"leaves out 375, 393, 820...\" list and docked the grade under the bar, which could push you to Rework for no reason. Auto-Repair also stops trying to stuff those numbers into the prompt.",
+        "Rework builds right away (#2): tap Rework and round 2 starts cooking from your prompt plus the What was weak line, no second Build tap. ✏️ Edit first next to it keeps the old way: the prompt waits in the box for your changes.",
+        "My context for everyone (#4): out of dev tools and into the main app, under Build. Saving is opt-in: pieces stay in this tab until you turn on Save on this phone (turning it off deletes them from the phone). A phone that already had saved pieces stays opted in. Each piece shows its size against a 3,800 character cap and turns amber with how far over; its chip says over 3,800 too. Typing past the cap never cuts anything off."
+      ],
+      "checks": [
+        {
+          "say": "With your key on and Normal mode, type a note like \"plan a pumpkin carving night\", tap Build my prompt, then answer or skip every question.",
+          "see": "After the last answer, Write my prompt (N of N) in the dock gets a white halo with one small pop. While questions are still open it has no halo.",
+          "paste": "ok so um I wanna do a pumpkin carving night for like my cousins and their kids, maybe a Saturday, not sure how many people yet, we need snacks and some kind of contest I guess, help me plan it"
+        },
+        {
+          "say": "Turn on Reduce Motion, run the same questions again to the end.",
+          "see": "The white halo shows on Write my prompt with no pop."
+        },
+        {
+          "say": "In My context, pick a piece with numbers in it (like roast temps or prices) for a note that doesn't need them, and build with your key.",
+          "see": "No Heads up saying the prompt leaves out your context's numbers, and the Quality check isn't docked for it. A number you said in the box that goes missing still gets flagged.",
+          "paste": "plan a bake sale for the robotics club friday at 9:30 in the gym lobby, we have like three tables and I want it to feel organized not chaotic lol"
+        },
+        {
+          "say": "On a prompt whose Quality check is under 4.5, tap 🔁 Rework from this prompt.",
+          "see": "Round 2 starts cooking right away with no Build tap, then the card says Round 2 with the before and after scores."
+        },
+        {
+          "say": "On a prompt under the bar, tap ✏️ Edit first instead, add a line, then tap Build my prompt.",
+          "see": "The prompt waits in the box with What was weak on top, and only builds after you tap Build my prompt."
+        },
+        {
+          "say": "With Show my dev tools OFF, look under Build my prompt.",
+          "see": "My context shows with + Add context you can reuse."
+        },
+        {
+          "say": "Tap + Add context you can reuse, give it a title and some text, leave Save on this phone off, tap Done, then refresh with the version pill.",
+          "see": "The chip works before the refresh and is gone after it. Nothing saved."
+        },
+        {
+          "say": "Add a piece again, turn on Save on this phone, tap Done, refresh.",
+          "see": "The chip comes back after the refresh, and Save on this phone is still on in the editor."
+        },
+        {
+          "say": "In the editor, paste a long chunk into a piece until it's past 3,800 characters.",
+          "see": "Under it, the counter turns amber: Over the 3,800 character cap by N. After Done, that chip says over 3,800. Under the cap it reads like 1,240 / 3,800 characters.",
+          "paste": "Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and see if the cherry gets louder. Roast log for the Harborline blend, fake numbers for testing. Charge at 412, turning point around 2:05, first crack near 9:40, drop at 401 for a medium. Batch is 18 lb green, about 15 lb roasted, so roughly 17 percent loss. Cupping notes say cocoa, dried cherry, a little brown sugar on the finish. Next week try a slower Maillard phase and"
+        },
+        {
+          "say": "Open the editor and turn Save on this phone off, then refresh.",
+          "see": "Pieces are still there until the refresh, then gone (deleted from the phone)."
+        }
+      ]
+    },
+    {
       "version": "2.1.20",
       "date": "2026-11-04",
       "title": "Quality crew: fact ledger, stand-in AI, shape up front",

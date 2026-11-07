@@ -34,12 +34,12 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
    suite: in the background on every staging push, and as the gate for a promote and for main.
    Match is on the start of each check's name. */
 const CORE = [
-  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model',
+  'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model', 'model routing:',
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
-  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:',
+  'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:'
 ];
 const QUICK = process.env.QUICK === '1';
@@ -60,6 +60,7 @@ async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev',
 async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
+  if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   const p = await ctx.newPage();
   p.errors = [];
@@ -77,6 +78,8 @@ async function page(opts = {}) {
     const model = (u.match(/models\/([^:]+):/) || [])[1];
     const body = JSON.parse(r.request().postData());
     const ask = body.contents[0].parts[0].text;
+    /* opts.failAny: model -> status for every kind of call (opts.fail only covers intake and writes) */
+    if (opts.failAny && opts.failAny[model]) { (p.failed = p.failed || []).push(model); return r.fulfill({ status: opts.failAny[model], headers: h, body: JSON.stringify({ error: { code: opts.failAny[model], message: 'mock' } }) }); }
     const intake = /intake step/.test(ask);
     if (intake && opts.intakeDelay) await new Promise(res => setTimeout(res, opts.intakeDelay));
     if (/PROMPT TO FIX:/.test(ask)) {
@@ -98,6 +101,7 @@ async function page(opts = {}) {
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeBusyOnce) { p.busy = p.busy || new Map(); const k = ask.slice(-300); if (!p.busy.has(k)) p.busy.set(k, Date.now()); if (Date.now() - p.busy.get(k) < 400) { return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) }); } }
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      if (opts.gradeDelay) await new Promise(res => setTimeout(res, opts.gradeDelay));
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: g }] } }] }) });
     }
@@ -168,7 +172,8 @@ async function pickChip(p, text) {
   }
   throw new Error('option not found: ' + text);
 }
-async function withKey(p) { await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
+/* Opens the key panel only if it's closed: tapping Normal with no key opens it already (v2.1.23). */
+async function withKey(p) { if (!(await p.evaluate(() => document.getElementById('keyPanel').open))) await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
 async function done(p) { await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 }); }
 
 await check('quick version works with no key', async () => {
@@ -177,6 +182,196 @@ await check('quick version works with no key', async () => {
   const out = await p.inputValue('#output');
   expect(/MY RAW THOUGHTS/.test(out) && /help me plan a 5k/.test(out), 'quick prompt missing raw thoughts');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('key nudge: Quick mode line and result card point to the key panel, then hide once a key exists (v2.1.23)', async () => {
+  const p = await page();
+  expect(await p.isVisible('#keyNudge'), 'no-key visitors should see the Quick mode key line under Build');
+  expect(!(await p.isVisible('#keyNudgeResult')), 'the result nudge waits for a result');
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#keyNudgeResult'), 'a quick result should show the unlock card');
+  expect(/^Quick version\.$/.test((await p.textContent('#madeBy')).trim()), 'madeBy should not repeat the key pitch: ' + await p.textContent('#madeBy'));
+  await p.click('#keyNudgeResultGo');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  await p.fill('#gkey', 'FAKE');
+  await p.waitForFunction(() => !document.getElementById('keyNudge') && !document.getElementById('keyNudgeResult'), null, { timeout: 3000 });
+  await p.click('#removeKey');
+  await p.waitForSelector('#keyNudge', { timeout: 3000 });
+  await p.click('#keyNudgeLater');
+  await p.waitForFunction(() => !document.getElementById('keyNudge'), null, { timeout: 3000 });
+  expect(await p.evaluate(() => !Object.keys(localStorage).some(k => /nudge/i.test(k))), 'Not now must not save anything');
+  await p.reload();
+  expect(await p.isVisible('#keyNudge'), 'Not now lasts for this tab only');
+  await p.click('#keyNudgeGo');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
+  const p = await page();
+  await p.click('#normalMode');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  expect(await p.isVisible('#getKey') && await p.isVisible('#pasteKey'), 'the two big key steps should lead the panel');
+  expect(/aistudio\.google\.com\/apikey/.test(await p.getAttribute('#getKey', 'href')), 'Get my free key goes to AI Studio');
+  await p.evaluate(() => navigator.clipboard.writeText('hello there, this is not a key'));
+  await p.click('#pasteKey');
+  await p.waitForSelector('#catchNote');
+  expect(/doesn't look like a Gemini key/.test(await p.textContent('#catchNote')) && !(await p.inputValue('#gkey')), 'a non-key is turned away and never put in the box');
+  expect(!/hello there/.test(await p.content()), 'clipboard text is never shown');
+  const fake = 'AIza' + 'x'.repeat(35);
+  await p.evaluate((k) => navigator.clipboard.writeText('  ' + k + '\n'), fake);
+  await p.click('#pasteKey');
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  expect(await p.inputValue('#gkey') === fake, 'the key lands in the box, trimmed');
+  expect(await p.getAttribute('#keyStatus', 'class') === 'good', 'Check key ran and passed');
+  expect(/Tick Remember my key/.test(await p.textContent('#catchNote')), 'reminds to tick Remember when it is off');
+  expect(!(await p.$('#pasteKey')) && !(await p.$('#keyNudge')), 'the key steps and the nudge hide once the key works');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some(k => /gemini-key/.test(k))), 'nothing saved without Remember');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Test lab 11/07 (v2.1.25): coming back from AI Studio pastes and checks by itself where the browser allows it,
+   and Remember my key wears the white halo until it's ticked. */
+async function backFromStudio(p) {
+  await p.evaluate(() => { const a = document.getElementById('getKey'); a.addEventListener('click', (e) => e.preventDefault(), { once: true }); a.click(); });
+  await p.waitForTimeout(1600);
+  await p.evaluate(() => window.dispatchEvent(new Event('focus')));
+}
+await check('key catcher: coming back from AI Studio pastes and checks the key by itself, and falls back to the pulsing button where the clipboard is closed (Test lab, v2.1.25)', async () => {
+  const fake = 'AIza' + 'y'.repeat(35);
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.evaluate((k) => navigator.clipboard.writeText(k), fake);
+  await backFromStudio(p);
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  expect(await p.inputValue('#gkey') === fake && await p.getAttribute('#keyStatus', 'class') === 'good', 'no tap: the key went in and Check key passed');
+  // Clipboard closed (iPhone Safari without a tap): nothing pasted, the button pulses, the note says to tap
+  const q = await page();
+  await q.click('#keyPanel summary');
+  await q.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('NotAllowedError')); });
+  await backFromStudio(q);
+  await q.waitForFunction(() => /Apple's rule/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 5000 });
+  expect(await q.$('#pasteKey.pulse') && !(await q.inputValue('#gkey')), 'falls back to the pulsing Paste my key, box empty');
+  // Something that isn't a key on the clipboard: no scolding on the way back, just the pulsing button
+  const r = await page();
+  await r.click('#keyPanel summary');
+  await r.evaluate(() => navigator.clipboard.writeText('zxqv parrot marmalade note'));
+  await backFromStudio(r);
+  await r.waitForTimeout(500);
+  expect(/Welcome back/.test(await r.textContent('#catchNote')) && !(await r.inputValue('#gkey')) && await r.$('#pasteKey.pulse'), 'a non-key is left alone: ' + await r.textContent('#catchNote'));
+  expect(!/zxqv parrot/.test(await r.content()), 'clipboard text is never shown');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('key catcher: once the key works with Remember my key off, Remember wears the white halo until it is ticked (Test lab, v2.1.25)', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'z'.repeat(35));
+  await p.click('#pasteKey');
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await p.waitForSelector('label.check.keep-halo', { timeout: 3000 });
+  const ring = await p.$eval('label.check.keep-halo', (l) => getComputedStyle(l).boxShadow);
+  expect(/255, 255, 255/.test(ring) && /glowing below/.test(await p.textContent('#catchNote')), 'white halo on Remember my key, and the note points to it: ' + ring);
+  await p.check('#remember');
+  expect(!(await p.$('label.check.keep-halo')), 'the halo goes once Remember is ticked');
+  // Already ticked before the key worked: no halo
+  const q = await page();
+  await q.click('#keyPanel summary'); await q.check('#remember');
+  await q.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'w'.repeat(35));
+  await q.click('#pasteKey');
+  await q.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await q.waitForTimeout(400);
+  expect(!(await q.$('label.check.keep-halo')), 'no halo when Remember is already on');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('key catcher: a key that works on a quick prompt offers the full version and rebuilds it with questions after 5 seconds, unless Not now (Test lab, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [{ question: 'Who is coming?', choices: ['Friends', 'Family'] }] };
+  const quickFirst = async (hooks) => {
+    const p = await page({ intake, hooks });
+    await p.fill('#thoughts', 'ok so um I want to plan a board game night for like 6 people next friday, budget maybe $40, help');
+    await p.click('#build'); await done(p);
+    await p.waitForSelector('#keyNudgeResult');
+    await p.click('#keyNudgeResultGo');
+    await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'v'.repeat(35));
+    await p.click('#pasteKey');
+    await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+    return p;
+  };
+  // Waits out the countdown: Normal mode, questions first
+  const p = await quickFirst({ __fullWaitMs: 1200, __fullStaggerMs: 300 });
+  await p.waitForSelector('#fullOffer', { timeout: 3000 });
+  expect(/rebuilds the full way in \ds/.test(await p.textContent('#fullOffer')), 'the offer counts down: ' + await p.textContent('#fullOffer'));
+  expect(!p.calls.length, 'nothing sent while it counts down');
+  await p.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
+  expect(p.calls.some((c) => c.intake) && await p.isChecked('#normalMode') && !(await p.$('#fullOffer')), 'rebuilt in Normal with questions first');
+  // Build it now: no wait
+  const q = await quickFirst({ __fullWaitMs: 60000, __fullStaggerMs: 300 });
+  await q.waitForSelector('#fullOffer', { timeout: 3000 }); await q.click('#fullGo');
+  await q.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
+  expect(q.calls.some((c) => c.intake), 'Build it now starts right away');
+  // Not now: nothing happens after the wait
+  const r = await quickFirst({ __fullWaitMs: 800, __fullStaggerMs: 300 });
+  await r.waitForSelector('#fullOffer', { timeout: 3000 }); await r.click('#fullLater');
+  await r.waitForTimeout(1500);
+  expect(!r.calls.length && !(await r.$('#fullOffer')), 'Not now calls it off: ' + r.calls.length);
+  // A key with no quick prompt on screen: no offer
+  const f = await page();
+  await f.click('#keyPanel summary');
+  await f.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'u'.repeat(35));
+  await f.click('#pasteKey');
+  await f.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await f.waitForTimeout(300);
+  expect(!(await f.$('#fullOffer')), 'no offer without a quick prompt');
+  expect(![p, q, r, f].some((x) => x.errors.length), 'page errors: ' + [p, q, r, f].flatMap((x) => x.errors).join('; '));
+});
+
+await check('key catcher: Get my free key is the highlighted step until you come back from AI Studio, then Paste my key takes over; iPhone says to tap Safari\'s Paste bubble (Test lab, v2.1.25)', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  expect(await p.$('#getKey.lead') && !(await p.$('#pasteKey.lead')), 'Get my free key leads first');
+  const bg = await p.$eval('#getKey', (a) => getComputedStyle(a).backgroundColor), pbg = await p.$eval('#pasteKey', (b) => getComputedStyle(b).backgroundColor);
+  expect(bg !== pbg, 'the two steps look different: ' + bg + ' vs ' + pbg);
+  await p.evaluate(() => { navigator.clipboard.readText = () => Promise.reject(new Error('NotAllowedError')); });
+  await backFromStudio(p);
+  await p.waitForSelector('#pasteKey.lead', { timeout: 3000 });
+  expect(!(await p.$('#getKey.lead')), 'after AI Studio, Paste my key leads');
+  expect(!/Paste bubble Safari/.test(await p.textContent('#pasteHint')), 'no Safari line off iPhone');
+  const i = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await i.click('#keyPanel summary');
+  expect(/tap Paste on the bubble Safari shows/.test(await i.textContent('#pasteHint')), 'iPhone says the bubble needs a tap: ' + await i.textContent('#pasteHint'));
+  expect(!p.errors.length && !i.errors.length, 'page errors: ' + p.errors.concat(i.errors).join('; '));
+});
+
+await check('key catcher: Remember my key glows first and the full-version card comes 3 seconds later, or right when Remember is ticked (Test lab, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [{ question: 'Who is coming?', choices: ['Friends', 'Family'] }] };
+  const start = async (hooks, keepOn) => {
+    const p = await page({ intake, hooks });
+    await p.fill('#thoughts', 'ok so um my coworker Jess wants to start a little book club at work, like 6 people, help us get it going');
+    await p.click('#build'); await done(p);
+    await p.click('#keyNudgeResultGo');
+    if (keepOn) await p.check('#remember');
+    await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 't'.repeat(35));
+    await p.click('#pasteKey');
+    await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+    return p;
+  };
+  // Remember off: the halo shows alone, the card waits its turn
+  const p = await start({ __fullStaggerMs: 1500, __fullWaitMs: 60000 });
+  await p.waitForSelector('label.check.keep-halo', { timeout: 2000 });
+  expect(!(await p.$('#fullOffer')), 'the card waits while Remember glows');
+  await p.waitForSelector('#fullOffer', { timeout: 4000 });
+  // Ticking Remember brings the card right away
+  const q = await start({ __fullStaggerMs: 60000, __fullWaitMs: 60000 });
+  await q.waitForSelector('label.check.keep-halo', { timeout: 2000 });
+  await q.check('#remember');
+  await q.waitForSelector('#fullOffer', { timeout: 1500 });
+  expect(!(await q.$('label.check.keep-halo')), 'halo gone, card up');
+  // Remember already on: no halo, the card comes right away
+  const r = await start({ __fullStaggerMs: 60000, __fullWaitMs: 60000 }, true);
+  await r.waitForSelector('#fullOffer', { timeout: 1500 });
+  expect(!(await r.$('label.check.keep-halo')), 'no halo when Remember is already on');
+  expect(![p, q, r].some((x) => x.errors.length), 'page errors: ' + [p, q, r].flatMap((x) => x.errors).join('; '));
 });
 
 await check('full flow: Lite asks, Flash writes, answers and category shown', async () => {
@@ -559,6 +754,112 @@ await check('grader: never the model that wrote the prompt, so Quick mode prompt
   const w2 = q.calls.filter(c => !c.intake).pop().model, g2 = q.grades[0] && q.grades[0].model;
   expect(!/lite/.test(w2) && /lite/.test(g2), `Normal: written by ${w2}, graded by ${g2}`);
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+/* v2.1.25: Gemma dropped (it never answered inside 30s on a real free key). Flash-Lite grades and
+   lists facts, the other Flash-Lite grades a Quick prompt, and grading never spends a Flash write.
+   The key below still lists Gemma models, to prove the page ignores them. */
+const TWO_LITES = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
+const GAME_NIGHT = 'ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who have never played anything';
+const allCalls = (p) => p.calls.concat(p.grades, p.ledgers || [], p.repairs, p.fixes, p.standins || []);
+
+await check('model routing: Gemma on the key is never used, Flash-Lite grades and lists facts, and the key message has no Gemma line (v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ models: TWO_LITES, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.click('#checkKey');
+  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus').textContent), null, { timeout: 8000 });
+  expect(!/Gemma|gemma/.test(await p.textContent('#keyStatus')), 'no Gemma in the key message: ' + await p.textContent('#keyStatus'));
+  await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  expect(!allCalls(p).some((c) => /gemma/.test(c.model)), 'Gemma never called: ' + [...new Set(allCalls(p).map((c) => c.model))].join());
+  const w = p.calls.filter((c) => !c.intake).pop();
+  expect(/flash/.test(w.model) && !/lite/.test(w.model), 'Flash still writes: ' + w.model);
+  expect(p.grades.length && p.grades.every((g) => /lite/.test(g.model) && g.json), 'Flash-Lite grades with the JSON switch: ' + p.grades.map((g) => g.model).join());
+  expect(p.ledgers && /lite/.test(p.ledgers[0].model), 'Flash-Lite lists the facts: ' + (p.ledgers || []).map((c) => c.model).join());
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Test lab fixes 11/06 (v2.1.25): one check per broken item. */
+await check('model routing: full prompts left counts only Flash writes, and every Flash-Lite shows on the usage list (Test lab #2, v2.1.25)', async () => {
+  const p = await page({ models: TWO_LITES });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  const before = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(before) && !/4560|4,560|3060/.test(before), 'before Check key: ' + before);
+  await withKey(p); await p.click('#checkKey');
+  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus').textContent), null, { timeout: 8000 });
+  await p.waitForTimeout(300);
+  const after = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(after), 'after Check key: ' + after);
+  const usage = await p.textContent('#usage');
+  expect(/gemini-3\.5-flash-lite/.test(usage) && /gemini-3\.1-flash-lite[\s\S]*?grades prompts/.test(usage) && !/gemma/.test(usage), 'both Flash-Lites show, the second one grades, no Gemma: ' + usage.slice(0, 600));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('model routing: the grade note and Step by step say who graded and any hand-off, and grading never spends a Flash write (Test lab #3, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ models: TWO_LITES, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  const note = await p.textContent('#gradeNote');
+  expect(/graded by Flash-Lite 3\.5-flash-lite/.test(note) && !/hand-off/.test(note), 'grade note names the grader: ' + note);
+  await p.click('#resultTrack .tsdetail summary');
+  const who = await p.$$eval('#resultTrack .ts-row', (l) => l.map((x) => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-who').textContent));
+  expect(who.some((x) => /^Grade \| Flash-Lite/.test(x)) && who.some((x) => /^Fact ledger \| Flash-Lite/.test(x)), 'rows name who did it: ' + who.join(' / '));
+  // The first Flash-Lite busy: the other one grades, and the note says what happened
+  const q = await page({ models: TWO_LITES, intake, failAny: { 'gemini-3.5-flash-lite': 503 } });
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', GAME_NIGHT); await q.click('#build'); await done(q);
+  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  const qn = await q.textContent('#gradeNote');
+  expect(/graded by Flash-Lite 3\.1-flash-lite/.test(qn) && /hand-off: 3\.5-flash-lite was unavailable/.test(qn), 'note says the other Flash-Lite took it and why: ' + qn);
+  expect(/more tried, no answer \(\d+ busy\)/.test(await q.textContent('#usage')), 'usage shows the tries that missed');
+  // Both Flash-Lites busy: no Flash grade, the row says nobody answered, the prompt still shows
+  const r = await page({ models: TWO_LITES, intake, failAny: { 'gemini-3.5-flash-lite': 503, 'gemini-3.1-flash-lite': 503 } });
+  await r.click('#moreOpts summary'); await r.check('#statsToggle');
+  await withKey(r); await r.fill('#thoughts', GAME_NIGHT); await r.click('#build'); await done(r);
+  await r.click('#resultTrack .tsdetail summary');
+  await r.waitForFunction(() => { const x = [...document.querySelectorAll('#resultTrack .ts-row')].find((e) => e.querySelector('b').textContent === 'Grade'); return x && /No grader answered/.test(x.querySelector('.tsr-who').textContent); }, null, { timeout: 15000 });
+  expect(!r.grades.length && await r.inputValue('#output'), 'no Flash grade, prompt still there: ' + r.grades.map((g) => g.model).join());
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('model routing: the grader bench names the grader on every case and how many are far from the key (Test lab #4, v2.1.25)', async () => {
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); return c ? { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke } : null; };
+  const p = await page({ models: TWO_LITES, gradeFn });
+  await devOn(p); await withKey(p); await p.click('#moreOpts summary');
+  await p.click('#benchRun');
+  await p.waitForSelector('#benchOut:not([hidden])', { timeout: 30000 });
+  const n = bench.cases.length, who = await p.textContent('.benchwho');
+  expect(new RegExp('Graded by: 3\\.5-flash-lite ' + n + ' · 0 of ' + n + ' more than half a point off the key').test(who), 'summary says who graded: ' + who);
+  const rows = await p.$$eval('.benchout tbody tr', (r) => r.map((x) => x.textContent));
+  expect(rows.length === n && rows.every((r) => /3\.5-flash-lite/.test(r)), 'every row names its grader: ' + rows.slice(0, 2).join(' / '));
+  expect(p.grades.every((g) => /lite/.test(g.model)), 'bench grades on Flash-Lite only: ' + [...new Set(p.grades.map((g) => g.model))].join());
+  await p.click('#benchCopy'); await p.waitForTimeout(200);
+  const t = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/Graded by: 3\.5-flash-lite/.test(t) && / on 3\.5-flash-lite · missing/.test(t), 'copy for Claude carries the grader: ' + t.slice(0, 300));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('model routing: Quick mode is graded by the other Flash-Lite, and a grade past the Check updates its Step by step row (Test lab #5, v2.1.25)', async () => {
+  const p = await page({ models: TWO_LITES, gradeDelay: 1500, hooks: { __checkMaxMs: 400 } });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.check('#quickMode');
+  await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  const w = p.calls.filter((c) => !c.intake).pop();
+  expect(w.model === 'gemini-3.5-flash-lite', 'the first Flash-Lite writes Quick: ' + w.model);
+  await p.click('#resultTrack .tsdetail summary');
+  const grade = async () => p.$eval('#resultTrack', (t) => { const r = [...t.querySelectorAll('.ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r ? r.querySelector('.tsr-who').textContent + ' | ' + r.querySelector('.tsr-what').textContent : ''; });
+  const early = await grade();
+  expect(/still grading\. This row updates when it lands/.test(early), 'past the Check it says it will update: ' + early);
+  await p.waitForFunction(() => { const r = [...document.querySelectorAll('#resultTrack .ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r && /^Scored/.test(r.querySelector('.tsr-what').textContent); }, null, { timeout: 8000 });
+  const late = await grade();
+  expect(/^Flash-Lite/.test(late) && /Scored 4\.0/.test(late), 'the row now names the grader and the score: ' + late);
+  expect(await p.isVisible('#resultTrack .tsdetail ol'), 'Step by step stays open while it updates');
+  expect(p.grades.length && p.grades.every((g) => g.model === 'gemini-3.1-flash-lite'), 'the other Flash-Lite grades, never the writer or Flash: ' + p.grades.map((g) => g.model).join());
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('model switching: Flash-Lite never writes a Normal prompt on its own before 3:00, a tap on Switch to quick uses it, and used-up Flash offers only the quick model (#35)', async () => {
@@ -2517,10 +2818,29 @@ async function reworkPage(opts) {
 }
 const RAW_BAKE = 'plan a bake sale for the robotics club, friday, gym lobby';
 const round2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT with a $40 budget' : 'First prompt');
-await check('rework: round 2 puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
+/* #2 (idea mvu5g66pdbqo): Rework builds round 2 right away, no second Build tap. */
+await check('rework: tapping Rework builds round 2 right away from the weak line and the prompt, with no Build tap and no new questions', async () => {
+  const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const quick2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT, sharper this time' : 'First prompt');
+  const p = await reworkPage({ writeFn: quick2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
+  expect(await p.isVisible('#reworkEditBtn'), 'Edit first should sit next to Rework');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#reworkBtn');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT, sharper this time', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && /EDITED PROMPT:[\s\S]*What was weak: It reads like your words rearranged[\s\S]*First prompt/.test(w.text) && w.text.includes(RAW_BAKE), 'round 2 should write from the weak line, the prompt, and your first words');
+  expect(!/What I changed when reworking/.test(w.text), 'nothing was edited, so no edits should be counted as yours');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'round 2 asks no new questions');
+  expect(/Round 2/.test(await p.textContent('#madeBy')), 'the card should say Round 2: ' + await p.textContent('#madeBy'));
+  await p.waitForSelector('#roundResult:has-text("2.0 → 5.0")', { timeout: 5000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('rework: Edit first puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
-  await p.click('#reworkBtn');
+  await p.click('#reworkEditBtn');
   await p.waitForSelector('#roundForm');
   const box = await p.inputValue('#thoughts');
   const lines = box.split('\n');
@@ -2551,7 +2871,7 @@ await check('rework: round 2 puts the prompt in the box with one weak line, buil
 await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back and forth with each score, and a new prompt clears them', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   const edited = (await p.inputValue('#thoughts')) + '\nBudget is $40 total.';
   await p.fill('#thoughts', edited);
   await p.click('#build'); await done(p);
@@ -2580,16 +2900,16 @@ await check('rework: Round 1 / Round 2 switcher keeps both rounds, flips back an
 await check('rework: Back to round 1 from the box, and a failed round 2 brings round 1 back and says so', async () => {
   const low = { craft: 3, rearranged: true, invented: false, missing: [] };
   const p = await reworkPage({ grade: low });
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nMake it fun.');
   const draft = await p.inputValue('#thoughts');
   await p.click('#roundBackForm');
   await p.waitForSelector('#roundForm', { state: 'detached' });
   expect(await p.isVisible('#result') && await p.inputValue('#output') === 'First prompt' && await p.inputValue('#thoughts') === RAW_BAKE, 'Back to round 1 should restore the card and the box');
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   expect(await p.inputValue('#thoughts') === draft, 'Rework again should bring back your round 2 edits');
   const q = await reworkPage({ grade: low, failRound2: true });
-  await q.click('#reworkBtn'); await q.waitForSelector('#roundForm');
+  await q.click('#reworkEditBtn'); await q.waitForSelector('#roundForm');
   await q.clock.install();
   await q.click('#build');
   for (let i = 0; i < 130 && !(await q.isVisible('#notice-result:has-text("Taking longer")')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(20); }
@@ -2607,14 +2927,14 @@ await check('rework: up to 3 rounds, Rework from the round you are viewing, max 
   const gradeFn = (ask) => (/ROUND THREE PROMPT/.test(ask) ? g3 : /SECOND ROUND PROMPT/.test(ask) ? g2 : g1);
   const p = await reworkPage({ writeFn, gradeFn });
   // Round 2
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nKeep it friendly.');
   await p.click('#build'); await done(p);
   await p.waitForSelector('#roundResult:has-text("2.0 → 3.6")', { timeout: 5000 });
   expect(await p.inputValue('#output') === 'SECOND ROUND PROMPT', 'round 2 should show');
   // Round 3, reworked from round 1
   await p.click('#round1Result');
-  await p.click('#reworkBtn'); await p.waitForSelector('#roundForm');
+  await p.click('#reworkEditBtn'); await p.waitForSelector('#roundForm');
   expect(/Round 3/.test(await p.textContent('#roundForm')) && /Back to round 1/.test(await p.textContent('#roundBackForm')), 'the box banner should say Round 3, back to round 1');
   await p.fill('#thoughts', (await p.inputValue('#thoughts')) + '\nIt is for my cousin.');
   await p.click('#build'); await done(p);
@@ -2700,18 +3020,29 @@ await check('wake lock: the screen stays awake only while Gemini works, and phon
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
-/* My context (dev tools): reusable background picked per prompt. */
-await check('my context: hidden without dev tools; write, edit, delete, and it survives a reload', async () => {
+/* My context: reusable background picked per prompt. In the main app since v2.1.21 (#4, idea
+   mvxaikmmygq5): shown without dev tools, saved only after Save on this phone is on. */
+await check('my context: shown without dev tools, saves nothing until Save on this phone is on, then write, edit, delete, and it survives a reload', async () => {
   const p = await page();
-  expect(!(await p.$('#contextRow')), 'My context should be hidden without dev tools');
-  await devOn(p);
+  expect(await p.isVisible('#contextRow'), 'My context should show without dev tools');
   await p.click('#contextNew');
+  expect(!(await p.isChecked('#contextKeep')), 'saving should start off');
+  await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
+  await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
+  expect(!(await p.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'nothing should be saved before opting in');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'the piece works for this visit without saving');
+  await p.reload();
+  expect(!(await p.$('#contextRow .ctxchip')), 'unsaved pieces go away on refresh');
+  await p.click('#contextNew');
+  await p.check('#contextKeep');
   await p.fill('#contextEditor .ctxtitle', 'Bean N Bean roasting');
   await p.fill('#contextEditor .ctxtext', 'Two lines, Fancy Diner and Rio Knights. Roast days are Tuesday and Friday.');
   await p.click('#contextEditor button:text-is("Done")');
   await p.reload();
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Bean N Bean roasting")'), 'saved context should come back as a chip');
   await p.click('#contextEdit');
+  expect(await p.isChecked('#contextKeep'), 'Save on this phone should stay on after a reload');
   await p.fill('#contextEditor .ctxtitle', 'Roastery');
   await p.click('#contextEditor button:text-is("Done")');
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
@@ -2720,6 +3051,31 @@ await check('my context: hidden without dev tools; write, edit, delete, and it s
   await p.click('#contextEditor button:text-is("Tap again to delete")');
   await p.reload();
   expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');
+  // Turning saving off deletes what it saved but keeps the pieces for this visit
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'WGU');
+  await p.fill('#contextEditor .ctxtext', 'Taking D522 Python.');
+  expect(!!(await p.evaluate(() => localStorage.getItem('stp-context'))), 'saved while on');
+  await p.uncheck('#contextKeep');
+  expect(!(await p.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'turning it off should delete what it saved');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(await p.isVisible('#contextRow .ctxchip:has-text("WGU")'), 'the piece stays for this visit');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* The 3,800 character cap (#4): a counter on each piece, amber with the overage past it, and the chip says so. */
+await check('my context: each piece shows its size against the 3,800 character cap and says when it went over', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Roast log');
+  await p.fill('#contextEditor .ctxtext', 'x'.repeat(1200));
+  expect(/1,200 \/ 3,800 characters/.test(await p.textContent('#contextEditor .size')), 'counter should read 1,200 / 3,800: ' + await p.textContent('#contextEditor .size'));
+  await p.fill('#contextEditor .ctxtext', 'x'.repeat(4040));
+  const over = await p.textContent('#contextEditor .size');
+  expect(/Over the 3,800 character cap by 240/.test(over), 'should say how far over: ' + over);
+  expect((await p.inputValue('#contextEditor .ctxtext')).length === 4040, 'typing past the cap should not cut anything off');
+  await p.click('#contextEditor button:text-is("Done")');
+  expect(/over 3,800/.test(await p.textContent('#contextRow .ctxchip:has-text("Roast log")')), 'the chip should flag it too');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2750,7 +3106,7 @@ await check('my context: only picked pieces reach the prompt and the writer, not
   const r = await page();
   await r.evaluate(() => localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Roastery', text: 'Roast days are Tuesday and Friday.' }])));
   await r.reload(); await r.fill('#thoughts', 'plan my week'); await r.click('#build'); await done(r);
-  expect(!/MY CONTEXT/.test(await r.inputValue('#output')), 'dev tools off should add no context');
+  expect(!/MY CONTEXT|Tuesday and Friday/.test(await r.inputValue('#output')), 'nothing picked should add no context');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
@@ -2770,6 +3126,28 @@ await check('my context: the question step sees picked context so it can skip wh
   await q.waitForSelector('#qa:not([hidden])');
   intake = q.calls.find(c => c.intake);
   expect(/CONTEXT THE PERSON PICKED[\s\S]*never ask a question it answers[\s\S]*Tuesday and Friday[\s\S]*RAW THOUGHTS:/.test(intake.text), 'picked context should sit before the raw thoughts with the never-ask rule');
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+/* #3 (idea mvu5r9qgmx5v): numbers in picked context are background. Using one is fine, skipping one
+   is fine; only numbers you said for this prompt can be "left out". Before, a roasting context's
+   375, 393, 820 showed as "leaves out" and docked the grade under the bar. */
+await check('my context: numbers in picked context are never "left out" when the writer skips them, but your own are', async () => {
+  const ctx = [{ id: 'a', title: 'Roastery', text: 'Roast to 375 then drop at 393. Batch is 820 g. Costs 3.85 and 3.87 a pound, 63.49 a bag.' }];
+  const p = await page({ intake: { questions: [] }, write: 'Plan my bake sale for Friday at 9:30 in the gym lobby.' });
+  await p.evaluate((c) => localStorage.setItem('stp-context', JSON.stringify(c)), ctx);
+  await devOn(p); await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.click('#contextRow .ctxchip:has-text("Roastery")');
+  await p.fill('#thoughts', 'plan a bake sale friday at 9:30, gym lobby'); await p.click('#build'); await done(p);
+  const warn = await p.evaluate(() => { const el = document.getElementById('numWarn'); return el.hidden ? '' : el.textContent; });
+  expect(!/leaves out/.test(warn) && !/375|393|820|3\.85|63\.49/.test(warn), 'skipped context numbers must not be flagged: ' + warn);
+  const q = await page({ intake: { questions: [] }, write: 'Plan my bake sale for Friday in the gym lobby.' });
+  await q.evaluate((c) => localStorage.setItem('stp-context', JSON.stringify(c)), ctx);
+  await devOn(q); await withKey(q); await q.dispatchEvent('#gkey', 'input');
+  await q.click('#contextRow .ctxchip:has-text("Roastery")');
+  await q.fill('#thoughts', 'plan a bake sale friday at 9:30, gym lobby'); await q.click('#build'); await done(q);
+  const warn2 = await q.evaluate(() => { const el = document.getElementById('numWarn'); return el.hidden ? '' : el.textContent; });
+  expect(/leaves out 9:30/.test(warn2) && !/375|820/.test(warn2), 'a number you said should still be flagged when left out, and only that one: ' + warn2);
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
@@ -2988,6 +3366,43 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
 });
 
 /* Kevin's Test lab report, 10/28: Build under the box, and the dock's Build only once you scroll past it. */
+/* #1 (idea mvu5bffsox6n): once every question is answered or skipped, Write my prompt wears the white halo. */
+await check('next step dock: Write my prompt gets the white halo once every question is answered', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'Who is it for?', choices: ['Kids', 'Adults'] }, { question: 'How long?', choices: ['1 hour', '2 hours'] }] } });
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', 'plan a pumpkin carving night'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  await p.waitForSelector('#qaList .chips button');
+  expect(!(await p.$('#qaGo.ready')), 'no halo while questions are still open');
+  await p.click('#qaList .chips button');
+  await p.waitForFunction(() => document.querySelectorAll('#qaList .chips button').length > 0 && !document.getElementById('qaGo').classList.contains('ready'));
+  await p.waitForTimeout(400);
+  await p.click('#qaList .chips button >> nth=-1');
+  await p.waitForSelector('#qaGo.ready', { timeout: 5000 });
+  const ring = await p.$eval('#qaGo', (b) => getComputedStyle(b).boxShadow);
+  expect(/255, 255, 255/.test(ring), 'the ready button should wear the white halo: ' + ring);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Test lab #1 (11/06): the halo was underwhelming. Now it zooms in with a bounce and the glow breathes twice; Reduce Motion gets a thicker ring and no movement. */
+await check('motion and touch: Write my prompt zooms in and its glow breathes twice when the last question is answered, still with Reduce Motion (Test lab #1, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'Who is it for?', choices: ['Kids', 'Adults'] }] };
+  const run = async (reduced) => {
+    const p = await page({ intake, reduced });
+    await withKey(p); await p.fill('#thoughts', 'plan a pumpkin carving night'); await p.click('#build');
+    await p.waitForSelector('#qaList .chips button');
+    await p.click('#qaList .chips button');
+    await p.waitForSelector('#qaGo.ready', { timeout: 5000 });
+    const st = await p.$eval('#qaGo', (b) => { const c = getComputedStyle(b); return { anim: c.animationName, iter: c.animationIterationCount, ring: c.boxShadow }; });
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    return st;
+  };
+  const m = await run(false);
+  expect(/readyzoom/.test(m.anim) && /readyglow/.test(m.anim) && /2/.test(m.iter), 'zoom plus a glow that breathes twice: ' + JSON.stringify(m));
+  const r = await run(true);
+  expect(!/readyzoom|readyglow/.test(r.anim) && /255, 255, 255\) 0px 0px 0px 5px/.test(r.ring), 'Reduce Motion: no movement, a thicker white ring: ' + JSON.stringify(r));
+});
+
 await check('next step dock: Build my prompt sits under the box, and the dock shows its own only once you scroll past it', async () => {
   const p = await page({ intakeDelay: 1500, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
   await p.setViewportSize({ width: 390, height: 640 });   /* about what Safari leaves on an iPhone */
@@ -3180,6 +3595,24 @@ await check('number check: flags a weekday that doesn\'t match its date, and a y
   await withKey(q); await q.fill('#thoughts', 'maybe saturday the 31st? game night for my cousins'); await q.click('#build'); await done(q);
   expect(await q.$eval('#numWarn', (e) => e.hidden), 'a weekday that matches its date should not be flagged');
   expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
+await check('number check: flags a made-up "today is" weekday, but not one the person said', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Tuesday, so build me a 3 day study plan before my quiz on Friday.' });
+  await p.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(p); await p.fill('#thoughts', 'i need a 3 day study plan for my quiz on friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#numWarn:not([hidden])');
+  const w = await p.textContent('#numWarn');
+  expect(/says today is Tuesday, but today \(October 21\) is a Wednesday/.test(w), 'Heads up should name the made-up weekday: ' + w);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Tuesday, so build me a 3 day study plan before my quiz on Friday.' });
+  await q.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(q); await q.fill('#thoughts', 'today is tuesday, i need a 3 day study plan for my quiz on friday'); await q.click('#build'); await done(q);
+  expect(await q.$eval('#numWarn', (e) => e.hidden), 'a today weekday the person said themselves should not be flagged');
+  const r = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Today is Wednesday, so build me a study plan before my quiz on Friday.' });
+  await r.clock.setFixedTime(new Date('2026-10-21T20:00:00-04:00'));
+  await withKey(r); await r.fill('#thoughts', 'study plan for my quiz on friday'); await r.click('#build'); await done(r);
+  expect(await r.$eval('#numWarn', (e) => e.hidden), 'a today weekday that matches today should not be flagged');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
 await check('writer: keeps hedges and adds no year, weekday, or extra words to a date', async () => {

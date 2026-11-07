@@ -23,7 +23,10 @@
     </div>
     <p class="tip">{g.working ? 'Polishing a few lines…' : 'Tip: ' + g.tip}</p>
     {#if !g.pass && !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
-      <button type="button" class="rwbtn" id="reworkBtn" onclick={() => act('rework')}>🔁 Rework from this prompt</button>
+      <div class="rwrow">
+        <button type="button" class="rwbtn" id="reworkBtn" onclick={() => act('rework')}>🔁 Rework from this prompt</button>
+        <button type="button" class="rwedit" id="reworkEditBtn" onclick={() => act('reworkedit')}>✏️ Edit first</button>
+      </div>
     {/if}
   </div>
 {/if}
@@ -48,5 +51,8 @@
   .low { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
   .low .ic { background: var(--warn); color: var(--surface); }
   .lab, .tip, .score b { color: var(--ink); }
+  /* Rework builds right away (#2); Edit first is the lighter way to change it before it builds. */
+  .rwrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+  .rwedit { min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 0; background: transparent; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
   .rwbtn { justify-self: start; min-height: var(--tap); font-weight: 700; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); }
 </style>

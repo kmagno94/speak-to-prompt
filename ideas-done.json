@@ -24,6 +24,10 @@
     { "id": "mvs5ulj14ain", "commit": "627ed17", "version": "2.1.7", "note": "Build closes the keyboard and scrolls to the cooking ring, reading then writing" },
     { "id": "mvs6n2ke5751", "commit": "627ed17", "version": "2.1.7", "note": "Keyboard coach bar: strength meter and one chip (nudge or top tip) ride on top of the keyboard while typing" },
     { "id": "mvstlpm11m0t", "commit": "a7841ca", "version": "2.1.12", "note": "Your core shapes the prompt (writer works it in) and is no longer tacked onto the end; quick version puts it in the background" },
-    { "id": "mvs7gw8qjjvw", "commit": "61c2a29", "version": "2.1.12", "note": "Round 1 / Round 2 switcher on the card keeps both rounds with their scores; going back mid-edit keeps your round 2 edits" }
+    { "id": "mvs7gw8qjjvw", "commit": "61c2a29", "version": "2.1.12", "note": "Round 1 / Round 2 switcher on the card keeps both rounds with their scores; going back mid-edit keeps your round 2 edits" },
+    { "id": "mvu5bffsox6n", "commit": "91ad7fd", "version": "2.1.21", "note": "Write my prompt in the dock wears the white halo once every question is answered or skipped" },
+    { "id": "mvu5r9qgmx5v", "commit": "c2c5972", "version": "2.1.21", "note": "Number check: numbers from picked My context and Your core count as yours but are never flagged as left out, so they no longer dock the grade" },
+    { "id": "mvu5g66pdbqo", "commit": "5ec8040", "version": "2.1.21", "note": "Rework builds the next round right away from the weak line plus the prompt; Edit first keeps the change-it-in-the-box path" },
+    { "id": "mvxaikmmygq5", "commit": "900ea49", "version": "2.1.21", "note": "My context moved into the main app with opt-in Save on this phone, a 3,800 character counter per piece, and an amber over-the-cap signal on the piece and its chip" }
   ]
 }
