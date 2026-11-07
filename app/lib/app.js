@@ -59,8 +59,7 @@ export function startApp() {
   var TEST_FLAG = "stp-test", TEST_LOG = "stp-test-log", TEST_USAGE = "stp-test-usage";
   /* Free-tier daily request limits from Kevin's AI Studio (Oct 2026). Models not
      listed here show their count without a limit. */
-  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500, "gemini-3.1-flash-lite": 500,
-    "gemma-4-31b-it": 1500, "gemma-4-26b-a4b-it": 1500, "gemma-4-26b-it": 1500 };   /* Gemma 4 (v2.1.22): about 1,500 a day each on the free tier (Nov 2026) */
+  var LIMITS = { "gemini-3.8-flash": 20, "gemini-3.7-flash": 20, "gemini-3.6-flash": 20, "gemini-3.5-flash-lite": 500, "gemini-3.1-flash-lite": 500 };   /* Gemma dropped in v2.1.25 */
   var ASSUMED = { "gemini-3.7-flash": true };
   /* Daily limits: from a Usage Check, else what Google itself said in a limit error
      (learned on this device), else the usual free-tier number. */
@@ -106,7 +105,7 @@ export function startApp() {
       if (i === 0) return "writes full prompts";
       if (i > 0) return "backup " + i + " for full prompts";
       if (plan.intake[0] === m) return "questions and Quick prompts";
-      if ((plan.gemma || []).indexOf(m) !== -1) return "grades prompts and lists your facts";
+      if (/lite/.test(m) && plan.intake.indexOf(m) !== -1) return "grades prompts, lists your facts, backup for questions";
       if (plan.intake.indexOf(m) !== -1) return "backup for questions";
       return "available, not used by the page";
     }
@@ -133,7 +132,7 @@ export function startApp() {
       /* The models the page leans on: 3 Flash models for full prompts, the Flash-Lite that
          handles questions and Quick prompts, and any Gemma that grades (v2.1.22). */
       var names = gemini.plan
-        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.slice(0, 1), gemini.plan.gemma || [])
+        ? gemini.plan.write.filter(function (x) { return !/lite/.test(x); }).concat(gemini.plan.intake.filter(function (x) { return /lite/.test(x); }))   /* every Flash-Lite: they grade too (v2.1.25) */
         : Object.keys(LIMITS);
       if (!gemini.plan && !planLoading) {
         var k = gemini.key || (document.getElementById("gkey").value || "").trim();
@@ -156,8 +155,8 @@ export function startApp() {
         var rest = restInfo(m);
         if (rest && rest.why === "day") s.out = true;
         var used = s.out && lim ? lim : s.calls;
-        /* Full prompts left (v2.1.25): only the Flash models that write Normal prompts count.
-           Gemma's ~1,500 a day grades and lists facts, it never writes, so it stays out (was ~4,560). */
+        /* Full prompts left (v2.1.25): only the Flash models that write Normal prompts count
+           (it summed Gemma's ~1,500 a day in v2.1.22, so it said ~4,560). */
         if (lim && isFlashWriter(m)) fullLeft = (fullLeft || 0) + Math.max(0, lim - used);
         var row = document.createElement("div"); row.className = "m" + (s.out ? " out" : "");
         var b = document.createElement("b"); b.textContent = m;
@@ -937,57 +936,44 @@ export function startApp() {
     var lites = names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest).slice(0, 3));   /* up to 3, so the Flash-Lite crew can spread out (v2.1.20) */
     var all = names(usable.filter(function (m) { return !/lite/.test(m.name); }).sort(byNewest))
       .concat(names(usable.filter(function (m) { return /lite/.test(m.name); }).sort(byNewest)));
-    /* Gemma 4 (v2.1.22): a different model family with a much bigger free allowance
-       (about 1,500 a day each). It never writes your prompt (Flash only, #35); it grades
-       and lists your facts, so those jobs stop eating Flash-Lite's allowance. Biggest first. */
-    var gemmas = names(models.filter(function (m) {
-      var methods = m.supportedGenerationMethods || m.supportedActions || [];
-      var g = /gemma-(\d+)-(\d+)b/.exec(m.name || "");
-      return methods.indexOf("generateContent") !== -1 && g && Number(g[1]) >= 4 && Number(g[2]) >= 20;
-    }).sort(function (a, b) { return gemmaSize(b.name) - gemmaSize(a.name); })).slice(0, 2);
-    return { write: flashes.concat(lites), intake: lites.concat(flashes), gemma: gemmas, all: all.concat(gemmas) };
+    /* Gemma (v2.1.22) is dropped in v2.1.25: on a real free key both Gemma 4 models sat
+       the full 30s without answering, so every grade waited for nothing and then fell
+       to Flash. Flash-Lite has room to spare (about 500 a day per model), so grading and
+       the fact list are back on it. gemma stays an empty list so the routes stay simple. */
+    return { write: flashes.concat(lites), intake: lites.concat(flashes), gemma: [], all: all };
   }
-  function gemmaSize(name) { var g = /gemma-\d+-(\d+)b/.exec(name || ""); return g ? Number(g[1]) : 0; }
   function isGemma(model) { return /gemma/.test(model || ""); }
   function isFlashWriter(model) { return /flash/.test(model || "") && !/lite/.test(model || "") && !isGemma(model); }
-  /* Plain family name for the run log: Gemma, Flash-Lite, or Flash (v2.1.25). */
+  /* Plain family name for the run log: Flash-Lite or Flash (Gemma kept for old logs, v2.1.25). */
   function familyOf(model) { return isGemma(model) ? "Gemma" : /lite/.test(model || "") ? "Flash-Lite" : /flash/.test(model || "") ? "Flash" : ""; }
-  /* Why Gemma didn't do a job it was first in line for, from askGemini's hand-off notes
-     ("gemma-4-26b-a4b-it timed out at 30s"). Empty when Gemma did it or wasn't tried. */
-  function gemmaMiss(model, history) {
-    if (isGemma(model)) return "";
-    var notes = (history || []).filter(function (h) { return /gemma/.test(h); });
-    return notes.join("; ");
+  /* What happened before the model that did the job got it, from askGemini's hand-off notes
+     ("gemini-3.5-flash-lite timed out at 30s"). Empty when the first pick did it. */
+  function handoffs(model, history) {
+    return (history || []).join("; ");
   }
-  /* Step by step's "who" line: the family that did the job, plus why Gemma didn't (v2.1.25). */
+  /* Step by step's "who" line: the family that did the job, plus any hand-offs before it (v2.1.25). */
   function crewWho(model, history, fallback) {
     if (!model) return fallback || "";
-    var why = gemmaMiss(model, history).replace(/gemini-/g, "");
-    return familyOf(model) + (why ? " (Gemma missed: " + why + ")" : "");
+    var why = handoffs(model, history).replace(/gemini-/g, "");
+    return familyOf(model) + (why ? " (hand-off: " + why + ")" : "");
   }
 
-  /* ROUTES (v2.1.22): which models do each job, best fit first. One place to change it.
+  /* ROUTES (v2.1.25, Gemma dropped): which models do each job, best fit first. One place to change it.
        read        questions step           Flash-Lite, then Flash         speed, JSON
-       clean/ledger prep crew               ledger: Gemma raced by Flash-Lite after 6s; clean: Flash-Lite
+       clean/ledger prep crew               Flash-Lite crew (ledger: a second Flash-Lite joins after 10s)
        write       Normal and Rework        Flash only (#35)               best writing
        quick       Quick prompts, Polish    Flash-Lite, then Flash         speed
        standin     Check's test run (8s)    Flash-Lite                     has to be fast
-       grade       quality grade + bench    26B Gemma, 31B joins at 12s,   a different family than the writer, big allowance
-                                            then Flash-Lite/Flash (v2.1.25)
-       squeeze     My context too long      Flash-Lite, then Gemma         you're waiting, so fast first
-       labelfix    add a missing label      Flash-Lite, then Gemma
-     The grader is never the model that wrote the prompt. A key without Gemma keeps the old routes. */
+       grade       quality grade + bench    Flash-Lite only, never the writer, never Flash; the other joins at 12s
+       squeeze     My context too long      Flash-Lite                     you're waiting, so fast first
+       labelfix    add a missing label      Flash-Lite, then Flash
+     The grader is never the model that wrote the prompt. */
   function route(job, writer) {
-    var p = gemini.plan || { write: [], intake: [], gemma: [] }, g = p.gemma || [];
+    var p = gemini.plan || { write: [], intake: [] };
     var lites = p.intake.filter(function (m) { return /lite/.test(m); });
-    /* Grade (v2.1.25): the quicker Gemma (26B, only 4B active) first, the bigger 31B joins
-       if it's slow (GRADE_HEDGE_MS), Flash-Lite/Flash only if both Gemmas miss. The 31B first
-       kept missing the 30s Check on real keys, so grades fell to Flash-Lite or ran late. */
-    if (job === "grade") return g.slice().reverse().concat(graderModels(writer)).filter(function (m, i, a) { return m !== writer && a.indexOf(m) === i; });
-    /* The smaller, quicker Gemma first; if it's slow, Flash-Lite races it (hedge), the bigger Gemma is last. */
-    if (job === "ledger") return g.length ? [g[g.length - 1]].concat(liteCrew(2), g.slice(0, g.length - 1)) : liteCrew(2);
-    if (job === "squeeze") return lites.slice(0, 1).concat(g, lites.slice(1));
-    if (job === "labelfix") return p.intake.concat(g);
+    if (job === "grade") return graderModels(writer).filter(function (m, i, a) { return m !== writer && a.indexOf(m) === i; });
+    if (job === "ledger") return liteCrew(2);
+    if (job === "squeeze") return lites;
     return p.intake;
   }
 
@@ -1558,10 +1544,8 @@ export function startApp() {
             done++; info.textContent = "Grading " + done + " of " + cases.length + " with " + label + "...";
           });
         }
-        /* Four at a time, so a free key's per-minute limit isn't hit all at once. With Gemma
-           grading, two at a time (v2.1.25): Gemma's per-minute limit is tighter, and a full one
-           quietly sent cases to Flash-Lite. */
-        var chain = Promise.resolve(), step = gemini.plan && (gemini.plan.gemma || []).length ? 2 : 4;
+        /* Four at a time, so a free key's per-minute limit isn't hit all at once. */
+        var chain = Promise.resolve(), step = 4;
         for (var i = 0; i < cases.length; i += step) (function (start) {
           chain = chain.then(function () { return Promise.all(cases.slice(start, start + step).map(function (c, k) { return one(c, start + k); })); });
         })(i);
@@ -1582,13 +1566,11 @@ export function startApp() {
     hist[label] = { pct: pct, gap: Math.round(gap * 100) / 100, at: new Date().toISOString() };
     lsSet(BENCH_KEY, JSON.stringify(hist));
     var sum = label + ": " + agree + " of " + n + " pass/fail agree (" + pct + "%) \u00b7 avg gap " + gap.toFixed(2) + " \u00b7 invented " + inv + "/" + n + " \u00b7 labels exact " + lab + "/" + n;
-    /* Who graded (v2.1.25): a count per model, and Gemma's gap to the key on its own cases. */
+    /* Who graded (v2.1.25): a count per model, and how many cases landed far from the key. */
     var by = {}; ok.forEach(function (o) { var m = String(o.g.model || "?").replace(/^gemini-/, ""); by[m] = (by[m] || 0) + 1; });
-    var gem = ok.filter(function (o) { return isGemma(o.g.model); });
-    var gemGap = gem.length ? gem.reduce(function (t, o) { return t + Math.abs(o.g.craft - o.c.key.score); }, 0) / gem.length : 0;
-    var far = gem.filter(function (o) { return Math.abs(o.g.craft - o.c.key.score) > 0.5; }).length;
+    var far = ok.filter(function (o) { return Math.abs(o.g.craft - o.c.key.score) > 0.5; }).length;
     var whoLine = "Graded by: " + Object.keys(by).map(function (m) { return m + " " + by[m]; }).join(", ") +
-      (gem.length ? " \u00b7 Gemma's avg gap " + gemGap.toFixed(2) + ", " + far + " of " + gem.length + " more than half a point off the key" : " \u00b7 Gemma graded none");
+      " \u00b7 " + far + " of " + n + " more than half a point off the key";
     var rows = out.map(function (o) {
       var k = o.c.key, g = o.g, hold = o.c.holdout ? " class=\"hold\"" : "";
       if (!g) return "<tr" + hold + "><td>" + esc(o.c.id) + "</td><td>" + k.score.toFixed(2) + "</td><td>error</td><td>\u26a0\ufe0f<small>" + esc(o.err) + "</small></td></tr>";
@@ -1599,8 +1581,8 @@ export function startApp() {
       if (g.rearranged !== !!k.rearranged) diff.push("rearranged " + (g.rearranged ? "yes" : "no") + " vs " + (k.rearranged ? "yes" : "no"));
       if (confirmNote(g)) diff.push(confirmNote(g));
       if (g.numCheck) diff.push("number check docked it from " + g.numBefore.toFixed(2));
-      var miss = gemmaMiss(g.model, g.history).replace(/gemini-/g, "");
-      return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "<small>" + esc(String(g.model || "").replace(/^gemini-/, "")) + (miss ? " (Gemma missed: " + esc(miss) + ")" : "") + "</small></td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
+      var miss = handoffs(g.model, g.history).replace(/gemini-/g, "");
+      return "<tr" + hold + "><td>" + esc(o.c.id) + "<small>" + esc(o.c.name) + "</small></td><td>" + k.score.toFixed(2) + "</td><td>" + g.craft.toFixed(2) + "<small>" + esc(String(g.model || "").replace(/^gemini-/, "")) + (miss ? " (hand-off: " + esc(miss) + ")" : "") + "</small></td><td>" + (match ? "\u2705" : "\u274c") + (diff.length ? "<small>" + esc(diff.join("; ")) + "</small>" : "") + "</td></tr>";
     }).join("");
     var el = document.getElementById("benchOut");
     el.innerHTML = "<p class=\"benchsum\">" + esc(sum) + "</p><p class=\"hint benchwho\">" + esc(whoLine) + "</p>" + (prev.length ? "<p class=\"hint\">Last runs: " + esc(prev.join(" \u00b7 ")) + "</p>" : "") +
@@ -2101,7 +2083,7 @@ export function startApp() {
     if (!kw.length) return true;
     return kw.filter(function (w) { return low.indexOf(w) !== -1; }).length / kw.length >= need;
   }
-  var LEDGER_LIMIT = 15000, LEDGER_RACE_MS = 10000;   /* Gemma lists the facts; a Flash-Lite joins if it takes over 10s (6s in v2.1.22 let Flash-Lite win almost every time, v2.1.25) */
+  var LEDGER_LIMIT = 15000, LEDGER_RACE_MS = 10000;   /* Flash-Lite lists the facts (Gemma dropped, v2.1.25); a second Flash-Lite joins if it takes over 10s */
   function startLedger(raw) {
     var order = route("ledger"), mine = session, t0 = Date.now(), timer;
     if (words(raw) < CLEAN_MIN_WORDS || !order.length) { mine.ledger = { status: "skipped" }; return Promise.resolve(); }
@@ -2587,7 +2569,7 @@ export function startApp() {
             rows.push({ name: "Read", who: "Flash-Lite", model: String(session.intakeModel || ""), secs: ms(session.intakeMs), what: q ? "Picked " + plural(q, "question", "questions") + (session.shape && (session.shape.success || session.shape.format) ? ", plus a suggested great result and format" : "") : "Nothing missing, so no questions" + (session.shape && (session.shape.success || session.shape.format) ? "; suggested a great result and format" : "") });
             rows.push({ name: "Clean", who: c.status === "skipped" ? "Skipped" : "Flash-Lite", model: c.model, when: c.status && c.status !== "skipped" ? "alongside Read" : "", secs: ms(c.ms), skip: c.status === "skipped",
               what: c.status === "ok" ? "Filler out, " + words(session.raw) + " to " + c.words + " words, every number kept" : c.status === "kept raw" ? "Used your raw words (the clean version " + (c.why || "didn't pass the check") + ")" : c.status === "skipped" ? "Short note, nothing to clean" : c.status === "failed" ? "Didn't come through, used your raw words" : "Didn't run" });
-            rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : crewWho(l.model, l.history, "Gemma first, Flash-Lite if it's slow"), model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
+            rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : crewWho(l.model, l.history, "Flash-Lite"), model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
               what: l.status === "ok" ? plural(l.items.length, "must-keep item", "must-keep items") + (l.dropped ? " (" + plural(l.dropped, "unbacked item", "unbacked items") + " thrown out)" : "") : l.status === "empty" ? "Nothing it listed was backed by your words" : l.status === "skipped" ? "Short note, nothing to list" : l.status === "failed" ? "Didn't come through, skipped" : "Didn't run" });
             if (session.prepWaitMs >= 500) rows.push({ name: "Prep wait", who: "Waiting", secs: session.prepWaitMs / 1000, what: "Clean or the ledger was still going when you finished, so writing waited for it" });
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
@@ -2599,9 +2581,9 @@ export function startApp() {
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
           if (st) rows.push({ name: "Stand-in AI", who: "Flash-Lite", model: st.model, secs: st.secs,
             what: st.status === "no gaps" ? "Could start right away, no gaps" : st.added ? "Filled " + plural(st.added, "gap", "gaps") + " from what you said" + (st.open.length ? ", " + st.open.length + " left for you" : "") : st.open.length ? plural(st.open.length, "gap", "gaps") + (st.status === "gaps only" ? " found, no time to fill, shown under the prompt" : " you didn't answer, shown under the prompt") : st.status === "slow" ? "Ran out of time, skipped" : "Didn't come through, skipped" });
-          /* Grade (v2.1.25): names who actually graded and, if Gemma missed, why. Still running at
+          /* Grade (v2.1.25): names who actually graded and any hand-offs. Still running at
              Ready? This row updates itself when the grade lands (session.refreshSteps). */
-          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: g ? crewWho(g.model, g.history, "") : session.gradeFailed ? "No grader answered" : "Gemma first, then Flash-Lite or Flash (never the writer)",
+          if (session.checked && testLog.on()) rows.push({ name: "Grade", who: g ? crewWho(g.model, g.history, "") : session.gradeFailed ? "No grader answered" : "Flash-Lite (never the writer, never Flash)",
             model: g ? String(g.model || "") : "", secs: gf ? gf.grade_s : null,
             what: g ? "Scored " + (Math.round(g.craft * 10) / 10).toFixed(1) + (g.pass ? ", passes the bar" : ", under the bar") + (session.labelFix && /added/.test(session.labelFix.status) ? ", then added missing lines" : "")
               : session.gradeFailed ? "Every grader missed this time (" + session.gradeFailed + "), so there's no score. The prompt is fine to use."
@@ -2862,11 +2844,16 @@ export function startApp() {
      work (v2.1.15 fix, 11/04). A Flash-Lite prompt (Quick mode or the quick model after a
      Flash wait) is graded by a Flash model first, then the other Flash-Lite. A Flash prompt
      is graded by Flash-Lite as before. Resting models still go to the back of the line. */
+  /* Graders (v2.1.25): every Flash-Lite but the writer. Flash never grades, so a grade can't
+     spend one of the 20 Flash writes a day. The one exception: a key with a single Flash-Lite
+     that wrote this prompt itself (Quick mode), where only a Flash can grade without the
+     writer grading its own work. */
   function graderModels(writer) {
-    var list = gemini.plan.intake;
-    if (writer && /lite/.test(writer)) list = list.filter(function (m) { return !/lite/.test(m); }).concat(list.filter(function (m) { return /lite/.test(m); }));
-    var others = list.filter(function (m) { return m !== writer; });
-    return others.length ? others : list;
+    var lites = gemini.plan.intake.filter(function (m) { return /lite/.test(m); });
+    var others = lites.filter(function (m) { return m !== writer; });
+    if (others.length) return others;
+    var flashes = gemini.plan.intake.filter(function (m) { return !/lite/.test(m) && m !== writer; });
+    return flashes.length ? flashes.slice(0, 1) : lites;
   }
   function gradeOnce(prompt, raw, answers, today, items, grader, writer) {
     return function () {
@@ -2877,7 +2864,7 @@ export function startApp() {
       });
     };
   }
-  var GRADE_HEDGE_MS = window.__gradeHedgeMs || 12000;   /* v2.1.25: the bigger Gemma joins a slow grade after 12s */
+  var GRADE_HEDGE_MS = window.__gradeHedgeMs || 12000;   /* v2.1.25: the other Flash-Lite joins a slow grade after 12s */
   /* Confirm passes: the grader varies a little run to run, so a borderline prompt
      could pass on one lucky grade. Any grade at or over the bar gets a second look,
      and the lower one wins. Fails need no second look. If the second look doesn't
@@ -2904,7 +2891,7 @@ export function startApp() {
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
         grade_model: String(r.model || "").replace(/gemini-/, "") + " g" + lessons.gv + (lessons.src === "draft" ? " draft " + lessons.id : ""), grade_s: Math.round((Date.now() - t0) / 100) / 10,
-        grade_by: familyOf(r.model), grade_handoff: gemmaMiss(r.model, g.history).replace(/gemini-/g, "") || "none" };
+        grade_by: familyOf(r.model), grade_handoff: handoffs(r.model, g.history).replace(/gemini-/g, "") || "none" };
       if (target) for (var k in fields) if (k !== "grade_by" && k !== "grade_handoff") target[k] = fields[k];   /* those two are for this phone's notes only */
       if (run !== writeRun) return;
       session.grades = [g];
@@ -2943,8 +2930,8 @@ export function startApp() {
     if (g.broke.length) notes.push("broke lesson " + g.broke.join(", "));
     if (g.numCheck) notes.push("docked from " + g.numBefore.toFixed(2) + ": the number check flagged it");
     if (extra) notes.push(extra);
-    /* Graded by something other than Gemma while the key has Gemma: say why (v2.1.25). */
-    var why = fields.grade_handoff && fields.grade_handoff !== "none" ? ", Gemma missed: " + fields.grade_handoff : "";
+    /* The first grader didn't answer: say what happened (v2.1.25). */
+    var why = fields.grade_handoff && fields.grade_handoff !== "none" ? ", hand-off: " + fields.grade_handoff : "";
     return "\ud83c\udfaf Quality check: " + gradeLabel(g.craft) + " \u00b7 " + notes.join(" \u00b7 ") + " (graded by " + (fields.grade_by ? fields.grade_by + " " : "") + fields.grade_model + ", " + fields.grade_s + "s" + (fields.fix_s != null ? " + " + fields.fix_s + "s fix" : "") + why + ")";
   }
   /* Below the bar with a label the app can add (LABEL_FIXES): one small call adds

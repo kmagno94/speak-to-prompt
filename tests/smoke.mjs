@@ -612,114 +612,109 @@ await check('grader: never the model that wrote the prompt, so Quick mode prompt
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
-await check('model routing: Gemma grades and lists facts with no thinking or JSON switch, Flash still writes, and a Gemma that says no hands off (v2.1.22)', async () => {
-  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it', 'gemma-4-e4b-it'];
-  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-  const memo = 'ok so I want to plan a chill bowling night for 8 friends next friday around 7, budget maybe $120 for lanes and food, and my friend Rae can only stay until 9 so we should start on time';
-  const p = await page({ models, intake, ledger: ['bowling night for 8 friends', 'budget maybe $120'] });
-  await p.click('#moreOpts summary'); await p.check('#statsToggle');
-  await withKey(p); await p.fill('#thoughts', memo); await p.click('#build'); await done(p);
-  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
-  const w = p.calls.filter(c => !c.intake).pop();
-  expect(/flash/.test(w.model) && !/lite/.test(w.model), 'Flash still writes: ' + w.model);
-  expect(p.ledgers && p.ledgers[0].model === 'gemma-4-26b-a4b-it', 'facts listed by the smaller Gemma: ' + (p.ledgers || []).map(c => c.model).join());
-  const g = p.grades[0];
-  expect(g && g.model === 'gemma-4-26b-a4b-it' && !g.level && !g.json && /only the JSON object/.test(g.text), 'grade on the quicker Gemma 26B first (v2.1.25), no thinking level, no JSON switch, asked in words: ' + JSON.stringify(g && { m: g.model, l: g.level, j: g.json }));
-  expect(!p.grades.concat(p.ledgers || [], p.calls).some(c => /e4b/.test(c.model)), 'tiny Gemma models are never used');
-  // Gemma 26B turns grades down (400): the 31B grades instead, and the run still finishes
-  const q = await page({ models, intake, failAny: { 'gemma-4-26b-a4b-it': 400 } });
-  await q.click('#moreOpts summary'); await q.check('#statsToggle');
-  await withKey(q); await q.fill('#thoughts', 'plan a chill bowling night'); await q.click('#build'); await done(q);
-  await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
-  expect((q.failed || []).includes('gemma-4-26b-a4b-it') && q.grades[0] && q.grades[0].model === 'gemma-4-31b-it', 'a 400 from Gemma hands the grade to the next model: ' + (q.grades[0] && q.grades[0].model));
-  // No Gemma on the key: grading stays on Flash-Lite, like before
-  const r = await page({ intake });
-  await r.click('#moreOpts summary'); await r.check('#statsToggle');
-  await withKey(r); await r.fill('#thoughts', 'plan a chill bowling night'); await r.click('#build'); await done(r);
-  await r.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
-  expect(r.grades[0] && /lite/.test(r.grades[0].model) && r.grades[0].json, 'no Gemma: Flash-Lite grades with the JSON switch: ' + (r.grades[0] && r.grades[0].model));
-  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
-});
-
-/* v2.1.25 Test lab fixes (11/06): one check per broken item. */
-const GEMMA_MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
+/* v2.1.25: Gemma dropped (it never answered inside 30s on a real free key). Flash-Lite grades and
+   lists facts, the other Flash-Lite grades a Quick prompt, and grading never spends a Flash write.
+   The key below still lists Gemma models, to prove the page ignores them. */
+const TWO_LITES = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const GAME_NIGHT = 'ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who have never played anything';
+const allCalls = (p) => p.calls.concat(p.grades, p.ledgers || [], p.repairs, p.fixes, p.standins || []);
 
-await check('model routing: full prompts left counts only Flash writes, never Gemma or Flash-Lite (Test lab #2, v2.1.25)', async () => {
-  const p = await page({ models: GEMMA_MODELS });
+await check('model routing: Gemma on the key is never used, Flash-Lite grades and lists facts, and the key message has no Gemma line (v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ models: TWO_LITES, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
-  // Before the key is checked: the known models show, still only Flash counts (3 x 20)
-  const before = await p.textContent('#testLogHead');
-  expect(/~60 full prompts left today on Flash/.test(before) && !/4560|4,560|3060/.test(before), 'before Check key: ' + before);
   await withKey(p); await p.click('#checkKey');
-  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus') ? document.getElementById('keyStatus').textContent : document.body.textContent), null, { timeout: 8000 }).catch(() => {});
-  await p.waitForTimeout(300);
-  const after = await p.textContent('#testLogHead');
-  expect(/~60 full prompts left today on Flash/.test(after), 'after Check key, Gemma (1,500 a day) stays out of the count: ' + after);
-  const usage = await p.textContent('#usage');
-  expect(/gemma-4-31b-it/.test(usage) && /1500/.test(usage), 'Gemma still shows on its own usage row: ' + usage.slice(0, 300));
+  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus').textContent), null, { timeout: 8000 });
+  expect(!/Gemma|gemma/.test(await p.textContent('#keyStatus')), 'no Gemma in the key message: ' + await p.textContent('#keyStatus'));
+  await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
+  expect(!allCalls(p).some((c) => /gemma/.test(c.model)), 'Gemma never called: ' + [...new Set(allCalls(p).map((c) => c.model))].join());
+  const w = p.calls.filter((c) => !c.intake).pop();
+  expect(/flash/.test(w.model) && !/lite/.test(w.model), 'Flash still writes: ' + w.model);
+  expect(p.grades.length && p.grades.every((g) => /lite/.test(g.model) && g.json), 'Flash-Lite grades with the JSON switch: ' + p.grades.map((g) => g.model).join());
+  expect(p.ledgers && /lite/.test(p.ledgers[0].model), 'Flash-Lite lists the facts: ' + (p.ledgers || []).map((c) => c.model).join());
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('model routing: a Normal run says Gemma graded and listed facts, by name, in the grade note and Step by step (Test lab #3, v2.1.25)', async () => {
+/* Test lab fixes 11/06 (v2.1.25): one check per broken item. */
+await check('model routing: full prompts left counts only Flash writes, and every Flash-Lite shows on the usage list (Test lab #2, v2.1.25)', async () => {
+  const p = await page({ models: TWO_LITES });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  const before = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(before) && !/4560|4,560|3060/.test(before), 'before Check key: ' + before);
+  await withKey(p); await p.click('#checkKey');
+  await p.waitForFunction(() => /Key works/.test(document.getElementById('keyStatus').textContent), null, { timeout: 8000 });
+  await p.waitForTimeout(300);
+  const after = await p.textContent('#testLogHead');
+  expect(/~60 full prompts left today on Flash/.test(after), 'after Check key: ' + after);
+  const usage = await p.textContent('#usage');
+  expect(/gemini-3\.5-flash-lite/.test(usage) && /gemini-3\.1-flash-lite[\s\S]*?grades prompts/.test(usage) && !/gemma/.test(usage), 'both Flash-Lites show, the second one grades, no Gemma: ' + usage.slice(0, 600));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('model routing: the grade note and Step by step say who graded and any hand-off, and grading never spends a Flash write (Test lab #3, v2.1.25)', async () => {
   const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-  const p = await page({ models: GEMMA_MODELS, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
+  const p = await page({ models: TWO_LITES, intake, ledger: ['game night for 10 people', 'budget is like $90'] });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
   await p.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
   const note = await p.textContent('#gradeNote');
-  expect(/graded by Gemma gemma-4-26b-a4b-it/.test(note) && !/Gemma missed/.test(note), 'grade note names the Gemma grader: ' + note);
+  expect(/graded by Flash-Lite 3\.5-flash-lite/.test(note) && !/hand-off/.test(note), 'grade note names the grader: ' + note);
   await p.click('#resultTrack .tsdetail summary');
   const who = await p.$$eval('#resultTrack .ts-row', (l) => l.map((x) => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-who').textContent));
-  expect(who.some((x) => /^Grade \| Gemma/.test(x)) && who.some((x) => /^Fact ledger \| Gemma/.test(x)), 'rows name who did it: ' + who.join(' / '));
-  const usage = await p.textContent('#usage');
-  expect(/gemma-4-26b-a4b-it[\s\S]*?[1-9]\d* requests? counted/.test(usage), 'Gemma shows requests on its usage row: ' + usage.slice(0, 500));
-  // Both Gemmas busy: Flash-Lite grades, and the note and the usage list say Gemma missed
-  const q = await page({ models: GEMMA_MODELS, intake, failAny: { 'gemma-4-26b-a4b-it': 503, 'gemma-4-31b-it': 503 } });
+  expect(who.some((x) => /^Grade \| Flash-Lite/.test(x)) && who.some((x) => /^Fact ledger \| Flash-Lite/.test(x)), 'rows name who did it: ' + who.join(' / '));
+  // The first Flash-Lite busy: the other one grades, and the note says what happened
+  const q = await page({ models: TWO_LITES, intake, failAny: { 'gemini-3.5-flash-lite': 503 } });
   await q.click('#moreOpts summary'); await q.check('#statsToggle');
   await withKey(q); await q.fill('#thoughts', GAME_NIGHT); await q.click('#build'); await done(q);
   await q.waitForSelector('#gradeNote:not([hidden])', { timeout: 8000 });
   const qn = await q.textContent('#gradeNote');
-  expect(/graded by Flash-Lite/.test(qn) && /Gemma missed: gemma-4-26b-a4b-it was unavailable/.test(qn), 'note says Gemma missed and why: ' + qn);
-  const qu = await q.textContent('#usage');
-  expect(/more tried, no answer \(\d+ busy\)/.test(qu), 'usage shows the Gemma tries that missed: ' + qu.slice(0, 600));
-  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+  expect(/graded by Flash-Lite 3\.1-flash-lite/.test(qn) && /hand-off: 3\.5-flash-lite was unavailable/.test(qn), 'note says the other Flash-Lite took it and why: ' + qn);
+  expect(/more tried, no answer \(\d+ busy\)/.test(await q.textContent('#usage')), 'usage shows the tries that missed');
+  // Both Flash-Lites busy: no Flash grade, the row says nobody answered, the prompt still shows
+  const r = await page({ models: TWO_LITES, intake, failAny: { 'gemini-3.5-flash-lite': 503, 'gemini-3.1-flash-lite': 503 } });
+  await r.click('#moreOpts summary'); await r.check('#statsToggle');
+  await withKey(r); await r.fill('#thoughts', GAME_NIGHT); await r.click('#build'); await done(r);
+  await r.click('#resultTrack .tsdetail summary');
+  await r.waitForFunction(() => { const x = [...document.querySelectorAll('#resultTrack .ts-row')].find((e) => e.querySelector('b').textContent === 'Grade'); return x && /No grader answered/.test(x.querySelector('.tsr-who').textContent); }, null, { timeout: 15000 });
+  expect(!r.grades.length && await r.inputValue('#output'), 'no Flash grade, prompt still there: ' + r.grades.map((g) => g.model).join());
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
 });
 
-await check('model routing: the grader bench shows which model graded every case and Gemma\'s gap to the key (Test lab #4, v2.1.25)', async () => {
+await check('model routing: the grader bench names the grader on every case and how many are far from the key (Test lab #4, v2.1.25)', async () => {
   const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
   const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); return c ? { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke } : null; };
-  const p = await page({ models: GEMMA_MODELS, gradeFn });
+  const p = await page({ models: TWO_LITES, gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
   await p.waitForSelector('#benchOut:not([hidden])', { timeout: 30000 });
   const n = bench.cases.length, who = await p.textContent('.benchwho');
-  expect(new RegExp('Graded by: gemma-4-26b-a4b-it ' + n).test(who) && /Gemma's avg gap 0\.00, 0 of \d+ more than half a point off the key/.test(who), 'summary says who graded: ' + who);
+  expect(new RegExp('Graded by: 3\\.5-flash-lite ' + n + ' · 0 of ' + n + ' more than half a point off the key').test(who), 'summary says who graded: ' + who);
   const rows = await p.$$eval('.benchout tbody tr', (r) => r.map((x) => x.textContent));
-  expect(rows.length === n && rows.every((r) => /gemma-4-26b-a4b-it/.test(r)), 'every row names its grader: ' + rows.slice(0, 2).join(' / '));
-  expect(p.grades.every((g) => /gemma/.test(g.model)), 'all bench grades went to Gemma: ' + [...new Set(p.grades.map((g) => g.model))].join());
+  expect(rows.length === n && rows.every((r) => /3\.5-flash-lite/.test(r)), 'every row names its grader: ' + rows.slice(0, 2).join(' / '));
+  expect(p.grades.every((g) => /lite/.test(g.model)), 'bench grades on Flash-Lite only: ' + [...new Set(p.grades.map((g) => g.model))].join());
   await p.click('#benchCopy'); await p.waitForTimeout(200);
   const t = await p.evaluate(() => navigator.clipboard.readText());
-  expect(/Graded by: gemma-4-26b-a4b-it/.test(t) && / on gemma-4-26b-a4b-it · missing/.test(t), 'copy for Claude carries the grader: ' + t.slice(0, 300));
+  expect(/Graded by: 3\.5-flash-lite/.test(t) && / on 3\.5-flash-lite · missing/.test(t), 'copy for Claude carries the grader: ' + t.slice(0, 300));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('model routing: a Quick mode grade that runs past the Check updates its Step by step row when Gemma lands (Test lab #5, v2.1.25)', async () => {
-  const p = await page({ models: GEMMA_MODELS, gradeDelay: 1500, hooks: { __checkMaxMs: 400 } });
+await check('model routing: Quick mode is graded by the other Flash-Lite, and a grade past the Check updates its Step by step row (Test lab #5, v2.1.25)', async () => {
+  const p = await page({ models: TWO_LITES, gradeDelay: 1500, hooks: { __checkMaxMs: 400 } });
   await p.click('#moreOpts summary'); await p.check('#statsToggle');
   await withKey(p); await p.check('#quickMode');
   await p.fill('#thoughts', GAME_NIGHT); await p.click('#build'); await done(p);
   const w = p.calls.filter((c) => !c.intake).pop();
-  expect(/lite/.test(w.model), 'Flash-Lite writes Quick: ' + w.model);
+  expect(w.model === 'gemini-3.5-flash-lite', 'the first Flash-Lite writes Quick: ' + w.model);
   await p.click('#resultTrack .tsdetail summary');
   const grade = async () => p.$eval('#resultTrack', (t) => { const r = [...t.querySelectorAll('.ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r ? r.querySelector('.tsr-who').textContent + ' | ' + r.querySelector('.tsr-what').textContent : ''; });
   const early = await grade();
   expect(/still grading\. This row updates when it lands/.test(early), 'past the Check it says it will update: ' + early);
   await p.waitForFunction(() => { const r = [...document.querySelectorAll('#resultTrack .ts-row')].find((x) => x.querySelector('b').textContent === 'Grade'); return r && /^Scored/.test(r.querySelector('.tsr-what').textContent); }, null, { timeout: 8000 });
   const late = await grade();
-  expect(/^Gemma/.test(late) && /Scored 4\.0/.test(late), 'the row now names Gemma and the score: ' + late);
+  expect(/^Flash-Lite/.test(late) && /Scored 4\.0/.test(late), 'the row now names the grader and the score: ' + late);
   expect(await p.isVisible('#resultTrack .tsdetail ol'), 'Step by step stays open while it updates');
-  expect(p.grades[0] && /gemma/.test(p.grades[0].model), 'Gemma (not the Flash-Lite writer) graded: ' + (p.grades[0] && p.grades[0].model));
+  expect(p.grades.length && p.grades.every((g) => g.model === 'gemini-3.1-flash-lite'), 'the other Flash-Lite grades, never the writer or Flash: ' + p.grades.map((g) => g.model).join());
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

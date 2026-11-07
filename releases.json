@@ -4,14 +4,14 @@
     {
       "version": "2.1.25",
       "date": "2026-11-06",
-      "title": "Test lab fixes 11/06: bigger halo, honest prompts left, Gemma you can see",
+      "title": "Test lab fixes 11/06: bigger halo, honest prompts left, Gemma dropped, Flash-Lite grades",
       "items": [
         "Write my prompt's halo now zooms in with a small bounce and its glow breathes twice, so the last answer is impossible to miss. Reduce Motion gets a thicker ring and no movement (Test lab #1).",
-        "Run stats' header counts only Flash writes as full prompts left (about 60 a day, not 4,560): Gemma's daily allowance grades and lists facts, it never writes (Test lab #2).",
-        "Grading starts on the quicker Gemma (26B, only 4B active) and the 31B joins after 12 seconds; Flash-Lite or Flash only grade when both Gemmas miss. On real keys the 31B first kept missing the 30 second Check, so grades fell to Flash-Lite or ran late (Test lab #3, #5).",
-        "The fact list gives Gemma 10 seconds before a Flash-Lite joins (was 6, which Flash-Lite won almost every time).",
-        "You can see Gemma now: the grade note says graded by Gemma (or Flash-Lite, plus why Gemma missed), Step by step names who did the ledger and the grade, and the usage list counts requests that never answered (timed out, busy, slower than a backup) (Test lab #3).",
-        "The grader bench names the grader on every case, says how many Gemma graded and its average gap to Claude's key, and runs two at a time when Gemma grades so its per-minute limit doesn't send cases to Flash-Lite (Test lab #4).",
+        "Run stats' header counts only Flash writes as full prompts left (about 60 a day, not 4,560, which had Gemma's allowance added in) (Test lab #2).",
+        "Gemma is dropped: on a real free key both Gemma 4 models sat the full 30 seconds without answering, so every grade waited for nothing and then landed on Flash, spending a Flash write. Grading and the fact list are back on Flash-Lite, which has room for 125+ builds a day (Test lab #3, #4, #5).",
+        "Grading never uses Flash: a Flash-Lite grades Normal prompts, and the other Flash-Lite grades Quick prompts, so no model grades its own words. A slow Flash-Lite gets the other one alongside after 12 seconds. Only a key with a single Flash-Lite falls back to one Flash for a Quick grade.",
+        "The usage list shows every Flash-Lite on the key with its job, and counts requests that never answered (timed out, busy, slower than a backup).",
+        "The grade note and Step by step say who graded and any hand-off before it. The grader bench names the grader on every case and how many cases land more than half a point from Claude's key.",
         "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5)."
       ],
       "checks": [
@@ -21,21 +21,21 @@
           "paste": "ok so um I wanna do a pumpkin carving night for like my cousins and their kids, maybe a Saturday, not sure how many people yet, we need snacks and some kind of contest I guess, help me plan it"
         },
         {
-          "say": "Turn on Show run stats, open the key panel and tap Check key, then look at the Run stats header.",
-          "see": "It says about 60 full prompts left today on Flash (fewer if you used some), not thousands. The usage list still shows the Gemma models with about 1,500 a day each."
+          "say": "Turn on Show run stats, open the key panel and tap Check key, then look at the Run stats header and the usage list.",
+          "see": "The header says about 60 full prompts left today on Flash. The key message has no Gemma line. The usage list shows both Flash-Lite models, the second one labeled grades prompts."
         },
         {
-          "say": "With run stats on and Normal mode, paste the note below, build, and answer or skip the questions. Then open Step by step under the timer.",
-          "see": "The grade note says graded by Gemma gemma-4-26b-a4b-it (or graded by Flash-Lite plus Gemma missed: and why). The Grade and Fact ledger rows say Gemma or say why not. The usage list shows Gemma requests, plus any tries that never answered.",
-          "paste": "ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who've never played anything, oh and two people are coming late from work"
+          "say": "With run stats on and Normal mode, paste the note below, build, answer or skip the questions, then open Step by step.",
+          "see": "The grade note says graded by Flash-Lite with its model. The Grade and Fact ledger rows say Flash-Lite. The Grade row's time is a few seconds, not 30 or more, and no Flash model graded.",
+          "paste": "okay so um my friend Priya and I want to do a dumpling folding night at my place, like 8 people, sunday the 15th at maybe 5, budget around $70 for ingredients, two people are vegetarian and one guy is coming late from his shift"
         },
         {
           "say": "In dev tools, run the grader bench.",
-          "see": "A Graded by line under the summary (like gemma-4-26b-a4b-it 9) with Gemma's average gap to Claude's key and how many cases are more than half a point off. Each row names its grader. Tap Copy for Claude and send it to me before promoting."
+          "see": "A Graded by line under the summary names the Flash-Lite and how many cases are more than half a point off Claude's key. Each row names its grader. Tap Copy for Claude and send it to Claude before promoting."
         },
         {
-          "say": "Build the same game night note in Quick mode with run stats on, then open Step by step.",
-          "see": "Flash-Lite writes it. The Grade row names Gemma with a score. If it says still grading, wait a few seconds: the row fills in by itself without closing."
+          "say": "Build the same dumpling note in Quick mode with run stats on, then open Step by step.",
+          "see": "One Flash-Lite writes it and the other Flash-Lite grades it (the Grade row names it with a score). If it says still grading, wait a few seconds: the row fills in by itself without closing."
         }
       ]
     },
@@ -113,21 +113,8 @@
       ],
       "checks": [
         {
-          "say": "Turn on Show run stats, open the key panel and tap Check key.",
-          "see": "The key message names the Flash writer, the Flash-Lite for questions, and ends with \"Grading and fact lists on\" plus the Gemma models. The usage list shows the Gemma models with about 1,500 a day."
-        },
-        {
-          "say": "With run stats on and Normal mode, paste the note below, tap Build my prompt, and answer or skip the questions.",
-          "see": "The prompt finishes as usual. The grade note names a Gemma model (gemma-4-31b-it), not the writer. In the run log, the Grade row says Gemma first, and the ledger ran on gemma-4-26b (or a Flash-Lite if Gemma was slow).",
-          "paste": "ok so um my buddy Marco and I are throwing a game night at his place, maybe like 10 people, saturday the 21st around 6 I think, budget is like $90 for snacks and we need a couple games that work for people who've never played anything, oh and two people are coming late from work"
-        },
-        {
-          "say": "In dev tools, run the grader bench.",
-          "see": "Every case gets graded by Gemma. Compare each grade to Claude's answer key: if Gemma lands far from the key (more than about half a point on several cases), tell Claude before promoting."
-        },
-        {
-          "say": "Build the same note in Quick mode.",
-          "see": "Flash-Lite writes it fast, and Gemma (not Flash-Lite) grades it."
+          "say": "Gemma was dropped in v2.1.25, so this build's Gemma checks are replaced. Turn on Show run stats, open the key panel and tap Check key.",
+          "see": "The key message names the Flash writer and the Flash-Lite for questions, with no Gemma line. The v2.1.25 checks cover grading."
         }
       ]
     },
