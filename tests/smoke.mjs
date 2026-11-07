@@ -170,7 +170,8 @@ async function pickChip(p, text) {
   }
   throw new Error('option not found: ' + text);
 }
-async function withKey(p) { await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
+/* Opens the key panel only if it's closed: tapping Normal with no key opens it already (v2.1.23). */
+async function withKey(p) { if (!(await p.evaluate(() => document.getElementById('keyPanel').open))) await p.click('#keyPanel summary'); await p.fill('#gkey', 'FAKE'); }
 async function done(p) { await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 15000 }); }
 
 await check('quick version works with no key', async () => {
@@ -178,6 +179,52 @@ await check('quick version works with no key', async () => {
   await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
   const out = await p.inputValue('#output');
   expect(/MY RAW THOUGHTS/.test(out) && /help me plan a 5k/.test(out), 'quick prompt missing raw thoughts');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('key nudge: Quick mode line and result card point to the key panel, then hide once a key exists (v2.1.23)', async () => {
+  const p = await page();
+  expect(await p.isVisible('#keyNudge'), 'no-key visitors should see the Quick mode key line under Build');
+  expect(!(await p.isVisible('#keyNudgeResult')), 'the result nudge waits for a result');
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#keyNudgeResult'), 'a quick result should show the unlock card');
+  expect(/^Quick version\.$/.test((await p.textContent('#madeBy')).trim()), 'madeBy should not repeat the key pitch: ' + await p.textContent('#madeBy'));
+  await p.click('#keyNudgeResultGo');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  await p.fill('#gkey', 'FAKE');
+  await p.waitForFunction(() => !document.getElementById('keyNudge') && !document.getElementById('keyNudgeResult'), null, { timeout: 3000 });
+  await p.click('#removeKey');
+  await p.waitForSelector('#keyNudge', { timeout: 3000 });
+  await p.click('#keyNudgeLater');
+  await p.waitForFunction(() => !document.getElementById('keyNudge'), null, { timeout: 3000 });
+  expect(await p.evaluate(() => !Object.keys(localStorage).some(k => /nudge/i.test(k))), 'Not now must not save anything');
+  await p.reload();
+  expect(await p.isVisible('#keyNudge'), 'Not now lasts for this tab only');
+  await p.click('#keyNudgeGo');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
+  const p = await page();
+  await p.click('#normalMode');
+  await p.waitForFunction(() => document.getElementById('keyPanel').open, null, { timeout: 3000 });
+  expect(await p.isVisible('#getKey') && await p.isVisible('#pasteKey'), 'the two big key steps should lead the panel');
+  expect(/aistudio\.google\.com\/apikey/.test(await p.getAttribute('#getKey', 'href')), 'Get my free key goes to AI Studio');
+  await p.evaluate(() => navigator.clipboard.writeText('hello there, this is not a key'));
+  await p.click('#pasteKey');
+  await p.waitForSelector('#catchNote');
+  expect(/doesn't look like a Gemini key/.test(await p.textContent('#catchNote')) && !(await p.inputValue('#gkey')), 'a non-key is turned away and never put in the box');
+  expect(!/hello there/.test(await p.content()), 'clipboard text is never shown');
+  const fake = 'AIza' + 'x'.repeat(35);
+  await p.evaluate((k) => navigator.clipboard.writeText('  ' + k + '\n'), fake);
+  await p.click('#pasteKey');
+  await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  expect(await p.inputValue('#gkey') === fake, 'the key lands in the box, trimmed');
+  expect(await p.getAttribute('#keyStatus', 'class') === 'good', 'Check key ran and passed');
+  expect(/Tick Remember my key/.test(await p.textContent('#catchNote')), 'reminds to tick Remember when it is off');
+  expect(!(await p.$('#pasteKey')) && !(await p.$('#keyNudge')), 'the key steps and the nudge hide once the key works');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some(k => /gemini-key/.test(k))), 'nothing saved without Remember');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

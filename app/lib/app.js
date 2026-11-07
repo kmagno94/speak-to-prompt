@@ -361,6 +361,7 @@ export function startApp() {
   }
   function showResult(text, madeBy, title) {
     notify("result");
+    ui.quickResult = false;   /* showQuick turns it back on; KeyNudge reads it */
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
     xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock(), known: sessionKnown() });   /* Prompt X-ray */
@@ -380,8 +381,9 @@ export function startApp() {
   }
   function showQuick(raw, reason) {
     showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */
-      reason ? "Quick version. " + reason : "Quick version. Add a free Gemini key at the bottom to get follow-up questions first.",
+      reason ? "Quick version. " + reason : "Quick version.",   /* the key pitch lives in KeyNudge.svelte now (v2.1.23) */
       "");
+    ui.quickResult = true;
   }
 
 
@@ -1032,6 +1034,7 @@ export function startApp() {
     gemini.key = "";
     gemini.model = ""; gemini.plan = null;
     storeDel();
+    updateKeyState();   /* the Quick mode nudges come back (v2.1.23) */
     setKeyStatus("Key removed from this page and this phone.");
   });
 
@@ -1492,7 +1495,7 @@ export function startApp() {
   function benchRun() {
     var info = document.getElementById("benchInfo"), btn = document.getElementById("benchRun");
     var key = gemini.key || gkey.value.trim();
-    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
     btn.disabled = true;
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
     ready.then(function () { return fetch("bench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("bench.json"); return r.json(); }); })
@@ -1619,7 +1622,7 @@ export function startApp() {
   function flowRun(onlyFailed) {
     var info = document.getElementById("flowInfo"), btn = document.getElementById("flowRun");
     var key = gemini.key || gkey.value.trim();
-    if (!key) { info.textContent = "Add your Gemini key first (top of the page)."; return; }
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
     if (busy) { info.textContent = "Finish the build that's running first."; return; }
     var saved = session, results = [], prior = {}, redone = [];
     if (onlyFailed === true && flowLast && flowLast.results) flowLast.results.forEach(function (r) { prior[r.c.id] = r; });

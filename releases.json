@@ -2,6 +2,46 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.23",
+      "date": "2026-11-06",
+      "title": "Key catcher + key nudges: from Quick to the full version in two taps",
+      "items": [
+        "Key catcher (AGT-15): the key panel now opens with two big steps. Get my free key opens Google AI Studio's key page. Paste my key reads your clipboard (only when you tap it), checks it looks like a Gemini key, puts it in the box, runs Check key, and celebrates.",
+        "Coming back from AI Studio opens the key panel, scrolls to it and pulses Paste my key. The old 4-step list moved under Show me the steps.",
+        "Without a key, a slim line under Build my prompt says you're on Quick mode and offers to unlock follow-up questions. A quick result shows a short card with what a free key would have added. Both open the key panel and disappear once a key works.",
+        "Tapping Normal with no key opens the key panel and goes there, instead of only saying the key is below (Customer Eyes, Nov 06).",
+        "Not now hides the Quick mode line for this tab only. The clipboard text is never shown or saved, and Remember my key stays your choice (the success message reminds you if it's off).",
+        "Remove key now brings the nudges back right away, and two dev tool messages point to the key panel at the bottom instead of the top."
+      ],
+      "checks": [
+        {
+          "say": "On staging with no key (tap Remove key first if you have one), look under Build my prompt.",
+          "see": "A pill line: \"You're on Quick mode. Unlock follow-up questions, free, 1 min →\" with a Not now button beside it."
+        },
+        {
+          "say": "Paste the note below and tap Build my prompt.",
+          "see": "The prompt comes up with \"Quick version.\" and a card under it: \"This was the quick version.\" plus Unlock smarter prompts. Tapping it opens the key panel with 1 Get my free key and 2 📋 Paste my key on top.",
+          "paste": "ok so um my sister Dana wants to start running, she's never done it, she has like 3 mornings a week before work around 6 and she gets bored fast, help her not quit in week two"
+        },
+        {
+          "say": "Tap Get my free key, copy your key in AI Studio, then switch back to the app.",
+          "see": "The key panel is open and in view, Paste my key pulses, and a note says Welcome back."
+        },
+        {
+          "say": "Tap Paste my key (allow Safari's Paste bubble).",
+          "see": "\"Got it. Checking with Google...\" then \"🎉 You're in!\" plus a reminder to tick Remember my key if it's off. The two steps, the Quick mode line and the result card all disappear."
+        },
+        {
+          "say": "Copy any normal sentence, tap Remove key, then tap Paste my key.",
+          "see": "\"That doesn't look like a Gemini key (they start with AIza)...\" The sentence is not shown and the key box stays empty."
+        },
+        {
+          "say": "With no key, tap Normal next to Build my prompt.",
+          "see": "The page jumps to the open key panel."
+        }
+      ]
+    },
+    {
       "version": "2.1.22",
       "date": "2026-11-05",
       "title": "Model routing: each job on its best model, Gemma joins the crew",

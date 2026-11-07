@@ -25,6 +25,8 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 | Follow-up questions | Asked by the AI you paste into | Asked as a short chat on the page: tap an answer, type your own, or skip. Usually 1 to 3, up to 5 for complex requests. Tapped answers are marked as suggested: the page asks you to double-check them, tapping one loads it into the box to say it your way, and the writer treats them as approximate so they can't steer the prompt away from what you said |
 | Result | A guided prompt that clarifies, then answers | One complete prompt your AI can start on right away |
 
+Without a key, a slim line under **Build my prompt** says you're on Quick mode, and a quick result shows a short card with what a free key adds. Both open the key panel, and so does tapping **Normal** with no key. The panel leads with two big steps: **Get my free key** (opens Google AI Studio) and **📋 Paste my key**, which reads your clipboard only on that tap, checks it looks like a Gemini key, runs Check key, and celebrates. Coming back from AI Studio pulses Paste my key. The nudges disappear once a key works. **Not now** hides the line for that tab only; the clipboard text is never shown or saved.
+
 ### Your core (testing)
 
 Hidden unless **More options > Show my dev tools** is on (it turns itself on for a phone that already has a core). The switch also shows Improve this app.

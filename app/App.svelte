@@ -33,6 +33,8 @@
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
+  import KeyNudge from './KeyNudge.svelte';
+  import KeyCatcher from './KeyCatcher.svelte';
   let tutorial;
   /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
   function noShortcut() {
@@ -127,6 +129,7 @@
       <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
+    <KeyNudge place="form" />
     <p class="helpers"><button type="button" class="getlink" id="firstTime" onclick={() => tutorial.open()}>First time? Start here</button></p>
     <div class="tracker" id="buildTrack" hidden>
       <ol aria-label="Progress"><li data-step="prep">Prep</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="finish" hidden>Finish</li></ol>
@@ -157,6 +160,7 @@
       <div class="timestrip" hidden></div>
     </div>
     <p id="madeBy" class="madeby"></p>
+    <KeyNudge place="result" />
     <Notice where="result" />
     <p id="repairNote" class="repairnote" role="status" hidden></p>
     <p id="gapNote" class="repairnote" role="status" hidden></p>
@@ -202,12 +206,16 @@
     <summary>Unlock smarter prompts (free, 1 minute)</summary>
     <div class="keybody">
       <p>A key lets Gemini ask you follow-up questions first, so your prompt starts with the full picture. It's free and takes about a minute:</p>
+      <KeyCatcher />
+      <details class="lock" id="keyStepsHelp">
+      <summary>Show me the steps</summary>
       <ol class="keysteps">
         <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> and sign in with any Google account.</li>
         <li>Tap <b>Create API key</b>. Accept the terms if it asks.</li>
         <li>Copy the key it shows you.</li>
-        <li>Come back, paste it below, tick <b>Remember my key</b>, and tap <b>Check key</b>.</li>
+        <li>Come back and tap <b>Paste my key</b> (or paste it below, tick <b>Remember my key</b>, and tap <b>Check key</b>).</li>
       </ol>
+      </details>
       <label for="gkey" class="hint">Gemini API key</label>
       <input id="gkey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
       <label class="check"><input type="checkbox" id="remember"> Remember my key on this phone</label>

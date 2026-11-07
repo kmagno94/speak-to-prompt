@@ -7,11 +7,15 @@
   $effect(() => { const k = ui.hasKey; if (!ui.modePicked) ui.mode = k ? 'normal' : 'quick'; });
   let hint = $derived(
     ui.mode === 'quick'
-      ? (ui.hasKey ? 'Quick: skips the questions and writes right away.' : 'Quick: writes right away. Add a free Gemini key (below) and Normal asks a few questions first.')
-      : 'Normal: asks a few quick questions, then writes.' + (ui.hasKey ? '' : ' Needs a free Gemini key (below).')
+      ? (ui.hasKey ? 'Quick: skips the questions and writes right away.' : 'Quick: writes right away. A free key unlocks Normal, which asks a few questions first.')
+      : 'Normal: asks a few quick questions, then writes.' + (ui.hasKey ? '' : ' Needs a free Gemini key: tap Paste my key below.')
   );
   /* Picking one is remembered on this device (the mode only, never words). */
-  const picked = (e) => { ui.modePicked = true; saveMode(e.currentTarget.value); };
+  const picked = (e) => {
+    ui.modePicked = true; saveMode(e.currentTarget.value);
+    /* Normal needs a key: with none yet, open the key panel and go there (Customer Eyes, v2.1.23). */
+    if (e.currentTarget.value === 'normal' && !ui.hasKey) window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'key', where: 'form' } }));
+  };
 </script>
 
 <!-- Mode picker beside Build: Quick skips the questions; Normal asks a few, then writes. -->

@@ -15,6 +15,8 @@ export const ui = $state({
   mode: mode0 || 'quick',   // 'quick' or 'normal'. Quick until a key exists (ModePicker), unless picked
   modePicked: !!mode0,      // the person chose a mode themselves (now or on an earlier visit), so it no longer follows the key
   hasKey: false,      // a Gemini key is typed in or saved
+  quickResult: false,      // the prompt on screen is the quick version (KeyNudge on the result card)
+  keyNudgeHidden: false,   // "Not now" on the Quick mode key line (KeyNudge.svelte). Memory only, back on refresh
   quickSecs: 15,      // Quick mode's usual time, learned from run stats when on
   /* One message per place ('form' under the thoughts box, 'result' on the prompt card),
      shown by Notice.svelte with the shared Message look. app.js sets them with
