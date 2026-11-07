@@ -34,16 +34,17 @@
        - Keep talking makes Use my keyboard mic glow (the white halo) for a few seconds, so the next tap is
          obvious, and leaves a space at the end of the box so keyboard dictation starts as a new word
          (v2.1.28, Test lab report).
-       - Mic log (dev tools only): every recognizer event with its run number and timing, for diagnosing
-         iPhone problems like WebKit bug 321436 (on iOS 27, every dictation after the first in a page can be
-         deaf). Event names, counts and error codes only, never your words. Memory only, gone on reload.
+       - Mic log (dev tools only, lib/miclog.svelte.js): every recognizer event with its run number and timing,
+         for diagnosing iPhone problems like WebKit bug 321436. Event names, counts and error codes only, never
+         your words. Memory only, gone on reload. Shows in More options > dev tools (moved there from under
+         the button, v2.1.28 Test lab report).
      Test hooks: window.__micRestartMs shortens the restart wait, window.__micWatchMs the no-audio wait. */
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { fly } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { kb } from './lib/keyboard.svelte.js';
-  import { core } from './lib/core.svelte.js';
+  import { micMark } from './lib/miclog.svelte.js';
 
   const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -69,21 +70,9 @@
   const kbMode = $derived(deaf || (knownDeaf && ranOnce));
   const KEEP_NOTE = 'To keep going, tap Keep talking: it opens your keyboard, then tap its 🎤. Safari\'s mic only listens once per page on this iPhone right now (an Apple bug in iOS 27).';
   const DEAF_NOTE = 'Safari\'s mic only listens once per page on this iPhone right now (an Apple bug in iOS 27). Tap the 🎤 on your keyboard to keep talking. Your words go where the cursor is.';
-  /* Mic log: never words. t0 is the first tap on this page, runN counts recognizers made. */
-  let log = $state([]), t0 = 0, runN = 0, copied = $state(false);
-  function mark(n, what) {
-    if (!t0) t0 = Date.now();
-    log.push('+' + ((Date.now() - t0) / 1000).toFixed(1) + 's  run ' + n + '  ' + what);
-    if (log.length > 300) log.splice(0, log.length - 300);
-  }
-  const iosVer = (ua.match(/OS (\d+[_.]\d+(?:[_.]\d+)?) like Mac/) || [])[1];
-  function logText() {
-    return ['Speak to Prompt mic log', 'Device: ' + (iosVer ? 'iOS ' + iosVer.replace(/_/g, '.') : appleTouch ? 'Apple touch' : 'computer') + (homeScreen ? ', Home Screen app' : ', browser tab') + ', ' + (google ? "Google's" : "Apple's") + ' speech',
-      'UA: ' + ua, '', ...log].join('\n');
-  }
-  async function copyLog() {
-    try { await navigator.clipboard.writeText(logText()); copied = true; setTimeout(() => { copied = false; }, 1800); } catch (e) {}
-  }   // the mic really came on (audio or words), the no-audio timer, one fresh try used
+  /* Mic log (never words): runN counts recognizers made on this page. */
+  let runN = 0;
+  const mark = micMark;
   const clock = $derived(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
   /* The pill sits on the keyboard, or above the keyboard coach bar when that's up. */
   /* ...and above the Next step dock (its Build my prompt bar) when that's showing, so neither covers the other. */
@@ -324,13 +313,6 @@
       {#if note}{note}{#if kbMode} <button type="button" class="kbbtn" class:glow id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
   {/if}
-  {#if core.dev && log.length}
-    <details class="miclog" id="micLog">
-      <summary>🎙️ Mic log ({log.length})</summary>
-      <button type="button" class="miclogcopy" id="micLogCopy" onclick={copyLog}>{copied ? 'Copied' : 'Copy mic log'}</button>
-      <pre>{logText()}</pre>
-    </details>
-  {/if}
   {#if on}
     <button type="button" class="micstop" id="micStop" use:toBody style="bottom: calc({lift}px + 14px + env(safe-area-inset-bottom, 0px))" onclick={pillStop}
       aria-label="Stop listening, {clock}" transition:fly={{ y: 24, duration: ms(180) }}>
@@ -366,10 +348,6 @@
   .micstop .time { font-variant-numeric: tabular-nums; font-weight: 600; opacity: 0.9; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.45); }
   @media (prefers-reduced-motion: no-preference) { .micstop { animation: stopglow 1.8s ease-in-out infinite; } }
   @keyframes stopglow { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--record) 12%, transparent), 0 14px 30px -12px rgba(10, 20, 40, 0.6); } }
-  .miclog { flex: 1 1 100%; font-size: 13px; }
-  .miclog summary { cursor: pointer; color: var(--muted, var(--ink)); }
-  .miclog pre { max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 6px 0 0; }
-  .miclogcopy { font: inherit; font-weight: 700; min-height: 40px; padding: 6px 14px; margin-top: 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
   .kbbtn { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; padding: 8px 16px; border-radius: 999px; font: inherit; font-weight: 700;
     color: var(--ink); background: var(--surface); border: 1px solid var(--line); cursor: pointer; }
   .kbbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }

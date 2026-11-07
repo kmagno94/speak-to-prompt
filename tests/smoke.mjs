@@ -376,19 +376,20 @@ await check('safari mic: a mic that never comes on tries once with a fresh recog
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
-await check('safari mic: dev tools show a Mic log of recognizer events per run with Copy, never the words, and nothing with dev tools off (v2.1.28 diagnose)', async () => {
+await check('safari mic: dev tools show a Mic log of recognizer events per run with Copy, never the words, and nothing with dev tools off (v2.1.28 diagnose; lives in More options since the Test lab report)', async () => {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1';
   const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await p.reload();
   await p.click('#micBtn');
   await p.evaluate(() => window.__say(['secret pancake recipe', true]));
   await p.click('#micStop');
-  expect(!(await p.$('#micLog')), 'no Mic log with dev tools off');
+  expect(!(await p.$('#micLog')) && !(await p.$('#micLogRow')), 'no Mic log with dev tools off');
   await devOn(p);
   await p.click('#micBtn'); await p.waitForTimeout(50);
   await p.evaluate(() => window.__say(['secret pancake recipe', true]));
   await p.click('#micStop'); await p.click('#micBtn'); await p.waitForTimeout(50);
   await p.click('#micStop');
+  await p.click('#moreOpts > summary');
   await p.click('#micLog summary');
   const t = await p.textContent('#micLog pre');
   expect(/iOS 27\.2/.test(t) && /browser tab/.test(t), 'the log names the iOS version and tab vs Home Screen, got: ' + t.slice(0, 200));
@@ -398,6 +399,26 @@ await check('safari mic: dev tools show a Mic log of recognizer events per run w
   const c = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^Speak to Prompt mic log/.test(c) && !/pancake/i.test(c), 'Copy gives the log, never the words');
   expect(await p.evaluate(() => !Object.keys(localStorage).concat(Object.keys(sessionStorage)).some((k) => /mic/i.test(k))), 'the log is memory only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('mic log in dev tools (v2.1.28 Test lab report): the Mic log moved out from under the mic button into More options with the other dev tools; empty until Talk it out runs, then it fills in live', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await devOn(p);
+  await p.click('#moreOpts > summary');
+  expect(await p.isVisible('#micLogRow') && /Nothing yet/.test(await p.textContent('#micLogRow')), 'More options has the Mic log section, empty before any run');
+  expect(await p.evaluate(() => { const r = document.getElementById('micLogRow'); return !!r && !!r.closest('#moreOpts') && !document.getElementById('micBtn').parentElement.contains(r); }), 'the Mic log sits in More options, not next to the mic button');
+  await p.click('#moreOpts > summary');
+  await p.click('#micBtn'); await p.evaluate(() => window.__say(['grab oat milk', true])); await p.click('#micStop');
+  expect(!(await p.evaluate(() => { const m = document.getElementById('micLog'); return m && !m.closest('#moreOpts'); })), 'nothing shows under the mic button anymore');
+  await p.click('#moreOpts > summary');
+  expect(/events this page/.test(await p.textContent('#micLogRow')) && await p.isVisible('#micLogCopy'), 'after a run, the section shows the events and Copy mic log');
+  await p.click('#micLog summary');
+  const t = await p.textContent('#micLog pre');
+  expect(/run 1 .*tap: Talk it out/.test(t) && /run 1 .*stop/.test(t) && !/oat milk/.test(t), 'events per run, never the words: ' + t.slice(-200));
+  // Turning dev tools off hides it
+  await p.uncheck('#devTools');
+  expect(!(await p.$('#micLogRow')), 'dev tools off: no Mic log');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -4470,6 +4491,8 @@ await check('keyboard coach: while typing with the keyboard up, the meter and on
   expect(!(await p.isVisible('#kbCoach')), 'no keyboard, no bar');
   await fakeKeyboard(p, 320); await p.waitForTimeout(300);
   expect(await p.isVisible('#kbCoach'), 'the bar should show on top of the keyboard');
+  /* It slides into place, so give it a moment to settle (read mid-slide once in CI, 11/7: 544 vs 524). */
+  await p.waitForFunction(() => { const el = document.getElementById('kbCoach'); return el && Math.abs(el.getBoundingClientRect().bottom - (844 - 320)) <= 2; }, null, { timeout: 2000 }).catch(() => {});
   const b = await p.$eval('#kbCoach', el => Math.round(el.getBoundingClientRect().bottom));
   expect(Math.abs(b - (844 - 320)) <= 2, 'the bar should sit right on the keyboard, bottom at ' + b);
   expect(await p.$('#coach.kbaway'), 'the coach under the box steps aside while the bar has it');

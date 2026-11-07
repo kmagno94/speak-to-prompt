@@ -36,6 +36,7 @@
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
+  import MicLog from './MicLog.svelte';
   import DraftNote from './DraftNote.svelte';
   import { watchDraft } from './lib/draft.svelte.js';
   import { hasSpeech } from './lib/voice.js';
@@ -303,6 +304,7 @@
         <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
       </div>
+      {#if core.dev && hasSpeech}<MicLog />{/if}
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
         <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>

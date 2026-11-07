@@ -20,8 +20,8 @@
           "paste": "ok so I need to plan a surprise 40th for my aunt Rosa, maybe a backyard thing in late spring, like 25 people, she loves salsa music and hates being the center of attention so nothing too big, budget around 800, help me figure out food, music, and how to keep it secret from her"
         },
         {
-          "say": "Tap Talk it out and talk for about 10 seconds, with a couple of short pauses. Tap the red Tap to stop button, then tap Talk it out again. When the button says Keep talking ⌨️, tap it.",
-          "see": "Every pause keeps its space: no two words glued together. The red Tap to stop button stays at the bottom while it listens. Keep talking opens the keyboard with a space after your last word, and the ⌨️ Use my keyboard mic button glows white for a few seconds so it's clear what to tap. Dictating with the keyboard's 🎤 starts as a new word."
+          "say": "With Show my dev tools on, tap Talk it out, say a sentence, and tap the red Tap to stop button. Then open More options and scroll to 🎙️ Mic log.",
+          "see": "Nothing shows under the Talk it out button anymore. In More options, 🎙️ Mic log lists that run's events (never your words) with Copy mic log. Before any Talk it out on a page it says Nothing yet. Turn dev tools off and it's gone."
         },
         {
           "say": "Tap First time? Start here.",
