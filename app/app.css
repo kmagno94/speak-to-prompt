@@ -151,7 +151,7 @@ textarea#thoughts { resize: none; }
 /* Start here (StartHere.svelte): a white halo walks you in. A white ring and glow, with a
    faint edge and drop shadow so white still reads on a white card in light mode.
    Title and description get a soft white panel around them (no layout shift). */
-.sh-halo:is(textarea, a) { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 28px 10px rgba(255,255,255,0.7), 0 12px 30px var(--halo-drop); }
+.sh-halo:is(textarea, a), #micBtn.sh-halo { box-shadow: 0 0 0 3px #fff, 0 0 0 4px var(--halo-edge), 0 0 28px 10px rgba(255,255,255,0.7), 0 12px 30px var(--halo-drop); }
 /* Title, waveform and description: one panel with room inside. The negative margin
    matches the padding, so nothing on the page moves. */
 .intro.sh-halo { border-radius: 20px; background: var(--halo-fill); padding: 12px 12px 16px; margin: -12px -12px -16px;
@@ -365,6 +365,8 @@ details.key > summary::-webkit-details-marker { display: none; }
 details.key > summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur) var(--ease); margin-right: 4px; }
 details.key[open] > summary::after { transform: rotate(-135deg); }
 #talkLink[hidden] ~ .nosc { display: none; }
+/* v2.1.27: the shortcut tucked away where the mic works (App.svelte), back with Show my dev tools. */
+#talkLink.away, .nosc.away { display: none !important; }
 .voice .nosc { min-height: var(--tap); }
 details.key summary { cursor: pointer; font-family: var(--display); font-weight: 600; font-size: var(--fs-md); color: var(--ink); }
 details.key[open] summary { margin-bottom: 10px; }

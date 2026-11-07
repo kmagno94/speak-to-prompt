@@ -223,11 +223,12 @@ const FAKE_SPEECH = () => {
   window.__end = () => { const r = window.__recs.at(-1); r.onend(); };
   window.__err = (error) => { const r = window.__recs.at(-1); r.onerror({ error }); r.onend && r.onend(); };
 };
-await check('safari mic: Talk here adds live words to the box, restarts quietly, stops on Build, and explains a block (AGT-2, v2.1.26)', async () => {
+await check('safari mic: Talk it out adds live words to the box, restarts quietly, stops on Build, and explains a block (AGT-2, v2.1.26)', async () => {
   const p = await page({ hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await p.reload();
   await p.waitForSelector('#micBtn');
-  expect((await p.textContent('#micBtn')).includes('Talk here'), 'the button should say Talk here');
+  expect((await p.textContent('#micBtn')).includes('Talk it out'), 'the mic is Talk it out');
+  expect(!(await p.isVisible('#talkLink')) && !(await p.isVisible('#noShortcut')), 'with the mic, the shortcut tucks away (v2.1.27)');
   await p.fill('#thoughts', 'Quick note first:');
   await p.click('#micBtn');
   expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'the button should be pressed while listening');
@@ -1515,7 +1516,12 @@ await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save 
 await check('first-time tutorial: opens from First time?, example fills the box, key and shortcut links work', async () => {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
   let p = await page({ ua: IPHONE });
-  expect(await p.isVisible('#firstTime') && await p.isVisible('#talkLink'), 'iPhone: Talk it out and First time? should both show');
+  expect(await p.isVisible('#firstTime') && await p.isVisible('#micBtn') && !(await p.isVisible('#talkLink')), 'iPhone with speech: the Talk it out mic and First time? show, the shortcut tucks away');
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  expect(!(await p.$('#tutShortcut')), 'the mic needs no shortcut, so no shortcut card (v2.1.27)');
+  await p.click('#tutClose');
+  await devOn(p);
+  expect(await p.isVisible('#talkLink') && /Voice Memos shortcut/.test(await p.textContent('#talkLink')), 'dev tools bring the shortcut back, named so it is not a second Talk it out');
   expect(!(await p.isVisible('#tutorial')), 'tutorial should not open by itself');
   await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
   expect((await p.getAttribute('#tutShortcut', 'href')).startsWith('https://www.icloud.com/shortcuts/'), 'shortcut link should be at the top of the tutorial');
@@ -2865,11 +2871,16 @@ await check('input hints: one word, a very long ramble, and another language eac
 
 await check('voice help: on iPhone, No shortcut? opens the Voice Memos steps; elsewhere it stays hidden', async () => {
   const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
-  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'iPhone should show Talk it out and No shortcut?');
+  expect(!(await p.isVisible('#talkLink')) && !(await p.isVisible('#noShortcut')), 'with the mic, the shortcut and No shortcut? stay tucked away');
+  await devOn(p);
+  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'dev tools on: iPhone shows the shortcut and No shortcut?');
   await p.click('#noShortcut');
   expect(await p.evaluate(() => document.getElementById('memoGuide').open && document.getElementById('moreOpts').open), 'No shortcut? should open the by-hand steps');
   const q = await page();
   expect(!(await q.isVisible('#noShortcut')), 'No shortcut? should hide where Talk it out is hidden');
+  const n = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await n.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await n.reload();
+  expect(!(await n.$('#micBtn')) && await n.isVisible('#talkLink') && (await n.textContent('#talkLink')).trim() === 'Talk it out', 'iPhone without speech-to-text keeps the shortcut as Talk it out');
 });
 
 async function reworkPage(opts) {
@@ -3745,7 +3756,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
   await p.waitForTimeout(2400);
   expect(!(await p.$('.intro.sh-halo')), 'step 2: the title lets go');
-  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
+  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#micBtn.sh-halo'), 'step 2: box and the Talk it out mic should both wear the halo on iPhone');
   expect(await p.$('#form.sh-lift') && await p.$('.sh-scrim.on') && !(await p.$('header.sh-lift')), 'step 2: the spotlight moves to the input card');
   const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
   expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
@@ -3765,7 +3776,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
   const q = await page({ fresh: true });
   await q.waitForTimeout(4100);
-  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
+  expect(await q.isVisible('#startHere') && await q.isVisible('#startHereTalk') && await q.$('#micBtn.sh-halo') && !(await q.$('#talkLink.sh-halo')), 'computers with speech-to-text get Talk it out (the mic) too, never the shortcut');
   const r = await page({ fresh: true, reduced: true });
   await r.waitForTimeout(300);
   expect(await r.$('.intro.sh-halo') && await r.$eval('.intro', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');

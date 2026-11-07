@@ -7,6 +7,8 @@
      them through pasting it and building their first prompt. Nothing is saved. */
   import { pick } from './lib/examples.js';
   import { guide } from './lib/guide.svelte.js';
+  import { hasSpeech } from './lib/voice.js';
+  import { core } from './lib/core.svelte.js';
   const SHORTCUT = 'https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b';
   let ex = $state(pick());
   function shuffle() { ex = pick(ex); }
@@ -52,7 +54,8 @@
     </div>
     <p class="intro">You say what's on your mind, messy is fine. The app turns it into one clear prompt you paste into ChatGPT, Claude, or Gemini. Here's one example from start to finish, then you'll try it yourself.</p>
 
-    {#if appleTouch}
+    <!-- v2.1.27: where the mic works, Talk it out needs nothing to install, so the shortcut card is dev tools only. -->
+    {#if appleTouch && (!hasSpeech || core.dev)}
     <a class="talk" id="tutShortcut" href={SHORTCUT} target="_blank" rel="noopener">
       <span class="dot" aria-hidden="true"></span>
       <span><b>Rather talk than type?</b><br>Get the free Talk it out shortcut</span>

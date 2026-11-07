@@ -815,7 +815,7 @@ export function startApp() {
   function ideasSync() {
     if (!ideasEl) return;
     /* Start here (StartHere.svelte) shows first; the ideas come in when it ends. */
-    /* Talk here (MicButton.svelte) sets data-listening, so the ideas stay away while the mic is on. */
+    /* Talk it out (MicButton.svelte) sets data-listening, so the ideas stay away while the mic is on. */
     if (thoughts.value.trim() || thoughts.dataset.listening || document.activeElement === thoughts || shortcutMode() || startHere.active) { ideasHide(); return; }
     var wasGone = ideasEl.classList.contains("gone");
     ideasEl.classList.remove("gone");

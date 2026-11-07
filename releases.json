@@ -2,6 +2,31 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.27",
+      "date": "2026-11-07",
+      "title": "Talk it out is the mic now, the shortcut tucks away",
+      "items": [
+        "Talk it out is now the mic button (red record dot), using your browser's own speech-to-text. Nothing to install, so new people like testers on any iPhone can just tap and talk.",
+        "The Voice Memos shortcut and No shortcut? are tucked away wherever the mic works. Turn on More options > Show my dev tools to bring them back; the shortcut then shows as Voice Memos shortcut so there's only one Talk it out.",
+        "On a browser without speech-to-text (like Firefox on iPhone), the shortcut stays as Talk it out, same as before.",
+        "First time? Start here only offers the shortcut card when the shortcut is showing, and Start here's halo lands on the Talk it out mic (computers with Chrome get it too)."
+      ],
+      "checks": [
+        {
+          "say": "Open staging in Safari on your iPhone with dev tools off.",
+          "see": "One red Talk it out button by the box, no Voice Memos shortcut and no No shortcut? link. Tap it and talk: words fill the box."
+        },
+        {
+          "say": "Turn on More options > Show my dev tools.",
+          "see": "A second button, Voice Memos shortcut, and No shortcut? come back. Tapping Voice Memos shortcut runs the shortcut like before."
+        },
+        {
+          "say": "Dev tools off again, tap First time? Start here.",
+          "see": "No Get the free Talk it out shortcut card at the top."
+        }
+      ]
+    },
+    {
       "version": "2.1.26",
       "date": "2026-11-07",
       "title": "Talk here: a mic button right by the box",

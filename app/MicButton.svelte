@@ -1,5 +1,5 @@
 <script>
-  /* Talk here (AGT-2, v2.1.26): the browser's own speech-to-text (Web Speech API,
+  /* Talk it out (AGT-2, v2.1.26 as Talk here; v2.1.27 took over the Talk it out name and red record dot): the browser's own speech-to-text (Web Speech API,
      SpeechRecognition or webkitSpeechRecognition), not Gemini audio, so no key and no quota.
        - Shows only where the browser has it (Safari on iPhone and Mac, Chrome). Others never see it.
        - Tap to start, tap to stop. Words land live in the box and add to what's already there.
@@ -61,7 +61,7 @@
             : 'The mic is blocked for this page. Allow it in your browser\'s site settings, or type instead.';
       } else if (err === 'audio-capture') note = 'No microphone found. Check that one is connected, or type instead.';
       else if (err === 'network') note = 'The speech service couldn\'t be reached. Try again, or use the mic on your keyboard.';
-      else note = 'The mic stopped (' + (err || 'unknown') + '). Tap Talk here to try again.';
+      else note = 'The mic stopped (' + (err || 'unknown') + '). Tap Talk it out to try again.';
     };
     rec.onend = () => {
       rec = null;
@@ -70,13 +70,13 @@
       quickEnds = !heard && Date.now() - startedAt < 1500 ? quickEnds + 1 : 0;
       if (quickEnds >= 3) {
         stop();
-        note = appleTouch ? 'Speech needs Siri turned on in Settings, or use the mic on your keyboard.' : 'The mic keeps stopping. Tap Talk here to try again, or type instead.';
+        note = appleTouch ? 'Speech needs Siri turned on in Settings, or use the mic on your keyboard.' : 'The mic keeps stopping. Tap Talk it out to try again, or type instead.';
         return;
       }
       restartT = setTimeout(() => { if (on) start(true); }, window.__micRestartMs ?? 250);
     };
     try { rec.start(); }
-    catch (e) { rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk here to try again.'; }
+    catch (e) { rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
   }
 
   function start(again) {
@@ -119,7 +119,7 @@
 {#if SR}
   <button type="button" class="mic" class:on id="micBtn" aria-pressed={on} onclick={toggle}>
     <span class="dot" aria-hidden="true"></span>
-    <span>{on ? 'Stop listening' : 'Talk here'}</span>
+    <span>{on ? 'Stop listening' : 'Talk it out'}</span>
   </button>
   {#if on || note}
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
@@ -134,8 +134,7 @@
     box-shadow: 0 1px 0 var(--line), 0 8px 20px -16px rgba(20, 40, 70, 0.5); transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
   .mic:active { transform: scale(0.97); }
   .mic:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-  .dot { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
-    -webkit-mask: none; position: relative; }
+  .dot { width: 24px; height: 24px; border-radius: 50%; background: var(--record); box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 18%, transparent); position: relative; }
   .dot::after { content: ""; position: absolute; left: 9px; top: 5px; width: 6px; height: 10px; border-radius: 3px; background: var(--surface); }
   .mic.on { background: color-mix(in srgb, var(--record) 12%, var(--surface)); border-color: color-mix(in srgb, var(--record) 45%, var(--line)); }
   .mic.on .dot { background: var(--record); animation: breathe 1.4s ease-in-out infinite; }
