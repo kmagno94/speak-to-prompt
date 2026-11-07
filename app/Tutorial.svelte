@@ -7,6 +7,8 @@
      them through pasting it and building their first prompt. Nothing is saved. */
   import { pick } from './lib/examples.js';
   import { guide } from './lib/guide.svelte.js';
+  import { hasSpeech } from './lib/voice.js';
+  import { core } from './lib/core.svelte.js';
   const SHORTCUT = 'https://www.icloud.com/shortcuts/391f35e4646d443e92a73e098e0e559b';
   let ex = $state(pick());
   function shuffle() { ex = pick(ex); }
@@ -40,6 +42,17 @@
     panel.open = true;
     panel.scrollIntoView({ block: 'start' });
   }
+  /* Show me (v2.1.28): close, bring the Talk it out mic into view, and glow it for a few
+     seconds. It doesn't start the mic: the first tap is theirs, so the mic permission
+     prompt never shows up by surprise. */
+  function showMic() {
+    close();
+    const mic = document.getElementById('micBtn');
+    if (!mic) return;
+    mic.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    mic.classList.add('sh-halo');
+    setTimeout(() => mic.classList.remove('sh-halo'), 4000);
+  }
   /* Tap outside the sheet to close it. */
   function backdrop(e) { if (e.target === dialog) close(); }
 </script>
@@ -52,7 +65,20 @@
     </div>
     <p class="intro">You say what's on your mind, messy is fine. The app turns it into one clear prompt you paste into ChatGPT, Claude, or Gemini. Here's one example from start to finish, then you'll try it yourself.</p>
 
-    {#if appleTouch}
+    <!-- v2.1.28: where the mic works, explain Talk it out: tap, talk, tap the red Stop. -->
+    {#if hasSpeech}
+    <div class="talk talkhow" id="tutTalk">
+      <span class="dot" aria-hidden="true"></span>
+      <span>
+        <b>Rather talk than type?</b><br>
+        Tap <b>Talk it out</b> right above the box and just say what's on your mind. Your words show up in the box as you talk. When you're done, tap the red <b>Tap to stop</b> button at the bottom of the screen. Nothing to install.
+        <button type="button" class="inline" id="tutShowMic" onclick={showMic}>Show me where</button>
+      </span>
+    </div>
+    {/if}
+
+    <!-- v2.1.27: where the mic works, Talk it out needs nothing to install, so the shortcut card is dev tools only. -->
+    {#if appleTouch && (!hasSpeech || core.dev)}
     <a class="talk" id="tutShortcut" href={SHORTCUT} target="_blank" rel="noopener">
       <span class="dot" aria-hidden="true"></span>
       <span><b>Rather talk than type?</b><br>Get the free Talk it out shortcut</span>
@@ -125,6 +151,9 @@
   /* Same red record dot as Talk it out, so it reads as the voice way in. */
   .talk { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; line-height: 1.35; }
   .talk b { color: var(--accent); }
+  .talkhow { align-items: flex-start; }
+  .talkhow .dot { margin-top: 2px; }
+  .talkhow .inline { display: inline-block; margin-top: 6px; }
   .dot { width: 24px; height: 24px; border-radius: 50%; flex: none; background: var(--record); box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 18%, transparent); }
   .talk:focus-visible, .x:focus-visible, .inline:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 

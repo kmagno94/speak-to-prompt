@@ -10,16 +10,21 @@
   import { ms, reduceMotion } from './lib/motion.js';
 
   let talk = $state(false);
+  let talkEl = $state(null);   // the Talk it out button that wears the halo
 
   onMount(() => {
     startHere.open();
     const box = document.getElementById('thoughts');
-    const talkLink = document.getElementById('talkLink');
-    /* app.js hides Talk it out on computers right after this mounts, so look a moment later. */
-    const t = setTimeout(() => { talk = !!talkLink && !talkLink.hidden; }, 0);
+    /* Talk it out is the mic where the browser has speech-to-text (v2.1.27), else the shortcut link.
+       app.js hides the shortcut on computers right after this mounts, so look a moment later. */
+    const t = setTimeout(() => {
+      const mic = document.getElementById('micBtn'), link = document.getElementById('talkLink');
+      talkEl = mic || (link && !link.hidden && link.offsetParent !== null ? link : null);
+      talk = !!talkEl;
+    }, 0);
     const done = () => startHere.started();
     const typed = () => { if (box.value.trim()) done(); };
-    const hits = [['thoughts', 'focus'], ['thoughts', 'pointerdown'], ['talkLink', 'click'], ['ideasTry', 'click'], ['bannerPaste', 'click']];
+    const hits = [['thoughts', 'focus'], ['thoughts', 'pointerdown'], ['talkLink', 'click'], ['micBtn', 'click'], ['ideasTry', 'click'], ['bannerPaste', 'click']];
     hits.forEach(([id, ev]) => document.getElementById(id)?.addEventListener(ev, done));
     box.addEventListener('input', typed);
     box.addEventListener('stp:changed', typed);
@@ -52,7 +57,7 @@
     const set = (el, on, cls = 'sh-halo') => el && el.classList.toggle(cls, on);
     set(document.querySelector('.wrap > header .intro'), p === 'title');
     set(document.getElementById('thoughts'), p === 'box');
-    set(document.getElementById('talkLink'), p === 'box' && talk);
+    set(talkEl, p === 'box' && talk);
     set(document.querySelector('.wrap > header'), p === 'title', 'sh-lift');
     /* The whole input card lifts: its entrance animation keeps its insides from lifting on their own. */
     set(document.getElementById('form'), p === 'box', 'sh-lift');

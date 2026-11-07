@@ -2,6 +2,79 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.28",
+      "date": "2026-11-07",
+      "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",
+      "items": [
+        "The words box no longer jerks or snaps around while you type or scroll your results, and you can always see what you're writing.",
+        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: new words pick up after your fix. On iPhones with iOS 27, Safari's mic only hears once per page (an Apple bug), so when a second try hears nothing it stops, says why, and hands you to the keyboard mic with one tap instead of pretending to listen. Keep talking makes the ⌨️ Use my keyboard mic button glow so the next tap is clear. A pause no longer glues your last word onto the next one. You can also fix a word by typing while it listens. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
+        "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. That includes after you Build: forgot to pick your context? Reload and your words are still there (the prompt isn't kept). Deleted when you empty the box, tap Start fresh, close the tab, or after 30 minutes. Never sent anywhere.",
+        "A Gemini key from a different Google account gets its own fresh daily count, so it no longer says Flash is used up because of your other key.",
+        "My context has 📋 Copy for Notes and 📥 Bring in: copy your pieces as one note, tap 📝 Open Notes and paste it into a new note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. The note is just your pieces in plain words, no block of code at the end, and an edit you make in Notes comes across. Same titles update, nothing is deleted. (Notes' share sheet kept closing on it, so copy and paste is the main way now; Share another way is still there.)",
+        "My context is compact: the pieces you used in your last builds go first, only 3 chips show with +N more for the rest, and long titles stay on one line. A piece you picked always shows."
+      ],
+      "checks": [
+        {
+          "say": "On your iPhone, paste this note into the box, then scroll down to the bottom of the page and back up a few times.",
+          "see": "The box stays put while you type and while you scroll. No jumping, and the end of your words stays in view.",
+          "paste": "ok so I need to plan a surprise 40th for my aunt Rosa, maybe a backyard thing in late spring, like 25 people, she loves salsa music and hates being the center of attention so nothing too big, budget around 800, help me figure out food, music, and how to keep it secret from her"
+        },
+        {
+          "say": "With Show my dev tools on, tap Talk it out, say a sentence, and tap the red Tap to stop button. Then open More options and scroll to 🎙️ Mic log.",
+          "see": "Nothing shows under the Talk it out button anymore. In More options, 🎙️ Mic log lists that run's events (never your words) with Copy mic log. Before any Talk it out on a page it says Nothing yet. Turn dev tools off and it's gone."
+        },
+        {
+          "say": "Tap First time? Start here.",
+          "see": "A Rather talk than type? card explains Talk it out: tap, talk, then tap the red Tap to stop button. Show me where closes it and makes the Talk it out button glow, without starting the mic."
+        },
+        {
+          "say": "Type a few words in the box and tap Build my prompt. When it's done, pull down to reload the page.",
+          "see": "Your words come back with a note: from your last build, the prompt isn't kept, this tab only. Start fresh empties the box, and after another reload nothing comes back."
+        },
+        {
+          "say": "Open the key panel, paste your Gemini key from your other Google account, and tap Check key.",
+          "see": "Key works, plus New key, so today's limits start fresh. Building in Normal no longer says Flash is used up."
+        },
+        {
+          "say": "In My context, add a piece (like Weekend soccer, practice Saturday 9am), tap 📋 Copy for Notes, then 📝 Open Notes. Start a new note and paste. In Notes, change 9am to 10am. Back in the app, copy that whole note in Notes and tap 📥 Bring in.",
+          "see": "The pasted note is just your piece in plain words and ends with ~ end of My context ~. No block of code characters. Bring in says 1 updated and the piece now says 10am. Tap Bring in again and it says 1 already here, no duplicate."
+        },
+        {
+          "say": "Look at My context with Save on this phone on, tap +N more, pick a piece from the bottom, and build a prompt. Then reload.",
+          "see": "Before: 3 one-line chips and +N more, long titles trimmed with an ellipsis. After the reload, the piece you just built with is the first chip."
+        },
+        {
+          "say": "Tap Talk it out, say a sentence, then tap in the box and fix a word by typing while the mic is still on. Keep talking.",
+          "see": "Your typed fix stays put and the new words add after it. The mic keeps listening the whole time."
+        }
+      ]
+    },
+    {
+      "version": "2.1.27",
+      "date": "2026-11-07",
+      "title": "Talk it out is the mic now, the shortcut tucks away",
+      "items": [
+        "Talk it out is now the mic button (red record dot), using your browser's own speech-to-text. Nothing to install, so new people like testers on any iPhone can just tap and talk.",
+        "The Voice Memos shortcut and No shortcut? are tucked away wherever the mic works. Turn on More options > Show my dev tools to bring them back; the shortcut then shows as Voice Memos shortcut so there's only one Talk it out.",
+        "On a browser without speech-to-text (like Firefox on iPhone), the shortcut stays as Talk it out, same as before.",
+        "First time? Start here only offers the shortcut card when the shortcut is showing, and Start here's halo lands on the Talk it out mic (computers with Chrome get it too)."
+      ],
+      "checks": [
+        {
+          "say": "Open staging in Safari on your iPhone with dev tools off.",
+          "see": "One red Talk it out button by the box, no Voice Memos shortcut and no No shortcut? link. Tap it and talk: words fill the box."
+        },
+        {
+          "say": "Turn on More options > Show my dev tools.",
+          "see": "A second button, Voice Memos shortcut, and No shortcut? come back. Tapping Voice Memos shortcut runs the shortcut like before."
+        },
+        {
+          "say": "Dev tools off again, tap First time? Start here.",
+          "see": "No Get the free Talk it out shortcut card at the top."
+        }
+      ]
+    },
+    {
       "version": "2.1.26",
       "date": "2026-11-07",
       "title": "Talk here: a mic button right by the box",

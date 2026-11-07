@@ -15,6 +15,8 @@
    Budget: picks should stay under BUDGET tokens. Past 100%, a build with a key runs one
    Flash-Lite squeeze (app.js) and keeps the shorter version here in memory only, for these
    exact picks: the saved pieces never change, and a reload or a new pick drops it. */
+import { merge } from './contextsync.js';
+
 const KEY = 'stp-context';
 const KEEP_KEY = 'stp-context-keep';
 const MAX_TITLE = 60;
@@ -59,6 +61,17 @@ class Context {
   pct = $derived(Math.round((this.tokens / BUDGET) * 100));
   over = $derived(this.active && !this.squeezed && this.rawTokens > BUDGET);
 
+  /* Recently used first (v2.1.28): pieces carry a `used` time, stamped when a build starts with
+     them picked (never on a tap, so chips don't jump around while you pick). Ordered by that,
+     then newest first for pieces never used. Only TOP show until you tap +N more. */
+  ordered = $derived(this.usable.map((c, i) => [c, i]).sort((a, b) => (b[0].used || 0) - (a[0].used || 0) || a[1] - b[1]).map((x) => x[0]));
+  markUsed() {
+    if (!this.chosen.length) return;
+    const now = Date.now(), ids = this.picked;
+    this.list = this.list.map((c) => (ids.includes(c.id) ? { ...c, used: now } : c));
+    this.save();
+  }
+
   constructor() { this.keep = readKeep(); this.list = this.keep ? read() : []; }
 
   save() { if (this.keep) write(this.list.filter((c) => c.title.trim() || c.text.trim())); }
@@ -83,6 +96,13 @@ class Context {
     this.list = this.list.filter((c) => c.id !== id);
     this.picked = this.picked.filter((p) => p !== id);
     this.save();
+  }
+  /* Bring in pieces from another device (lib/contextsync.js). Saved only if Save on this phone is on. */
+  bringIn(incoming) {
+    const r = merge(this.list, incoming, newId);
+    this.list = r.list;
+    this.save();
+    return r;
   }
   toggle(id) { this.picked = this.picked.includes(id) ? this.picked.filter((p) => p !== id) : [...this.picked, id]; }
 

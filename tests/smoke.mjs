@@ -212,9 +212,13 @@ const FAKE_SPEECH = () => {
   window.__recs = [];
   const Fake = class {
     constructor() { this.started = false; this.stopped = false; window.__recs.push(this); }
-    start() { this.started = true; }
+    /* Keeps a copy of the page's handlers (h), so a test can play a stopped engine finishing late.
+       The mic "comes on" (audiostart) right away unless window.__micDeaf is set. */
+    start() { this.started = true; this.h = { onresult: this.onresult, onend: this.onend }; this.fire('start'); if (!window.__micDeaf) setTimeout(() => { this.onaudiostart && this.onaudiostart(); this.fire('audiostart'); }, 0); }
+    addEventListener(t, f) { ((this.ls ||= {})[t] ||= []).push(f); }
+    fire(t) { for (const f of (this.ls && this.ls[t]) || []) f({ type: t }); }
     stop() { this.stopped = true; setTimeout(() => this.onend && this.onend(), 0); }
-    abort() { this.stop(); }
+    abort() { this.aborted = true; this.stop(); }
   };
   /* Chromium has its own; define over it so the page gets the fake. */
   for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: Fake, configurable: true, writable: true });
@@ -223,11 +227,12 @@ const FAKE_SPEECH = () => {
   window.__end = () => { const r = window.__recs.at(-1); r.onend(); };
   window.__err = (error) => { const r = window.__recs.at(-1); r.onerror({ error }); r.onend && r.onend(); };
 };
-await check('safari mic: Talk here adds live words to the box, restarts quietly, stops on Build, and explains a block (AGT-2, v2.1.26)', async () => {
+await check('safari mic: Talk it out adds live words to the box, restarts quietly, stops on Build, and explains a block (AGT-2, v2.1.26)', async () => {
   const p = await page({ hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await p.reload();
   await p.waitForSelector('#micBtn');
-  expect((await p.textContent('#micBtn')).includes('Talk here'), 'the button should say Talk here');
+  expect((await p.textContent('#micBtn')).includes('Talk it out'), 'the mic is Talk it out');
+  expect(!(await p.isVisible('#talkLink')) && !(await p.isVisible('#noShortcut')), 'with the mic, the shortcut tucks away (v2.1.27)');
   await p.fill('#thoughts', 'Quick note first:');
   await p.click('#micBtn');
   expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'the button should be pressed while listening');
@@ -270,6 +275,277 @@ await check('safari mic: Talk here adds live words to the box, restarts quietly,
   await f.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await f.reload();
   await f.waitForSelector('#thoughts');
   expect(!(await f.$('#micBtn')), 'no mic where the browser has no speech-to-text');
+});
+
+await check('safari mic: a red Stop pill with a timer floats at the bottom while listening, stops the mic, and tucks the floating buttons (v2.1.28)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.waitForSelector('#micBtn');
+  expect(!(await p.$('#micStop')), 'no Stop pill before listening');
+  await p.click('#micBtn');
+  await p.waitForSelector('#micStop');
+  expect(/Tap to stop/.test(await p.textContent('#micStop')) && /0:0\d/.test(await p.textContent('#micStop')), 'the pill says Tap to stop with a timer');
+  expect(/Tap to stop/.test(await p.textContent('#micNote')), 'the listening note points at the pill');
+  expect(await p.evaluate(() => document.body.classList.contains('fabs-away-mic')), 'the floating buttons tuck away while listening');
+  // Lots of words: the box grows, the top button can scroll off, the pill stays on screen
+  await p.evaluate(() => window.__say(['word '.repeat(400), false]));
+  const onScreen = () => p.$eval('#micStop', (b) => { const r = b.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, body: b.parentElement === document.body, pos: getComputedStyle(b).position }; });
+  for (const y of [0, 600, 99999]) {
+    await p.evaluate((y) => window.scrollTo(0, y), y); await p.waitForTimeout(400);   /* let the dock finish sliding */
+    const box = await onScreen();
+    expect(box.body && box.pos === 'fixed' && box.top >= 0 && box.bottom <= 844 && box.bottom > 560, 'the pill should sit at the bottom of the screen wherever you scroll (not inside the card), got ' + JSON.stringify(box) + ' at ' + y);
+    const dock = await p.evaluate(() => { const d = document.getElementById('nextDock'); if (!d || d.classList.contains('away')) return null; return d.getBoundingClientRect().top; });
+    expect(dock === null || box.bottom <= dock + 1, 'the pill rides above the Build dock, never under it: pill bottom ' + box.bottom + ', dock top ' + dock + ' at ' + y);
+  }
+  await p.waitForFunction(() => /0:0[1-9]/.test(document.getElementById('micStop').textContent), null, { timeout: 3000 });
+  await p.click('#micStop');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  expect(await p.evaluate(() => window.__recs[0].stopped && !document.body.classList.contains('fabs-away-mic')), 'the pill stops the recognizer and the floating buttons come back');
+  await p.waitForTimeout(100);
+  expect(await p.evaluate(() => window.__recs.length) === 1, 'no restart after the pill stops it');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: stop, fix a word, then Talk it out again picks up after your fix, and a late finish from the old mic changes nothing (v2.1.28 Test lab fix)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['plan a dinner for sixx people', true]));
+  await p.click('#micStop');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  expect(await p.evaluate(() => window.__recs[0].aborted), 'Stop should tear the recognizer down right away (abort)');
+  // Fix the typo by hand, then talk again
+  await p.fill('#thoughts', 'plan a dinner for six people');
+  await p.click('#micBtn');
+  await p.waitForSelector('#micStop');
+  expect(await p.evaluate(() => window.__recs.length === 2 && window.__recs[1].started), 'a fresh recognizer should start');
+  // The old engine finishes late: its final words and its end must not touch the box or start a third recognizer
+  await p.evaluate(() => { const old = window.__recs[0].h; old.onresult({ results: [Object.assign([{ transcript: 'plan a dinner for sixx people' }], { isFinal: true })] }); old.onend(); });
+  await p.waitForTimeout(100);
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people', 'the old mic must not write over your fix, got: ' + await p.inputValue('#thoughts'));
+  expect(await p.evaluate(() => window.__recs.length) === 2, 'a late end from the old mic must not start another recognizer, got ' + await p.evaluate(() => window.__recs.length));
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true' && await p.isVisible('#micStop'), 'still listening with the Stop pill up');
+  // New words land after the fix
+  await p.evaluate(() => window.__say(['and a chocolate cake', false]));
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people and a chocolate cake', 'new words add after your fix, got: ' + await p.inputValue('#thoughts'));
+  await p.evaluate(() => window.__say(['and a chocolate cake for dessert', true]));
+  expect((await p.inputValue('#thoughts')) === 'plan a dinner for six people and a chocolate cake for dessert', 'got: ' + await p.inputValue('#thoughts'));
+  // And a third round works too
+  await p.click('#micStop'); await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['at 7pm', true]));
+  expect((await p.inputValue('#thoughts')).endsWith('for dessert at 7pm'), 'a third round keeps going, got: ' + await p.inputValue('#thoughts'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: typing in the box while it listens keeps your edit, and new words add after it (v2.1.28 Test lab fix)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['need a gift for my brotther', false]));
+  expect((await p.inputValue('#thoughts')) === 'need a gift for my brotther', 'got: ' + await p.inputValue('#thoughts'));
+  // Fix the word by typing while the mic is still on
+  await p.focus('#thoughts');
+  await p.evaluate(() => { const b = document.getElementById('thoughts'); b.setSelectionRange(b.value.length, b.value.length); });
+  for (let i = 0; i < 'brotther'.length; i++) await p.keyboard.press('Backspace');
+  await p.keyboard.type('brother');
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'typing does not stop the mic');
+  await p.evaluate(() => window.__say(['need a gift for my brotther who loves fishing', false]));
+  expect((await p.inputValue('#thoughts')) === 'need a gift for my brother who loves fishing', 'your fix stays and new words add after it, got: ' + await p.inputValue('#thoughts'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: a mic that never comes on tries once with a fresh recognizer, then stops and says so instead of looking like it records (v2.1.28 Test lab fix)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20, __micWatchMs: 150, __micDeaf: true } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.waitForFunction(() => window.__recs.length === 2 && window.__recs[1].started, null, { timeout: 3000 });
+  expect(await p.evaluate(() => window.__recs[0].aborted), 'the stuck recognizer is torn down before the fresh try');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  const n = await p.textContent('#micNote');
+  expect(/didn't come on/.test(n) && /keyboard/.test(n) && !/—/.test(n), 'a plain note says the mic did not come on, got: ' + n);
+  await p.waitForTimeout(300);
+  expect(await p.evaluate(() => window.__recs.length) === 2, 'only one fresh try, no loop');
+  // A working mic never trips it
+  const q = await page({ hooks: { __micRestartMs: 20, __micWatchMs: 150 } });
+  await q.addInitScript(FAKE_SPEECH); await q.reload();
+  await q.click('#micBtn'); await q.waitForTimeout(500);
+  expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'true' && await q.evaluate(() => window.__recs.length) === 1, 'a mic that came on keeps listening even in a quiet room');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('safari mic: dev tools show a Mic log of recognizer events per run with Copy, never the words, and nothing with dev tools off (v2.1.28 diagnose; lives in More options since the Test lab report)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['secret pancake recipe', true]));
+  await p.click('#micStop');
+  expect(!(await p.$('#micLog')) && !(await p.$('#micLogRow')), 'no Mic log with dev tools off');
+  await devOn(p);
+  await p.click('#micBtn'); await p.waitForTimeout(50);
+  await p.evaluate(() => window.__say(['secret pancake recipe', true]));
+  await p.click('#micStop'); await p.click('#micBtn'); await p.waitForTimeout(50);
+  await p.click('#micStop');
+  await p.click('#moreOpts > summary');
+  await p.click('#micLog summary');
+  const t = await p.textContent('#micLog pre');
+  expect(/iOS 27\.2/.test(t) && /browser tab/.test(t), 'the log names the iOS version and tab vs Home Screen, got: ' + t.slice(0, 200));
+  expect(/run 1 .*tap: Talk it out/.test(t) && /run 1 .*audiostart/.test(t) && /run 1 .*result #1/.test(t) && /run 1 .*stop/.test(t) && /run 2 .*new recognizer/.test(t) && /run 2 .*audiostart/.test(t), 'events per run, got: ' + t);
+  expect(!/pancake/i.test(t), 'the log must never hold the words');
+  await p.click('#micLogCopy');
+  const c = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt mic log/.test(c) && !/pancake/i.test(c), 'Copy gives the log, never the words');
+  expect(await p.evaluate(() => !Object.keys(localStorage).concat(Object.keys(sessionStorage)).some((k) => /mic/i.test(k))), 'the log is memory only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('mic log in dev tools (v2.1.28 Test lab report): the Mic log moved out from under the mic button into More options with the other dev tools; empty until Talk it out runs, then it fills in live', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await devOn(p);
+  await p.click('#moreOpts > summary');
+  expect(await p.isVisible('#micLogRow') && /Nothing yet/.test(await p.textContent('#micLogRow')), 'More options has the Mic log section, empty before any run');
+  expect(await p.evaluate(() => { const r = document.getElementById('micLogRow'); return !!r && !!r.closest('#moreOpts') && !document.getElementById('micBtn').parentElement.contains(r); }), 'the Mic log sits in More options, not next to the mic button');
+  await p.click('#moreOpts > summary');
+  await p.click('#micBtn'); await p.evaluate(() => window.__say(['grab oat milk', true])); await p.click('#micStop');
+  expect(!(await p.evaluate(() => { const m = document.getElementById('micLog'); return m && !m.closest('#moreOpts'); })), 'nothing shows under the mic button anymore');
+  await p.click('#moreOpts > summary');
+  expect(/events this page/.test(await p.textContent('#micLogRow')) && await p.isVisible('#micLogCopy'), 'after a run, the section shows the events and Copy mic log');
+  await p.click('#micLog summary');
+  const t = await p.textContent('#micLog pre');
+  expect(/run 1 .*tap: Talk it out/.test(t) && /run 1 .*stop/.test(t) && !/oat milk/.test(t), 'events per run, never the words: ' + t.slice(-200));
+  // Turning dev tools off hides it
+  await p.uncheck('#devTools');
+  expect(!(await p.$('#micLogRow')), 'dev tools off: no Mic log');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic: on iPhone, a second Talk it out that never hears speech hands off to the keyboard mic, and later taps go straight there (iOS 27 bug, v2.1.28)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  // Run 1 works, even with a quiet start
+  await p.click('#micBtn'); await p.waitForTimeout(400);
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'the first run is never handed off, even if you pause before talking');
+  await p.evaluate(() => window.__say(['grab oat milk', true]));
+  await p.click('#micStop');
+  // Run 2: audio on, but Safari never hears (like the mic log): hands off
+  await p.click('#micBtn');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  const n = await p.textContent('#micNote');
+  expect(/only listens once per page/.test(n) && /keyboard/.test(n) && !/—/.test(n), 'a plain note explains and points at the keyboard mic, got: ' + n);
+  expect((await p.inputValue('#thoughts')) === 'grab oat milk', 'your words stay');
+  await p.click('#micKeyboard');
+  expect(await p.evaluate(() => { const b = document.getElementById('thoughts'); return document.activeElement === b && b.selectionStart === b.value.length; }), 'Use my keyboard mic puts the cursor at the end of the box');
+  // Later taps go straight to the keyboard, no fake listening
+  await p.evaluate(() => document.activeElement.blur());
+  const before = await p.evaluate(() => window.__recs.length);
+  await p.click('#micBtn');
+  expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'no new recognizer once Safari is deaf on this page');
+  expect(await p.evaluate(() => document.activeElement === document.getElementById('thoughts')) && /only listens once/.test(await p.textContent('#micNote')), 'the tap opens the box for the keyboard mic with the note');
+  expect(/Keep talking/.test(await p.textContent('#micBtn')), 'the button becomes Keep talking');
+  expect(await p.evaluate(() => localStorage.getItem('stp-mic-deaf')) === '27.0.1', 'the phone remembers only the Safari version that went deaf');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+
+  // Run 2 that hears speech keeps going
+  const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await q.addInitScript(FAKE_SPEECH); await q.reload();
+  await q.click('#micBtn'); await q.evaluate(() => window.__say(['one', true])); await q.click('#micStop');
+  await q.click('#micBtn'); await q.evaluate(() => window.__recs.at(-1).fire('speechstart')); await q.waitForTimeout(400);
+  expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'true' && !(await q.$('#micKeyboard')), 'a second run that hears speech is never handed off');
+  // Computers (Chrome) never hand off
+  const c = await page({ hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await c.addInitScript(FAKE_SPEECH); await c.reload();
+  await c.click('#micBtn'); await c.click('#micStop'); await c.click('#micBtn'); await c.waitForTimeout(400);
+  expect((await c.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'no hand-off off Apple touch devices');
+  expect(!q.errors.length && !c.errors.length, 'page errors: ' + q.errors.concat(c.errors).join('; '));
+});
+
+await check('safari mic: once this Safari version went deaf, every page after its first run offers Keep talking, which opens the keyboard right away with no wait or restart (v2.1.28 Test lab report)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const remember = (stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-mic-deaf', '27.0.1'); } catch (e) {} };
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await p.addInitScript(FAKE_SPEECH); await p.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await p.reload();
+  expect(/Talk it out/.test(await p.textContent('#micBtn')), 'the first run of a page is still Talk it out');
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['call the milk guy', true]));
+  await p.click('#micStop');
+  expect(/Keep talking/.test(await p.textContent('#micBtn')) && /tap Keep talking/.test(await p.textContent('#micNote')) && await p.isVisible('#micKeyboard'), 'after stopping, the button says Keep talking and a note explains it');
+  const before = await p.evaluate(() => window.__recs.length);
+  await p.click('#micBtn');
+  expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'Keep talking never starts the deaf Safari mic');
+  expect(await p.evaluate(() => { const b = document.getElementById('thoughts'); return document.activeElement === b && b.selectionStart === b.value.length; }), 'Keep talking puts the cursor at the end so the keyboard and its mic come up');
+  expect((await p.inputValue('#thoughts')) === 'call the milk guy ', 'words stay, with a space at the end so keyboard dictation starts a new word, got: ' + JSON.stringify(await p.inputValue('#thoughts')));
+  // Safari ends the first run on its own: no restart into a deaf mic, Keep talking instead
+  const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await q.addInitScript(FAKE_SPEECH); await q.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await q.reload();
+  await q.click('#micBtn'); await q.evaluate(() => window.__say(['two cases', true])); await q.evaluate(() => window.__end());
+  await q.waitForTimeout(150);
+  expect(await q.evaluate(() => window.__recs.length) === 1 && (await q.getAttribute('#micBtn', 'aria-pressed')) === 'false' && /Keep talking/.test(await q.textContent('#micBtn')), 'no auto restart into a deaf mic');
+  // A different Safari version starts fresh
+  const NEWER = IPHONE.replace('Version/27.0.1', 'Version/27.1');
+  const r = await page({ ua: NEWER, hooks: { __micRestartMs: 20 } });
+  await r.addInitScript(FAKE_SPEECH); await r.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await r.reload();
+  await r.click('#micBtn'); await r.click('#micStop');
+  expect(/Talk it out/.test(await r.textContent('#micBtn')), 'a Safari update tries the real mic again');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  const t = await p.textContent('#tutTalk');
+  expect(/Talk it out/.test(t) && /show up in the box/.test(t) && /Tap to stop/.test(t) && !/\u2014/.test(t), 'the card explains tap, talk, and how to stop, got: ' + t);
+  expect(!(await p.$('#tutShortcut')), 'still no shortcut card with dev tools off');
+  await p.click('#tutShowMic'); await p.waitForSelector('#tutorial', { state: 'hidden' });
+  expect(await p.$('#micBtn.sh-halo'), 'Show me where should glow the mic');
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'false' && await p.evaluate(() => window.__recs.length) === 0, 'Show me where must not start the mic');
+  // No speech engine: no explainer card
+  const f = await page({ ua: IPHONE });
+  await f.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await f.reload();
+  await f.click('#firstTime'); await f.waitForSelector('#tutorial[open]');
+  expect(!(await f.$('#tutTalk')) && await f.$('#tutShortcut'), 'no mic: the shortcut card instead of the Talk it out explainer');
+  expect(!p.errors.length && !f.errors.length, 'page errors: ' + p.errors.concat(f.errors).join('; '));
+});
+
+await check('new key (v2.1.28): a different Gemini key clears "Flash is used up" and today\'s counts, keeps only a short fingerprint, and the same key keeps them', async () => {
+  const p = await page();
+  await p.click('#keyPanel summary');
+  await p.fill('#gkey', 'AIzaFIRSTkeyFromMainAccount000000000000'); await p.click('#checkKey');
+  await p.waitForSelector('#keyStatus.good');
+  expect(!/New key/.test(await p.textContent('#keyStatus')), 'the first key is not called new');
+  const fp1 = await p.evaluate(() => localStorage.getItem('stp-key-fp'));
+  expect(/^[0-9a-f]{8}$/.test(fp1), 'a short fingerprint is kept, got ' + fp1);
+  // Every Flash used up today on the first key, plus some counts
+  const until = Date.now() + 3600e3;
+  await p.evaluate((u) => {
+    const r = {}; for (const m of ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash']) r[m] = { until: u, why: 'day' };
+    localStorage.setItem('stp-model-rest', JSON.stringify(r));
+    localStorage.setItem('stp-test-usage', JSON.stringify({ day: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }), models: { 'gemini-3.8-flash': { calls: 20, tokens: 9, out: true } } }));
+  }, until);
+  // Same key again: nothing resets
+  await p.click('#checkKey'); await p.waitForSelector('#keyStatus.good');
+  expect(Object.keys(JSON.parse(await p.evaluate(() => localStorage.getItem('stp-model-rest')) || '{}')).length === 3, 'the same key keeps its used-up list');
+  // A different key: fresh start
+  await p.fill('#gkey', 'AIzaSECONDkeyFromOtherAccount11111111111'); await p.click('#checkKey');
+  await p.waitForSelector('#keyStatus.good');
+  expect(/New key, so today's limits start fresh/.test(await p.textContent('#keyStatus')), 'the status says the new key starts fresh, got: ' + await p.textContent('#keyStatus'));
+  expect(!(await p.evaluate(() => localStorage.getItem('stp-model-rest'))) && !(await p.evaluate(() => localStorage.getItem('stp-test-usage'))), 'the used-up list and today\'s counts are cleared');
+  const fp2 = await p.evaluate(() => localStorage.getItem('stp-key-fp'));
+  expect(fp2 !== fp1 && await p.evaluate(() => localStorage.getItem('stp-studio-fp')) === fp1, 'the new key gets its own fingerprint; AI Studio numbers stay tied to the first key');
+  // The keys themselves never land in storage except where Remember my key puts them
+  const dump = await p.evaluate(() => Object.keys(localStorage).map((k) => k + '=' + localStorage.getItem(k)).join('\n'));
+  expect(!/FIRSTkey|SECONDkey/.test(dump), 'no key text in storage without Remember my key');
+  // Building in Normal no longer says Flash is used up
+  await p.fill('#thoughts', 'plan a small birthday dinner for six'); await p.click('#normalMode').catch(() => {}); await p.click('#build');
+  await p.waitForTimeout(600);
+  expect(!/Flash is used up/.test(await p.textContent('body')), 'a new key should not hear Flash is used up');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
@@ -1236,6 +1512,40 @@ await check('R2 feel (#32): the words box fits what you type, 3 lines at least, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('box no jerk (v2.1.28): typing in a full box never collapses it, keeps its inner scroll and the page still, and Safari\'s address bar sliding leaves it alone', async () => {
+  const p = await page();
+  await p.waitForTimeout(300);
+  await p.fill('#thoughts', Array.from({ length: 60 }, (_, i) => 'paragraph ' + i + ' of a very long ramble about the weekend plan').join('\n'));
+  await p.focus('#thoughts');
+  await p.evaluate(() => { const b = document.getElementById('thoughts'); b.setSelectionRange(b.value.length, b.value.length); b.scrollTop = b.scrollHeight; b.scrollIntoView({ block: 'center' }); });
+  await p.waitForTimeout(100);
+  // Watch every height the box is given while typing
+  await p.evaluate(() => {
+    window.__heights = []; window.__collapsed = 0;
+    const b = document.getElementById('thoughts'), d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
+    /* Measuring the real box while it's set to height:auto is the collapse that made it jerk. */
+    Object.defineProperty(b, 'scrollHeight', { configurable: true, get() { if (b.style.height === 'auto') window.__collapsed++; return d.get.call(this); } });
+    new MutationObserver(() => window.__heights.push(b.style.height)).observe(b, { attributes: true, attributeFilter: ['style'] });
+  });
+  const before = await p.evaluate(() => ({ y: window.scrollY, top: document.getElementById('thoughts').scrollTop, h: document.getElementById('thoughts').style.height }));
+  await p.keyboard.type(' and then more words', { delay: 5 });
+  const after = await p.evaluate(() => ({ y: window.scrollY, top: document.getElementById('thoughts').scrollTop, h: document.getElementById('thoughts').style.height, heights: window.__heights, collapsed: window.__collapsed }));
+  expect(after.collapsed === 0 && !after.heights.includes('auto'), 'the box must never collapse to measure, collapsed ' + after.collapsed + ' times');
+  expect(after.h === before.h, 'a full box keeps its height while typing, got ' + after.h + ' vs ' + before.h);
+  expect(after.top >= before.top - 2 && after.top > 0, 'the box keeps its inner scroll so the cursor stays in view, got ' + after.top + ' vs ' + before.top);
+  expect(Math.abs(after.y - before.y) <= 2, 'the page must not jump while typing, scrollY ' + before.y + ' -> ' + after.y);
+  // Height-only resize (the address bar sliding while viewing results): no refit
+  await p.evaluate(() => { window.__heights = []; });
+  await p.setViewportSize({ width: 390, height: 780 }); await p.waitForTimeout(80);
+  await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(80);
+  expect((await p.evaluate(() => window.__heights.length)) === 0, 'a height-only resize must leave the box alone, got ' + JSON.stringify(await p.evaluate(() => window.__heights)));
+  // A width change (rotate) still refits
+  await p.setViewportSize({ width: 700, height: 844 }); await p.waitForTimeout(80);
+  expect((await p.evaluate(() => window.__heights.length)) >= 0 && await p.$eval('#thoughts', el => getComputedStyle(el).overflowY === 'auto' || getComputedStyle(el).overflowY === 'hidden'), 'rotating still fits the box');
+  expect(await p.$$eval('#thoughtsTwin', l => l.length) === 1 && await p.$eval('#thoughtsTwin', el => el.getAttribute('aria-hidden') === 'true' && el.tabIndex === -1), 'one hidden measuring twin, out of the tab order');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('chat questions: tap, type, skip, edit an answer, live summary, all sent to the writer', async () => {
   const p = await page({ intake: { title: 'Trip Plan', need: 'N', category: 'Travel', complexity: 'standard', questions: [
     { question: 'Where to?', choices: ['Tokyo', 'Paris'] },
@@ -1515,7 +1825,12 @@ await check('my Notes shortcuts switch: off keeps the share sheet; on runs Save 
 await check('first-time tutorial: opens from First time?, example fills the box, key and shortcut links work', async () => {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
   let p = await page({ ua: IPHONE });
-  expect(await p.isVisible('#firstTime') && await p.isVisible('#talkLink'), 'iPhone: Talk it out and First time? should both show');
+  expect(await p.isVisible('#firstTime') && await p.isVisible('#micBtn') && !(await p.isVisible('#talkLink')), 'iPhone with speech: the Talk it out mic and First time? show, the shortcut tucks away');
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  expect(!(await p.$('#tutShortcut')), 'the mic needs no shortcut, so no shortcut card (v2.1.27)');
+  await p.click('#tutClose');
+  await devOn(p);
+  expect(await p.isVisible('#talkLink') && /Voice Memos shortcut/.test(await p.textContent('#talkLink')), 'dev tools bring the shortcut back, named so it is not a second Talk it out');
   expect(!(await p.isVisible('#tutorial')), 'tutorial should not open by itself');
   await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
   expect((await p.getAttribute('#tutShortcut', 'href')).startsWith('https://www.icloud.com/shortcuts/'), 'shortcut link should be at the top of the tutorial');
@@ -2865,11 +3180,16 @@ await check('input hints: one word, a very long ramble, and another language eac
 
 await check('voice help: on iPhone, No shortcut? opens the Voice Memos steps; elsewhere it stays hidden', async () => {
   const p = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
-  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'iPhone should show Talk it out and No shortcut?');
+  expect(!(await p.isVisible('#talkLink')) && !(await p.isVisible('#noShortcut')), 'with the mic, the shortcut and No shortcut? stay tucked away');
+  await devOn(p);
+  expect(await p.isVisible('#talkLink') && await p.isVisible('#noShortcut'), 'dev tools on: iPhone shows the shortcut and No shortcut?');
   await p.click('#noShortcut');
   expect(await p.evaluate(() => document.getElementById('memoGuide').open && document.getElementById('moreOpts').open), 'No shortcut? should open the by-hand steps');
   const q = await page();
   expect(!(await q.isVisible('#noShortcut')), 'No shortcut? should hide where Talk it out is hidden');
+  const n = await page({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+  await n.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await n.reload();
+  expect(!(await n.$('#micBtn')) && await n.isVisible('#talkLink') && (await n.textContent('#talkLink')).trim() === 'Talk it out', 'iPhone without speech-to-text keeps the shortcut as Talk it out');
 });
 
 async function reworkPage(opts) {
@@ -3087,6 +3407,126 @@ await check('wake lock: the screen stays awake only while Gemini works, and phon
 
 /* My context: reusable background picked per prompt. In the main app since v2.1.21 (#4, idea
    mvxaikmmygq5): shown without dev tools, saved only after Save on this phone is on. */
+await check('my context sync (v2.1.28): Send to Notes packs every piece into one note, Bring in on another device reads it back, adds or updates by title, and never saves without opt-in', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Corner bakery orders');
+  await p.fill('#contextEditor .ctxtext', 'Sourdough on Mondays, 40 loaves. Owner is Dana. Café ☕ emoji test, accents: jalapeño.');
+  await p.click('#contextNew');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', 'Weekend soccer team');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice Saturday 9am at Elm Park.');
+  await p.evaluate(() => { delete navigator.share; Object.defineProperty(navigator, 'share', { value: undefined, configurable: true }); });
+  await p.click('#contextSend');
+  await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\n~ end of My context ~$/.test(note) && !/STPCTX1/.test(note), 'the note is plain words ending with the end line, no code:\n' + note);
+  expect(/Copied/.test(await p.textContent('#contextSyncMsg')), 'no share sheet: it copies and says so');
+  expect(!/\u2014/.test(note), 'no em dashes in the note');
+  // Another device: an empty My context, the note on the clipboard
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), note);
+  expect(await q.isVisible('#contextInQuick'), 'an empty My context offers Bring in from another device');
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("2 added")');
+  expect(await q.isVisible('#contextRow .ctxchip:has-text("Corner bakery orders")') && await q.isVisible('#contextRow .ctxchip:has-text("Weekend soccer team")'), 'both pieces come in as chips');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
+  expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
+  // Again, with one piece changed on the first device: 1 updated, 1 already here, no duplicates
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice moved to Sunday 10am at Elm Park.');
+  await p.click('#contextSend');
+  await q.evaluate((n) => navigator.clipboard.writeText(n), await p.evaluate(() => navigator.clipboard.readText()));
+  await q.check('#contextKeep');
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 updated")');
+  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
+  expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
+  expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
+  // A clipboard without the code: the paste box opens, and junk says what to do
+  await q.evaluate(() => navigator.clipboard.writeText('just some random grocery list'));
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextPaste');
+  await q.fill('#contextPaste', 'eggs, milk, STPCTX1:%%%broken');
+  await q.click('#contextPasteGo');
+  expect(/isn't a My context note/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'junk changes nothing and says to copy the whole note');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies the note and offers Open Notes on iPhone, never the share sheet first; Share another way sends text only; no code block at the end, and big pieces still come back', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE });
+  await p.addInitScript(() => { window.__shares = []; Object.defineProperty(navigator, 'share', { value: (d) => { window.__shares.push(d); return Promise.reject(Object.assign(new Error('x'), { name: 'AbortError' })); }, configurable: true }); });
+  await p.reload();
+  await p.click('#contextNew');
+  const big = 'Roast notes for the shop, made up. '.repeat(108);   // about 3,800 characters
+  const titles = ['Weekend soccer', 'Fancy Diner roast log', 'Rio Knights inventory'];
+  for (let i = 0; i < titles.length; i++) {
+    if (i) await p.click('#contextNew');
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', titles[i]);
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', i ? big + ' piece ' + i : 'Practice Saturday 9am');
+  }
+  await p.click('#contextSend');
+  await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(await p.evaluate(() => window.__shares.length) === 0, 'Copy for Notes must not open the share sheet');
+  expect(/Copied/.test(await p.textContent('#contextSyncMsg')) && /Open Notes/.test(await p.textContent('#contextSyncMsg')), 'it says copied and what to do in Notes');
+  expect((await p.getAttribute('#contextOpenNotes', 'href')) === 'mobilenotes://', 'iPhone gets an Open Notes button');
+  expect(!/STPCTX1/.test(note) && /~ end of My context ~$/.test(note), 'no code block at the end of the note');
+  expect(note.split('\n').every((l) => l.length <= 4000), 'no giant unbroken line in the note');
+  // Share another way: text only, and a cancel says nothing
+  await p.click('#contextShare');
+  await p.waitForTimeout(100);
+  const shared = await p.evaluate(() => window.__shares[0]);
+  expect(shared && shared.text === note && !('title' in shared), 'the backup share sends the note as text only, no title');
+  expect(!(await p.$('#contextSyncMsg.bad')), 'cancelling the share sheet shows no error');
+  // Another device brings the wrapped note back in, big pieces intact
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("3 added")');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.some((t) => t.length > 3700 && /piece 2$/.test(t)), 'a 3,800 character piece comes back whole');
+  // A computer: no Open Notes button, still copies
+  const c = await page();
+  await c.click('#contextNew'); await c.fill('#contextEditor .ctxtitle', 'Book club'); await c.fill('#contextEditor .ctxtext', 'Third Thursday');
+  await c.click('#contextSend'); await c.waitForSelector('#contextSyncMsg');
+  expect(!(await c.$('#contextOpenNotes')) && /Copied/.test(await c.textContent('#contextSyncMsg')), 'computers copy without the iPhone Notes button');
+  expect(!p.errors.length && !q.errors.length && !c.errors.length, 'page errors: ' + p.errors.concat(q.errors, c.errors).join('; '));
+});
+
+await check('my context compact (v2.1.28): recently used pieces go first, only 3 chips show with +N more, a picked piece always shows, and long titles stay on one line', async () => {
+  const p = await page();
+  await p.click('#contextNew'); await p.check('#contextKeep');
+  const titles = ['Oldest garden notes', 'Book club picks', 'Car maintenance log', 'Weekend soccer team', '# Corner bakery orders: context for AI (living doc, as of 11/07, staging and live)'];
+  for (let i = 0; i < titles.length; i++) {
+    if (i) await p.click('#contextNew');
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', titles[i]);
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Made-up details for piece ' + i + '.');
+  }
+  await p.click('#contextEditor button:text-is("Done")');
+  const chips = () => p.$$eval('#contextRow .ctxchip', (l) => l.map((b) => b.title.replace(/ · over.*$/, '')));
+  let c = await chips();
+  expect(c.length === 3 && await p.isVisible('#contextMore') && /\+2 more/.test(await p.textContent('#contextMore')), 'only 3 chips plus +2 more, got ' + JSON.stringify(c));
+  expect(c[0].startsWith('# Corner bakery'), 'never-used pieces show newest first, got ' + JSON.stringify(c));
+  // The long title: one line, trimmed, no leading #
+  const long = await p.$eval('#contextRow .ctxchip', (b) => ({ h: b.getBoundingClientRect().height, w: b.getBoundingClientRect().width, row: document.getElementById('contextRow').getBoundingClientRect().width, text: b.textContent, cut: b.scrollWidth > b.clientWidth }));
+  expect(long.h < 60 && long.w <= long.row && long.cut && !long.text.trim().startsWith('#'), 'a long title is one line, trimmed, no #: ' + JSON.stringify(long));
+  // Pick the oldest from +N more; Show less keeps it because it's picked
+  await p.click('#contextMore');
+  expect((await chips()).length === 5 && await p.isVisible('#contextLess'), '+2 more shows them all');
+  await p.click('#contextRow .ctxchip:has-text("Oldest garden notes")');
+  await p.click('#contextLess');
+  c = await chips();
+  expect(c.length === 4 && c.includes('Oldest garden notes'), 'a picked piece stays visible when folded, got ' + JSON.stringify(c));
+  // Tapping doesn't reorder; building does, and it sticks after a reload
+  expect(c[0].startsWith('# Corner bakery'), 'picking alone never moves chips around');
+  await p.fill('#thoughts', 'plan my fall garden cleanup'); await p.click('#build'); await done(p);
+  await p.reload(); await p.waitForSelector('#contextRow .ctxchip');
+  c = await chips();
+  expect(c[0] === 'Oldest garden notes' && c.length === 3, 'the piece used in the last build comes first after a reload, got ' + JSON.stringify(c));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('my context: shown without dev tools, saves nothing until Save on this phone is on, then write, edit, delete, and it survives a reload', async () => {
   const p = await page();
   expect(await p.isVisible('#contextRow'), 'My context should show without dev tools');
@@ -3305,6 +3745,133 @@ await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, 
   expect(!(await p.evaluate(() => localStorage.getItem('stp-ideas'))), 'deleting the last idea should clear storage');
   await p.keyboard.press('Escape');
   await p.waitForSelector('#ideaPanel', { state: 'detached', timeout: 2000 }).catch(() => { throw new Error('Escape should close the panel'); });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, survives Build, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
+  const p = await page();
+  const draftKeys = () => p.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)), l: Object.keys(localStorage).filter((k) => /draft/.test(k)), ls: Object.keys(localStorage).map((k) => localStorage.getItem(k)).join('|') }));
+  await p.focus('#thoughts'); await p.keyboard.type('need a toast for my buddy Marco wedding saturday, funny but not mean');
+  await p.waitForTimeout(450);
+  let k = await draftKeys();
+  expect(k.s.length === 1 && !k.l.length && !/Marco/.test(k.ls), 'the draft is in sessionStorage only, never localStorage: ' + JSON.stringify(k));
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(/Marco wedding/.test(await p.inputValue('#thoughts')), 'the words come back after a reload');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});   /* it slides in after mount (flaked once in CI, 11/7) */
+  expect(await p.isVisible('#draftNote') && /this tab only/.test(await p.textContent('#draftNote')), 'a note says the words came back, this tab only');
+  // Start fresh empties the box and forgets it
+  await p.click('#draftFresh');
+  await p.waitForTimeout(350);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')) && !(await draftKeys()).s.length, 'Start fresh clears the box and the draft: ' + JSON.stringify([await p.inputValue('#thoughts'), !!(await p.$('#draftNote')), await draftKeys()]));
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '', 'nothing comes back after Start fresh');
+  // Build keeps it now (Test lab report): checked in its own smoke test below
+  await p.fill('#thoughts', ''); await p.waitForTimeout(450);
+  // Emptying the box deletes it
+  await p.focus('#thoughts'); await p.keyboard.type('short note'); await p.waitForTimeout(450);
+  await p.fill('#thoughts', ''); await p.waitForTimeout(450);
+  expect(!(await draftKeys()).s.length, 'an empty box deletes the draft');
+  // Older than 30 minutes: dropped, not restored
+  await p.focus('#thoughts'); await p.keyboard.type('old words from earlier'); await p.waitForTimeout(450);
+  await p.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => /stp-draft/.test(x)).replace(/^stg:/, ''); const d = JSON.parse(sessionStorage.getItem(k)); d.at -= 31 * 60 * 1000; sessionStorage.setItem(k, JSON.stringify(d)); });
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '' && !(await draftKeys()).s.length, 'a draft past 30 minutes is deleted, not brought back');
+  expect(/this tab only/.test(await p.textContent('#footer')), 'the footer says how the words are kept');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('draft net after Build (v2.1.28 Test lab report): you build, reload because you forgot your context, and your words come back with a note that they are from your last build; the prompt is never kept', async () => {
+  const p = await page();
+  const keys = () => p.evaluate(() => Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)).map((k) => sessionStorage.getItem(k.replace(/^stg:/, ''))));   /* staging prefixes keys (lib/channel.js) */
+  await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
+  await p.waitForTimeout(450);
+  await p.click('#build'); await done(p);
+  await p.waitForTimeout(450);
+  const k = await keys();
+  expect(k.length === 1 && /Bear Mountain/.test(k[0]), 'Build keeps the words in this tab: ' + JSON.stringify(k));
+  const out = await p.inputValue('#output').catch(() => '');
+  expect(!out || !k[0].includes(out.slice(0, 40)), 'the built prompt is never kept, only your words');
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'the words come back after a reload that follows a build');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
+  expect(await p.isVisible('#draftNote') && /last build/.test(await p.textContent('#draftNote')) && /this tab only/.test(await p.textContent('#draftNote')), 'the note says they are from your last build, this tab only: ' + await p.textContent('#draftNote').catch(() => ''));
+  // Typing more turns it back into a plain draft
+  await p.focus('#thoughts'); await p.keyboard.press('End'); await p.keyboard.type(', bring the dog');
+  await p.waitForTimeout(450);
+  await p.reload(); await p.waitForSelector('#thoughts');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
+  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && !/last build/.test(await p.textContent('#draftNote')), 'an edited draft comes back as a plain draft');
+  // Start fresh still forgets everything
+  await p.click('#draftFresh'); await p.waitForTimeout(350);
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '' && !(await keys()).length, 'Start fresh forgets it');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('my context notes (v2.1.28 Test lab report): the note has no garbage code at the end, an edit made in Notes comes across, lines starting with ## stay inside their piece, jotting below the end line is ignored, and old notes with the code still come in', async () => {
+  const { pack } = await import('../app/lib/contextsync.js');
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Weekend soccer');
+  await p.fill('#contextEditor .ctxtext', 'Practice Saturday 9am at Elm Park.\n## bring cones\nSnacks rotate weekly.');
+  await p.click('#contextSend'); await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(!/STPCTX1/.test(note) && !/[A-Za-z0-9+/=]{60,}/.test(note), 'no block of code characters in the note:\n' + note);
+  expect(/\n~ end of My context ~$/.test(note) && /\\## bring cones/.test(note), 'ends with a plain end line, and a ## text line is marked so it stays in the piece:\n' + note);
+  // In Notes: the time changes, and a jot goes below the end line
+  const edited = note.replace('Saturday 9am', 'Sunday 10am') + '\n\nremember to ask about jerseys';
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), edited);
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 added")');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.length === 1 && /Sunday 10am/.test(texts[0]) && /\n## bring cones\n/.test(texts[0]) && !/jerseys/.test(texts[0]), 'the Notes edit comes across, the ## line is back as written, the jot is ignored: ' + JSON.stringify(texts));
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 already here")');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 1, 'Bring in again: no duplicate');
+  // An old note (from before today) with the STPCTX1 code still comes in
+  const old = 'Speak to Prompt · My context · 1 piece · 11/6\nhow\n\n## Book club\nThird Thursday\n\nSTPCTX1:' + Buffer.from(JSON.stringify([{ title: 'Book club', text: 'Third Thursday' }])).toString('base64');
+  const r = await page();
+  await r.evaluate((n) => navigator.clipboard.writeText(n), old);
+  await r.click('#contextInQuick');
+  await r.waitForSelector('#contextSyncMsg:has-text("1 added")');
+  expect(await r.isVisible('#contextRow .ctxchip:has-text("Book club")'), 'an old note with the code still comes in');
+  expect(typeof pack === 'function' && !/—/.test(note), 'no em dashes');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('safari mic pauses (v2.1.28 Test lab report): a phrase after a pause gets its space, so the last word never runs into the next one', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  // Safari: each phrase after a pause is a new result with no leading space
+  await p.evaluate(() => window.__say(['call the milk guy', true], ['about Tuesday', true], [', then the bakery', false]));
+  const v = await p.inputValue('#thoughts');
+  expect(v === 'call the milk guy about Tuesday, then the bakery', 'phrases are joined with one space, none before punctuation, got: ' + JSON.stringify(v));
+  // Chrome-style leading spaces are not doubled
+  await p.evaluate(() => window.__say(['call the milk guy', true], [' about Tuesday', true]));
+  expect((await p.inputValue('#thoughts')) === 'call the milk guy about Tuesday', 'no double spaces, got: ' + JSON.stringify(await p.inputValue('#thoughts')));
+  await p.click('#micStop');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic keep talking glow (v2.1.28 Test lab report): tapping Keep talking lights up Use my keyboard mic with the halo for a few seconds, then it settles', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micGlowMs: 400 } });
+  await p.addInitScript(FAKE_SPEECH);
+  await p.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-mic-deaf', '27.0.1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
+  await p.reload();
+  await p.click('#micBtn'); await p.evaluate(() => window.__say(['grab oat milk', true])); await p.click('#micStop');
+  expect(!(await p.$('#micKeyboard.glow')), 'no glow before Keep talking');
+  await p.click('#micBtn');
+  expect(await p.isVisible('#micKeyboard.glow'), 'Keep talking lights up Use my keyboard mic');
+  const shadow = await p.$eval('#micKeyboard', (b) => getComputedStyle(b).boxShadow);
+  expect(shadow && shadow !== 'none', 'the halo shows: ' + shadow);
+  await p.waitForTimeout(600);
+  expect(!(await p.$('#micKeyboard.glow')), 'the glow settles after a few seconds');
+  await p.click('#micBtn'); await p.click('#micKeyboard');
+  expect(!(await p.$('#micKeyboard.glow')), 'tapping it turns the glow off');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -3745,7 +4312,7 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(!(await p.isVisible('#ideas .ideas-track')) && !(await p.isVisible('#ideasShow')), 'ideas should wait while Start here shows');
   await p.waitForTimeout(2400);
   expect(!(await p.$('.intro.sh-halo')), 'step 2: the title lets go');
-  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#talkLink.sh-halo'), 'step 2: box and Talk it out should both wear the halo on iPhone');
+  expect(await p.isVisible('#startHere') && await p.isVisible('#startHereTalk') && await p.$('#thoughts.sh-halo') && await p.$('#micBtn.sh-halo'), 'step 2: box and the Talk it out mic should both wear the halo on iPhone');
   expect(await p.$('#form.sh-lift') && await p.$('.sh-scrim.on') && !(await p.$('header.sh-lift')), 'step 2: the spotlight moves to the input card');
   const top = await p.evaluate(() => document.getElementById('form').getBoundingClientRect().top);
   expect(top > -5 && top < 80, 'step 2: the page should scroll so the box card sits at the top, got ' + top);
@@ -3761,11 +4328,12 @@ await check('start here: title and description pulse first, then it scrolls to T
   expect(await p.evaluate(() => localStorage.getItem('stp-started')) === '1', 'the first action should be remembered (a yes/no flag only)');
   const saved = await p.evaluate(() => { const v = []; for (let i = 0; i < localStorage.length; i++) v.push(localStorage.getItem(localStorage.key(i))); return v.join('|'); });
   expect(!/\bhi\b/.test(saved), 'nothing typed may be saved');
+  await p.fill('#thoughts', ''); await p.waitForTimeout(400);   /* an empty box, so the draft net (v2.1.28) has nothing to bring back */
   await p.reload(); await p.waitForTimeout(300);
   expect(!(await p.$('.sh-halo')) && await p.isVisible('#ideas .ideas-track'), 'after the first action it never shows again, and the ideas show right away');
   const q = await page({ fresh: true });
   await q.waitForTimeout(4100);
-  expect(await q.isVisible('#startHere') && !(await q.isVisible('#startHereTalk')) && !(await q.$('#talkLink.sh-halo')), 'computers get the box step without Talk it out');
+  expect(await q.isVisible('#startHere') && await q.isVisible('#startHereTalk') && await q.$('#micBtn.sh-halo') && !(await q.$('#talkLink.sh-halo')), 'computers with speech-to-text get Talk it out (the mic) too, never the shortcut');
   const r = await page({ fresh: true, reduced: true });
   await r.waitForTimeout(300);
   expect(await r.$('.intro.sh-halo') && await r.$eval('.intro', el => getComputedStyle(el).animationName) === 'none', 'Reduce Motion: a still halo, no pulse');
@@ -3923,6 +4491,8 @@ await check('keyboard coach: while typing with the keyboard up, the meter and on
   expect(!(await p.isVisible('#kbCoach')), 'no keyboard, no bar');
   await fakeKeyboard(p, 320); await p.waitForTimeout(300);
   expect(await p.isVisible('#kbCoach'), 'the bar should show on top of the keyboard');
+  /* It slides into place, so give it a moment to settle (read mid-slide once in CI, 11/7: 544 vs 524). */
+  await p.waitForFunction(() => { const el = document.getElementById('kbCoach'); return el && Math.abs(el.getBoundingClientRect().bottom - (844 - 320)) <= 2; }, null, { timeout: 2000 }).catch(() => {});
   const b = await p.$eval('#kbCoach', el => Math.round(el.getBoundingClientRect().bottom));
   expect(Math.abs(b - (844 - 320)) <= 2, 'the bar should sit right on the keyboard, bottom at ' + b);
   expect(await p.$('#coach.kbaway'), 'the coach under the box steps aside while the bar has it');

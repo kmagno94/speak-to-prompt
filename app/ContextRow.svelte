@@ -3,11 +3,12 @@
      one (a title and a big text box). In the main app since v2.1.21 (#4): saving is opt-in
      (Save on this phone), and each piece shows its size against the 3,800 character cap.
      See lib/context.svelte.js. */
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { context, BUDGET, CAP } from './lib/context.svelte.js';
   import { ui } from './lib/ui.svelte.js';
+  import { pack, unpack } from './lib/contextsync.js';
 
   const n = (x) => x.toLocaleString('en-US');
   /* The budget chip: size and % of the 1,500 token budget. Past 100% with a key it says a
@@ -20,6 +21,19 @@
   });
 
   const len = (c) => c.text.trim().length;
+  /* Compact chips (v2.1.28): recently used first, TOP shown, the rest behind +N more. A picked piece
+     always shows, so you can see what's going into the prompt. Titles show without a leading "#". */
+  const TOP = 3;
+  let showAll = $state(false);
+  const shown = $derived(showAll ? context.ordered : context.ordered.filter((c, i) => i < TOP || context.picked.includes(c.id)));
+  const hidden = $derived(context.ordered.length - shown.length);
+  const label = (c) => (c.title.trim().replace(/^#+\s*/, '') || 'Untitled');
+  onMount(() => {
+    const form = document.getElementById('form');
+    const stamp = () => context.markUsed();
+    form && form.addEventListener('submit', stamp, true);
+    return () => form && form.removeEventListener('submit', stamp, true);
+  });
 
   let armed = $state('');
   let editor = $state();
@@ -37,6 +51,55 @@
   function addNew() { openAt(context.add()); }
   function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
   function done() { context.save(); context.open = false; armed = ''; }
+  /* On all your devices (v2.1.28, lib/contextsync.js): Copy for Notes copies the pieces as one note,
+     then (iPhone/iPad) an Open Notes button opens Apple Notes to paste it into a new note; iCloud syncs it.
+     It used to hand the note to the share sheet, but Notes' share sheet popped up and closed on it
+     (Test lab report, 11/7), so copying is the main way and Share another way is the backup.
+     Bring in reads a copied note from the clipboard, or from a paste box if the browser won't.
+     The note is plain words now, no code at the end (v2.1.28 Test lab report), and an edit made in Notes comes across. */
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+  let syncMsg = $state(''), syncBad = $state(false), pasteOpen = $state(false), pasteText = $state(''), copiedNote = $state(false);
+  const say = (m, bad = false) => { syncMsg = m; syncBad = bad; };
+  const ready = () => context.list.filter((c) => c.title.trim() || c.text.trim());
+  async function sendOut() {
+    const pieces = ready();
+    copiedNote = false;
+    if (!pieces.length) return say('Add a piece first, then send it.', true);
+    const text = pack(pieces);
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedNote = true;
+      return say(appleTouch
+        ? 'Copied. Tap Open Notes, start a new note (✏️), and paste. iCloud puts it on your iPad and Mac.'
+        : 'Copied. Paste it into a new note in Apple Notes and iCloud puts it on your other devices.');
+    } catch (e) {}
+    if (canShare) return shareOut();
+    say('This browser won\'t copy. Try Safari.', true);
+  }
+  /* The backup: the share sheet, text only (the first line is the title anyway). */
+  async function shareOut() {
+    const pieces = ready();
+    if (!pieces.length) return say('Add a piece first, then send it.', true);
+    try { await navigator.share({ text: pack(pieces) }); say('Sent.'); }
+    catch (e) { if (!(e && e.name === 'AbortError')) say('The share sheet didn\'t work here. Use Copy for Notes instead.', true); }
+  }
+  function take(text) {
+    const pieces = unpack(text);
+    if (!pieces) return say('That isn\'t a My context note. In Notes, copy the whole note, from the first line to ~ end of My context ~, then tap Bring in.', true);
+    if (!pieces.length) return say('That note has no pieces in it.', true);
+    const r = context.bringIn(pieces);
+    pasteOpen = false; pasteText = '';
+    const bits = [r.added && r.added + ' added', r.updated && r.updated + ' updated', r.same && r.same + ' already here'].filter(Boolean).join(', ');
+    say('Brought in: ' + bits + '.' + (context.keep ? '' : ' Turn on Save on this phone to keep them after you close the tab.'));
+  }
+  async function bringIn() {
+    if (!context.open) await openAt('');
+    try { const t = await navigator.clipboard.readText(); if (t && unpack(t)) return take(t); } catch (e) {}
+    pasteOpen = true;
+    say('Paste the note here, then tap Bring in.');
+  }
   /* While the editor is open, the floating 💡 Ideas and 🧪 Test lab buttons tuck away so they
      don't sit on top of the floating Done bar (Test lab, v2.1.7). */
   $effect(() => {
@@ -53,10 +116,16 @@
     <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
   </div>
   <div class="chips" role="group" aria-label="Context to add to this prompt">
-    {#each context.usable as c (c.id)}
-      <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={context.overCap.includes(c.id) ? `Over the ${n(CAP)} character cap` : ''} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{c.title.trim() || 'Untitled'}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
+    {#each shown as c (c.id)}
+      <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={(c.title.trim() || 'Untitled') + (context.overCap.includes(c.id) ? ` · over the ${n(CAP)} character cap` : '')} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{label(c)}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
     {/each}
+    {#if hidden > 0}
+      <button type="button" class="ctxmore" id="contextMore" aria-expanded="false" onclick={() => (showAll = true)}>+{hidden} more</button>
+    {:else if showAll && context.ordered.length > TOP}
+      <button type="button" class="ctxmore" id="contextLess" aria-expanded="true" onclick={() => (showAll = false)}>Show less</button>
+    {/if}
     <button type="button" class="ctxnew" id="contextNew" onclick={addNew}>+ {context.usable.length ? 'New' : 'Add context you can reuse'}</button>
+    {#if !context.usable.length}<button type="button" class="link ctxin" id="contextInQuick" onclick={bringIn}>📥 Bring in from another device</button>{/if}
   </div>
 
   {#if context.open}
@@ -65,6 +134,22 @@
         <input type="checkbox" id="contextKeep" checked={context.keep} onchange={(e) => context.setKeep(e.currentTarget.checked)}>
         <span><b>Save on this phone</b><small>{context.keep ? 'Saved in this browser on this phone only, never sent anywhere except inside prompts you build. Turn off to delete them from this phone.' : 'Off: these pieces go away when you close or refresh. Turn on to keep them on this phone only.'}</small></span>
       </label>
+      <div class="sync" id="contextSync">
+        <b>📲 On all your devices</b>
+        <small>Copy for Notes, paste it into a new note, and iCloud puts it on your iPad and Mac. There, copy the note and tap Bring in. Only goes where you put it.</small>
+        <div class="syncbtns">
+          <button type="button" id="contextSend" onclick={sendOut}>📋 Copy for Notes</button>
+          <button type="button" id="contextIn" onclick={bringIn}>📥 Bring in</button>
+        </div>
+        {#if copiedNote && appleTouch}<a class="opennotes" id="contextOpenNotes" href="mobilenotes://">📝 Open Notes</a>{/if}
+        {#if canShare}<button type="button" class="link sharealt" id="contextShare" onclick={shareOut}>Share another way</button>{/if}
+        {#if pasteOpen}
+          <label class="sr" for="contextPaste">Paste the note</label>
+          <textarea id="contextPaste" class="ctxtext" rows="4" placeholder="Paste the whole note from Notes here" bind:value={pasteText}></textarea>
+          <button type="button" class="primary" id="contextPasteGo" onclick={() => take(pasteText)}>Bring in</button>
+        {/if}
+        {#if syncMsg}<p class="syncmsg" class:bad={syncBad} id="contextSyncMsg" role="status">{syncMsg}</p>{/if}
+      </div>
       <p class="hint">Tap a chip above to use that piece for this prompt: the facts this request needs get worked into the prompt, nothing tacked on. Keep each piece under {n(CAP)} characters.</p>
       {#each context.list as c, i (c.id)}
         <div class="ctxitem" data-id={c.id}>
@@ -86,14 +171,16 @@
 </div>
 
 <style>
-  .ctxrow { grid-column: 1 / -1; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
+  .ctxrow { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
   .ctxhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
   .ctxlabel { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); }
   .ctxcount { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
   .ctxcount.over { color: var(--warn); background: var(--warn-soft); }
   .ctxedit { margin-left: auto; min-height: var(--tap); }
   .ctxedit:empty { display: none; }
-  .ctxchip { min-height: var(--tap); }
+  /* One line each: long titles trim with … (the full title is in the tooltip and the editor). */
+  .ctxchip { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chips .ctxmore { min-height: var(--tap); border-style: dashed; color: var(--accent); font-weight: 700; background: transparent; }
   .ctxnew { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); border: 1.5px dashed var(--line); background: transparent; color: var(--accent); font-weight: 700; font-size: var(--fs-sm); }
   .ctxeditor { display: grid; gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
   /* Floating Done: sticks to the bottom of the screen, above the keyboard (--kb, lib/keyboard.svelte.js),
@@ -118,5 +205,17 @@
   .ctxchip.overcap { border-color: var(--warn); }
   .capflag { color: var(--warn); font-weight: 700; }
   .del { justify-self: start; color: var(--danger); min-height: 40px; }
+  .ctxin { min-height: var(--tap); font-size: var(--fs-sm); }
+  .sync { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line); }
+  .sync small { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
+  .sync, .syncbtns > * { min-width: 0; }
+  .syncbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+  .syncbtns button { min-height: 44px; padding-inline: var(--sp-2); }
+  .opennotes { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: var(--sp-2); border-radius: 999px; font-weight: 700; text-decoration: none;
+    color: var(--ink); background: var(--accent-soft); border: 1px solid var(--line); }
+  .opennotes:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .sharealt { display: block; margin-top: var(--sp-2); min-height: 36px; font-size: 14px; }
+  .syncmsg { margin: 0; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
+  .syncmsg.bad { color: var(--warn); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>

@@ -36,7 +36,14 @@
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
+  import MicLog from './MicLog.svelte';
+  import DraftNote from './DraftNote.svelte';
+  import { watchDraft } from './lib/draft.svelte.js';
+  import { hasSpeech } from './lib/voice.js';
   let tutorial;
+  /* v2.1.27: where the browser has speech-to-text, Talk it out is the mic and the shortcut hides
+     unless Show my dev tools is on (kept for anyone who still likes the Voice Memos way). */
+  const shortcutAway = $derived(hasSpeech && !core.dev);
   /* No shortcut yet: open the Voice Memos by-hand steps in More options. */
   function noShortcut() {
     const more = document.getElementById('moreOpts'), memo = document.getElementById('memoGuide');
@@ -48,11 +55,12 @@
     startApp();
     watchKeyboard();   /* lib/keyboard.svelte.js: --kb, so bars can sit on top of the keyboard */
     const stopGrow = growBox(document.getElementById('thoughts'));   /* #32: the words box fits what you type */
+    const stopDraft = watchDraft();   /* v2.1.28: the words box survives a reload, this tab only, 30 min */
     /* Staging only: #cookdemo plays the prompt cooking preview (lib/cook.svelte.js). */
     const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
     demo();
     window.addEventListener('hashchange', demo);
-    return () => { stopGrow(); window.removeEventListener('hashchange', demo); };
+    return () => { stopGrow(); stopDraft(); window.removeEventListener('hashchange', demo); };
   });
 </script>
 
@@ -95,10 +103,11 @@
   <form id="form" class="field hero" novalidate>
     <label for="thoughts" class="herolabel">What's on your mind?</label>
     <div class="voice" id="voiceRow">
-      <!-- Talk here (AGT-2): the browser's own speech-to-text, only where the browser has it. -->
+      <!-- Talk it out (AGT-2): the browser's own speech-to-text, only where the browser has it. -->
       <MicButton />
-      <a class="btnlink" id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">Talk it out</a>
-      <button type="button" class="getlink nosc" id="noShortcut" onclick={noShortcut}>No shortcut?</button>
+      <!-- The Voice Memos shortcut: the main way to talk where there's no speech-to-text, otherwise behind dev tools. -->
+      <a class="btnlink" class:away={shortcutAway} id="talkLink" href="shortcuts://run-shortcut?name=Speak%20to%20Prompt">{hasSpeech ? 'Voice Memos shortcut' : 'Talk it out'}</a>
+      <button type="button" class="getlink nosc" class:away={shortcutAway} id="noShortcut" onclick={noShortcut}>No shortcut?</button>
       <a class="filelink" id="fileLink" href="shortcuts://run-shortcut?name=File%20Voice%20Note" hidden>🗂️ File voice note</a>
       <div id="pasteWrap" class="pastewrap" hidden>
         <button type="button" class="pastebtn" id="bannerPaste">📋 Paste</button>
@@ -120,6 +129,7 @@
       <button type="button" class="ideas-show" id="ideasShow" hidden>💡 Show ideas</button>
       <StartHere />
     </div>
+    <DraftNote />
     <StuckNudge />
     <GhostCoach />
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
@@ -294,6 +304,7 @@
         <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
       </div>
+      {#if core.dev && hasSpeech}<MicLog />{/if}
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
         <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>
@@ -328,5 +339,5 @@
   <KeyboardCoach />
   <NextDock />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. Close or refresh the tab and everything is gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. What you type stays in this tab only, for up to 30 minutes, so a reload doesn't lose it. Close the tab and it's gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>
