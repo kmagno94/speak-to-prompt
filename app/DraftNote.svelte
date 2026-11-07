@@ -1,6 +1,6 @@
 <script>
   /* The note under the box when a draft came back after a reload (v2.1.28, lib/draft.svelte.js).
-     Goes away as soon as you type, Build, or tap Start fresh. */
+     Goes away as soon as you type, Build, or tap Start fresh. After a build it says the words are from your last build. */
   import { slide } from 'svelte/transition';
   import { draft, startFresh } from './lib/draft.svelte.js';
   import { ms } from './lib/motion.js';
@@ -8,7 +8,7 @@
 
 {#if draft.restored}
   <p class="draftnote" id="draftNote" role="status" transition:slide={{ duration: ms(180) }}>
-    <span>↩️ Your words are back from before the page reloaded. Kept in this tab only, for 30 minutes.</span>
+    <span>{#if draft.built}↩️ Your words from your last build are back (the prompt isn't kept). Change anything and build again. Kept in this tab only, for 30 minutes.{:else}↩️ Your words are back from before the page reloaded. Kept in this tab only, for 30 minutes.{/if}</span>
     <button type="button" id="draftFresh" onclick={startFresh}>Start fresh</button>
   </p>
 {/if}

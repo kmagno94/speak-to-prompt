@@ -457,7 +457,7 @@ await check('safari mic: once this Safari version went deaf, every page after it
   await p.click('#micBtn');
   expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'Keep talking never starts the deaf Safari mic');
   expect(await p.evaluate(() => { const b = document.getElementById('thoughts'); return document.activeElement === b && b.selectionStart === b.value.length; }), 'Keep talking puts the cursor at the end so the keyboard and its mic come up');
-  expect((await p.inputValue('#thoughts')) === 'call the milk guy', 'words stay');
+  expect((await p.inputValue('#thoughts')) === 'call the milk guy ', 'words stay, with a space at the end so keyboard dictation starts a new word, got: ' + JSON.stringify(await p.inputValue('#thoughts')));
   // Safari ends the first run on its own: no restart into a deaf mic, Keep talking instead
   const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
   await q.addInitScript(FAKE_SPEECH); await q.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await q.reload();
@@ -3398,7 +3398,7 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await p.click('#contextSend');
   await p.waitForSelector('#contextSyncMsg');
   const note = await p.evaluate(() => navigator.clipboard.readText());
-  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\nSTPCTX1:[A-Za-z0-9+/=\n]+$/.test(note), 'the note is readable with the code at the end:\n' + note);
+  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\n~ end of My context ~$/.test(note) && !/STPCTX1/.test(note), 'the note is plain words ending with the end line, no code:\n' + note);
   expect(/Copied/.test(await p.textContent('#contextSyncMsg')), 'no share sheet: it copies and says so');
   expect(!/\u2014/.test(note), 'no em dashes in the note');
   // Another device: an empty My context, the note on the clipboard
@@ -3427,11 +3427,11 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.waitForSelector('#contextPaste');
   await q.fill('#contextPaste', 'eggs, milk, STPCTX1:%%%broken');
   await q.click('#contextPasteGo');
-  expect(/No My context code found/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'junk changes nothing and says to copy the whole note');
+  expect(/isn't a My context note/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'junk changes nothing and says to copy the whole note');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
-await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies the note and offers Open Notes on iPhone, never the share sheet first; Share another way sends text only; the code is wrapped in short lines and big pieces still come back', async () => {
+await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies the note and offers Open Notes on iPhone, never the share sheet first; Share another way sends text only; no code block at the end, and big pieces still come back', async () => {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
   const p = await page({ ua: IPHONE });
   await p.addInitScript(() => { window.__shares = []; Object.defineProperty(navigator, 'share', { value: (d) => { window.__shares.push(d); return Promise.reject(Object.assign(new Error('x'), { name: 'AbortError' })); }, configurable: true }); });
@@ -3450,8 +3450,7 @@ await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies th
   expect(await p.evaluate(() => window.__shares.length) === 0, 'Copy for Notes must not open the share sheet');
   expect(/Copied/.test(await p.textContent('#contextSyncMsg')) && /Open Notes/.test(await p.textContent('#contextSyncMsg')), 'it says copied and what to do in Notes');
   expect((await p.getAttribute('#contextOpenNotes', 'href')) === 'mobilenotes://', 'iPhone gets an Open Notes button');
-  const code = note.slice(note.indexOf('STPCTX1:')).split('\n');
-  expect(code.length > 10 && code.every((l) => l.length <= 76), 'the code is wrapped in short lines, longest ' + Math.max(...code.map((l) => l.length)));
+  expect(!/STPCTX1/.test(note) && /~ end of My context ~$/.test(note), 'no code block at the end of the note');
   expect(note.split('\n').every((l) => l.length <= 4000), 'no giant unbroken line in the note');
   // Share another way: text only, and a cancel says nothing
   await p.click('#contextShare');
@@ -3728,7 +3727,7 @@ await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, and is deleted on Build, Start fresh, an empty box, and after 30 minutes', async () => {
+await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, survives Build, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
   const p = await page();
   const draftKeys = () => p.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)), l: Object.keys(localStorage).filter((k) => /draft/.test(k)), ls: Object.keys(localStorage).map((k) => localStorage.getItem(k)).join('|') }));
   await p.focus('#thoughts'); await p.keyboard.type('need a toast for my buddy Marco wedding saturday, funny but not mean');
@@ -3744,15 +3743,8 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')) && !(await draftKeys()).s.length, 'Start fresh clears the box and the draft: ' + JSON.stringify([await p.inputValue('#thoughts'), !!(await p.$('#draftNote')), await draftKeys()]));
   await p.reload(); await p.waitForSelector('#thoughts');
   expect((await p.inputValue('#thoughts')) === '', 'nothing comes back after Start fresh');
-  // Build deletes it, and it stays off until you type again
-  await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
-  await p.waitForTimeout(450);
-  expect((await draftKeys()).s.length === 1, 'saved while typing');
-  await p.click('#build'); await done(p);
-  await p.waitForTimeout(450);
-  expect(!(await draftKeys()).s.length, 'Build deletes the draft');
-  await p.reload(); await p.waitForSelector('#thoughts');
-  expect(!/Bear Mountain/.test(await p.inputValue('#thoughts')), 'nothing comes back after Build');
+  // Build keeps it now (Test lab report): checked in its own smoke test below
+  await p.fill('#thoughts', ''); await p.waitForTimeout(450);
   // Emptying the box deletes it
   await p.focus('#thoughts'); await p.keyboard.type('short note'); await p.waitForTimeout(450);
   await p.fill('#thoughts', ''); await p.waitForTimeout(450);
@@ -3763,6 +3755,99 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   await p.reload(); await p.waitForSelector('#thoughts');
   expect((await p.inputValue('#thoughts')) === '' && !(await draftKeys()).s.length, 'a draft past 30 minutes is deleted, not brought back');
   expect(/this tab only/.test(await p.textContent('#footer')), 'the footer says how the words are kept');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('draft net after Build (v2.1.28 Test lab report): you build, reload because you forgot your context, and your words come back with a note that they are from your last build; the prompt is never kept', async () => {
+  const p = await page();
+  const keys = () => p.evaluate(() => Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)).map((k) => sessionStorage.getItem(k.replace(/^stg:/, ''))));   /* staging prefixes keys (lib/channel.js) */
+  await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
+  await p.waitForTimeout(450);
+  await p.click('#build'); await done(p);
+  await p.waitForTimeout(450);
+  const k = await keys();
+  expect(k.length === 1 && /Bear Mountain/.test(k[0]), 'Build keeps the words in this tab: ' + JSON.stringify(k));
+  const out = await p.inputValue('#output').catch(() => '');
+  expect(!out || !k[0].includes(out.slice(0, 40)), 'the built prompt is never kept, only your words');
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'the words come back after a reload that follows a build');
+  expect(await p.isVisible('#draftNote') && /last build/.test(await p.textContent('#draftNote')) && /this tab only/.test(await p.textContent('#draftNote')), 'the note says they are from your last build, this tab only: ' + await p.textContent('#draftNote').catch(() => ''));
+  // Typing more turns it back into a plain draft
+  await p.focus('#thoughts'); await p.keyboard.press('End'); await p.keyboard.type(', bring the dog');
+  await p.waitForTimeout(450);
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && !/last build/.test(await p.textContent('#draftNote')), 'an edited draft comes back as a plain draft');
+  // Start fresh still forgets everything
+  await p.click('#draftFresh'); await p.waitForTimeout(350);
+  await p.reload(); await p.waitForSelector('#thoughts');
+  expect((await p.inputValue('#thoughts')) === '' && !(await keys()).length, 'Start fresh forgets it');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('my context notes (v2.1.28 Test lab report): the note has no garbage code at the end, an edit made in Notes comes across, lines starting with ## stay inside their piece, jotting below the end line is ignored, and old notes with the code still come in', async () => {
+  const { pack } = await import('../app/lib/contextsync.js');
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor .ctxtitle', 'Weekend soccer');
+  await p.fill('#contextEditor .ctxtext', 'Practice Saturday 9am at Elm Park.\n## bring cones\nSnacks rotate weekly.');
+  await p.click('#contextSend'); await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(!/STPCTX1/.test(note) && !/[A-Za-z0-9+/=]{60,}/.test(note), 'no block of code characters in the note:\n' + note);
+  expect(/\n~ end of My context ~$/.test(note) && /\\## bring cones/.test(note), 'ends with a plain end line, and a ## text line is marked so it stays in the piece:\n' + note);
+  // In Notes: the time changes, and a jot goes below the end line
+  const edited = note.replace('Saturday 9am', 'Sunday 10am') + '\n\nremember to ask about jerseys';
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), edited);
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 added")');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.length === 1 && /Sunday 10am/.test(texts[0]) && /\n## bring cones\n/.test(texts[0]) && !/jerseys/.test(texts[0]), 'the Notes edit comes across, the ## line is back as written, the jot is ignored: ' + JSON.stringify(texts));
+  await q.click('#contextIn');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 already here")');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 1, 'Bring in again: no duplicate');
+  // An old note (from before today) with the STPCTX1 code still comes in
+  const old = 'Speak to Prompt · My context · 1 piece · 11/6\nhow\n\n## Book club\nThird Thursday\n\nSTPCTX1:' + Buffer.from(JSON.stringify([{ title: 'Book club', text: 'Third Thursday' }])).toString('base64');
+  const r = await page();
+  await r.evaluate((n) => navigator.clipboard.writeText(n), old);
+  await r.click('#contextInQuick');
+  await r.waitForSelector('#contextSyncMsg:has-text("1 added")');
+  expect(await r.isVisible('#contextRow .ctxchip:has-text("Book club")'), 'an old note with the code still comes in');
+  expect(typeof pack === 'function' && !/—/.test(note), 'no em dashes');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
+});
+
+await check('safari mic pauses (v2.1.28 Test lab report): a phrase after a pause gets its space, so the last word never runs into the next one', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  // Safari: each phrase after a pause is a new result with no leading space
+  await p.evaluate(() => window.__say(['call the milk guy', true], ['about Tuesday', true], [', then the bakery', false]));
+  const v = await p.inputValue('#thoughts');
+  expect(v === 'call the milk guy about Tuesday, then the bakery', 'phrases are joined with one space, none before punctuation, got: ' + JSON.stringify(v));
+  // Chrome-style leading spaces are not doubled
+  await p.evaluate(() => window.__say(['call the milk guy', true], [' about Tuesday', true]));
+  expect((await p.inputValue('#thoughts')) === 'call the milk guy about Tuesday', 'no double spaces, got: ' + JSON.stringify(await p.inputValue('#thoughts')));
+  await p.click('#micStop');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('safari mic keep talking glow (v2.1.28 Test lab report): tapping Keep talking lights up Use my keyboard mic with the halo for a few seconds, then it settles', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micGlowMs: 400 } });
+  await p.addInitScript(FAKE_SPEECH);
+  await p.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-mic-deaf', '27.0.1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
+  await p.reload();
+  await p.click('#micBtn'); await p.evaluate(() => window.__say(['grab oat milk', true])); await p.click('#micStop');
+  expect(!(await p.$('#micKeyboard.glow')), 'no glow before Keep talking');
+  await p.click('#micBtn');
+  expect(await p.isVisible('#micKeyboard.glow'), 'Keep talking lights up Use my keyboard mic');
+  const shadow = await p.$eval('#micKeyboard', (b) => getComputedStyle(b).boxShadow);
+  expect(shadow && shadow !== 'none', 'the halo shows: ' + shadow);
+  await p.waitForTimeout(600);
+  expect(!(await p.$('#micKeyboard.glow')), 'the glow settles after a few seconds');
+  await p.click('#micBtn'); await p.click('#micKeyboard');
+  expect(!(await p.$('#micKeyboard.glow')), 'tapping it turns the glow off');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

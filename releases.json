@@ -7,10 +7,10 @@
       "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",
       "items": [
         "The words box no longer jerks or snaps around while you type or scroll your results, and you can always see what you're writing.",
-        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: new words pick up after your fix. On iPhones with iOS 27, Safari's mic only hears once per page (an Apple bug), so when a second try hears nothing it stops, says why, and hands you to the keyboard mic with one tap instead of pretending to listen. You can also fix a word by typing while it listens. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
-        "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. Deleted when you Build, empty the box, close the tab, or after 30 minutes. Never sent anywhere.",
+        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: new words pick up after your fix. On iPhones with iOS 27, Safari's mic only hears once per page (an Apple bug), so when a second try hears nothing it stops, says why, and hands you to the keyboard mic with one tap instead of pretending to listen. Keep talking makes the ⌨️ Use my keyboard mic button glow so the next tap is clear. A pause no longer glues your last word onto the next one. You can also fix a word by typing while it listens. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
+        "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. That includes after you Build: forgot to pick your context? Reload and your words are still there (the prompt isn't kept). Deleted when you empty the box, tap Start fresh, close the tab, or after 30 minutes. Never sent anywhere.",
         "A Gemini key from a different Google account gets its own fresh daily count, so it no longer says Flash is used up because of your other key.",
-        "My context has 📋 Copy for Notes and 📥 Bring in: copy your pieces as one note, tap 📝 Open Notes and paste it into a new note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. Same titles update, nothing is deleted. (Notes' share sheet kept closing on it, so copy and paste is the main way now; Share another way is still there.)",
+        "My context has 📋 Copy for Notes and 📥 Bring in: copy your pieces as one note, tap 📝 Open Notes and paste it into a new note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. The note is just your pieces in plain words, no block of code at the end, and an edit you make in Notes comes across. Same titles update, nothing is deleted. (Notes' share sheet kept closing on it, so copy and paste is the main way now; Share another way is still there.)",
         "My context is compact: the pieces you used in your last builds go first, only 3 chips show with +N more for the rest, and long titles stay on one line. A piece you picked always shows."
       ],
       "checks": [
@@ -20,24 +20,24 @@
           "paste": "ok so I need to plan a surprise 40th for my aunt Rosa, maybe a backyard thing in late spring, like 25 people, she loves salsa music and hates being the center of attention so nothing too big, budget around 800, help me figure out food, music, and how to keep it secret from her"
         },
         {
-          "say": "Tap Talk it out and talk for about 10 seconds, enough to fill the box past the screen. Tap the red Tap to stop button, fix one word by typing, then tap Talk it out again and keep talking.",
-          "see": "The red Tap to stop button with a timer stays at the bottom the whole time. On the second try, if Safari doesn't hear you, within about 5 seconds the mic stops with a note about the iOS 27 bug and a Use my keyboard mic button that puts the cursor at the end of the box. From then on, on this iPhone: after the first Talk it out on a page, the button turns into Keep talking ⌨️, which opens the keyboard right away, then its 🎤 adds your words. No waiting."
+          "say": "Tap Talk it out and talk for about 10 seconds, with a couple of short pauses. Tap the red Tap to stop button, then tap Talk it out again. When the button says Keep talking ⌨️, tap it.",
+          "see": "Every pause keeps its space: no two words glued together. The red Tap to stop button stays at the bottom while it listens. Keep talking opens the keyboard with a space after your last word, and the ⌨️ Use my keyboard mic button glows white for a few seconds so it's clear what to tap. Dictating with the keyboard's 🎤 starts as a new word."
         },
         {
           "say": "Tap First time? Start here.",
           "see": "A Rather talk than type? card explains Talk it out: tap, talk, then tap the red Tap to stop button. Show me where closes it and makes the Talk it out button glow, without starting the mic."
         },
         {
-          "say": "Type a few words in the box, then pull down to reload the page.",
-          "see": "Your words come back with a note: back from before the page reloaded, this tab only. Start fresh empties the box. Build a prompt, reload again, and nothing comes back."
+          "say": "Type a few words in the box and tap Build my prompt. When it's done, pull down to reload the page.",
+          "see": "Your words come back with a note: from your last build, the prompt isn't kept, this tab only. Start fresh empties the box, and after another reload nothing comes back."
         },
         {
           "say": "Open the key panel, paste your Gemini key from your other Google account, and tap Check key.",
           "see": "Key works, plus New key, so today's limits start fresh. Building in Normal no longer says Flash is used up."
         },
         {
-          "say": "In My context, add a piece (like Weekend soccer, practice Saturday 9am), tap 📋 Copy for Notes, then 📝 Open Notes. Start a new note and paste. Back in the app, delete the piece, copy that whole note in Notes, and tap 📥 Bring in.",
-          "see": "Copy for Notes says Copied, Open Notes opens Apple Notes, and the pasted note ends with a short block of code lines. The piece comes back as a chip with 1 added. Tap Bring in again and it says 1 already here, no duplicate."
+          "say": "In My context, add a piece (like Weekend soccer, practice Saturday 9am), tap 📋 Copy for Notes, then 📝 Open Notes. Start a new note and paste. In Notes, change 9am to 10am. Back in the app, copy that whole note in Notes and tap 📥 Bring in.",
+          "see": "The pasted note is just your piece in plain words and ends with ~ end of My context ~. No block of code characters. Bring in says 1 updated and the piece now says 10am. Tap Bring in again and it says 1 already here, no duplicate."
         },
         {
           "say": "Look at My context with Save on this phone on, tap +N more, pick a piece from the bottom, and build a prompt. Then reload.",

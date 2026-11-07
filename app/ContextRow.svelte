@@ -55,7 +55,8 @@
      then (iPhone/iPad) an Open Notes button opens Apple Notes to paste it into a new note; iCloud syncs it.
      It used to hand the note to the share sheet, but Notes' share sheet popped up and closed on it
      (Test lab report, 11/7), so copying is the main way and Share another way is the backup.
-     Bring in reads a copied note from the clipboard, or from a paste box if the browser won't. */
+     Bring in reads a copied note from the clipboard, or from a paste box if the browser won't.
+     The note is plain words now, no code at the end (v2.1.28 Test lab report), and an edit made in Notes comes across. */
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
   const appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
   const canShare = typeof navigator !== 'undefined' && !!navigator.share;
@@ -86,7 +87,7 @@
   }
   function take(text) {
     const pieces = unpack(text);
-    if (!pieces) return say('No My context code found. Copy the whole note from Notes, including the last line, then tap Bring in.', true);
+    if (!pieces) return say('That isn\'t a My context note. In Notes, copy the whole note, from the first line to ~ end of My context ~, then tap Bring in.', true);
     if (!pieces.length) return say('That note has no pieces in it.', true);
     const r = context.bringIn(pieces);
     pasteOpen = false; pasteText = '';

@@ -1,28 +1,28 @@
 /* My context on all your devices (v2.1.28, idea mvxecifv8i68).
    The site has no server and no accounts, so it can't talk to iCloud itself. Apple Notes can:
-   "Send to Notes" packs your pieces into one note (readable, plus a restore code at the end)
-   and hands it to the share sheet, where you pick Notes. iCloud syncs that note to your iPad and
-   Mac. There, copy the note and tap "Bring in": the code is read back into My context.
-   Nothing is sent anywhere by the site. The note only goes where you send it.
+   Copy for Notes packs your pieces into one note, you paste it into Notes, iCloud syncs it to
+   your iPad and Mac. There, copy the note and tap Bring in: the note is read back into My context.
+   Nothing is sent anywhere by the site. The note only goes where you put it.
 
-   Format (plain text, safe to edit the readable part, only the code line is read):
-     Speak to Prompt · My context · 3 pieces
+   Format (plain text, v2.1.28 Test lab report): the note is just your pieces, no code.
+     Speak to Prompt · My context · 3 pieces · 11/7
      ...how to use it...
      ## Title
      text
-     STPCTX1:<base64 of UTF-8 JSON [{ "title", "text" }]>   (wrapped every 76 characters)
-   The code is wrapped into short lines (v2.1.28, Test lab report): one giant unbroken line is a
-   likely reason Notes' share sheet popped up and closed. Bring in ignores the line breaks.
+     ~ end of My context ~
+   It used to end with a STPCTX1: restore code (base64 of the same pieces), which looked like
+   a block of garbage characters in Notes, and it hid a trap: edits made in Notes were ignored,
+   since only the code was read. Now Bring in reads the readable part, so the note is the source
+   of truth and an edit in Notes comes across. Anything after the end line is ignored, so you can
+   jot below it. A text line that starts with ## (or is the end line) gets a \ in front so it
+   can't split a piece; Bring in takes it back off. Old notes with the code still come in.
 */
 export const TAG = 'STPCTX1:';
+export const HEAD = 'Speak to Prompt · My context';
+export const END = '~ end of My context ~';
+const SPECIAL = /^\\*(##|~ end of My context ~)/;   /* text lines that get a backslash in front so they can't split a piece */
 const MAX_PIECES = 50, MAX_TITLE = 60, MAX_TEXT = 6000;
 
-function toB64(str) {
-  const bytes = new TextEncoder().encode(str);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
 function fromB64(b64) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -34,25 +34,47 @@ const clean = (list) => list
   .slice(0, MAX_PIECES)
   .map((c) => ({ title: String(c.title || '').trim().slice(0, MAX_TITLE), text: String(c.text || '').slice(0, MAX_TEXT) }));
 
-/* The note: a readable copy for you, then the code the app reads back. */
+/* The note: your pieces in plain words, which is also what Bring in reads back. */
 export function pack(list, date = new Date()) {
   const pieces = clean(list);
   const day = (date.getMonth() + 1) + '/' + date.getDate();
   const head = 'Speak to Prompt · My context · ' + pieces.length + ' piece' + (pieces.length === 1 ? '' : 's') + ' · ' + day;
-  const how = 'On another device: copy this whole note, open Speak to Prompt, My context, and tap Bring in. The code at the end is what the app reads.';
-  const body = pieces.map((c) => '## ' + (c.title || 'Untitled') + '\n' + c.text.trim()).join('\n\n');
-  const code = (TAG + toB64(JSON.stringify(pieces))).match(/.{1,76}/g).join('\n');
-  return head + '\n' + how + '\n\n' + body + '\n\n' + code;
+  const how = 'On another device: copy this whole note, open Speak to Prompt, My context, and tap Bring in. Edit a piece here and Bring in picks up the change.';
+  const esc = (t) => t.split('\n').map((l) => (SPECIAL.test(l) ? '\\' + l : l)).join('\n');
+  const body = pieces.map((c) => '## ' + (c.title || 'Untitled').replace(/\n/g, ' ') + '\n' + esc(c.text.trim())).join('\n\n');
+  return head + '\n' + how + '\n\n' + body + '\n\n' + END;
 }
 
-/* Reads pieces back from a pasted note. Returns null when there's no code or it's broken. */
+/* Reads the readable note: from the header line to the end line, one piece per ## title. */
+function readNote(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ').split('\n');
+  const h = lines.findIndex((l) => l.trim().startsWith(HEAD));
+  if (h < 0) return null;
+  const out = [];
+  let cur = null;
+  for (let i = h + 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.trim() === END || l.trim().startsWith(TAG)) break;   /* the end line, or an old note's code */
+    const m = l.match(/^##\s*(.*)$/);
+    if (m) { cur = { title: m[1].trim(), text: [] }; out.push(cur); continue; }
+    if (!cur) continue;   /* the how-to line and blanks before the first piece */
+    cur.text.push(SPECIAL.test(l) && l.startsWith('\\') ? l.slice(1) : l);
+  }
+  return out.map((c) => ({ title: c.title === 'Untitled' ? '' : c.title, text: c.text.join('\n').trim() }));
+}
+
+/* Reads pieces back from a pasted note. An old note's STPCTX1: code wins when it's there and
+   whole (that's exactly what was sent); otherwise the readable note. Null when it's neither. */
 export function unpack(text) {
   const m = String(text || '').match(/STPCTX1:([A-Za-z0-9+/=\s]+)/);
-  if (!m) return null;
-  try {
-    const list = JSON.parse(fromB64(m[1].replace(/\s+/g, '')));
-    return Array.isArray(list) ? clean(list) : null;
-  } catch (e) { return null; }
+  if (m) {
+    try {
+      const list = JSON.parse(fromB64(m[1].replace(/\s+/g, '')));
+      if (Array.isArray(list)) return clean(list);
+    } catch (e) {}
+  }
+  const read = readNote(text);
+  return read ? clean(read) : null;
 }
 
 /* Folds pieces in by title: a new title is added, the same title with new words is updated,

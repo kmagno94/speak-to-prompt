@@ -28,6 +28,12 @@
          keyboard with the cursor at the end, so its 🎤 is the next tap. No 5 second wait, no auto restart
          into a deaf mic. If a later run on that version does hear speech, the flag clears itself, and a
          Safari update starts fresh (v2.1.28, Test lab report).
+       - Pauses keep their space (v2.1.28, Test lab report): Safari starts each phrase after a pause as a
+         new result with no leading space, so joined as-is the last word ran into the next one. Results are
+         joined with a space unless one is already there (or the next bit starts with punctuation).
+       - Keep talking makes Use my keyboard mic glow (the white halo) for a few seconds, so the next tap is
+         obvious, and leaves a space at the end of the box so keyboard dictation starts as a new word
+         (v2.1.28, Test lab report).
        - Mic log (dev tools only): every recognizer event with its run number and timing, for diagnosing
          iPhone problems like WebKit bug 321436 (on iOS 27, every dictation after the first in a page can be
          deaf). Event names, counts and error codes only, never your words. Memory only, gone on reload.
@@ -52,6 +58,7 @@
   let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
   let said = '', skip = 0;         // this run's words so far, and how much of them is already part of base (after you type)
   let live = false, watchT = 0, retried = false;
+  let glow = $state(false), glowT = 0;   // Use my keyboard mic wears the halo after Keep talking
   let deaf = $state(false), deafT = 0;   // Safari's mic stopped hearing on this page (iOS 27 bug): use the keyboard mic
   let ranOnce = $state(false);           // a run already happened on this page
   const DEAF_KEY = 'stp-mic-deaf';
@@ -112,6 +119,13 @@
     b.scrollTop = b.scrollHeight;
   }
 
+  /* Glue two bits of speech together. Safari sends each phrase after a pause with no leading space,
+     so add one unless it's already there or the next bit starts with punctuation. */
+  function joinWords(a, b) {
+    if (!a || !b) return a + b;
+    return /\s$/.test(a) || /^[\s,.!?;:)\]}'’]/.test(b) ? a + b : a + ' ' + b;
+  }
+
   /* Tear a recognizer down for good: its late events (a final result, onend) can't reach the page anymore. */
   function kill(r) {
     if (!r) return;
@@ -160,7 +174,7 @@
       if (results <= 3 || results % 10 === 0) mark(n, 'result #' + results + ' (' + e.results.length + ' parts' + (e.results.length && e.results[e.results.length - 1].isFinal ? ', final' : '') + ')' + (r === rec && on ? '' : ' ignored, old'));
       if (r !== rec || !on) return;   /* a recognizer we already stopped: ignore it */
       let all = '';
-      for (let i = 0; i < e.results.length; i++) all += e.results[i][0].transcript;
+      for (let i = 0; i < e.results.length; i++) all = joinWords(all, e.results[i][0].transcript);
       said = all.replace(/^\s+/, '');
       const fresh = said.slice(skip).replace(/^\s+/, '');
       if (said) { heard = true; live = true; spoke = true; note = ''; if (n >= 2) healed(); }
@@ -223,6 +237,9 @@
   /* Put the cursor at the end of the box, so the keyboard (and its 🎤) comes up. Opens the keyboard only from a tap. */
   function keyboard() {
     const b = box(); if (!b) return;
+    glow = false; clearTimeout(glowT);
+    /* A trailing space, so keyboard dictation starts a new word instead of gluing onto the last one. */
+    if (b.value && !/\s$/.test(b.value)) { b.value += ' '; b.dispatchEvent(new Event('input', { bubbles: true })); }
     b.focus();
     try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {}
     b.scrollIntoView({ block: 'center', behavior: ms(1) ? 'smooth' : 'auto' });
@@ -230,7 +247,12 @@
 
   function start(again) {
     if (!SR) return;
-    if (kbMode && !again) { mark(runN, 'tap: Keep talking (Safari mic used up on this page, keyboard)'); deaf = true; note = DEAF_NOTE; keyboard(); return; }
+    if (kbMode && !again) {
+      mark(runN, 'tap: Keep talking (Safari mic used up on this page, keyboard)'); deaf = true; note = DEAF_NOTE; keyboard();
+      /* Light up Use my keyboard mic so it's clear what to tap if the keyboard didn't come up. */
+      glow = true; clearTimeout(glowT); glowT = setTimeout(() => { glow = false; }, window.__micGlowMs ?? 6000);
+      return;
+    }
     if (!again) ranOnce = true;
     mark(runN + 1, again ? 'auto restart' : 'tap: Talk it out');
     clearTimeout(restartT);
@@ -299,7 +321,7 @@
   </button>
   {#if on || note}
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
-      {#if note}{note}{#if kbMode} <button type="button" class="kbbtn" id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
+      {#if note}{note}{#if kbMode} <button type="button" class="kbbtn" class:glow id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
   {/if}
   {#if core.dev && log.length}
@@ -351,6 +373,13 @@
   .kbbtn { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; padding: 8px 16px; border-radius: 999px; font: inherit; font-weight: 700;
     color: var(--ink); background: var(--surface); border: 1px solid var(--line); cursor: pointer; }
   .kbbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  /* After Keep talking: the white halo (like Start here and Remember my key), so it's the obvious next tap. */
+  .kbbtn.glow { position: relative; z-index: 1; border-color: transparent;
+    box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--halo-edge), 0 0 30px 10px var(--halo-glow), 0 10px 26px var(--halo-drop); }
+  @media (prefers-reduced-motion: no-preference) {
+    .kbbtn.glow { animation: kbglow 1.4s ease-in-out infinite; }
+    @keyframes kbglow { 50% { scale: 1.03; } }
+  }
   .micnote { flex: 1 1 100%; margin: 0; font-size: 14px; color: var(--muted, var(--ink)); }
   .micnote.warn { color: var(--ink); background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
 </style>
