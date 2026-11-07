@@ -3736,6 +3736,7 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect(k.s.length === 1 && !k.l.length && !/Marco/.test(k.ls), 'the draft is in sessionStorage only, never localStorage: ' + JSON.stringify(k));
   await p.reload(); await p.waitForSelector('#thoughts');
   expect(/Marco wedding/.test(await p.inputValue('#thoughts')), 'the words come back after a reload');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});   /* it slides in after mount (flaked once in CI, 11/7) */
   expect(await p.isVisible('#draftNote') && /this tab only/.test(await p.textContent('#draftNote')), 'a note says the words came back, this tab only');
   // Start fresh empties the box and forgets it
   await p.click('#draftFresh');
@@ -3771,11 +3772,13 @@ await check('draft net after Build (v2.1.28 Test lab report): you build, reload 
   expect(!out || !k[0].includes(out.slice(0, 40)), 'the built prompt is never kept, only your words');
   await p.reload(); await p.waitForSelector('#thoughts');
   expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'the words come back after a reload that follows a build');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
   expect(await p.isVisible('#draftNote') && /last build/.test(await p.textContent('#draftNote')) && /this tab only/.test(await p.textContent('#draftNote')), 'the note says they are from your last build, this tab only: ' + await p.textContent('#draftNote').catch(() => ''));
   // Typing more turns it back into a plain draft
   await p.focus('#thoughts'); await p.keyboard.press('End'); await p.keyboard.type(', bring the dog');
   await p.waitForTimeout(450);
   await p.reload(); await p.waitForSelector('#thoughts');
+  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
   expect(/bring the dog/.test(await p.inputValue('#thoughts')) && !/last build/.test(await p.textContent('#draftNote')), 'an edited draft comes back as a plain draft');
   // Start fresh still forgets everything
   await p.click('#draftFresh'); await p.waitForTimeout(350);
