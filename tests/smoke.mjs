@@ -4065,6 +4065,8 @@ await check('next step dock: changing your words on a finished prompt keeps Copy
   await p.type('#thoughts', ' saturday'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(150);
   expect(await p.isVisible('#build') && await p.isVisible('#copy'), 'a change keeps Copy prompt in the pill, with Build my prompt under the box');
   await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(400);
+  /* The pill swaps its buttons as you scroll; give it a moment to land (read mid-swap once in CI, 11/7 promote run). */
+  await p.waitForFunction(() => { const v = (id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; }; const d = document.getElementById('dockBuild'); return v('copy') && v('dockBuild') && v('dockMore') && d.textContent.trim() === 'Rebuild'; }, null, { timeout: 3000 }).catch(() => {});
   expect(await p.isVisible('#copy') && await p.isVisible('#dockBuild') && (await p.textContent('#dockBuild')).trim() === 'Rebuild' && await p.isVisible('#dockMore'), 'scrolled down: Copy prompt, Rebuild and ⋯');
   expect(await p.evaluate(() => document.getElementById('copy').classList.contains('alt') && document.getElementById('copy').compareDocumentPosition(document.getElementById('dockBuild')) & 4), 'Copy prompt is the lighter button, before Rebuild');
   const fit = await p.evaluate(() => { const bar = document.querySelector('#nextDock .bar').getBoundingClientRect(); return [...document.querySelectorAll('#nextDock .bar button:not([hidden])')].every((b) => { const r = b.getBoundingClientRect(); return r.right <= bar.right + 1 && r.left >= bar.left - 1 && b.scrollWidth <= b.clientWidth + 1; }); });
