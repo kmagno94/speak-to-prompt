@@ -3,7 +3,7 @@
      one (a title and a big text box). In the main app since v2.1.21 (#4): saving is opt-in
      (Save on this phone), and each piece shows its size against the 3,800 character cap.
      See lib/context.svelte.js. */
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { context, BUDGET, CAP } from './lib/context.svelte.js';
@@ -21,6 +21,19 @@
   });
 
   const len = (c) => c.text.trim().length;
+  /* Compact chips (v2.1.28): recently used first, TOP shown, the rest behind +N more. A picked piece
+     always shows, so you can see what's going into the prompt. Titles show without a leading "#". */
+  const TOP = 3;
+  let showAll = $state(false);
+  const shown = $derived(showAll ? context.ordered : context.ordered.filter((c, i) => i < TOP || context.picked.includes(c.id)));
+  const hidden = $derived(context.ordered.length - shown.length);
+  const label = (c) => (c.title.trim().replace(/^#+\s*/, '') || 'Untitled');
+  onMount(() => {
+    const form = document.getElementById('form');
+    const stamp = () => context.markUsed();
+    form && form.addEventListener('submit', stamp, true);
+    return () => form && form.removeEventListener('submit', stamp, true);
+  });
 
   let armed = $state('');
   let editor = $state();
@@ -85,9 +98,14 @@
     <button type="button" class="link ctxedit" id="contextEdit" aria-expanded={context.open} onclick={() => (context.open ? done() : openAt(''))}>{context.open ? 'Done' : context.list.length ? 'Edit' : ''}</button>
   </div>
   <div class="chips" role="group" aria-label="Context to add to this prompt">
-    {#each context.usable as c (c.id)}
-      <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={context.overCap.includes(c.id) ? `Over the ${n(CAP)} character cap` : ''} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{c.title.trim() || 'Untitled'}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
+    {#each shown as c (c.id)}
+      <button type="button" class="ctxchip" class:overcap={context.overCap.includes(c.id)} aria-pressed={context.picked.includes(c.id)} title={(c.title.trim() || 'Untitled') + (context.overCap.includes(c.id) ? ` · over the ${n(CAP)} character cap` : '')} onclick={() => context.toggle(c.id)}>{context.picked.includes(c.id) ? '✓ ' : ''}{label(c)}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
     {/each}
+    {#if hidden > 0}
+      <button type="button" class="ctxmore" id="contextMore" aria-expanded="false" onclick={() => (showAll = true)}>+{hidden} more</button>
+    {:else if showAll && context.ordered.length > TOP}
+      <button type="button" class="ctxmore" id="contextLess" aria-expanded="true" onclick={() => (showAll = false)}>Show less</button>
+    {/if}
     <button type="button" class="ctxnew" id="contextNew" onclick={addNew}>+ {context.usable.length ? 'New' : 'Add context you can reuse'}</button>
     {#if !context.usable.length}<button type="button" class="link ctxin" id="contextInQuick" onclick={bringIn}>📥 Bring in from another device</button>{/if}
   </div>
@@ -133,14 +151,16 @@
 </div>
 
 <style>
-  .ctxrow { grid-column: 1 / -1; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
+  .ctxrow { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
   .ctxhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
   .ctxlabel { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); }
   .ctxcount { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
   .ctxcount.over { color: var(--warn); background: var(--warn-soft); }
   .ctxedit { margin-left: auto; min-height: var(--tap); }
   .ctxedit:empty { display: none; }
-  .ctxchip { min-height: var(--tap); }
+  /* One line each: long titles trim with … (the full title is in the tooltip and the editor). */
+  .ctxchip { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chips .ctxmore { min-height: var(--tap); border-style: dashed; color: var(--accent); font-weight: 700; background: transparent; }
   .ctxnew { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); border: 1.5px dashed var(--line); background: transparent; color: var(--accent); font-weight: 700; font-size: var(--fs-sm); }
   .ctxeditor { display: grid; gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
   /* Floating Done: sticks to the bottom of the screen, above the keyboard (--kb, lib/keyboard.svelte.js),

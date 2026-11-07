@@ -3259,6 +3259,39 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
+await check('my context compact (v2.1.28): recently used pieces go first, only 3 chips show with +N more, a picked piece always shows, and long titles stay on one line', async () => {
+  const p = await page();
+  await p.click('#contextNew'); await p.check('#contextKeep');
+  const titles = ['Oldest garden notes', 'Book club picks', 'Car maintenance log', 'Weekend soccer team', '# Corner bakery orders: context for AI (living doc, as of 11/07, staging and live)'];
+  for (let i = 0; i < titles.length; i++) {
+    if (i) await p.click('#contextNew');
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', titles[i]);
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Made-up details for piece ' + i + '.');
+  }
+  await p.click('#contextEditor button:text-is("Done")');
+  const chips = () => p.$$eval('#contextRow .ctxchip', (l) => l.map((b) => b.title.replace(/ · over.*$/, '')));
+  let c = await chips();
+  expect(c.length === 3 && await p.isVisible('#contextMore') && /\+2 more/.test(await p.textContent('#contextMore')), 'only 3 chips plus +2 more, got ' + JSON.stringify(c));
+  expect(c[0].startsWith('# Corner bakery'), 'never-used pieces show newest first, got ' + JSON.stringify(c));
+  // The long title: one line, trimmed, no leading #
+  const long = await p.$eval('#contextRow .ctxchip', (b) => ({ h: b.getBoundingClientRect().height, w: b.getBoundingClientRect().width, row: document.getElementById('contextRow').getBoundingClientRect().width, text: b.textContent, cut: b.scrollWidth > b.clientWidth }));
+  expect(long.h < 60 && long.w <= long.row && long.cut && !long.text.trim().startsWith('#'), 'a long title is one line, trimmed, no #: ' + JSON.stringify(long));
+  // Pick the oldest from +N more; Show less keeps it because it's picked
+  await p.click('#contextMore');
+  expect((await chips()).length === 5 && await p.isVisible('#contextLess'), '+2 more shows them all');
+  await p.click('#contextRow .ctxchip:has-text("Oldest garden notes")');
+  await p.click('#contextLess');
+  c = await chips();
+  expect(c.length === 4 && c.includes('Oldest garden notes'), 'a picked piece stays visible when folded, got ' + JSON.stringify(c));
+  // Tapping doesn't reorder; building does, and it sticks after a reload
+  expect(c[0].startsWith('# Corner bakery'), 'picking alone never moves chips around');
+  await p.fill('#thoughts', 'plan my fall garden cleanup'); await p.click('#build'); await done(p);
+  await p.reload(); await p.waitForSelector('#contextRow .ctxchip');
+  c = await chips();
+  expect(c[0] === 'Oldest garden notes' && c.length === 3, 'the piece used in the last build comes first after a reload, got ' + JSON.stringify(c));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('my context: shown without dev tools, saves nothing until Save on this phone is on, then write, edit, delete, and it survives a reload', async () => {
   const p = await page();
   expect(await p.isVisible('#contextRow'), 'My context should show without dev tools');

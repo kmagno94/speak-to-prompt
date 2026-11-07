@@ -29,9 +29,9 @@
     { "id": "mvu5r9qgmx5v", "commit": "c2c5972", "version": "2.1.21", "note": "Number check: numbers from picked My context and Your core count as yours but are never flagged as left out, so they no longer dock the grade" },
     { "id": "mvu5g66pdbqo", "commit": "5ec8040", "version": "2.1.21", "note": "Rework builds the next round right away from the weak line plus the prompt; Edit first keeps the change-it-in-the-box path" },
     { "id": "mvxaikmmygq5", "commit": "900ea49", "version": "2.1.21", "note": "My context moved into the main app with opt-in Save on this phone, a 3,800 character counter per piece, and an amber over-the-cap signal on the piece and its chip" },
-    { "id": "mw6216uhhuaf", "commit": "COMMIT", "version": "2.1.28", "note": "Words box measures with a hidden twin instead of collapsing itself, keeps its inner scroll, and ignores height-only resizes like the address bar sliding" },
-    { "id": "mw4h2n0fwm08", "commit": "COMMIT", "version": "2.1.28", "note": "A Gemini key from a different account now gets its own fresh daily count: the used-up list, run stats counts and AI Studio numbers stay with the old key" },
-    { "id": "mw63t6xb2myc", "commit": "COMMIT", "version": "2.1.28", "note": "Words box is kept in this tab only (sessionStorage) so a reload brings it back, with Start fresh; deleted on Build, an empty box, closing the tab, or after 30 minutes" },
-    { "id": "mvxecifv8i68", "commit": "COMMIT", "version": "2.1.28", "note": "My context gets Send to Notes and Bring in: pieces travel as one Apple Notes note that iCloud syncs, read back by a restore code, merged by title" }
+    { "id": "mw6216uhhuaf", "commit": "3047ac5", "version": "2.1.28", "note": "Words box measures with a hidden twin instead of collapsing itself, keeps its inner scroll, and ignores height-only resizes like the address bar sliding" },
+    { "id": "mw4h2n0fwm08", "commit": "5fd0759", "version": "2.1.28", "note": "A Gemini key from a different account now gets its own fresh daily count: the used-up list, run stats counts and AI Studio numbers stay with the old key" },
+    { "id": "mw63t6xb2myc", "commit": "fb84432", "version": "2.1.28", "note": "Words box is kept in this tab only (sessionStorage) so a reload brings it back, with Start fresh; deleted on Build, an empty box, closing the tab, or after 30 minutes" },
+    { "id": "mvxecifv8i68", "commit": "bd4c677", "version": "2.1.28", "note": "My context gets Send to Notes and Bring in: pieces travel as one Apple Notes note that iCloud syncs, read back by a restore code, merged by title" }
   ]
 }

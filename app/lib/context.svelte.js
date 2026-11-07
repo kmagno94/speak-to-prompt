@@ -61,6 +61,17 @@ class Context {
   pct = $derived(Math.round((this.tokens / BUDGET) * 100));
   over = $derived(this.active && !this.squeezed && this.rawTokens > BUDGET);
 
+  /* Recently used first (v2.1.28): pieces carry a `used` time, stamped when a build starts with
+     them picked (never on a tap, so chips don't jump around while you pick). Ordered by that,
+     then newest first for pieces never used. Only TOP show until you tap +N more. */
+  ordered = $derived(this.usable.map((c, i) => [c, i]).sort((a, b) => (b[0].used || 0) - (a[0].used || 0) || a[1] - b[1]).map((x) => x[0]));
+  markUsed() {
+    if (!this.chosen.length) return;
+    const now = Date.now(), ids = this.picked;
+    this.list = this.list.map((c) => (ids.includes(c.id) ? { ...c, used: now } : c));
+    this.save();
+  }
+
   constructor() { this.keep = readKeep(); this.list = this.keep ? read() : []; }
 
   save() { if (this.keep) write(this.list.filter((c) => c.title.trim() || c.text.trim())); }
