@@ -4,7 +4,7 @@ import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
-import { ui, notify } from './ui.svelte.js';
+import { ui, notify, saveMode } from "./ui.svelte.js";
 import { startHere } from './starthere.svelte.js';
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
@@ -280,6 +280,15 @@ export function startApp() {
     if (spanish >= 3 || nonLatin > 0.3) return notify("form", "info", "Writing in another language?", "Your words go in exactly as you wrote them. To get the answer in your language, add a line like 'Answer in Spanish'.");
   }
 
+  /* Full version after a key (KeyCatcher, v2.1.25): Normal for this build (questions first),
+     back to the box, and build. The words in the box are the ones the quick prompt came from. */
+  function fullBuild() {
+    if (!ui.hasKey || !thoughts.value.trim()) return;
+    ui.mode = "normal"; ui.modePicked = true; saveMode("normal");
+    notify("result");
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
+  }
   /* Buttons on the shared messages (Notice.svelte) come back here. */
   window.addEventListener("stp-act", function (e) {
     var act = e.detail && e.detail.act;
@@ -290,6 +299,7 @@ export function startApp() {
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
+    else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
     else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
     else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
     else if (act === "slowquick") slowQuick(false);
@@ -303,6 +313,7 @@ export function startApp() {
     var raw = thoughts.value.trim();
     if (!raw) { notify("form", "empty", "Start with a thought", "Type or paste what's on your mind, or tap Talk it out. A messy sentence or two is plenty.", [{ label: "Give me an idea", act: "idea" }]); thoughts.focus(); return; }
     if (busy) return;
+    window.dispatchEvent(new Event("stp-build-start"));   /* calls off the full-version countdown (KeyCatcher, v2.1.25) */
     var key = gemini.key || gkey.value.trim();
     if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(raw); return; }   /* Rework: the next round */
     if (ui.round || rounds.length || reworkDraft) clearRounds();

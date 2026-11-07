@@ -285,6 +285,47 @@ await check('key catcher: once the key works with Remember my key off, Remember 
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
 });
 
+await check('key catcher: a key that works on a quick prompt offers the full version and rebuilds it with questions after 5 seconds, unless Not now (Test lab, v2.1.25)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [{ question: 'Who is coming?', choices: ['Friends', 'Family'] }] };
+  const quickFirst = async (hooks) => {
+    const p = await page({ intake, hooks });
+    await p.fill('#thoughts', 'ok so um I want to plan a board game night for like 6 people next friday, budget maybe $40, help');
+    await p.click('#build'); await done(p);
+    await p.waitForSelector('#keyNudgeResult');
+    await p.click('#keyNudgeResultGo');
+    await p.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'v'.repeat(35));
+    await p.click('#pasteKey');
+    await p.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+    return p;
+  };
+  // Waits out the countdown: Normal mode, questions first
+  const p = await quickFirst({ __fullWaitMs: 1200 });
+  await p.waitForSelector('#fullOffer', { timeout: 3000 });
+  expect(/rebuilds the full way in \ds/.test(await p.textContent('#fullOffer')), 'the offer counts down: ' + await p.textContent('#fullOffer'));
+  expect(!p.calls.length, 'nothing sent while it counts down');
+  await p.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
+  expect(p.calls.some((c) => c.intake) && await p.isChecked('#normalMode') && !(await p.$('#fullOffer')), 'rebuilt in Normal with questions first');
+  // Build it now: no wait
+  const q = await quickFirst({ __fullWaitMs: 60000 });
+  await q.click('#fullGo');
+  await q.waitForSelector('#qa:not([hidden])', { timeout: 8000 });
+  expect(q.calls.some((c) => c.intake), 'Build it now starts right away');
+  // Not now: nothing happens after the wait
+  const r = await quickFirst({ __fullWaitMs: 800 });
+  await r.click('#fullLater');
+  await r.waitForTimeout(1500);
+  expect(!r.calls.length && !(await r.$('#fullOffer')), 'Not now calls it off: ' + r.calls.length);
+  // A key with no quick prompt on screen: no offer
+  const f = await page();
+  await f.click('#keyPanel summary');
+  await f.evaluate((k) => navigator.clipboard.writeText(k), 'AIza' + 'u'.repeat(35));
+  await f.click('#pasteKey');
+  await f.waitForFunction(() => /You're in/.test(document.getElementById('catchNote')?.textContent || ''), null, { timeout: 10000 });
+  await f.waitForTimeout(300);
+  expect(!(await f.$('#fullOffer')), 'no offer without a quick prompt');
+  expect(![p, q, r, f].some((x) => x.errors.length), 'page errors: ' + [p, q, r, f].flatMap((x) => x.errors).join('; '));
+});
+
 await check('full flow: Lite asks, Flash writes, answers and category shown', async () => {
   const p = await page();
   await withKey(p);

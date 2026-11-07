@@ -13,7 +13,8 @@
         "The usage list shows every Flash-Lite on the key with its job, and counts requests that never answered (timed out, busy, slower than a backup).",
         "The grade note and Step by step say who graded and any hand-off before it. The grader bench names the grader on every case and how many cases land more than half a point from Claude's key.",
         "A grade still running when the Check ends updates its Step by step row when it lands, instead of saying Still grading forever. If every grader misses, it says so (Test lab #5).",
-        "Key catcher (Test lab 11/07): coming back from AI Studio pastes your key and runs Check key by itself where the browser allows it. iPhone Safari always needs a tap plus its own Paste bubble (Apple's rule), so there Paste my key pulses and the note says so. Once the key works with Remember my key off, Remember wears the white halo and scrolls into view until it's ticked."
+        "Key catcher (Test lab 11/07): coming back from AI Studio pastes your key and runs Check key by itself where the browser allows it. iPhone Safari always needs a tap plus its own Paste bubble (Apple's rule), so there Paste my key pulses and the note says so. Once the key works with Remember my key off, Remember wears the white halo and scrolls into view until it's ticked.",
+        "Full version after a key (Test lab 11/07): if the prompt on screen is the quick version when the key starts working, a card by the key says it rebuilds the full way in 5 seconds (questions first), with Build it now and Not now. Typing in the box or building yourself calls it off."
       ],
       "checks": [
         {
@@ -45,6 +46,11 @@
         {
           "say": "With Remember my key off, tap Paste my key and allow Safari's Paste bubble.",
           "see": "\"🎉 You're in!\" with \"Tick Remember my key (glowing below)\", and Remember my key wears a white halo that pulses a few times and stays until you tick it. Ticking it makes the halo go away."
+        },
+        {
+          "say": "Tap Remove key, build the note below in Quick, tap Unlock smarter prompts on the result, then Paste my key.",
+          "see": "Under You're in, a card counts down: Your prompt rebuilds the full way in 5s, with Build it now and Not now. Wait it out: the page jumps up and Gemini asks its questions. Try again with Not now: nothing rebuilds.",
+          "paste": "ok so um my coworker Jess wants to start a little book club at work, like 6 people, every other thursday at lunch, and nobody can agree on what to read first, help us get it going"
         }
       ]
     },

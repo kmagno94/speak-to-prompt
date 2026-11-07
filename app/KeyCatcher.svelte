@@ -11,7 +11,10 @@
      itself where the browser allows it (Chrome and others). iPhone Safari never lets a page
      read the clipboard without a tap plus its own Paste bubble, so there it falls back to the
      pulsing button. Once the key works and Remember my key is off, Remember wears the white
-     halo (and scrolls into view) until it's ticked, so a click-through doesn't lose the key. */
+     halo (and scrolls into view) until it's ticked, so a click-through doesn't lose the key.
+     Full version after a key (v2.1.25): if the prompt on screen is the quick version, a card
+     right here says it rebuilds the full way in 5 seconds (questions first), with Build it now
+     and Not now. Typing in the box, or any build, calls it off. Nothing is saved. */
   import { onMount } from 'svelte';
   import { ui } from './lib/ui.svelte.js';
 
@@ -26,6 +29,9 @@
   let note = $state('');
   let kind = $state('');         // '' | 'good' | 'bad'
   let busy = $state(false);
+  let full = $state(null);       // { left } while the 5 second full-version offer counts down
+  let fullTick = 0;
+  const FULL_MS = (typeof window !== 'undefined' && window.__fullWaitMs) || 5000;
 
   function panel() { return document.getElementById('keyPanel'); }
   let lastBack = 0;
@@ -75,6 +81,29 @@
 
   /* auto: tried by itself on the way back from AI Studio. Anything that doesn't work out
      (no permission, no key on the clipboard) quietly leaves the pulsing button to tap. */
+  /* The quick prompt on screen can rebuild the full way now that the key works. */
+  function offerFull() {
+    const box = document.getElementById('thoughts');
+    if (!ui.quickResult || !box || !box.value.trim()) return;
+    const end = Date.now() + FULL_MS;
+    full = { left: Math.ceil(FULL_MS / 1000), pct: 100 };
+    clearInterval(fullTick);
+    const stop = () => cancelFull();
+    box.addEventListener('input', stop, { once: true });
+    window.addEventListener('stp-build-start', stop, { once: true });
+    fullTick = setInterval(() => {
+      const ms = end - Date.now();
+      if (ms <= 0) return goFull();
+      full = { left: Math.ceil(ms / 1000), pct: Math.round((100 * ms) / FULL_MS) };
+    }, 200);
+  }
+  function cancelFull() { clearInterval(fullTick); full = null; }
+  function goFull() {
+    if (!full) return;
+    cancelFull();
+    window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'fullbuild', where: 'form' } }));
+  }
+
   async function pasteKey(auto = false) {
     if (busy) return;
     const box = document.getElementById('gkey');
@@ -107,6 +136,7 @@
       const keep = document.getElementById('remember');
       say('🎉 You\'re in! Your next prompt asks a few quick questions first.' + (keep && !keep.checked ? ' Tick Remember my key (glowing below) so you never paste it again.' : ''), 'good');
       haloRemember();
+      offerFull();
     } else {
       say('Google didn\'t accept that one. The message below says why.', 'bad');
     }
@@ -124,6 +154,16 @@
   </div>
 {/if}
 {#if note}<p class="catchnote {kind}" id="catchNote" role="status">{note}</p>{/if}
+{#if full}
+  <div class="fullcard" id="fullOffer" role="group" aria-label="Rebuild the full version">
+    <p><b>Your prompt rebuilds the full way in {full.left}s.</b> Gemini asks a few quick questions first, so it fits you.</p>
+    <div class="fullbar" aria-hidden="true"><i style="width: {full.pct}%"></i></div>
+    <div class="fullrow">
+      <button type="button" class="primary" id="fullGo" onclick={goFull}>Build it now</button>
+      <button type="button" id="fullLater" onclick={cancelFull}>Not now</button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .catcher { display: grid; gap: 8px; margin: 4px 0 10px; }
@@ -141,6 +181,14 @@
   @keyframes catchpulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; outline: 2px solid var(--accent); } }
   .catchnote { margin: 0 0 10px; font-size: 14px; color: var(--muted); }
+  .fullcard { margin: 0 0 12px; padding: 12px 14px; border-radius: var(--r-md); background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+  .fullcard p { margin: 0 0 8px; font-size: 15px; line-height: 1.4; color: var(--ink); }
+  .fullbar { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 18%, transparent); overflow: hidden; margin-bottom: 10px; }
+  .fullbar i { display: block; height: 100%; background: var(--accent); transition: width 0.2s linear; }
+  .fullrow { display: flex; gap: 8px; }
+  .fullrow button { flex: 1 1 0; min-height: 44px; }
+  @media (prefers-reduced-motion: reduce) { .fullbar i { transition: none; } }
   .catchnote.good { color: var(--ink); font-weight: 600; }
   .catchnote.bad { color: var(--ink); }
 </style>
