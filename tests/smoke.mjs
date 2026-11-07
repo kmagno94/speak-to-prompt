@@ -214,7 +214,9 @@ const FAKE_SPEECH = () => {
     constructor() { this.started = false; this.stopped = false; window.__recs.push(this); }
     /* Keeps a copy of the page's handlers (h), so a test can play a stopped engine finishing late.
        The mic "comes on" (audiostart) right away unless window.__micDeaf is set. */
-    start() { this.started = true; this.h = { onresult: this.onresult, onend: this.onend }; if (!window.__micDeaf) setTimeout(() => this.onaudiostart && this.onaudiostart(), 0); }
+    start() { this.started = true; this.h = { onresult: this.onresult, onend: this.onend }; this.fire('start'); if (!window.__micDeaf) setTimeout(() => { this.onaudiostart && this.onaudiostart(); this.fire('audiostart'); }, 0); }
+    addEventListener(t, f) { ((this.ls ||= {})[t] ||= []).push(f); }
+    fire(t) { for (const f of (this.ls && this.ls[t]) || []) f({ type: t }); }
     stop() { this.stopped = true; setTimeout(() => this.onend && this.onend(), 0); }
     abort() { this.aborted = true; this.stop(); }
   };
@@ -372,6 +374,31 @@ await check('safari mic: a mic that never comes on tries once with a fresh recog
   await q.click('#micBtn'); await q.waitForTimeout(500);
   expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'true' && await q.evaluate(() => window.__recs.length) === 1, 'a mic that came on keeps listening even in a quiet room');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('safari mic: dev tools show a Mic log of recognizer events per run with Copy, never the words, and nothing with dev tools off (v2.1.28 diagnose)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['secret pancake recipe', true]));
+  await p.click('#micStop');
+  expect(!(await p.$('#micLog')), 'no Mic log with dev tools off');
+  await devOn(p);
+  await p.click('#micBtn'); await p.waitForTimeout(50);
+  await p.evaluate(() => window.__say(['secret pancake recipe', true]));
+  await p.click('#micStop'); await p.click('#micBtn'); await p.waitForTimeout(50);
+  await p.click('#micStop');
+  await p.click('#micLog summary');
+  const t = await p.textContent('#micLog pre');
+  expect(/iOS 27\.2/.test(t) && /browser tab/.test(t), 'the log names the iOS version and tab vs Home Screen, got: ' + t.slice(0, 200));
+  expect(/run 1 .*tap: Talk it out/.test(t) && /run 1 .*audiostart/.test(t) && /run 1 .*result #1/.test(t) && /run 1 .*stop/.test(t) && /run 2 .*new recognizer/.test(t) && /run 2 .*audiostart/.test(t), 'events per run, got: ' + t);
+  expect(!/pancake/i.test(t), 'the log must never hold the words');
+  await p.click('#micLogCopy');
+  const c = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt mic log/.test(c) && !/pancake/i.test(c), 'Copy gives the log, never the words');
+  expect(await p.evaluate(() => !Object.keys(localStorage).concat(Object.keys(sessionStorage)).some((k) => /mic/i.test(k))), 'the log is memory only');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {

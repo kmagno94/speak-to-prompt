@@ -16,12 +16,16 @@
        - If the mic never actually comes on (no audio within a few seconds), it tries once with a fresh
          recognizer, then stops and says so instead of looking like it's recording.
      Nothing is saved: no audio, no transcript copy. Only the words box gets the text.
+       - Mic log (dev tools only): every recognizer event with its run number and timing, for diagnosing
+         iPhone problems like WebKit bug 321436 (on iOS 27, every dictation after the first in a page can be
+         deaf). Event names, counts and error codes only, never your words. Memory only, gone on reload.
      Test hooks: window.__micRestartMs shortens the restart wait, window.__micWatchMs the no-audio wait. */
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { fly } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { kb } from './lib/keyboard.svelte.js';
+  import { core } from './lib/core.svelte.js';
 
   const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -35,7 +39,22 @@
   let secs = $state(0);          // how long the mic has been on, for the Stop pill
   let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
   let said = '', skip = 0;         // this run's words so far, and how much of them is already part of base (after you type)
-  let live = false, watchT = 0, retried = false;   // the mic really came on (audio or words), the no-audio timer, one fresh try used
+  let live = false, watchT = 0, retried = false;
+  /* Mic log: never words. t0 is the first tap on this page, runN counts recognizers made. */
+  let log = $state([]), t0 = 0, runN = 0, copied = $state(false);
+  function mark(n, what) {
+    if (!t0) t0 = Date.now();
+    log.push('+' + ((Date.now() - t0) / 1000).toFixed(1) + 's  run ' + n + '  ' + what);
+    if (log.length > 300) log.splice(0, log.length - 300);
+  }
+  const iosVer = (ua.match(/OS (\d+[_.]\d+(?:[_.]\d+)?) like Mac/) || [])[1];
+  function logText() {
+    return ['Speak to Prompt mic log', 'Device: ' + (iosVer ? 'iOS ' + iosVer.replace(/_/g, '.') : appleTouch ? 'Apple touch' : 'computer') + (homeScreen ? ', Home Screen app' : ', browser tab') + ', ' + (google ? "Google's" : "Apple's") + ' speech',
+      'UA: ' + ua, '', ...log].join('\n');
+  }
+  async function copyLog() {
+    try { await navigator.clipboard.writeText(logText()); copied = true; setTimeout(() => { copied = false; }, 1800); } catch (e) {}
+  }   // the mic really came on (audio or words), the no-audio timer, one fresh try used
   const clock = $derived(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
   /* The pill sits on the keyboard, or above the keyboard coach bar when that's up. */
   /* ...and above the Next step dock (its Build my prompt bar) when that's showing, so neither covers the other. */
@@ -74,6 +93,7 @@
   /* Tear a recognizer down for good: its late events (a final result, onend) can't reach the page anymore. */
   function kill(r) {
     if (!r) return;
+    mark(r.__n, 'torn down (abort)');
     r.onresult = r.onerror = r.onend = r.onaudiostart = null;
     try { (r.abort || r.stop).call(r); } catch (e) {}
   }
@@ -84,7 +104,8 @@
     clearTimeout(watchT);
     watchT = setTimeout(() => {
       if (!on || live) return;
-      if (!retried) { retried = true; kill(rec); rec = null; run(); watch(); return; }
+      if (!retried) { mark(runN, 'watch: no audio yet, fresh try'); retried = true; kill(rec); rec = null; run(); watch(); return; }
+      mark(runN, 'watch: still no audio, gave up');
       stop();
       note = homeScreen
         ? 'The mic didn\'t come on. It works in Safari, not the Home Screen app yet. Open this page in Safari, or use the mic on your keyboard.'
@@ -101,11 +122,19 @@
     heard = false; startedAt = Date.now();
     const r = new SR();
     rec = r;
+    const n = r.__n = ++runN;
+    mark(n, 'new recognizer, start() called' + (document.activeElement === b ? ' (box focused)' : '') + (document.hidden ? ' (page hidden)' : ''));
+    /* Every event the browser sends, for the mic log. Names only. */
+    for (const ev of ['start', 'audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'])
+      try { r.addEventListener(ev, () => mark(n, ev + (r === rec ? '' : ' (old)'))); } catch (e) {}
+    let results = 0;
     r.continuous = true;
     r.interimResults = true;
     r.lang = navigator.language || 'en-US';
     r.onaudiostart = () => { if (r === rec) live = true; };
     r.onresult = (e) => {
+      results++;
+      if (results <= 3 || results % 10 === 0) mark(n, 'result #' + results + ' (' + e.results.length + ' parts' + (e.results.length && e.results[e.results.length - 1].isFinal ? ', final' : '') + ')' + (r === rec && on ? '' : ' ignored, old'));
       if (r !== rec || !on) return;   /* a recognizer we already stopped: ignore it */
       let all = '';
       for (let i = 0; i < e.results.length; i++) all += e.results[i][0].transcript;
@@ -115,6 +144,7 @@
       put(base + fresh);
     };
     r.onerror = (e) => {
+      mark(n, 'error: ' + (e && e.error) + (e && e.message ? ' (' + String(e.message).slice(0, 80) + ')' : '') + (r === rec ? '' : ' (old)'));
       if (r !== rec) return;
       const err = e && e.error;
       if (err === 'no-speech' || err === 'aborted') return;   /* quiet room or our own stop: onend handles it */
@@ -130,6 +160,7 @@
       else note = 'The mic stopped (' + (err || 'unknown') + '). Tap Talk it out to try again.';
     };
     r.onend = () => {
+      mark(n, 'end after ' + results + ' results' + (r === rec ? '' : ' (old)'));
       if (r !== rec) return;   /* an old recognizer ending late must not null the new one or start another */
       rec = null;
       if (!on) return;
@@ -143,11 +174,12 @@
       restartT = setTimeout(() => { if (on && !rec) start(true); }, window.__micRestartMs ?? 250);
     };
     try { r.start(); }
-    catch (e) { if (rec === r) rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
+    catch (e) { mark(n, 'start() threw: ' + (e && e.name)); if (rec === r) rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
   }
 
   function start(again) {
     if (!SR) return;
+    mark(runN + 1, again ? 'auto restart' : 'tap: Talk it out');
     clearTimeout(restartT);
     kill(rec); rec = null;   /* never two recognizers at once */
     const b = box();
@@ -165,6 +197,7 @@
   }
 
   function stop() {
+    if (on) mark(runN, 'stop');
     on = false;
     clearTimeout(restartT); clearInterval(tickT); clearTimeout(watchT);
     const b = box();
@@ -190,7 +223,7 @@
     if (!SR) return;
     const form = document.getElementById('form');
     const off = () => { if (on) stop(); };
-    const hide = () => { if (document.hidden) off(); };
+    const hide = () => { if (document.hidden) { if (on) mark(runN, 'page hidden'); off(); } };
     form && form.addEventListener('submit', off, true);
     document.addEventListener('visibilitychange', hide);
     window.addEventListener('pagehide', off);
@@ -214,6 +247,13 @@
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
       {#if note}{note}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
+  {/if}
+  {#if core.dev && log.length}
+    <details class="miclog" id="micLog">
+      <summary>🎙️ Mic log ({log.length})</summary>
+      <button type="button" class="miclogcopy" id="micLogCopy" onclick={copyLog}>{copied ? 'Copied' : 'Copy mic log'}</button>
+      <pre>{logText()}</pre>
+    </details>
   {/if}
   {#if on}
     <button type="button" class="micstop" id="micStop" use:toBody style="bottom: calc({lift}px + 14px + env(safe-area-inset-bottom, 0px))" onclick={stop}
@@ -250,6 +290,10 @@
   .micstop .time { font-variant-numeric: tabular-nums; font-weight: 600; opacity: 0.9; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.45); }
   @media (prefers-reduced-motion: no-preference) { .micstop { animation: stopglow 1.8s ease-in-out infinite; } }
   @keyframes stopglow { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--record) 12%, transparent), 0 14px 30px -12px rgba(10, 20, 40, 0.6); } }
+  .miclog { flex: 1 1 100%; font-size: 13px; }
+  .miclog summary { cursor: pointer; color: var(--muted, var(--ink)); }
+  .miclog pre { max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 6px 0 0; }
+  .miclogcopy { font: inherit; font-weight: 700; min-height: 40px; padding: 6px 14px; margin-top: 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
   .micnote { flex: 1 1 100%; margin: 0; font-size: 14px; color: var(--muted, var(--ink)); }
   .micnote.warn { color: var(--ink); background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
 </style>
