@@ -273,6 +273,53 @@ await check('safari mic: Talk it out adds live words to the box, restarts quietl
   expect(!(await f.$('#micBtn')), 'no mic where the browser has no speech-to-text');
 });
 
+await check('safari mic: a red Stop pill with a timer floats at the bottom while listening, stops the mic, and tucks the floating buttons (v2.1.28)', async () => {
+  const p = await page({ hooks: { __micRestartMs: 20 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.waitForSelector('#micBtn');
+  expect(!(await p.$('#micStop')), 'no Stop pill before listening');
+  await p.click('#micBtn');
+  await p.waitForSelector('#micStop');
+  expect(/Tap to stop/.test(await p.textContent('#micStop')) && /0:0\d/.test(await p.textContent('#micStop')), 'the pill says Tap to stop with a timer');
+  expect(/Tap to stop/.test(await p.textContent('#micNote')), 'the listening note points at the pill');
+  expect(await p.evaluate(() => document.body.classList.contains('fabs-away-mic')), 'the floating buttons tuck away while listening');
+  // Lots of words: the box grows, the top button can scroll off, the pill stays on screen
+  await p.evaluate(() => window.__say(['word '.repeat(400), false]));
+  const onScreen = () => p.$eval('#micStop', (b) => { const r = b.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, body: b.parentElement === document.body, pos: getComputedStyle(b).position }; });
+  for (const y of [0, 600, 99999]) {
+    await p.evaluate((y) => window.scrollTo(0, y), y); await p.waitForTimeout(50);
+    const box = await onScreen();
+    expect(box.body && box.pos === 'fixed' && box.top >= 0 && box.bottom <= 844 && box.bottom > 700, 'the pill should sit at the bottom of the screen wherever you scroll (not inside the card), got ' + JSON.stringify(box) + ' at ' + y);
+  }
+  await p.waitForFunction(() => /0:0[1-9]/.test(document.getElementById('micStop').textContent), null, { timeout: 3000 });
+  await p.click('#micStop');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false');
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  expect(await p.evaluate(() => window.__recs[0].stopped && !document.body.classList.contains('fabs-away-mic')), 'the pill stops the recognizer and the floating buttons come back');
+  await p.waitForTimeout(100);
+  expect(await p.evaluate(() => window.__recs.length) === 1, 'no restart after the pill stops it');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  await p.click('#firstTime'); await p.waitForSelector('#tutorial[open]');
+  const t = await p.textContent('#tutTalk');
+  expect(/Talk it out/.test(t) && /show up in the box/.test(t) && /Tap to stop/.test(t) && !/\u2014/.test(t), 'the card explains tap, talk, and how to stop, got: ' + t);
+  expect(!(await p.$('#tutShortcut')), 'still no shortcut card with dev tools off');
+  await p.click('#tutShowMic'); await p.waitForSelector('#tutorial', { state: 'hidden' });
+  expect(await p.$('#micBtn.sh-halo'), 'Show me where should glow the mic');
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'false' && await p.evaluate(() => window.__recs.length) === 0, 'Show me where must not start the mic');
+  // No speech engine: no explainer card
+  const f = await page({ ua: IPHONE });
+  await f.addInitScript(() => { for (const k of ['webkitSpeechRecognition', 'SpeechRecognition']) Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true }); }); await f.reload();
+  await f.click('#firstTime'); await f.waitForSelector('#tutorial[open]');
+  expect(!(await f.$('#tutTalk')) && await f.$('#tutShortcut'), 'no mic: the shortcut card instead of the Talk it out explainer');
+  expect(!p.errors.length && !f.errors.length, 'page errors: ' + p.errors.concat(f.errors).join('; '));
+});
+
 await check('key catcher: Paste my key reads the clipboard, checks the format, tests the key and celebrates; Normal with no key opens the panel (AGT-15, v2.1.23)', async () => {
   const p = await page();
   await p.click('#normalMode');

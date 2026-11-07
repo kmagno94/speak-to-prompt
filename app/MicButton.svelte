@@ -5,11 +5,16 @@
        - Tap to start, tap to stop. Words land live in the box and add to what's already there.
        - If the browser stops listening on its own while the button is on, it quietly restarts.
        - Stops on Build, when the page is hidden, or when you tap it again.
+       - While listening, a red Stop pill floats at the bottom of the screen (above the keyboard
+         and the coach bar) with a running timer, so stopping is always one obvious tap even
+         after the box grows and the top button scrolls away (v2.1.28, Test lab report).
      Nothing is saved: no audio, no transcript copy. Only the words box gets the text.
      Test hook: window.__micRestartMs shortens the restart wait. */
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
   import { ms } from './lib/motion.js';
+  import { kb } from './lib/keyboard.svelte.js';
 
   const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
@@ -20,7 +25,16 @@
 
   let on = $state(false);        // the button is on (listening, or about to restart)
   let note = $state('');         // a problem to show under the button
-  let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0;
+  let secs = $state(0);          // how long the mic has been on, for the Stop pill
+  let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
+  const clock = $derived(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0'));
+  /* The pill sits on the keyboard, or above the keyboard coach bar when that's up. */
+  const lift = $derived(kb.open ? kb.inset + 64 : 0);
+  /* The floating 💡 / 🧪 buttons tuck away while the pill is up, so they never cover it. */
+  $effect(() => {
+    document.body.classList.toggle('fabs-away-mic', on);
+    return () => document.body.classList.remove('fabs-away-mic');
+  });
 
   const box = () => document.getElementById('thoughts');
   const service = google ? "Google's" : "Apple's";
@@ -81,7 +95,7 @@
 
   function start(again) {
     if (!SR) return;
-    if (!again) { note = ''; quickEnds = 0; }
+    if (!again) { note = ''; quickEnds = 0; secs = 0; clearInterval(tickT); tickT = setInterval(() => { secs++; }, 1000); }
     on = true;
     const b = box();
     if (b) b.dataset.listening = '1';   /* app.js keeps the idea strip away while listening */
@@ -91,13 +105,16 @@
 
   function stop() {
     on = false;
-    clearTimeout(restartT);
+    clearTimeout(restartT); clearInterval(tickT);
     const b = box();
     if (b) { delete b.dataset.listening; b.dispatchEvent(new Event('input', { bubbles: true })); }
     if (rec) { const r = rec; rec = null; try { r.stop(); } catch (e) {} }
   }
 
   const toggle = () => (on ? stop() : start(false));
+  /* The input card has a transform (its entrance animation), which traps position: fixed inside
+     the card. Moving the pill to <body> pins it to the screen for real. */
+  function toBody(node) { document.body.appendChild(node); return { destroy() { node.remove(); } }; }
 
   onMount(() => {
     if (!SR) return;
@@ -123,8 +140,16 @@
   </button>
   {#if on || note}
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
-      {#if note}{note}{:else}Listening. Your words show up in the box as you talk. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
+      {#if note}{note}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
+  {/if}
+  {#if on}
+    <button type="button" class="micstop" id="micStop" use:toBody style="bottom: calc({lift}px + 14px + env(safe-area-inset-bottom, 0px))" onclick={stop}
+      aria-label="Stop listening, {clock}" transition:fly={{ y: 24, duration: ms(180) }}>
+      <span class="sq" aria-hidden="true"></span>
+      <span>Tap to stop</span>
+      <span class="time" aria-hidden="true">{clock}</span>
+    </button>
   {/if}
 {/if}
 
@@ -141,6 +166,18 @@
   .mic.on .dot::after { left: 7px; top: 7px; width: 10px; height: 10px; border-radius: 2px; }
   @keyframes breathe { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--record) 10%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .mic.on .dot { animation: none; box-shadow: 0 0 0 6px color-mix(in srgb, var(--record) 25%, transparent); } }
+  /* The floating Stop pill: red, centered, always on screen while the mic is on. */
+  .micstop { position: fixed; left: 50%; translate: -50% 0; z-index: 31; display: inline-flex; align-items: center; gap: 10px;
+    min-height: 52px; padding: 12px 20px 12px 14px; border-radius: 999px; border: 0; cursor: pointer;
+    font: inherit; font-weight: 800; color: #fff; background: var(--record);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--record) 22%, transparent), 0 14px 30px -12px rgba(10, 20, 40, 0.6); }
+  .micstop:active { scale: 0.97; }
+  .micstop:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .micstop > span { white-space: nowrap; }
+  .micstop .sq { width: 14px; height: 14px; border-radius: 3px; background: #fff; }
+  .micstop .time { font-variant-numeric: tabular-nums; font-weight: 600; opacity: 0.9; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.45); }
+  @media (prefers-reduced-motion: no-preference) { .micstop { animation: stopglow 1.8s ease-in-out infinite; } }
+  @keyframes stopglow { 50% { box-shadow: 0 0 0 9px color-mix(in srgb, var(--record) 12%, transparent), 0 14px 30px -12px rgba(10, 20, 40, 0.6); } }
   .micnote { flex: 1 1 100%; margin: 0; font-size: 14px; color: var(--muted, var(--ink)); }
   .micnote.warn { color: var(--ink); background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
 </style>

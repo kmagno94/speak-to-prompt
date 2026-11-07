@@ -509,7 +509,7 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* The floating 💡 Ideas and 🧪 Test lab buttons tuck away while a bottom bar needs the space:
    the My context Done bar (ContextRow.svelte) and the keyboard coach bar (KeyboardCoach.svelte). */
-body:is(.fabs-away, .fabs-away-kb) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
+body:is(.fabs-away, .fabs-away-kb, .fabs-away-mic) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out; } }
 
 /* Next step dock (#17): while it shows, the page ends above it, and the floating buttons and
