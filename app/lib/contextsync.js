@@ -10,7 +10,9 @@
      ...how to use it...
      ## Title
      text
-     STPCTX1:<base64 of UTF-8 JSON [{ "title", "text" }]>
+     STPCTX1:<base64 of UTF-8 JSON [{ "title", "text" }]>   (wrapped every 76 characters)
+   The code is wrapped into short lines (v2.1.28, Test lab report): one giant unbroken line is a
+   likely reason Notes' share sheet popped up and closed. Bring in ignores the line breaks.
 */
 export const TAG = 'STPCTX1:';
 const MAX_PIECES = 50, MAX_TITLE = 60, MAX_TEXT = 6000;
@@ -37,9 +39,10 @@ export function pack(list, date = new Date()) {
   const pieces = clean(list);
   const day = (date.getMonth() + 1) + '/' + date.getDate();
   const head = 'Speak to Prompt · My context · ' + pieces.length + ' piece' + (pieces.length === 1 ? '' : 's') + ' · ' + day;
-  const how = 'On another device: copy this whole note, open Speak to Prompt, My context, and tap Bring in. The last line is what the app reads.';
+  const how = 'On another device: copy this whole note, open Speak to Prompt, My context, and tap Bring in. The code at the end is what the app reads.';
   const body = pieces.map((c) => '## ' + (c.title || 'Untitled') + '\n' + c.text.trim()).join('\n\n');
-  return head + '\n' + how + '\n\n' + body + '\n\n' + TAG + toB64(JSON.stringify(pieces));
+  const code = (TAG + toB64(JSON.stringify(pieces))).match(/.{1,76}/g).join('\n');
+  return head + '\n' + how + '\n\n' + body + '\n\n' + code;
 }
 
 /* Reads pieces back from a pasted note. Returns null when there's no code or it's broken. */

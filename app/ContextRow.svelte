@@ -51,21 +51,38 @@
   function addNew() { openAt(context.add()); }
   function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
   function done() { context.save(); context.open = false; armed = ''; }
-  /* On all your devices (v2.1.28, lib/contextsync.js): Send to Notes hands the pieces to the share
-     sheet (Notes syncs them through iCloud), or copies them where there's no share sheet.
+  /* On all your devices (v2.1.28, lib/contextsync.js): Copy for Notes copies the pieces as one note,
+     then (iPhone/iPad) an Open Notes button opens Apple Notes to paste it into a new note; iCloud syncs it.
+     It used to hand the note to the share sheet, but Notes' share sheet popped up and closed on it
+     (Test lab report, 11/7), so copying is the main way and Share another way is the backup.
      Bring in reads a copied note from the clipboard, or from a paste box if the browser won't. */
-  let syncMsg = $state(''), syncBad = $state(false), pasteOpen = $state(false), pasteText = $state('');
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const appleTouch = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+  let syncMsg = $state(''), syncBad = $state(false), pasteOpen = $state(false), pasteText = $state(''), copiedNote = $state(false);
   const say = (m, bad = false) => { syncMsg = m; syncBad = bad; };
+  const ready = () => context.list.filter((c) => c.title.trim() || c.text.trim());
   async function sendOut() {
-    const pieces = context.list.filter((c) => c.title.trim() || c.text.trim());
+    const pieces = ready();
+    copiedNote = false;
     if (!pieces.length) return say('Add a piece first, then send it.', true);
     const text = pack(pieces);
-    if (navigator.share) {
-      try { await navigator.share({ title: 'Speak to Prompt · My context', text }); return say('Sent. Pick Notes in the share sheet and it syncs to your other devices with iCloud.'); }
-      catch (e) { if (e && e.name === 'AbortError') return say(''); }
-    }
-    try { await navigator.clipboard.writeText(text); say('Copied. Paste it into a note in Apple Notes and it syncs to your other devices with iCloud.'); }
-    catch (e) { say('This browser won\'t copy. Try Safari.', true); }
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedNote = true;
+      return say(appleTouch
+        ? 'Copied. Tap Open Notes, start a new note (✏️), and paste. iCloud puts it on your iPad and Mac.'
+        : 'Copied. Paste it into a new note in Apple Notes and iCloud puts it on your other devices.');
+    } catch (e) {}
+    if (canShare) return shareOut();
+    say('This browser won\'t copy. Try Safari.', true);
+  }
+  /* The backup: the share sheet, text only (the first line is the title anyway). */
+  async function shareOut() {
+    const pieces = ready();
+    if (!pieces.length) return say('Add a piece first, then send it.', true);
+    try { await navigator.share({ text: pack(pieces) }); say('Sent.'); }
+    catch (e) { if (!(e && e.name === 'AbortError')) say('The share sheet didn\'t work here. Use Copy for Notes instead.', true); }
   }
   function take(text) {
     const pieces = unpack(text);
@@ -118,11 +135,13 @@
       </label>
       <div class="sync" id="contextSync">
         <b>📲 On all your devices</b>
-        <small>Send to Notes, and iCloud puts the note on your iPad and Mac. There, copy the note and tap Bring in. Only goes where you send it.</small>
+        <small>Copy for Notes, paste it into a new note, and iCloud puts it on your iPad and Mac. There, copy the note and tap Bring in. Only goes where you put it.</small>
         <div class="syncbtns">
-          <button type="button" id="contextSend" onclick={sendOut}>📤 Send to Notes</button>
+          <button type="button" id="contextSend" onclick={sendOut}>📋 Copy for Notes</button>
           <button type="button" id="contextIn" onclick={bringIn}>📥 Bring in</button>
         </div>
+        {#if copiedNote && appleTouch}<a class="opennotes" id="contextOpenNotes" href="mobilenotes://">📝 Open Notes</a>{/if}
+        {#if canShare}<button type="button" class="link sharealt" id="contextShare" onclick={shareOut}>Share another way</button>{/if}
         {#if pasteOpen}
           <label class="sr" for="contextPaste">Paste the note</label>
           <textarea id="contextPaste" class="ctxtext" rows="4" placeholder="Paste the whole note from Notes here" bind:value={pasteText}></textarea>
@@ -191,6 +210,10 @@
   .sync, .syncbtns > * { min-width: 0; }
   .syncbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
   .syncbtns button { min-height: 44px; padding-inline: var(--sp-2); }
+  .opennotes { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: var(--sp-2); border-radius: 999px; font-weight: 700; text-decoration: none;
+    color: var(--ink); background: var(--accent-soft); border: 1px solid var(--line); }
+  .opennotes:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .sharealt { display: block; margin-top: var(--sp-2); min-height: 36px; font-size: 14px; }
   .syncmsg { margin: 0; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; }
   .syncmsg.bad { color: var(--warn); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

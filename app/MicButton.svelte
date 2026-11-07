@@ -22,6 +22,12 @@
          why and a Use my keyboard mic button puts the cursor at the end of the box. The page remembers, so
          later taps on Talk it out go straight to the keyboard instead of pretending to listen. A reload
          gives a fresh page. Test hook: window.__micDeafMs shortens the wait.
+       - Websites can't start the keyboard's own mic (no iOS API for it), so the closest is one tap away:
+         once this Safari version has gone deaf on this phone (saved as just the version number,
+         stp-mic-deaf), every page after its first run turns the button into Keep talking, which opens the
+         keyboard with the cursor at the end, so its 🎤 is the next tap. No 5 second wait, no auto restart
+         into a deaf mic. If a later run on that version does hear speech, the flag clears itself, and a
+         Safari update starts fresh (v2.1.28, Test lab report).
        - Mic log (dev tools only): every recognizer event with its run number and timing, for diagnosing
          iPhone problems like WebKit bug 321436 (on iOS 27, every dictation after the first in a page can be
          deaf). Event names, counts and error codes only, never your words. Memory only, gone on reload.
@@ -47,6 +53,14 @@
   let said = '', skip = 0;         // this run's words so far, and how much of them is already part of base (after you type)
   let live = false, watchT = 0, retried = false;
   let deaf = $state(false), deafT = 0;   // Safari's mic stopped hearing on this page (iOS 27 bug): use the keyboard mic
+  let ranOnce = $state(false);           // a run already happened on this page
+  const DEAF_KEY = 'stp-mic-deaf';
+  const safariVer = appleTouch ? ((ua.match(/Version\/([\d.]+)/) || [])[1] || '') : '';
+  let knownDeaf = $state(false);
+  try { knownDeaf = !!safariVer && localStorage.getItem(DEAF_KEY) === safariVer; } catch (e) {}
+  /* Keyboard mode: this page's Safari mic is used up (seen now, or known for this Safari version). */
+  const kbMode = $derived(deaf || (knownDeaf && ranOnce));
+  const KEEP_NOTE = 'To keep going, tap Keep talking: it opens your keyboard, then tap its 🎤. Safari\'s mic only listens once per page on this iPhone right now (an Apple bug in iOS 27).';
   const DEAF_NOTE = 'Safari\'s mic only listens once per page on this iPhone right now (an Apple bug in iOS 27). Tap the 🎤 on your keyboard to keep talking. Your words go where the cursor is.';
   /* Mic log: never words. t0 is the first tap on this page, runN counts recognizers made. */
   let log = $state([]), t0 = 0, runN = 0, copied = $state(false);
@@ -136,7 +150,7 @@
     for (const ev of ['start', 'audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'])
       try { r.addEventListener(ev, () => mark(n, ev + (r === rec ? '' : ' (old)'))); } catch (e) {}
     let results = 0, spoke = false;
-    try { r.addEventListener('speechstart', () => { spoke = true; }); } catch (e) {}
+    try { r.addEventListener('speechstart', () => { spoke = true; if (n >= 2) healed(); }); } catch (e) {}
     r.continuous = true;
     r.interimResults = true;
     r.lang = navigator.language || 'en-US';
@@ -149,7 +163,7 @@
       for (let i = 0; i < e.results.length; i++) all += e.results[i][0].transcript;
       said = all.replace(/^\s+/, '');
       const fresh = said.slice(skip).replace(/^\s+/, '');
-      if (said) { heard = true; live = true; spoke = true; note = ''; }
+      if (said) { heard = true; live = true; spoke = true; note = ''; if (n >= 2) healed(); }
       put(base + fresh);
     };
     r.onerror = (e) => {
@@ -180,6 +194,8 @@
         note = appleTouch ? 'Speech needs Siri turned on in Settings, or use the mic on your keyboard.' : 'The mic keeps stopping. Tap Talk it out to try again, or type instead.';
         return;
       }
+      /* Known deaf Safari: a restart would never hear, so stop and point at Keep talking instead. */
+      if (knownDeaf) { mark(n, 'ended on its own; known deaf Safari, no restart'); stop(); note = KEEP_NOTE; return; }
       restartT = setTimeout(() => { if (on && !rec) start(true); }, window.__micRestartMs ?? 250);
     };
     /* iOS 27: a run after the first can be deaf (audio on, never hears). No speech in a few seconds: hand off. */
@@ -193,8 +209,16 @@
   function gone(n) {
     mark(n, 'deaf: no speech heard, handing off to the keyboard mic');
     deaf = true;
+    if (safariVer) { knownDeaf = true; try { localStorage.setItem(DEAF_KEY, safariVer); } catch (e) {} }
     stop();
     note = DEAF_NOTE;
+  }
+  /* A run after the first heard speech: this Safari isn't deaf after all (or Apple fixed it). */
+  function healed() {
+    if (!knownDeaf) return;
+    knownDeaf = false;
+    try { localStorage.removeItem(DEAF_KEY); } catch (e) {}
+    mark(runN, 'heard on a later run: deaf flag cleared');
   }
   /* Put the cursor at the end of the box, so the keyboard (and its 🎤) comes up. Opens the keyboard only from a tap. */
   function keyboard() {
@@ -206,7 +230,8 @@
 
   function start(again) {
     if (!SR) return;
-    if (deaf && !again) { mark(runN, 'tap: Talk it out (Safari mic used up on this page, keyboard)'); note = DEAF_NOTE; keyboard(); return; }
+    if (kbMode && !again) { mark(runN, 'tap: Keep talking (Safari mic used up on this page, keyboard)'); deaf = true; note = DEAF_NOTE; keyboard(); return; }
+    if (!again) ranOnce = true;
     mark(runN + 1, again ? 'auto restart' : 'tap: Talk it out');
     clearTimeout(restartT);
     kill(rec); rec = null;   /* never two recognizers at once */
@@ -242,7 +267,8 @@
     skip = said.length;
   }
 
-  const toggle = () => (on ? stop() : start(false));
+  const toggle = () => { if (on) { stop(); if (knownDeaf) note = KEEP_NOTE; } else start(false); };
+  const pillStop = () => { stop(); if (knownDeaf) note = KEEP_NOTE; };
   /* The input card has a transform (its entrance animation), which traps position: fixed inside
      the card. Moving the pill to <body> pins it to the screen for real. */
   function toBody(node) { document.body.appendChild(node); return { destroy() { node.remove(); } }; }
@@ -269,11 +295,11 @@
 {#if SR}
   <button type="button" class="mic" class:on id="micBtn" aria-pressed={on} onclick={toggle}>
     <span class="dot" aria-hidden="true"></span>
-    <span>{on ? 'Stop listening' : 'Talk it out'}</span>
+    <span>{on ? 'Stop listening' : kbMode ? 'Keep talking ⌨️' : 'Talk it out'}</span>
   </button>
   {#if on || note}
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
-      {#if note}{note}{#if deaf} <button type="button" class="kbbtn" id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
+      {#if note}{note}{#if kbMode} <button type="button" class="kbbtn" id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
   {/if}
   {#if core.dev && log.length}
@@ -284,7 +310,7 @@
     </details>
   {/if}
   {#if on}
-    <button type="button" class="micstop" id="micStop" use:toBody style="bottom: calc({lift}px + 14px + env(safe-area-inset-bottom, 0px))" onclick={stop}
+    <button type="button" class="micstop" id="micStop" use:toBody style="bottom: calc({lift}px + 14px + env(safe-area-inset-bottom, 0px))" onclick={pillStop}
       aria-label="Stop listening, {clock}" transition:fly={{ y: 24, duration: ms(180) }}>
       <span class="sq" aria-hidden="true"></span>
       <span>Tap to stop</span>

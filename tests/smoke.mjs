@@ -425,6 +425,8 @@ await check('safari mic: on iPhone, a second Talk it out that never hears speech
   await p.click('#micBtn');
   expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'no new recognizer once Safari is deaf on this page');
   expect(await p.evaluate(() => document.activeElement === document.getElementById('thoughts')) && /only listens once/.test(await p.textContent('#micNote')), 'the tap opens the box for the keyboard mic with the note');
+  expect(/Keep talking/.test(await p.textContent('#micBtn')), 'the button becomes Keep talking');
+  expect(await p.evaluate(() => localStorage.getItem('stp-mic-deaf')) === '27.0.1', 'the phone remembers only the Safari version that went deaf');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 
   // Run 2 that hears speech keeps going
@@ -439,6 +441,36 @@ await check('safari mic: on iPhone, a second Talk it out that never hears speech
   await c.click('#micBtn'); await c.click('#micStop'); await c.click('#micBtn'); await c.waitForTimeout(400);
   expect((await c.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'no hand-off off Apple touch devices');
   expect(!q.errors.length && !c.errors.length, 'page errors: ' + q.errors.concat(c.errors).join('; '));
+});
+
+await check('safari mic: once this Safari version went deaf, every page after its first run offers Keep talking, which opens the keyboard right away with no wait or restart (v2.1.28 Test lab report)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const remember = (stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-mic-deaf', '27.0.1'); } catch (e) {} };
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await p.addInitScript(FAKE_SPEECH); await p.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await p.reload();
+  expect(/Talk it out/.test(await p.textContent('#micBtn')), 'the first run of a page is still Talk it out');
+  await p.click('#micBtn');
+  await p.evaluate(() => window.__say(['call the milk guy', true]));
+  await p.click('#micStop');
+  expect(/Keep talking/.test(await p.textContent('#micBtn')) && /tap Keep talking/.test(await p.textContent('#micNote')) && await p.isVisible('#micKeyboard'), 'after stopping, the button says Keep talking and a note explains it');
+  const before = await p.evaluate(() => window.__recs.length);
+  await p.click('#micBtn');
+  expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'Keep talking never starts the deaf Safari mic');
+  expect(await p.evaluate(() => { const b = document.getElementById('thoughts'); return document.activeElement === b && b.selectionStart === b.value.length; }), 'Keep talking puts the cursor at the end so the keyboard and its mic come up');
+  expect((await p.inputValue('#thoughts')) === 'call the milk guy', 'words stay');
+  // Safari ends the first run on its own: no restart into a deaf mic, Keep talking instead
+  const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20 } });
+  await q.addInitScript(FAKE_SPEECH); await q.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await q.reload();
+  await q.click('#micBtn'); await q.evaluate(() => window.__say(['two cases', true])); await q.evaluate(() => window.__end());
+  await q.waitForTimeout(150);
+  expect(await q.evaluate(() => window.__recs.length) === 1 && (await q.getAttribute('#micBtn', 'aria-pressed')) === 'false' && /Keep talking/.test(await q.textContent('#micBtn')), 'no auto restart into a deaf mic');
+  // A different Safari version starts fresh
+  const NEWER = IPHONE.replace('Version/27.0.1', 'Version/27.1');
+  const r = await page({ ua: NEWER, hooks: { __micRestartMs: 20 } });
+  await r.addInitScript(FAKE_SPEECH); await r.addInitScript(remember, process.env.APP_CHANNEL === 'staging'); await r.reload();
+  await r.click('#micBtn'); await r.click('#micStop');
+  expect(/Talk it out/.test(await r.textContent('#micBtn')), 'a Safari update tries the real mic again');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + p.errors.concat(q.errors, r.errors).join('; '));
 });
 
 await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {
@@ -3366,7 +3398,7 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await p.click('#contextSend');
   await p.waitForSelector('#contextSyncMsg');
   const note = await p.evaluate(() => navigator.clipboard.readText());
-  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\nSTPCTX1:[A-Za-z0-9+/=]+$/.test(note), 'the note is readable with the code on the last line:\n' + note);
+  expect(/^Speak to Prompt · My context · 2 pieces/.test(note) && /## Corner bakery orders/.test(note) && /## Weekend soccer team/.test(note) && /\nSTPCTX1:[A-Za-z0-9+/=\n]+$/.test(note), 'the note is readable with the code at the end:\n' + note);
   expect(/Copied/.test(await p.textContent('#contextSyncMsg')), 'no share sheet: it copies and says so');
   expect(!/\u2014/.test(note), 'no em dashes in the note');
   // Another device: an empty My context, the note on the clipboard
@@ -3397,6 +3429,49 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.click('#contextPasteGo');
   expect(/No My context code found/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'junk changes nothing and says to copy the whole note');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies the note and offers Open Notes on iPhone, never the share sheet first; Share another way sends text only; the code is wrapped in short lines and big pieces still come back', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE });
+  await p.addInitScript(() => { window.__shares = []; Object.defineProperty(navigator, 'share', { value: (d) => { window.__shares.push(d); return Promise.reject(Object.assign(new Error('x'), { name: 'AbortError' })); }, configurable: true }); });
+  await p.reload();
+  await p.click('#contextNew');
+  const big = 'Roast notes for the shop, made up. '.repeat(108);   // about 3,800 characters
+  const titles = ['Weekend soccer', 'Fancy Diner roast log', 'Rio Knights inventory'];
+  for (let i = 0; i < titles.length; i++) {
+    if (i) await p.click('#contextNew');
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', titles[i]);
+    await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', i ? big + ' piece ' + i : 'Practice Saturday 9am');
+  }
+  await p.click('#contextSend');
+  await p.waitForSelector('#contextSyncMsg');
+  const note = await p.evaluate(() => navigator.clipboard.readText());
+  expect(await p.evaluate(() => window.__shares.length) === 0, 'Copy for Notes must not open the share sheet');
+  expect(/Copied/.test(await p.textContent('#contextSyncMsg')) && /Open Notes/.test(await p.textContent('#contextSyncMsg')), 'it says copied and what to do in Notes');
+  expect((await p.getAttribute('#contextOpenNotes', 'href')) === 'mobilenotes://', 'iPhone gets an Open Notes button');
+  const code = note.slice(note.indexOf('STPCTX1:')).split('\n');
+  expect(code.length > 10 && code.every((l) => l.length <= 76), 'the code is wrapped in short lines, longest ' + Math.max(...code.map((l) => l.length)));
+  expect(note.split('\n').every((l) => l.length <= 4000), 'no giant unbroken line in the note');
+  // Share another way: text only, and a cancel says nothing
+  await p.click('#contextShare');
+  await p.waitForTimeout(100);
+  const shared = await p.evaluate(() => window.__shares[0]);
+  expect(shared && shared.text === note && !('title' in shared), 'the backup share sends the note as text only, no title');
+  expect(!(await p.$('#contextSyncMsg.bad')), 'cancelling the share sheet shows no error');
+  // Another device brings the wrapped note back in, big pieces intact
+  const q = await page();
+  await q.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await q.click('#contextInQuick');
+  await q.waitForSelector('#contextSyncMsg:has-text("3 added")');
+  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  expect(texts.some((t) => t.length > 3700 && /piece 2$/.test(t)), 'a 3,800 character piece comes back whole');
+  // A computer: no Open Notes button, still copies
+  const c = await page();
+  await c.click('#contextNew'); await c.fill('#contextEditor .ctxtitle', 'Book club'); await c.fill('#contextEditor .ctxtext', 'Third Thursday');
+  await c.click('#contextSend'); await c.waitForSelector('#contextSyncMsg');
+  expect(!(await c.$('#contextOpenNotes')) && /Copied/.test(await c.textContent('#contextSyncMsg')), 'computers copy without the iPhone Notes button');
+  expect(!p.errors.length && !q.errors.length && !c.errors.length, 'page errors: ' + p.errors.concat(q.errors, c.errors).join('; '));
 });
 
 await check('my context compact (v2.1.28): recently used pieces go first, only 3 chips show with +N more, a picked piece always shows, and long titles stay on one line', async () => {
