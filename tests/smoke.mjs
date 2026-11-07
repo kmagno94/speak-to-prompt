@@ -3552,7 +3552,10 @@ await check('my context: shown without dev tools, saves nothing until Save on th
   await p.click('#contextEditor button:text-is("Done")');
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
   await p.click('#contextEdit');
+  /* The editor slides open and scrolls itself into view; let it land so the first Delete tap isn't lost (timed out once in CI, 11/7 promote). */
+  await p.waitForTimeout(400);
   await p.click('#contextEditor button:text-is("Delete")');
+  await p.waitForSelector('#contextEditor button:text-is("Tap again to delete")', { timeout: 1500 }).catch(() => p.click('#contextEditor button:text-is("Delete")'));
   await p.click('#contextEditor button:text-is("Tap again to delete")');
   await p.reload();
   expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');
