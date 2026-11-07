@@ -16,6 +16,12 @@
        - If the mic never actually comes on (no audio within a few seconds), it tries once with a fresh
          recognizer, then stops and says so instead of looking like it's recording.
      Nothing is saved: no audio, no transcript copy. Only the words box gets the text.
+       - Safari's mic only hears once per page on iOS 27 (WebKit bug 321436, confirmed by the mic log 11/7:
+         run 2 starts and turns the audio on, then never hears speech). So on an iPhone or iPad, a run after
+         the first that hears no speech in a few seconds stops and hands off to the keyboard mic: a note says
+         why and a Use my keyboard mic button puts the cursor at the end of the box. The page remembers, so
+         later taps on Talk it out go straight to the keyboard instead of pretending to listen. A reload
+         gives a fresh page. Test hook: window.__micDeafMs shortens the wait.
        - Mic log (dev tools only): every recognizer event with its run number and timing, for diagnosing
          iPhone problems like WebKit bug 321436 (on iOS 27, every dictation after the first in a page can be
          deaf). Event names, counts and error codes only, never your words. Memory only, gone on reload.
@@ -40,6 +46,8 @@
   let rec = null, base = '', heard = false, quickEnds = 0, startedAt = 0, restartT = 0, tickT = 0;
   let said = '', skip = 0;         // this run's words so far, and how much of them is already part of base (after you type)
   let live = false, watchT = 0, retried = false;
+  let deaf = $state(false), deafT = 0;   // Safari's mic stopped hearing on this page (iOS 27 bug): use the keyboard mic
+  const DEAF_NOTE = 'Safari\'s mic only listens once per page on this iPhone right now (an Apple bug in iOS 27). Tap the 🎤 on your keyboard to keep talking. Your words go where the cursor is.';
   /* Mic log: never words. t0 is the first tap on this page, runN counts recognizers made. */
   let log = $state([]), t0 = 0, runN = 0, copied = $state(false);
   function mark(n, what) {
@@ -127,7 +135,8 @@
     /* Every event the browser sends, for the mic log. Names only. */
     for (const ev of ['start', 'audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'])
       try { r.addEventListener(ev, () => mark(n, ev + (r === rec ? '' : ' (old)'))); } catch (e) {}
-    let results = 0;
+    let results = 0, spoke = false;
+    try { r.addEventListener('speechstart', () => { spoke = true; }); } catch (e) {}
     r.continuous = true;
     r.interimResults = true;
     r.lang = navigator.language || 'en-US';
@@ -140,7 +149,7 @@
       for (let i = 0; i < e.results.length; i++) all += e.results[i][0].transcript;
       said = all.replace(/^\s+/, '');
       const fresh = said.slice(skip).replace(/^\s+/, '');
-      if (said) { heard = true; live = true; note = ''; }
+      if (said) { heard = true; live = true; spoke = true; note = ''; }
       put(base + fresh);
     };
     r.onerror = (e) => {
@@ -173,12 +182,31 @@
       }
       restartT = setTimeout(() => { if (on && !rec) start(true); }, window.__micRestartMs ?? 250);
     };
+    /* iOS 27: a run after the first can be deaf (audio on, never hears). No speech in a few seconds: hand off. */
+    clearTimeout(deafT);
+    if (appleTouch && !google && n >= 2) deafT = setTimeout(() => { if (r === rec && on && !spoke) gone(n); }, window.__micDeafMs ?? 4500);
     try { r.start(); }
     catch (e) { mark(n, 'start() threw: ' + (e && e.name)); if (rec === r) rec = null; stop(); note = 'The mic couldn\'t start. Tap Talk it out to try again.'; }
   }
 
+  /* Safari's mic went deaf on this page: stop, explain, and offer the keyboard mic. */
+  function gone(n) {
+    mark(n, 'deaf: no speech heard, handing off to the keyboard mic');
+    deaf = true;
+    stop();
+    note = DEAF_NOTE;
+  }
+  /* Put the cursor at the end of the box, so the keyboard (and its 🎤) comes up. Opens the keyboard only from a tap. */
+  function keyboard() {
+    const b = box(); if (!b) return;
+    b.focus();
+    try { b.setSelectionRange(b.value.length, b.value.length); } catch (e) {}
+    b.scrollIntoView({ block: 'center', behavior: ms(1) ? 'smooth' : 'auto' });
+  }
+
   function start(again) {
     if (!SR) return;
+    if (deaf && !again) { mark(runN, 'tap: Talk it out (Safari mic used up on this page, keyboard)'); note = DEAF_NOTE; keyboard(); return; }
     mark(runN + 1, again ? 'auto restart' : 'tap: Talk it out');
     clearTimeout(restartT);
     kill(rec); rec = null;   /* never two recognizers at once */
@@ -199,7 +227,7 @@
   function stop() {
     if (on) mark(runN, 'stop');
     on = false;
-    clearTimeout(restartT); clearInterval(tickT); clearTimeout(watchT);
+    clearTimeout(restartT); clearInterval(tickT); clearTimeout(watchT); clearTimeout(deafT);
     const b = box();
     if (b) { delete b.dataset.listening; b.dispatchEvent(new Event('input', { bubbles: true })); }
     const r = rec; rec = null;
@@ -245,7 +273,7 @@
   </button>
   {#if on || note}
     <p class="micnote" class:warn={!!note} id="micNote" role="status" transition:slide={{ duration: ms(160) }}>
-      {#if note}{note}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
+      {#if note}{note}{#if deaf} <button type="button" class="kbbtn" id="micKeyboard" onclick={keyboard}>⌨️ Use my keyboard mic</button>{/if}{:else}Listening. Your words show up in the box as you talk. Tap the red Tap to stop button at the bottom when you're done. While the mic is on, your voice goes to {service} speech service; nothing is saved here.{/if}
     </p>
   {/if}
   {#if core.dev && log.length}
@@ -294,6 +322,9 @@
   .miclog summary { cursor: pointer; color: var(--muted, var(--ink)); }
   .miclog pre { max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin: 6px 0 0; }
   .miclogcopy { font: inherit; font-weight: 700; min-height: 40px; padding: 6px 14px; margin-top: 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .kbbtn { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; padding: 8px 16px; border-radius: 999px; font: inherit; font-weight: 700;
+    color: var(--ink); background: var(--surface); border: 1px solid var(--line); cursor: pointer; }
+  .kbbtn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .micnote { flex: 1 1 100%; margin: 0; font-size: 14px; color: var(--muted, var(--ink)); }
   .micnote.warn { color: var(--ink); background: var(--accent-soft); border-radius: 12px; padding: 8px 12px; }
 </style>

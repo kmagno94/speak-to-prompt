@@ -401,6 +401,46 @@ await check('safari mic: dev tools show a Mic log of recognizer events per run w
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('safari mic: on iPhone, a second Talk it out that never hears speech hands off to the keyboard mic, and later taps go straight there (iOS 27 bug, v2.1.28)', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0.1 Mobile/15E148 Safari/604.1';
+  const p = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await p.addInitScript(FAKE_SPEECH); await p.reload();
+  // Run 1 works, even with a quiet start
+  await p.click('#micBtn'); await p.waitForTimeout(400);
+  expect((await p.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'the first run is never handed off, even if you pause before talking');
+  await p.evaluate(() => window.__say(['grab oat milk', true]));
+  await p.click('#micStop');
+  // Run 2: audio on, but Safari never hears (like the mic log): hands off
+  await p.click('#micBtn');
+  await p.waitForFunction(() => document.getElementById('micBtn').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
+  await p.waitForSelector('#micStop', { state: 'detached' });
+  const n = await p.textContent('#micNote');
+  expect(/only listens once per page/.test(n) && /keyboard/.test(n) && !/—/.test(n), 'a plain note explains and points at the keyboard mic, got: ' + n);
+  expect((await p.inputValue('#thoughts')) === 'grab oat milk', 'your words stay');
+  await p.click('#micKeyboard');
+  expect(await p.evaluate(() => { const b = document.getElementById('thoughts'); return document.activeElement === b && b.selectionStart === b.value.length; }), 'Use my keyboard mic puts the cursor at the end of the box');
+  // Later taps go straight to the keyboard, no fake listening
+  await p.evaluate(() => document.activeElement.blur());
+  const before = await p.evaluate(() => window.__recs.length);
+  await p.click('#micBtn');
+  expect(await p.evaluate(() => window.__recs.length) === before && (await p.getAttribute('#micBtn', 'aria-pressed')) === 'false', 'no new recognizer once Safari is deaf on this page');
+  expect(await p.evaluate(() => document.activeElement === document.getElementById('thoughts')) && /only listens once/.test(await p.textContent('#micNote')), 'the tap opens the box for the keyboard mic with the note');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+
+  // Run 2 that hears speech keeps going
+  const q = await page({ ua: IPHONE, hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await q.addInitScript(FAKE_SPEECH); await q.reload();
+  await q.click('#micBtn'); await q.evaluate(() => window.__say(['one', true])); await q.click('#micStop');
+  await q.click('#micBtn'); await q.evaluate(() => window.__recs.at(-1).fire('speechstart')); await q.waitForTimeout(400);
+  expect((await q.getAttribute('#micBtn', 'aria-pressed')) === 'true' && !(await q.$('#micKeyboard')), 'a second run that hears speech is never handed off');
+  // Computers (Chrome) never hand off
+  const c = await page({ hooks: { __micRestartMs: 20, __micDeafMs: 150 } });
+  await c.addInitScript(FAKE_SPEECH); await c.reload();
+  await c.click('#micBtn'); await c.click('#micStop'); await c.click('#micBtn'); await c.waitForTimeout(400);
+  expect((await c.getAttribute('#micBtn', 'aria-pressed')) === 'true', 'no hand-off off Apple touch devices');
+  expect(!q.errors.length && !c.errors.length, 'page errors: ' + q.errors.concat(c.errors).join('; '));
+});
+
 await check('first-time tutorial: explains Talk it out where the mic works, and Show me where glows the mic without starting it (v2.1.28)', async () => {
   const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
   const p = await page({ ua: IPHONE });

@@ -7,7 +7,7 @@
       "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",
       "items": [
         "The words box no longer jerks or snaps around while you type or scroll your results, and you can always see what you're writing.",
-        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: it picks up right after your fix (it used to say it was listening but nothing showed). You can also fix a word by typing while it listens, and if the mic never really comes on it tries once more, then tells you instead of pretending to record. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
+        "Talk it out: while the mic is on, a red Tap to stop button with a timer sits at the bottom of the screen, so stopping is always one obvious tap. Stop, fix a word, and tap Talk it out again: new words pick up after your fix. On iPhones with iOS 27, Safari's mic only hears once per page (an Apple bug), so when a second try hears nothing it stops, says why, and hands you to the keyboard mic with one tap instead of pretending to listen. You can also fix a word by typing while it listens. First time? Start here now explains Talk it out (tap, talk, tap Stop) with a Show me where button.",
         "What you type is kept in this tab only, so a reload or Safari reloading the tab brings it back with a Start fresh button. Deleted when you Build, empty the box, close the tab, or after 30 minutes. Never sent anywhere.",
         "A Gemini key from a different Google account gets its own fresh daily count, so it no longer says Flash is used up because of your other key.",
         "My context has 📤 Send to Notes and 📥 Bring in: save your pieces as one Apple Notes note, iCloud syncs it, and Bring in reads it back on your iPad or Mac. Same titles update, nothing is deleted.",
@@ -21,7 +21,7 @@
         },
         {
           "say": "Tap Talk it out and talk for about 10 seconds, enough to fill the box past the screen. Tap the red Tap to stop button, fix one word by typing, then tap Talk it out again and keep talking.",
-          "see": "The red Tap to stop button with a running timer stays at the bottom the whole time. After your fix, your new words show up right after it, live, and your fix is still there. Works a third time too."
+          "see": "The red Tap to stop button with a timer stays at the bottom the whole time. On the second try, if Safari doesn't hear you, within about 5 seconds the mic stops with a note about the iOS 27 bug and a Use my keyboard mic button. Tap it: the cursor lands at the end of the box and the keyboard's mic adds your words. Tapping Talk it out again goes straight to the keyboard."
         },
         {
           "say": "Tap First time? Start here.",
