@@ -3113,7 +3113,11 @@ export function startApp() {
       if (eased > 0) parts.push("took out " + plural(eased, "word that made it stricter than you said", "words that made it stricter than you said"));
       el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Tap X-ray to see.";
     } else {
-      el.textContent = "\ud83d\udd27 The check found " + plural(rep.before.score, "thing", "things") + " to fix, but " + (rep.status === "failed" ? "the fix didn't come through" : "the fix wasn't better") + ", so this is the original. Tap X-ray to see what to check.";
+      /* AGT-21 (v2.1.30): first-timers read "the fix wasn't better" as "something broke", so
+         the line says it plainly. The reason why (Polish tried and kept the original) only
+         shows with run stats or dev tools on. */
+      el.textContent = "\ud83d\udc40 Your prompt is ready. We spotted " + plural(rep.before.score, "thing", "things") + " worth a quick look before you paste: tap X-ray to see " + (rep.before.score === 1 ? "it" : "them") + "." +
+        (techOn() || core.dev ? " (Polish tried a fix, but " + (rep.status === "failed" ? "it didn't come through" : "it wasn't better") + ", so this is the original.)" : "");
     }
     el.hidden = false;
   }

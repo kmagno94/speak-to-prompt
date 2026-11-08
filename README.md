@@ -30,6 +30,10 @@ Most people who try ChatGPT, Claude, or Gemini get mediocre answers because they
 
 Without a key, a slim line under **Build my prompt** says you're on Quick mode, and a quick result shows a short card with what a free key adds. Both open the key panel, and so does tapping **Normal** with no key. The panel leads with two big steps: **Get my free key** (opens Google AI Studio) and **📋 Paste my key**, which reads your clipboard only on that tap, checks it looks like a Gemini key, runs Check key, and celebrates. Coming back from AI Studio pulses Paste my key. The nudges disappear once a key works. **Not now** hides the line for that tab only; the clipboard text is never shown or saved. Coming back from AI Studio pastes and checks the key by itself where the browser allows it (v2.1.25); iPhone Safari always needs a tap plus its Paste bubble, so there Paste my key pulses instead. Once a key works with **Remember my key** off, Remember wears the white halo until it's ticked. If the prompt on screen was the quick version, about 3 seconds later (or right when Remember is ticked) a card by the key counts down 5 seconds and rebuilds it the full way (questions first), with **Build it now** and **Not now**; typing in the box or building yourself calls it off.
 
+### Plain words on the result (v2.1.30)
+
+When the double-check spots something its fix couldn't improve, the note says **Your prompt is ready. We spotted N things worth a quick look before you paste: tap X-ray to see them.** The reason (Polish tried a fix, kept the original) only shows with run stats or dev tools on. Until you tap Glow-Up or X-ray once, a small line under them says what each does (only a yes/no flag is saved, `stp-xbar-hint`).
+
 ### Your core (testing)
 
 Hidden unless **More options > Show my dev tools** is on (it turns itself on for a phone that already has a core). The switch also shows Improve this app.

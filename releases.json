@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.30",
+      "date": "2026-11-07",
+      "title": "Plain words on the result screen",
+      "items": [
+        "When the double-check spots something in your prompt but its fix didn't help, the note under the result no longer says the check found a thing, the fix wasn't better, so this is the original. It now just says: Your prompt is ready. We spotted 1 thing worth a quick look before you paste: tap X-ray to see it. With run stats or dev tools on, the old reason still shows after it in brackets.",
+        "The first time you get a prompt, a small line under Glow-Up and X-ray says what each one does. Tap either once and it's gone for good (only a yes/no is saved on this phone)."
+      ],
+      "checks": [
+        {
+          "say": "With run stats and dev tools off, build a prompt in Normal from this note.",
+          "see": "Under ✨ Glow-Up and 🩻 X-ray, a small gray line: Glow-Up shows your messy words turning into this prompt. X-ray shows which parts came from you.",
+          "paste": "need a packing list for a 4 day camping trip in the Catskills in mid October, 3 of us, we have one tent and a cooler but no stove, nights might hit 35 degrees, and my friend Dev gets cold easy"
+        },
+        {
+          "say": "Tap 🩻 X-ray, then Done. Build another prompt.",
+          "see": "The gray hint line is gone and stays gone on new prompts and after a reload."
+        },
+        {
+          "say": "Keep building prompts until a note under the result starts with 👀 (it shows when the double-check spots something, like a number you didn't say). If one never shows up, skip this check.",
+          "see": "It reads: Your prompt is ready. We spotted 1 thing worth a quick look before you paste: tap X-ray to see it. No words like Polish, the check, or the fix wasn't better."
+        },
+        {
+          "say": "Turn on More options > Show my dev tools and look at that same kind of note on a new build.",
+          "see": "Same plain line, plus the reason in brackets: (Polish tried a fix, but it wasn't better, so this is the original.)"
+        }
+      ]
+    },
+    {
       "version": "2.1.29",
       "date": "2026-11-07",
       "title": "Your goal, in one line you can fix",

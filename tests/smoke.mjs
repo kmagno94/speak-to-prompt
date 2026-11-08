@@ -2149,10 +2149,10 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(total && el === '0:0' + total[1] && /polish/.test(await p.textContent('#resultTrack .leftlbl')), 'elapsed ' + el + ' should match the total ' + (total && total[1]) + 's and mention polish');
   // 3. Fix isn't better: keep the original and say so
   ({ p, sent } = await run({ write: BAD, repair: BAD + '\nAlso budget $999 a day.' }));
-  expect(await p.inputValue('#output') === BAD && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away');
+  expect(await p.inputValue('#output') === BAD && /^👀 Your prompt is ready\. We spotted \d+ things? worth a quick look before you paste: tap X-ray to see/.test(await p.textContent('#repairNote')) && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away; plain line first, the reason only with run stats (AGT-21): ' + await p.textContent('#repairNote'));
   // 4. Fix fails: original, page still works
   ({ p, sent } = await run({ write: BAD, repairFail: true }));
-  expect(await p.inputValue('#output') === BAD && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
+  expect(await p.inputValue('#output') === BAD && /worth a quick look/.test(await p.textContent('#repairNote')) && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2196,7 +2196,11 @@ await check('auto-repair never strips real times; corrected numbers and "two wee
   const STRIPPED = WITH_STRAY.replace(/\d{1,2}:00 /g, '').replace(' with 25 practice questions', '');
   p = await run({ write: WITH_STRAY, repair: STRIPPED });
   expect(p.repairs.length === 1, 'the made-up 25 should trigger one repair');
-  expect(await p.inputValue('#output') === WITH_STRAY && /wasn't better/.test(await p.textContent('#repairNote')), 'a fix that deletes your times must be thrown away');
+  expect(await p.inputValue('#output') === WITH_STRAY && /worth a quick look/.test(await p.textContent('#repairNote')) && !/wasn't better|Polish|the check found/i.test(await p.textContent('#repairNote')), 'a fix that deletes your times must be thrown away, and with run stats off the note is plain words only (AGT-21): ' + await p.textContent('#repairNote'));
+  // AGT-21: Glow-Up and X-ray get a one-line hint until either is tapped once
+  expect(await p.isVisible('#xbarHint') && /Glow-Up shows your messy words/.test(await p.textContent('#xbarHint')), 'first result shows the Glow-Up and X-ray hint');
+  await p.click('#xrayBtn'); await p.click('#xrayBtn');
+  expect(!(await p.isVisible('#xbarHint')) && await p.evaluate(() => localStorage.getItem('stp-xbar-hint') === '1'), 'tapping X-ray retires the hint for good (a yes/no flag only)');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
