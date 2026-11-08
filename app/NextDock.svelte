@@ -145,7 +145,12 @@
   /* Picking a My context chip changes what goes in too. */
   let stopContext = null, lastPicks = null;
   let inlineEl = $state(null);
-  $effect(() => { if (inlineEl) inlineEl.hidden = !building; });
+  /* v2.1.36 promote run: when the Build under the box comes back while it's already off screen above
+     (a change landing while you're scrolled down on the result), the IntersectionObserver never fires
+     (hidden and off screen both read as 0 in view), so the pill kept thinking it was in view and left
+     out Rebuild. Measure it ourselves on the next frame whenever Build becomes the next step. */
+  const measure = () => { if (!inlineEl) return; const r = inlineEl.getBoundingClientRect(); inlineSeen = !(r.height && r.top + r.height / 2 < 0); };
+  $effect(() => { if (!inlineEl) return; inlineEl.hidden = !building; if (building) requestAnimationFrame(measure); });
   $effect(() => {
     const picks = context.picked.join(',');
     if (lastPicks !== null && picks !== lastPicks) stopContext?.();

@@ -7,7 +7,8 @@
       "title": "Pick your Hear it speed, and a pro prompt button you can't miss",
       "items": [
         "More options has a 🔊 Hear it speed setting: 1x, 1.25x, 1.5x (the default) or 2x. Your pick is remembered on this phone (just the number).",
-        "The 🏆 pro prompt badge is now a button that stays at the top of your result until your next prompt, with a soft shimmer so you notice it. Tap it for a confetti pop and What made it good: a plain bullet for each of the 5 parts your note nailed (plus the perfect Quality check score when that's why). Tap again to tuck it away. Before, the badge faded on its own and was easy to miss."
+        "The 🏆 pro prompt badge is now a button that stays at the top of your result until your next prompt, with a soft shimmer so you notice it. Tap it for a confetti pop and What made it good: a plain bullet for each of the 5 parts your note nailed (plus the perfect Quality check score when that's why). Tap again to tuck it away. Before, the badge faded on its own and was easy to miss.",
+        "Fixed: if you changed your note while scrolled down on a finished prompt, the bottom bar showed only Copy prompt and left out Rebuild. Now Rebuild shows next to Copy prompt whenever the Build button under the box is off screen."
       ],
       "checks": [
         {
@@ -19,7 +20,8 @@
           "say": "Build this note in Normal, wait about 10 seconds, then tap the 🏆 button at the top of the result.",
           "see": "The button is still there after 10 seconds (it no longer fades). Tapping it pops confetti and opens What made it good with a bullet for Goal, Who it's for, Details, Limits and What good looks like. Tap again: the list tucks away and the button stays. Tap once more: confetti again.",
           "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
-        }
+        },
+        {"say": "Build this note. When the prompt shows, scroll all the way down, then scroll up just enough to change a word in your note, and scroll back down.", "see": "The bottom bar shows Copy prompt next to Rebuild. Tap Rebuild: it builds again.", "paste": "ok so i wanna plan a small birthday dinner for my sister this saturday, like 6 people, nothing fancy"}
       ]
     },
     {

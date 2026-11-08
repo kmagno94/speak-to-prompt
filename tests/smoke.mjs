@@ -4412,6 +4412,19 @@ await check('next step dock: Build my prompt sits under the box, and the dock sh
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('next step dock: a change made while scrolled down on a finished prompt still shows Rebuild in the pill (v2.1.36 promote run: the Build under the box came back off screen and the pill missed it)', async () => {
+  const p = await page();
+  await p.fill('#thoughts', 'plan a small birthday dinner for my sister'); await p.click('#build'); await done(p);
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(400);
+  /* Change the words without scrolling back up, like an edit landing while the page glides down to the result. */
+  await p.evaluate(() => { const b = document.getElementById('thoughts'); b.value += ' saturday'; b.dispatchEvent(new Event('input', { bubbles: true })); });
+  await p.waitForTimeout(400);
+  const st = await p.evaluate(() => ({ y: scrollY, buildTop: document.getElementById('build').getBoundingClientRect().top }));
+  expect(st.buildTop < 0, 'the Build under the box is off screen above: ' + JSON.stringify(st));
+  expect(await p.isVisible('#dockBuild') && (await p.textContent('#dockBuild')).trim() === 'Rebuild' && await p.isVisible('#copy'), 'the pill shows Copy prompt and Rebuild');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('next step dock: changing your words on a finished prompt keeps Copy prompt next to Rebuild, with Open in and New prompt in ⋯', async () => {
   const p = await page();
   await p.fill('#thoughts', 'plan a small birthday dinner for my sister'); await p.click('#build'); await done(p);
