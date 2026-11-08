@@ -407,6 +407,7 @@ export function startApp() {
     qa.hidden = true;
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
+    countRun();   /* first-timer count for the time strip (v2.1.33) */
     window.dispatchEvent(new Event("stp-ready"));   /* a prompt just finished: the dock's Copy prompt pulses once (#31) */
   }
   function showQuick(raw, reason) {
@@ -1891,9 +1892,19 @@ export function startApp() {
   }
   /* Time strip at Ready: one bar split by how long each part took (Prep, Write, Polish,
      Check), with a small legend. Machine time only; your answering time isn't counted. */
+  /* First-timers (v2.1.33): the time strip and Step by step stay out of the way for the first
+     3 prompts on this phone, so the result is calmer. Run stats or dev tools always show it.
+     Only a count is saved (stp-runs, capped at 3), never anything typed. The choice is made
+     once per prompt, so a grade that lands later doesn't make it pop in. */
+  var RUNS_KEY = "stp-runs", FIRST_RUNS = 3;
+  function runsDone() { try { return Math.min(FIRST_RUNS, Number(localStorage.getItem(RUNS_KEY)) || 0); } catch (e) { return FIRST_RUNS; } }
+  function countRun() { var n = runsDone(); if (n < FIRST_RUNS) { try { localStorage.setItem(RUNS_KEY, String(n + 1)); } catch (e) {} } }
+  function stripAllowed() { return techOn() || core.dev || runsDone() >= FIRST_RUNS; }
   function showTimeStrip(track, parts, rows) {
     var strip = track.querySelector(".timestrip");
     if (!strip) return;
+    if (session && session.stripOk == null) session.stripOk = stripAllowed();
+    if (!(session ? session.stripOk : stripAllowed())) { strip.textContent = ""; strip.hidden = true; return; }
     parts = parts.filter(function (x) { return x[3]; });   /* every part that ran, even a quick one */
     var total = parts.reduce(function (a, x) { return a + x[1]; }, 0);
     strip.textContent = "";

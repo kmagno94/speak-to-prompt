@@ -28,6 +28,7 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import MoveCard from './MoveCard.svelte';
+  import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
   import ContextRow from './ContextRow.svelte';
@@ -165,6 +166,7 @@
 
   <section class="card" id="result" hidden aria-live="polite">
     <h2 id="resultHead">Your prompt is ready</h2>
+    <ProMoment />
     <div class="tracker" id="resultTrack" hidden>
       <ol aria-label="Progress"><li data-step="prep">Prep</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="finish" hidden>Finish</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>

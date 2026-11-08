@@ -1,10 +1,12 @@
 <script>
+  import { onMount } from 'svelte';
   import { fly, slide } from 'svelte/transition';
   import { starter } from './lib/starter.svelte.js';
   import { CATEGORIES, SLIDERS } from './lib/starters.js';
   import { ms } from './lib/motion.js';
   import { core } from './lib/core.svelte.js';
   import CoreEditor from './CoreEditor.svelte';
+  import { startCategory, startLink } from './lib/startlink.js';
 
   let draft = $state('');
   let showCore = $state(false);
@@ -40,6 +42,36 @@
     else box.scrollIntoView({ block: 'center', behavior: ms(1) ? 'smooth' : 'auto' });
   }
 
+  /* Starter links (AGT-9): #start=food opens the starter with that category picked.
+     The hash is cleared after, so a reload starts fresh. */
+  function fromLink() {
+    const cat = startCategory(location.hash);
+    if (!cat) return;
+    /* after this tick, so Start here has already seen the link and stepped aside */
+    setTimeout(() => { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }, 0);
+    showCore = false;
+    starter.begin();
+    starter.pick(cat);
+  }
+  onMount(() => {
+    fromLink();
+    addEventListener('hashchange', fromLink);
+    return () => removeEventListener('hashchange', fromLink);
+  });
+
+  /* Copy link: the link for the picked category, so you can send a friend straight to it. */
+  let copied = $state('');
+  let copyTimer = 0;
+  $effect(() => { starter.cat; copied = ''; });
+  async function copyLink() {
+    const link = startLink(starter.cat);
+    if (!link) return;
+    clearTimeout(copyTimer);
+    try { await navigator.clipboard.writeText(link); copied = 'Link copied'; }
+    catch (e) { copied = link; }   /* no clipboard: show the link so it can be copied by hand */
+    copyTimer = setTimeout(() => { if (copied === 'Link copied') copied = ''; }, 2500);
+  }
+
   $effect(() => {
     if (starter.open && card) card.scrollIntoView({ block: 'start', behavior: ms(1) ? 'smooth' : 'auto' });
   });
@@ -58,6 +90,7 @@
     <div class="head">
       <b>{showCore ? 'Your core' : "Let's find a starting point"}</b>
       <div class="headbtns">
+        {#if starter.cat && !starter.cat.dev && !showCore}<button type="button" class="corebtn" id="starterLink" onclick={copyLink}>{copied === 'Link copied' ? '✓ Link copied' : '🔗 Copy link'}</button>{/if}
         {#if core.dev}<button type="button" class="corebtn" id="coreBtn" aria-pressed={showCore} onclick={() => (showCore = !showCore)}>
           {showCore ? 'Back' : core.has ? '🧬 Your core' : '🧬 Set up your core'}
         </button>{/if}
@@ -65,6 +98,7 @@
       </div>
     </div>
 
+    {#if copied && copied !== 'Link copied'}<p class="linkout" id="starterLinkText">Copy this link: <span>{copied}</span></p>{/if}
     {#if showCore}
       <CoreEditor onclose={() => (showCore = false)} />
     {:else}
@@ -148,6 +182,8 @@
   .head b { font-family: var(--display); font-size: 19px; }
   .headbtns { display: flex; gap: 6px; align-items: center; }
   .corebtn { min-height: 40px; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .linkout { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .linkout span { user-select: all; color: var(--ink); }
   .x { min-height: 40px; padding: 6px 12px; border-radius: 999px; background: var(--bg); border-color: transparent; color: var(--muted); }
   .msg.me p { margin: 0; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
   .cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }

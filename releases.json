@@ -2,6 +2,45 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.33",
+      "date": "2026-11-08",
+      "title": "Hear it back, starter links, your first pro prompt, and a calmer first result",
+      "items": [
+        "A 🔊 Hear it button next to Glow-Up reads your prompt out loud with your phone's own voice. Tap Stop to end it. It also stops on a new prompt or when you leave the page. Free, on the phone.",
+        "Every starter category has its own link, like #start=food. Opening it shows Not sure where to start? with that category picked. A 🔗 Copy link button in the starter copies it so you can send a friend straight there.",
+        "The first time your note has all 5 Prompt strength parts (or a prompt scores a full 5 of 5), a small Your first pro prompt badge pops with confetti, once ever, then fades. Reduce Motion gets a still glow instead.",
+        "Your first 3 prompts on a phone skip the Prep, Write, Polish time strip under the timer, so the first result is calmer. It shows from then on, and always with run stats or dev tools on."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, build any prompt, then tap 🔊 Hear it above the prompt.",
+          "see": "Your phone reads the prompt out loud and the button says Stop. Tap Stop: it goes quiet and says Hear it again.",
+          "paste": "ok so umm my sister's birthday is next saturday and i wanna do something but i have no idea what, she likes plants i think and coffee. help me come up with stuff"
+        },
+        {
+          "say": "Tap Hear it again, then tap New prompt in the dock's ⋯ while it's talking.",
+          "see": "The reading stops right away."
+        },
+        {
+          "say": "Open kmagno94.github.io/speak-to-prompt/staging/#start=food in Safari.",
+          "see": "Not sure where to start? opens with Food and cooking picked and the quick taps showing. The #start=food part leaves the address bar."
+        },
+        {
+          "say": "In the starter, tap 🔗 Copy link, then paste it in Notes.",
+          "see": "The button says ✓ Link copied, and the pasted link ends in #start=food."
+        },
+        {
+          "say": "On a phone that never had a pro prompt on staging (or after Clear results in Safari settings for the site), build this note in Normal.",
+          "see": "At the top of the result: 🏆 Your first pro prompt with a quick confetti pop, and it fades after a few seconds. Build it again: no badge this time.",
+          "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
+        },
+        {
+          "say": "On the same fresh phone, with run stats off, look under the timer on your first result.",
+          "see": "No Prep, Write, Polish time bar and no Step by step box. From the 4th prompt on, it's back."
+        }
+      ]
+    },
+    {
       "version": "2.1.32",
       "date": "2026-11-07",
       "title": "Prompt school: one move I made, and why",

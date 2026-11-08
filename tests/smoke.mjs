@@ -62,6 +62,9 @@ async function page(opts = {}) {
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
   if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
+  /* v2.1.33: a returning visitor has also built a few prompts (the time strip shows) and had their first pro prompt.
+     opts.newbie keeps Start here off but starts with neither, for the first-timer checks. */
+  if (!opts.fresh && !opts.newbie) await ctx.addInitScript((stg) => { try { const k = stg ? 'stg:' : ''; if (!localStorage.getItem(k + 'stp-runs')) localStorage.setItem(k + 'stp-runs', '3'); if (!localStorage.getItem(k + 'stp-pro')) localStorage.setItem(k + 'stp-pro', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   const p = await ctx.newPage();
   p.errors = [];
   p.calls = [];
@@ -157,7 +160,7 @@ async function page(opts = {}) {
      of day. Tests get it without "busy" unless they pass their own. */
   const tuning = opts.tuning || (() => { const t = JSON.parse(readFileSync(path.join(ROOT, 'tuning.json'), 'utf8')); delete t.busy; return t; })();
   await p.route(/\/tuning\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tuning) }));
-  await p.goto(BASE);
+  await p.goto(BASE + (opts.hash || ''));
   return p;
 }
 /* Starter answers rotate, so a given option may be in the next group: tap
@@ -1664,6 +1667,107 @@ await check('prompt school: one Move I made card under the prompt, picked from w
   await withKey(q); await q.fill('#thoughts', 'game night ideas for friday'); await q.click('#build'); await done(q);
   expect(!(await q.$('#moveCard')), 'no card when the prompt is all your words');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
+await check('hear it back: 🔊 reads the prompt with the phone voice in short pieces, tap again stops, a new prompt stops it (AGT-16, v2.1.33)', async () => {
+  const PROMPT = 'You are a party planner. Plan a game night for Friday. Keep the total under $90. Give me a checklist.';
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, write: PROMPT });
+  await p.addInitScript(() => {
+    window.__said = []; window.__cancels = 0;
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak: (u) => window.__said.push(u), cancel: () => { window.__cancels++; } } });
+  });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#hearBtn');
+  expect((await p.textContent('#hearBtn')).includes('Hear it') && await p.getAttribute('#hearBtn', 'aria-pressed') === 'false', 'Hear it button shows, not pressed');
+  await p.click('#hearBtn');
+  const said = await p.evaluate(() => window.__said.map((u) => u.text));
+  expect(said.length >= 1 && said.join(' ').replace(/\s+/g, ' ') === PROMPT && said.every((t) => t.length <= 220), 'reads the whole prompt in short pieces: ' + JSON.stringify(said));
+  expect((await p.textContent('#hearBtn')).includes('Stop') && await p.getAttribute('#hearBtn', 'aria-pressed') === 'true', 'the button turns into Stop');
+  // Finishing the last piece puts the button back
+  await p.evaluate(() => { const u = window.__said[window.__said.length - 1]; u.onend && u.onend(); });
+  await p.waitForFunction(() => document.getElementById('hearBtn').textContent.includes('Hear it'));
+  await p.click('#hearBtn');
+  const before = await p.evaluate(() => window.__cancels);
+  await p.click('#hearBtn');
+  expect(await p.evaluate(() => window.__cancels) > before && (await p.textContent('#hearBtn')).includes('Hear it'), 'tap again stops (cancel) and resets');
+  // No speech in the browser: no button
+  const q = await page({ intake, write: PROMPT });
+  await q.addInitScript(() => { delete window.speechSynthesis; Object.defineProperty(window, 'speechSynthesis', { configurable: true, get: undefined }); delete window.speechSynthesis; });
+  await q.reload();
+  await withKey(q); await q.fill('#thoughts', 'game night ideas for friday'); await q.click('#build'); await done(q);
+  expect(await q.isVisible('#xrayBtn'), 'X-ray still shows without speech');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
+await check('starter links: #start=food opens Not sure where to start? on Food with the quick taps, clears the link, skips Start here, and Copy link copies it (AGT-9, v2.1.33)', async () => {
+  const p = await page({ fresh: true, hash: '#start=food' });
+  await p.waitForSelector('#starter .chips button');
+  expect(/Food and cooking/.test(await p.textContent('#starter .thread')), 'Food is picked');
+  await p.waitForFunction(() => !location.hash);
+  await p.waitForTimeout(2200);   /* past the title entrance, when Start here's halo would be on */
+  expect(!(await p.$('.sh-halo')) && !(await p.isVisible('#startHere')), 'Start here stays out of the way');
+  await p.click('#starterLink');
+  await p.waitForSelector('#starterLink >> text=Link copied');
+  const link = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/#start=food$/.test(link) && link.startsWith(BASE), 'copies the Food link: ' + link);
+  // A link to the dev-only category or a made-up one does nothing
+  const q = await page({ hash: '#start=app' }); await q.waitForTimeout(400);
+  expect(!(await q.isVisible('#starter')), 'dev-only category never opens from a link');
+  await q.goto(BASE + '#start=nope'); await q.waitForTimeout(400);
+  expect(!(await q.isVisible('#starter')), 'unknown category does nothing');
+  // Before a category is picked, no Copy link
+  await q.click('#starterBtn'); await q.waitForSelector('#starter .cats button');
+  expect(!(await q.isVisible('#starterLink')), 'no Copy link until a category is picked');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
+await check('first pro prompt: a 5 of 5 note shows the badge and confetti once, saves only a yes/no, fades, and Reduce Motion gets a glow (AGT-17, v2.1.33)', async () => {
+  const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, newbie: true, hooks: { __proMs: 1500 } });
+  await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
+  await p.waitForSelector('#proMoment');
+  expect(/Your first pro prompt/.test(await p.textContent('#proMoment')) && /all 5 things/.test(await p.textContent('#proMoment')), 'badge says why');
+  expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti bits');
+  expect(await p.evaluate(() => localStorage.getItem('stp-pro')) === '1', 'only a yes/no flag is saved');
+  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
+  // Never again
+  const again = await page({ intake, newbie: true });
+  await again.evaluate(() => localStorage.setItem('stp-pro', '1')); await again.reload();
+  await withKey(again); await again.fill('#thoughts', STRONG); await again.click('#build'); await done(again);
+  await again.waitForTimeout(300);
+  expect(!(await again.$('#proMoment')), 'no badge once seen');
+  // A weaker note: no badge
+  const weak = await page({ intake, newbie: true });
+  await withKey(weak); await weak.fill('#thoughts', 'game night ideas'); await weak.click('#build'); await done(weak);
+  await weak.waitForTimeout(300);
+  expect(!(await weak.$('#proMoment')) && await weak.evaluate(() => localStorage.getItem('stp-pro')) !== '1', 'no badge and no flag for a weaker note');
+  // Reduce Motion: a still glow, no confetti
+  const r = await page({ intake, newbie: true, reduced: true });
+  await withKey(r); await r.fill('#thoughts', STRONG); await r.click('#build'); await done(r);
+  await r.waitForSelector('#proMoment.still');
+  expect(!(await r.$('#proMoment .burst')), 'no confetti with Reduce Motion');
+  expect(![p, again, weak, r].some((x) => x.errors.length), 'page errors: ' + [p, again, weak, r].flatMap((x) => x.errors).join('; '));
+});
+
+await check('first-timer strip: the Prep/Write/Polish time strip stays hidden for a phone\'s first 3 prompts, shows after, and always with run stats on (v2.1.33)', async () => {
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, newbie: true });
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.waitForTimeout(300);
+  expect(!(await p.isVisible('#resultTrack .timestrip')) && await p.evaluate(() => localStorage.getItem('stp-runs')) === '1', 'hidden on the first prompt, count is 1');
+  await p.evaluate(() => localStorage.setItem('stp-runs', '3')); await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#resultTrack .timestrip:not([hidden])');
+  expect(await p.evaluate(() => localStorage.getItem('stp-runs')) === '3', 'count stops at 3');
+  const s = await page({ intake, newbie: true });
+  await s.click('#moreOpts summary'); await s.check('#statsToggle');
+  await withKey(s); await s.fill('#thoughts', 'game night ideas for friday'); await s.click('#build'); await done(s);
+  await s.waitForSelector('#resultTrack .timestrip:not([hidden])');
+  expect(!p.errors.length && !s.errors.length, 'page errors: ' + [...p.errors, ...s.errors].join('; '));
 });
 
 await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
