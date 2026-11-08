@@ -1575,6 +1575,74 @@ await check('chat questions: tap, type, skip, edit an answer, live summary, all 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('chat questions: Clarity mirror shows Your goal with Edit, and the goal reaches the writer, edited or kept (AGT-13, v2.1.29)', async () => {
+  const GOAL = 'Plan a trip to Japan for 2 under $3,000';
+  const intake = { title: 'Japan Trip', need: GOAL, category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['5 days', '10 days'] }] };
+  // 1. Edit the goal: the card shows it as your words, and the writer aims at it
+  const p = await page({ intake });
+  await withKey(p); await p.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(/^Your goal:/.test((await p.textContent('#qaNeed')).trim()) && await p.textContent('#qaGoalText') === GOAL && await p.isVisible('#qaGoalHint'), 'goal line with Edit: ' + await p.textContent('#qaNeed'));
+  await p.click('#qaGoalEditBtn');
+  expect(await p.inputValue('#qaGoalInput') === GOAL, 'Edit opens with the goal filled in');
+  await p.fill('#qaGoalInput', 'Plan a relaxed 10-day Japan trip for me and my wife under $3,000');
+  await p.click('#qaGoalSave');
+  expect(await p.textContent('#qaGoalText') === 'Plan a relaxed 10-day Japan trip for me and my wife under $3,000' && /your words/.test(await p.textContent('#qaNeed')) && !(await p.isVisible('#qaGoalHint')), 'edited goal shows as your words');
+  await p.click('#qaList .chips button >> text=10 days');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  const w = p.calls.find(c => !c.intake).text;
+  expect(/THE PERSON'S GOAL, IN THEIR OWN WORDS[^\n]*\nPlan a relaxed 10-day Japan trip for me and my wife under \$3,000/.test(w) && !/THE GOAL THE PERSON CONFIRMED/.test(w), 'edited goal reaches the writer as their words: ' + w.slice(-500));
+  // 2. Leave it: the writer gets it as the confirmed goal; saving it empty goes back to the Read line
+  const q = await page({ intake });
+  await withKey(q); await q.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  await q.click('#qaGoalEditBtn'); await q.fill('#qaGoalInput', '   '); await q.click('#qaGoalSave');
+  expect(await q.textContent('#qaGoalText') === GOAL && !/your words/.test(await q.textContent('#qaNeed')), 'an empty edit keeps the original goal');
+  await q.click('#qaList .chips button >> text=5 days');
+  await q.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await q.click('#qaGo'); await done(q);
+  const w2 = q.calls.find(c => !c.intake).text;
+  expect(/THE GOAL THE PERSON CONFIRMED[^\n]*\nPlan a trip to Japan for 2 under \$3,000/.test(w2) && !/IN THEIR OWN WORDS/.test(w2), 'kept goal reaches the writer as confirmed');
+  // 3. No questions: no goal line goes to the writer
+  const r = await page({ intake: { ...intake, questions: [] } });
+  await withKey(r); await r.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await r.click('#build'); await done(r);
+  expect(!/THE GOAL THE PERSON CONFIRMED|IN THEIR OWN WORDS/.test(r.calls.find(c => !c.intake).text), 'no questions, no goal block');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('chat questions: a strong note (all 5 Ghost Coach parts) skips Read\'s questions, says so, and Ask me anyway brings them back (AGT-14, v2.1.31)', async () => {
+  const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
+  const qs = [{ question: 'Any games you already own?', choices: ['None', 'A few'] }];
+  const intake = { title: 'Game Night', need: 'Plan a game night for 10 coworkers under $90', category: 'Social', complexity: 'standard', questions: qs };
+  // 1. Strong note, 1 question: straight to writing, the note says why, the tracker skips Ask
+  const p = await page({ intake });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
+  expect(!(await p.isVisible('#qa')) && p.calls.filter(c => !c.intake).length === 1, 'no questions card, one write');
+  expect(/Your note had everything/.test(await p.textContent('#result')) && await p.isVisible('text=Ask me anyway'), 'the result says the note had everything, with Ask me anyway');
+  expect(await p.$eval('#resultTrack li[data-step=ask]', el => el.className) === 'skip', 'tracker marks Ask as skipped');
+  await p.click('#resultTrack .tsdetail summary');
+  const steps = await p.$$eval('#resultTrack .ts-row', l => l.map(x => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-what').textContent));
+  expect(steps.some(x => /^Read \| Picked 1 question, skipped: your note had all 5 parts/.test(x)) && steps.some(x => /^Ask \| Skipped: your note had everything/.test(x)), 'Step by step says why: ' + steps.join(' / '));
+  // 2. Ask me anyway: the same questions come back with no new Read, and the next write has the answer
+  await p.click('text=Ask me anyway');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(p.calls.filter(c => c.intake).length === 1 && await p.isHidden('#result'), 'no second Read, the result steps aside');
+  await p.click('#qaList .chips button >> text=A few');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  expect(/A: A few/.test(p.calls.filter(c => !c.intake).pop().text) && !/Your note had everything/.test(await p.textContent('#result')), 'the answer reaches the writer, and the strong-note line is gone');
+  // 3. Guards: 3 questions, a complex request, or a weaker note still ask
+  const three = await page({ intake: { ...intake, questions: [qs[0], { question: 'Indoors?', choices: ['Yes'] }, { question: 'Drinks?', choices: ['Yes'] }] } });
+  await withKey(three); await three.fill('#thoughts', STRONG); await three.click('#build'); await three.waitForSelector('#qa:not([hidden])');
+  const cx = await page({ intake: { ...intake, complexity: 'complex' } });
+  await withKey(cx); await cx.fill('#thoughts', STRONG); await cx.click('#build'); await cx.waitForSelector('#qa:not([hidden])');
+  const weak = await page({ intake });
+  await withKey(weak); await weak.fill('#thoughts', 'game night ideas'); await weak.click('#build'); await weak.waitForSelector('#qa:not([hidden])');
+  expect(!p.errors.length && !three.errors.length && !cx.errors.length && !weak.errors.length, 'page errors: ' + [p, three, cx, weak].flatMap(x => x.errors).join('; '));
+});
+
 await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
   const p = await page();
   await p.click('#starterBtn');
@@ -2113,10 +2181,10 @@ await check('auto-repair: clean prompts go straight through; real problems get o
   expect(total && el === '0:0' + total[1] && /polish/.test(await p.textContent('#resultTrack .leftlbl')), 'elapsed ' + el + ' should match the total ' + (total && total[1]) + 's and mention polish');
   // 3. Fix isn't better: keep the original and say so
   ({ p, sent } = await run({ write: BAD, repair: BAD + '\nAlso budget $999 a day.' }));
-  expect(await p.inputValue('#output') === BAD && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away');
+  expect(await p.inputValue('#output') === BAD && /^👀 Your prompt is ready\. We spotted \d+ things? worth a quick look before you paste: tap X-ray to see/.test(await p.textContent('#repairNote')) && /wasn't better, so this is the original/.test(await p.textContent('#repairNote')) && sent[0].repair === 'kept original', 'a worse fix must be thrown away; plain line first, the reason only with run stats (AGT-21): ' + await p.textContent('#repairNote'));
   // 4. Fix fails: original, page still works
   ({ p, sent } = await run({ write: BAD, repairFail: true }));
-  expect(await p.inputValue('#output') === BAD && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
+  expect(await p.inputValue('#output') === BAD && /worth a quick look/.test(await p.textContent('#repairNote')) && /didn't come through/.test(await p.textContent('#repairNote')) && sent[0].repair === 'failed', 'a failed fix should fall back to the original');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2160,7 +2228,11 @@ await check('auto-repair never strips real times; corrected numbers and "two wee
   const STRIPPED = WITH_STRAY.replace(/\d{1,2}:00 /g, '').replace(' with 25 practice questions', '');
   p = await run({ write: WITH_STRAY, repair: STRIPPED });
   expect(p.repairs.length === 1, 'the made-up 25 should trigger one repair');
-  expect(await p.inputValue('#output') === WITH_STRAY && /wasn't better/.test(await p.textContent('#repairNote')), 'a fix that deletes your times must be thrown away');
+  expect(await p.inputValue('#output') === WITH_STRAY && /worth a quick look/.test(await p.textContent('#repairNote')) && !/wasn't better|Polish|the check found/i.test(await p.textContent('#repairNote')), 'a fix that deletes your times must be thrown away, and with run stats off the note is plain words only (AGT-21): ' + await p.textContent('#repairNote'));
+  // AGT-21: Glow-Up and X-ray get a one-line hint until either is tapped once
+  expect(await p.isVisible('#xbarHint') && /Glow-Up shows your messy words/.test(await p.textContent('#xbarHint')), 'first result shows the Glow-Up and X-ray hint');
+  await p.click('#xrayBtn'); await p.click('#xrayBtn');
+  expect(!(await p.isVisible('#xbarHint')) && await p.evaluate(() => localStorage.getItem('stp-xbar-hint') === '1'), 'tapping X-ray retires the hint for good (a yes/no flag only)');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -3552,7 +3624,10 @@ await check('my context: shown without dev tools, saves nothing until Save on th
   await p.click('#contextEditor button:text-is("Done")');
   expect(await p.isVisible('#contextRow .ctxchip:has-text("Roastery")'), 'edit should rename the chip');
   await p.click('#contextEdit');
+  /* The editor slides open and scrolls itself into view; let it land so the first Delete tap isn't lost (timed out once in CI, 11/7 promote). */
+  await p.waitForTimeout(400);
   await p.click('#contextEditor button:text-is("Delete")');
+  await p.waitForSelector('#contextEditor button:text-is("Tap again to delete")', { timeout: 1500 }).catch(() => p.click('#contextEditor button:text-is("Delete")'));
   await p.click('#contextEditor button:text-is("Tap again to delete")');
   await p.reload();
   expect(!(await p.$('#contextRow .ctxchip')) && !(await p.evaluate(() => localStorage.getItem('stp-context'))), 'deleted context should be gone');

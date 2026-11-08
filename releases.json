@@ -2,6 +2,88 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.31",
+      "date": "2026-11-07",
+      "title": "A strong note skips the questions",
+      "items": [
+        "If your note already has all 5 things Prompt strength looks for (your goal, who it's for, details, limits, and what a great result looks like), and the app would only ask 1 or 2 questions, it skips them and writes your prompt right away.",
+        "The result says Your note had everything, with an Ask me anyway button. Tap it and the same questions come back (no extra wait for them), then Write my prompt writes it again with your answers.",
+        "Big requests (the complex kind) and notes that would get 3 or more questions still ask first. So does the full-version rebuild right after you add a key."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, in Normal, paste this note and tap Build my prompt.",
+          "see": "No questions card. It goes straight to writing, and the result has a note: Your note had everything, with an Ask me anyway button. (If questions show anyway, the app wanted 3 or more, which is fine: note it.)",
+          "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
+        },
+        {
+          "say": "Tap Ask me anyway.",
+          "see": "The questions card opens right away (no new loading wait) with the questions it skipped. Answer them and tap Write my prompt: a new prompt with your answers, and the Your note had everything line is gone."
+        },
+        {
+          "say": "Tap New prompt, type just: game night ideas, and tap Build my prompt.",
+          "see": "Questions show like before. A thin note still gets asked."
+        }
+      ]
+    },
+    {
+      "version": "2.1.30",
+      "date": "2026-11-07",
+      "title": "Plain words on the result screen",
+      "items": [
+        "When the double-check spots something in your prompt but its fix didn't help, the note under the result no longer says the check found a thing, the fix wasn't better, so this is the original. It now just says: Your prompt is ready. We spotted 1 thing worth a quick look before you paste: tap X-ray to see it. With run stats or dev tools on, the old reason still shows after it in brackets.",
+        "The first time you get a prompt, a small line under Glow-Up and X-ray says what each one does. Tap either once and it's gone for good (only a yes/no is saved on this phone)."
+      ],
+      "checks": [
+        {
+          "say": "With run stats and dev tools off, build a prompt in Normal from this note.",
+          "see": "Under ✨ Glow-Up and 🩻 X-ray, a small gray line: Glow-Up shows your messy words turning into this prompt. X-ray shows which parts came from you.",
+          "paste": "need a packing list for a 4 day camping trip in the Catskills in mid October, 3 of us, we have one tent and a cooler but no stove, nights might hit 35 degrees, and my friend Dev gets cold easy"
+        },
+        {
+          "say": "Tap 🩻 X-ray, then Done. Build another prompt.",
+          "see": "The gray hint line is gone and stays gone on new prompts and after a reload."
+        },
+        {
+          "say": "Keep building prompts until a note under the result starts with 👀 (it shows when the double-check spots something, like a number you didn't say). If one never shows up, skip this check.",
+          "see": "It reads: Your prompt is ready. We spotted 1 thing worth a quick look before you paste: tap X-ray to see it. No words like Polish, the check, or the fix wasn't better."
+        },
+        {
+          "say": "Turn on More options > Show my dev tools and look at that same kind of note on a new build.",
+          "see": "Same plain line, plus the reason in brackets: (Polish tried a fix, but it wasn't better, so this is the original.)"
+        }
+      ]
+    },
+    {
+      "version": "2.1.29",
+      "date": "2026-11-07",
+      "title": "Your goal, in one line you can fix",
+      "items": [
+        "While the follow-up questions show, the top of the card now says Your goal: plus one plain sentence of what the app thinks you want (like Plan a game night for 10 first-timers under $90), with an Edit link.",
+        "Not quite it? Tap Edit, fix the sentence, and tap Save goal. It then says Your goal (your words), and your prompt is written to aim at your version. Your facts still come from what you said. Saving it empty puts the original line back.",
+        "Leave it as is and the writer still gets it as the goal you saw and kept, so the prompt stays on target."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, in Normal, paste this note into the box and tap Build my prompt.",
+          "see": "On the questions card, under the title: Your goal: followed by one sentence that matches the note, a blue Edit link, and a small gray line under it: Not quite it? Tap Edit and fix it...",
+          "paste": "ok so my buddy Marco is turning 30 and I wanna throw him a game night, like 10 people, most of them never played board games before, keep it under 90 bucks total, he likes trivia and anything loud"
+        },
+        {
+          "say": "Tap Edit, change the sentence to say it should be a surprise, and tap Save goal.",
+          "see": "The line now starts Your goal (your words): with your new sentence. The gray hint is gone. Edit still works if you tap it again."
+        },
+        {
+          "say": "Answer or skip the questions and tap Write my prompt.",
+          "see": "The finished prompt is aimed at a surprise game night, and Marco, 10 people, first-timers, and the $90 budget are all still in it."
+        },
+        {
+          "say": "Tap New prompt, build the same note again, tap Edit, delete everything in the box, and tap Save goal.",
+          "see": "The original Your goal: line comes back, with the gray hint under it."
+        }
+      ]
+    },
+    {
       "version": "2.1.28",
       "date": "2026-11-07",
       "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",

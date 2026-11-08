@@ -77,7 +77,7 @@ export const ANALYZE = [
   "Each question must be short, plain, friendly, and about one thing. Give 2 to 4 short, likely answers they can tap.",
   "",
   "Respond with JSON only, in exactly this shape:",
-  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence describing what they need", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}, "shape": {"success": "one plain line on what a great result would look like for them, judged by what they said (a suggestion, never a new requirement, never stricter or more safety-minded than they said)", "format": "a fitting format and length for the answer, in words, fitted to this request (for example: a short numbered plan, about one screen)"}}',
+  '{"title": "5 to 6 word chat title, most specific word first, no filler words", "need": "one plain sentence naming their real goal with the key specifics they gave, like who it is for, how many, and the budget (for example: Plan a game night for 10 first-timers under $90). Start with a verb. Never write they want or the user, and add nothing they did not say", "category": "a 1 or 2 word category for this recording, Title Case, general enough to reuse as a Voice Memos folder for similar recordings (for example Shortcuts, School, Work, Fitness, Ideas)", "complexity": "simple, standard, or complex (simple = a short answer or small task; standard = a typical multi-part request; complex = many moving parts, multi-step setups across devices or tools, plans, or deep analysis)", "questions": [{"question": "...", "choices": ["...", "..."]}], "note": {"headline": "short descriptive heading for a saved note (every note field is written in first person, as if the person wrote it themselves: I want, I need, my budget; never the user, they, or the person)", "tags": ["3 to 5 lowercase single-word tags"], "summary": "2 or 3 plain sentences in first person (for example: I want to start meal prepping on Sundays to save money)", "key_ideas": ["..."], "action_items": ["clear next steps they mentioned or clearly implied"], "unknowns": ["open questions they raised"]}, "shape": {"success": "one plain line on what a great result would look like for them, judged by what they said (a suggestion, never a new requirement, never stricter or more safety-minded than they said)", "format": "a fitting format and length for the answer, in words, fitted to this request (for example: a short numbered plan, about one screen)"}}',
   "",
   "RAW THOUGHTS:",
   '"""'
@@ -280,4 +280,16 @@ export function repairPrompt(prompt, raw, answers, problems) {
   if (a.length) out.push("", "ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
   out.push("", "PROMPT TO FIX:", '"""', prompt, '"""');
   return out.join("\n");
+}
+
+/* Clarity mirror (AGT-13, v2.1.29): the one-line goal shown above the questions.
+   Edited = the person rewrote it, so it's their own words and sets the aim.
+   Kept = they saw the Read step's line and left it, so it's a confirmed aim, but
+   their raw thoughts still win on any detail. */
+export function goalText(goal) {
+  const t = goal && String(goal.text || "").trim();
+  if (!t) return "";
+  return goal.edited
+    ? "\n\nTHE PERSON'S GOAL, IN THEIR OWN WORDS (they corrected an earlier step's read of what they want, so this is what the prompt must aim at. Facts and details still come from the raw thoughts and answers; never add anything the goal doesn't say):\n" + t
+    : "\n\nTHE GOAL THE PERSON CONFIRMED (an earlier step's one-line read of what they want; they saw it and left it as is. Aim the prompt at it, but their raw thoughts and answers win on every detail, and it never adds a fact):\n" + t;
 }

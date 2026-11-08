@@ -1,10 +1,26 @@
 <script>
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
-  import { chat } from './lib/chat.svelte.js';
+  import { chat, GOAL_MAX } from './lib/chat.svelte.js';
   import { ms } from './lib/motion.js';
 
   let draft = $state('');
+  /* Clarity mirror (AGT-13): fix the goal line before the prompt gets written. */
+  let editingGoal = $state(false);
+  let goalDraft = $state('');
+  let goalBox = $state();
+  function editGoal() {
+    goalDraft = chat.need;
+    editingGoal = true;
+    setTimeout(() => { goalBox?.focus(); goalBox?.select(); }, 0);
+  }
+  function saveGoal(e) {
+    e.preventDefault();
+    chat.setGoal(goalDraft);
+    editingGoal = false;
+  }
+  /* A new set of questions closes an open edit. */
+  $effect(() => { chat.readGoal; chat.title; editingGoal = false; });
   let thread;
   let own;
 
@@ -41,7 +57,27 @@
 
 <p class="eyebrow">A few quick questions</p>
 <h2 id="qaTitle">{chat.title}</h2>
-<p id="qaNeed" class="need">{chat.need}</p>
+{#if chat.need}
+  {#if editingGoal}
+    <form class="goaledit" id="qaGoalEdit" onsubmit={saveGoal}>
+      <label for="qaGoalInput">Your goal, in your words</label>
+      <textarea id="qaGoalInput" bind:this={goalBox} bind:value={goalDraft} rows="2" maxlength={GOAL_MAX}
+                enterkeyhint="done" onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) saveGoal(e); if (e.key === 'Escape') editingGoal = false; }}></textarea>
+      <div class="goalbtns">
+        <button type="submit" id="qaGoalSave" class="primary">Save goal</button>
+        <button type="button" id="qaGoalCancel" onclick={() => (editingGoal = false)}>Cancel</button>
+      </div>
+    </form>
+  {:else}
+    <p id="qaNeed" class="need goal">
+      <span class="goallbl">{chat.goalEdited ? 'Your goal (your words):' : 'Your goal:'}</span>
+      <span id="qaGoalText">{chat.need}</span>
+      <button type="button" id="qaGoalEditBtn" class="linkish goalbtn" disabled={chat.busy} onclick={editGoal}
+              aria-label="Edit your goal">Edit</button>
+    </p>
+    {#if !chat.goalEdited}<p class="goalhint" id="qaGoalHint">Not quite it? Tap Edit and fix it, so your prompt aims at the right thing.</p>{/if}
+  {/if}
+{/if}
 <p id="qaPlan" class="plan">{chat.plan}</p>
 
 <div id="qaList" class="thread" bind:this={thread} role="log" aria-live="polite" aria-label="Questions and your answers">

@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -285,8 +285,10 @@ export function startApp() {
 
   /* Full version after a key (KeyCatcher, v2.1.25): Normal for this build (questions first),
      back to the box, and build. The words in the box are the ones the quick prompt came from. */
+  var forceAsk = false;   /* AGT-14: the full-version rebuild promises questions first, so a strong note still gets them */
   function fullBuild() {
     if (!ui.hasKey || !thoughts.value.trim()) return;
+    forceAsk = true;
     ui.mode = "normal"; ui.modePicked = true; saveMode("normal");
     notify("result");
     form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -302,6 +304,7 @@ export function startApp() {
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
+    else if (act === "askanyway") askAnyway();   /* AGT-14: bring back the questions a strong note skipped */
     else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
     else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
     else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
@@ -571,7 +574,7 @@ export function startApp() {
     undoSnap = { box: thoughts.value, session: resultUp || qaUp ? session : null };
     if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, rounds: rounds.slice(), reworkFrom: reworkFrom, reworkSeed: reworkSeed, reworkDraft: reworkDraft, compare: ui.compare,
       mem: memory.suggestions.slice(), status: status.textContent, keep: keepStatus.textContent, noteSaved: noteSaved, promptCopied: promptCopied };
-    if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, plan: chat.plan, questions: chat.questions,
+    if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, readGoal: chat.readGoal, goalEdited: chat.goalEdited, plan: chat.plan, questions: chat.questions,
       answers: chat.answers, tapped: chat.tapped, messages: chat.messages, current: chat.current }));
     undoTimer = setTimeout(function () { undoSnap = null; }, 7000);   /* a little past the 6 second pill */
   }
@@ -2172,7 +2175,8 @@ export function startApp() {
   }
 
   function geminiFlow(raw, key) {
-    session = { raw: raw, known: knownText() };
+    session = { raw: raw, known: knownText(), forceAsk: forceAsk };
+    forceAsk = false;
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
     buildStatus.textContent = "";
@@ -2216,6 +2220,12 @@ export function startApp() {
       var mode = currentMode();
       if (mode === "quick") { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
+      /* AGT-14 (v2.1.31): a note that already has everything skips the questions. */
+      if (strongNote(raw, intake)) {
+        session.skippedIntake = intake; session.strongSkip = true;
+        session.questions = [];
+        session.mode = "Full (strong note)"; setBuild(""); return writeFinal([]);
+      }
       setBuild("");
       renderQuestions(intake);
     }).catch(function (e) {
@@ -2229,6 +2239,28 @@ export function startApp() {
       session.intakeError = e && e.message ? e.message : "unknown";
       logRun({ outcome: "intake failed: " + (e && e.message ? e.message : "unknown") });
     });
+  }
+
+  /* Strong note, no questions (AGT-14, v2.1.31, SPEC 11/07): Ghost Coach finds all 5 parts on
+     the phone (goal, who it's for, details, limits, what good looks like), and Read asked for
+     at most 2 questions on a request that isn't complex. Then the questions Read picked are
+     kept, not asked, and the prompt is written right away. Ask me anyway brings them back,
+     no new Read. Free: a phone check on top of the Read that already ran. */
+  var STRONG_MAX_QS = 2;
+  function strongNote(raw, intake) {
+    if (!intake || !intake.questions || !intake.questions.length) return false;
+    if (session.forceAsk || session.round >= 2 || intake.complexity === "complex" || intake.questions.length > STRONG_MAX_QS) return false;
+    return assess(raw).score === 5;
+  }
+  function askAnyway() {
+    var intake = session && session.skippedIntake;
+    if (!intake || busy) return;
+    session.strongSkip = false; session.skippedIntake = null;
+    session.mode = "Full (asked anyway)";
+    session.questions = addStackChoice(intake.questions);
+    notify("result");
+    result.hidden = true;
+    renderQuestions(intake);
   }
 
   /* The questions are a chat now (ChatBuilder.svelte + chat.svelte.js). */
@@ -2248,6 +2280,7 @@ export function startApp() {
     /* Prep crew: the clean step's version (filler out, every detail kept) when it passed the phone check. */
     var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + (cleaned ? "\n\nThe raw thoughts below were lightly cleaned by an earlier step: filler, false starts, and repeats removed, every detail kept." : "") + "\n\nRAW THOUGHTS:\n\"\"\"\n" + (cleaned || session.raw) + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    text += goalText(session.goal);
     /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     /* Fact ledger (#44): what this prompt must keep, listed by Flash-Lite from the raw words. */
@@ -2497,6 +2530,12 @@ export function startApp() {
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
+    /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
+       the person's own words; one left as is was seen and kept. Rework rounds keep it. */
+    if (!(session.round >= 2)) {
+      var askedHere = session.questions && session.questions.length && chat.readGoal && chat.readGoal === session.need;
+      session.goal = askedHere && chat.need ? { text: chat.need, edited: !!chat.goalEdited } : null;
+    }
     session.polished = false; session.checked = false; session.cooking = false; session.standin = null;
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
@@ -2611,14 +2650,14 @@ export function startApp() {
           var ms = function (x) { return x != null ? x / 1000 : null; };
           if (!(session.round >= 2)) {
             var q = (session.questions || []).length;
-            rows.push({ name: "Read", who: "Flash-Lite", model: String(session.intakeModel || ""), secs: ms(session.intakeMs), what: q ? "Picked " + plural(q, "question", "questions") + (session.shape && (session.shape.success || session.shape.format) ? ", plus a suggested great result and format" : "") : "Nothing missing, so no questions" + (session.shape && (session.shape.success || session.shape.format) ? "; suggested a great result and format" : "") });
+            rows.push({ name: "Read", who: "Flash-Lite", model: String(session.intakeModel || ""), secs: ms(session.intakeMs), what: session.strongSkip ? "Picked " + plural(session.skippedIntake.questions.length, "question", "questions") + ", skipped: your note had all 5 parts" : q ? "Picked " + plural(q, "question", "questions") + (session.shape && (session.shape.success || session.shape.format) ? ", plus a suggested great result and format" : "") : "Nothing missing, so no questions" + (session.shape && (session.shape.success || session.shape.format) ? "; suggested a great result and format" : "") });
             rows.push({ name: "Clean", who: c.status === "skipped" ? "Skipped" : "Flash-Lite", model: c.model, when: c.status && c.status !== "skipped" ? "alongside Read" : "", secs: ms(c.ms), skip: c.status === "skipped",
               what: c.status === "ok" ? "Filler out, " + words(session.raw) + " to " + c.words + " words, every number kept" : c.status === "kept raw" ? "Used your raw words (the clean version " + (c.why || "didn't pass the check") + ")" : c.status === "skipped" ? "Short note, nothing to clean" : c.status === "failed" ? "Didn't come through, used your raw words" : "Didn't run" });
             rows.push({ name: "Fact ledger", who: l.status === "skipped" ? "Skipped" : crewWho(l.model, l.history, "Flash-Lite"), model: l.model, when: l.status && l.status !== "skipped" ? "alongside Read" : "", secs: ms(l.ms), skip: l.status === "skipped",
               what: l.status === "ok" ? plural(l.items.length, "must-keep item", "must-keep items") + (l.dropped ? " (" + plural(l.dropped, "unbacked item", "unbacked items") + " thrown out)" : "") : l.status === "empty" ? "Nothing it listed was backed by your words" : l.status === "skipped" ? "Short note, nothing to list" : l.status === "failed" ? "Didn't come through, skipped" : "Didn't run" });
             if (session.prepWaitMs >= 500) rows.push({ name: "Prep wait", who: "Waiting", secs: session.prepWaitMs / 1000, what: "Clean or the ledger was still going when you finished, so writing waited for it" });
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
-            rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") : "No questions this time" });
+            rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") + (session.goal && session.goal.edited ? "; you fixed the goal line" : "") : session.strongSkip ? "Skipped: your note had everything" : "No questions this time" });
           }
           rows.push({ name: "Write", who: /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
             what: (r.history && r.history.length ? plural(r.history.length, "hand-off", "hand-offs") + " before it wrote" : "Written on the first try") + ((session.ledger && session.ledger.items && session.ledger.items.length) ? ", with the must-keep list" : "") });
@@ -2669,6 +2708,7 @@ export function startApp() {
           if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
           showRepairNote(rep);
           showGapNote(session.standin);
+          if (session.strongSkip && !ui.notices.result) notify("result", "info", "Your note had everything", "No questions needed, so it went straight to writing your prompt.", [{ label: "Ask me anyway", act: "askanyway" }]);
           /* memory: offer to remember lasting facts and your answers. Nothing saves without a tap. */
           if (memory.active) {
             var offer = [];
@@ -3106,7 +3146,11 @@ export function startApp() {
       if (eased > 0) parts.push("took out " + plural(eased, "word that made it stricter than you said", "words that made it stricter than you said"));
       el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Tap X-ray to see.";
     } else {
-      el.textContent = "\ud83d\udd27 The check found " + plural(rep.before.score, "thing", "things") + " to fix, but " + (rep.status === "failed" ? "the fix didn't come through" : "the fix wasn't better") + ", so this is the original. Tap X-ray to see what to check.";
+      /* AGT-21 (v2.1.30): first-timers read "the fix wasn't better" as "something broke", so
+         the line says it plainly. The reason why (Polish tried and kept the original) only
+         shows with run stats or dev tools on. */
+      el.textContent = "\ud83d\udc40 Your prompt is ready. We spotted " + plural(rep.before.score, "thing", "things") + " worth a quick look before you paste: tap X-ray to see " + (rep.before.score === 1 ? "it" : "them") + "." +
+        (techOn() || core.dev ? " (Polish tried a fix, but " + (rep.status === "failed" ? "it didn't come through" : "it wasn't better") + ", so this is the original.)" : "");
     }
     el.hidden = false;
   }
