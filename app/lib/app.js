@@ -251,7 +251,7 @@ export function startApp() {
   function logRun(extra) {
     if (!testLog.on() || !session) return;
     var r = {
-      mode: session.mode || "Quick version (no key)",
+      mode: (session.mode || "Quick version (no key)") + (session.switchedQuick ? " (switched to Quick " + session.switchedQuick + ")" : ""),
       complexity: session.complexity || "",
       intake_model: session.intakeModel || "", intake_tokens: session.intakeTokens, est_intake_s: session.estIntake, intake_s: session.intakeMs != null ? Math.round(session.intakeMs / 100) / 10 : null,
       words_in: words(session.raw),
@@ -311,6 +311,7 @@ export function startApp() {
     else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
+    else if (act === "goquick") goQuick();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
@@ -407,6 +408,7 @@ export function startApp() {
     qa.hidden = true;
     result.hidden = false;
     result.scrollIntoView({ behavior: "smooth", block: "start" });
+    countRun();   /* first-timer count for the time strip (v2.1.33) */
     window.dispatchEvent(new Event("stp-ready"));   /* a prompt just finished: the dock's Copy prompt pulses once (#31) */
   }
   function showQuick(raw, reason) {
@@ -1140,6 +1142,7 @@ export function startApp() {
     buildBtn.disabled = on;
     chat.busy = on;
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
+    if (!on) ui.reading = false;   /* Switch to Quick (QuickSwitch.svelte) only shows while Read runs */
     if (on) wakeOn(); else wakeOff();
   }
   /* Keep the screen awake while Gemini works, so the phone doesn't lock mid-build.
@@ -1891,9 +1894,19 @@ export function startApp() {
   }
   /* Time strip at Ready: one bar split by how long each part took (Prep, Write, Polish,
      Check), with a small legend. Machine time only; your answering time isn't counted. */
+  /* First-timers (v2.1.33): the time strip and Step by step stay out of the way for the first
+     3 prompts on this phone, so the result is calmer. Run stats or dev tools always show it.
+     Only a count is saved (stp-runs, capped at 3), never anything typed. The choice is made
+     once per prompt, so a grade that lands later doesn't make it pop in. */
+  var RUNS_KEY = "stp-runs", FIRST_RUNS = 3;
+  function runsDone() { try { return Math.min(FIRST_RUNS, Number(localStorage.getItem(RUNS_KEY)) || 0); } catch (e) { return FIRST_RUNS; } }
+  function countRun() { var n = runsDone(); if (n < FIRST_RUNS) { try { localStorage.setItem(RUNS_KEY, String(n + 1)); } catch (e) {} } }
+  function stripAllowed() { return techOn() || core.dev || runsDone() >= FIRST_RUNS; }
   function showTimeStrip(track, parts, rows) {
     var strip = track.querySelector(".timestrip");
     if (!strip) return;
+    if (session && session.stripOk == null) session.stripOk = stripAllowed();
+    if (!(session ? session.stripOk : stripAllowed())) { strip.textContent = ""; strip.hidden = true; return; }
     parts = parts.filter(function (x) { return x[3]; });   /* every part that ran, even a quick one */
     var total = parts.reduce(function (a, x) { return a + x[1]; }, 0);
     strip.textContent = "";
@@ -1958,9 +1971,11 @@ export function startApp() {
   }
 
   /* offset: seconds already spent (Rework round 1), so elapsed shows the running total. */
-  function startEstimate(bar, label, usual, step, skipAsk, offset) {
+  /* carry (v2.1.34): seconds already on the clock from Prep, so elapsed picks up where it was. */
+  function startEstimate(bar, label, usual, step, skipAsk, offset, carry) {
     var track = bar.closest(".tracker");
     offset = offset || 0;
+    carry = carry || 0;
     track.querySelector(".nums small").textContent = offset ? (session && session.round > 2 ? "total, all rounds" : "total, both rounds") : "elapsed";
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
@@ -1973,7 +1988,7 @@ export function startApp() {
       setProgress(bar, "pct", pct);
       cook.pct = pct;
       var left = usual - since;
-      elEl.textContent = clock(secs + offset);
+      elEl.textContent = clock(secs + offset + carry);
       var over = left <= 1;
       cook.over = over;
       right.classList.toggle("over", over);
@@ -2181,6 +2196,11 @@ export function startApp() {
     setBusy(true, "Reading your thoughts...");
     buildStatus.textContent = "";
     session.estIntake = intakeEstimate();
+    /* Switch to Quick (v2.1.34): offered from the moment Build is tapped in Normal, so a person in
+       a rush can skip the questions on the fly. The clock keeps going from here (session.t0). */
+    session.t0 = Date.now();
+    ui.goQuick = false;
+    ui.reading = currentMode() !== "quick";
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     snapTo(document.getElementById("buildTrack"));
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
@@ -2216,9 +2236,10 @@ export function startApp() {
       session.complexity = intake.complexity;
       session.category = intake.category;
       session.need = intake.need;
+      session.readSecs = (Date.now() - session.t0) / 1000;   /* the Write clock picks up from here */
       setBusy(false);
       var mode = currentMode();
-      if (mode === "quick") { session.mode = "Quick mode"; setBuild(""); return writeFinal([], true); }
+      if (mode === "quick" || session.goQuick) { session.mode = "Quick mode"; if (session.goQuick) session.switchedQuick = "during Prep"; setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
       /* AGT-14 (v2.1.31): a note that already has everything skips the questions. */
       if (strongNote(raw, intake)) {
@@ -2261,6 +2282,17 @@ export function startApp() {
     notify("result");
     result.hidden = true;
     renderQuestions(intake);
+  }
+
+  /* Switch to Quick (Kevin, Test lab 11/08: "always present from the start, in case they're in
+     a rush"). While Read runs it marks this build to skip the questions and write the quick
+     version the moment Read is back; on the questions it writes the quick version now. Either
+     way the clock picks up where it was, never from 0. This build only: the saved Quick or
+     Normal setting doesn't change. */
+  function goQuick() {
+    if (!session || session.round >= 2) return;
+    if (ui.reading) { session.goQuick = true; ui.goQuick = true; return; }
+    if (!qa.hidden && !busy) { session.switchedQuick = "on the questions"; chat.finish(true); }
   }
 
   /* The questions are a chat now (ChatBuilder.svelte + chat.svelte.js). */
@@ -2553,13 +2585,17 @@ export function startApp() {
     var est = writeEstimate(depthKey);
     var skipAsk = session.mode === "Quick mode" || session.round >= 2 || !(session.questions && session.questions.length);
     var offset = session.round >= 2 ? session.round1Secs || 0 : 0;   /* Rework rounds: running total */
+    /* v2.1.34: the Write clock picks up where Prep's clock stopped instead of starting at 0:00
+       (Kevin: "when it switches the timer shouldn't restart from 0"). Display only: run stats,
+       learned estimates and the Ready in line still use the write time itself. */
+    var carry = offset ? 0 : session.readSecs || 0;
     var busyP = quick ? null : busyNow();
     var baseModels = quick ? writeModels(true) : fullWriters();
     var models = busyP ? busyOrder(baseModels, busyP.start) : baseModels;
     var movedStart = busyP && models[0] !== baseModels[0];
     session.busyPlan = busyP ? (movedStart ? models[0].replace(/^gemini-/, "") + " first, " : "") + "backup at " + busyP.race + "s" : "";
     var writeLabel = (session.round >= 2 ? "Round " + session.round + " \u00b7 " : "") + depth.label + (techOn() ? " \u00b7 " + depth.words + (est.learned ? " \u00b7 estimate learned from your runs" : est.tuned ? " \u00b7 estimate from recent runs" : "") + (busyP ? " \u00b7 busy hours: " + session.busyPlan : "") : "");
-    var eta = startEstimate(resultProg, writeLabel, est.secs, "write", skipAsk, offset);
+    var eta = startEstimate(resultProg, writeLabel, est.secs, "write", skipAsk, offset, carry);
     snapTo(document.getElementById("resultTrack"));
     /* Each writer gets 30 seconds on its own (SPEC 11/04), then the next one starts too
        and the first good prompt wins. Busy hours can start the backup sooner. */
@@ -2680,9 +2716,10 @@ export function startApp() {
           setBuild("");
           qaStatus.textContent = "";
           var finalPrompt = session.basePrompt || prompt, more = (rep.secs || 0) + (checkSecs || 0);
-          var secs = Math.max(1, Math.round(r.ms / 1000 + more)) + "s";
+          /* v2.1.34: Ready in counts Prep too (carry), so it matches the timer, which no longer restarts at Write. */
+          var secs = Math.max(1, Math.round(r.ms / 1000 + more + carry)) + "s";
           /* Elapsed matches the total: Polish and Check count, and the line under Done says how much they added. */
-          finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset);
+          finishTrack(resultProg, r.ms / 1000 + more, skipAsk, offset + carry);
           resultProg.closest(".tracker").querySelector(".detail").textContent = writeLabel + (techOn() ? " \u00b7 " + r.model : "");
           var stripTrack = resultProg.closest(".tracker"), stripParts = [
             ["prep", ((session.intakeMs || 0) + (session.prepWaitMs || 0)) / 1000, "Prep", !(session.round >= 2) && session.intakeMs != null],

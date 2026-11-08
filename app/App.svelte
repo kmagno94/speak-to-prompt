@@ -27,12 +27,16 @@
   import Notice from './Notice.svelte';
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
+  import MoveCard from './MoveCard.svelte';
+  import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
   import ContextRow from './ContextRow.svelte';
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
+  import QuickSwitch from './QuickSwitch.svelte';
+  import HearSpeed from './HearSpeed.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
@@ -151,6 +155,7 @@
       <div class="nums" aria-live="off"><div><b class="el">0:00</b><small>elapsed</small></div><div class="right"><b class="left">0:00</b><small class="leftlbl">estimated left</small></div></div>
       <p class="detail"></p>
       <div class="timestrip" hidden></div>
+      <QuickSwitch />
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
     <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
@@ -164,6 +169,7 @@
 
   <section class="card" id="result" hidden aria-live="polite">
     <h2 id="resultHead">Your prompt is ready</h2>
+    <ProMoment />
     <div class="tracker" id="resultTrack" hidden>
       <ol aria-label="Progress"><li data-step="prep">Prep</li><li data-step="ask">Ask</li><li data-step="write">Write</li><li data-step="finish" hidden>Finish</li></ol>
       <div class="progress" id="resultProg"><div class="bar"></div></div>
@@ -187,6 +193,7 @@
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
+    <MoveCard />
     <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
          The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
@@ -266,6 +273,7 @@
       </ol>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
+      <HearSpeed />
       <div class="stats">
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
         <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>

@@ -6,7 +6,8 @@
          and joins the dock (#dockBuild) only once you scroll past it, so it's never on screen
          twice (Kevin, 10/28). No ⋯ here, nothing to start over yet.
        - Questions: Write my prompt (N of 3), which works at 0 of 3. ⋯ has Quick version
-         (the faster, lighter write) and New prompt.
+         (the faster, lighter write) and New prompt. Since v2.1.34 ⚡ Quick sits in the bar itself,
+         always in view, so a person in a rush never has to dig for it (Kevin, Test lab 11/08).
        - Result: Copy prompt. ⋯ has Open in ChatGPT, Claude, Gemini, and New prompt.
      Change your words (or Quick or Normal, Use my core, My context) after a build and the next
      step is to build again. On a finished prompt that's the 'redo' moment: Copy prompt stays
@@ -144,7 +145,12 @@
   /* Picking a My context chip changes what goes in too. */
   let stopContext = null, lastPicks = null;
   let inlineEl = $state(null);
-  $effect(() => { if (inlineEl) inlineEl.hidden = !building; });
+  /* v2.1.36 promote run: when the Build under the box comes back while it's already off screen above
+     (a change landing while you're scrolled down on the result), the IntersectionObserver never fires
+     (hidden and off screen both read as 0 in view), so the pill kept thinking it was in view and left
+     out Rebuild. Measure it ourselves on the next frame whenever Build becomes the next step. */
+  const measure = () => { if (!inlineEl) return; const r = inlineEl.getBoundingClientRect(); inlineSeen = !(r.height && r.top + r.height / 2 < 0); };
+  $effect(() => { if (!inlineEl) return; inlineEl.hidden = !building; if (building) requestAnimationFrame(measure); });
   $effect(() => {
     const picks = context.picked.join(',');
     if (lastPicks !== null && picks !== lastPicks) stopContext?.();
@@ -220,16 +226,17 @@
         <a class="openai" id={ai.id} href={ai.href} target="_blank" rel="noopener" role="menuitem" onclick={() => openedIn(ai.name)}>{ai.name}</a>
       {/each}
     </div>
-    <div class="grp" hidden={moment !== 'qa'}>
-      <span class="ghead">Write it now</span>
-      <button type="button" id="qaSkip" role="menuitem" disabled={chat.busy} onclick={quick}>Quick version <small>faster, lighter</small></button>
-    </div>
     <div class="grp">
       <span class="ghead">Start again</span>
       <button type="button" id="reset" role="menuitem" onclick={picked}>New prompt</button>
     </div>
   </div>
 
+  <!-- Quick version (v2.1.34): always in view on the questions, not tucked in ⋯, for anyone in a rush.
+       A chip just above the pill, so Write my prompt (N of 3) keeps its full width. -->
+  <div class="qrow" hidden={moment !== 'qa'}>
+    <button type="button" class="qquick" id="qaSkip" disabled={chat.busy} aria-label="Quick version: write it now, skip the rest of the questions" onclick={quick}>⚡ Quick version <small>skip the rest</small></button>
+  </div>
   <div class="bar">
     <button type="button" class="primary main copybig" class:alt={showBuild} id="copy" hidden={!showCopy}>Copy prompt</button>
     <button type="submit" form="form" class="primary main" id="dockBuild" hidden={!showBuild} disabled={busy}>{busy ? busyLabel : moment === 'redo' ? 'Rebuild' : 'Build my prompt'}</button>
@@ -287,6 +294,13 @@
   /* Redo: Copy prompt (the prompt you already have) sits beside Rebuild as the lighter button. */
   .bar button.alt { flex: 0 1 auto; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); box-shadow: none; padding: 8px 14px; }
   .bar button.alt + button.main { padding: 8px 14px; }
+  /* ⚡ Quick version on the questions: a chip just above the pill, always in view. */
+  .qrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .qquick { min-height: 40px; padding: 8px 16px; border-radius: 999px; font-size: 15px; font-weight: 700; white-space: nowrap;
+    color: var(--accent); background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1.5px solid var(--accent);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--ink) 55%, transparent); }
+  .qquick small { font-weight: 500; color: var(--muted); margin-left: 4px; }
   .more { flex: none; width: 48px; padding: 0; font-size: 22px; line-height: 1; font-weight: 700; color: var(--ink); }
   .more[aria-expanded='true'] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
 

@@ -54,6 +54,22 @@ test('the real releases.json is well formed and matches package.json', () => {
   assert.deepEqual(registryProblems(registry, pkg.version), []);
 });
 
+test('test lab checks match how things work now: the pro prompt badge shows every pro run, never "no badge" on a second build (v2.1.35)', () => {
+  const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
+  const stale = registry.releases.flatMap((r) => (r.checks || []).map((c) => ({ v: r.version, see: c.see || '' }))).filter((c) => /no badge this time/i.test(c.see));
+  assert.deepEqual(stale, [], 'a check still expects the once-only badge');
+  const v33 = registry.releases.find((r) => r.version === '2.1.33');
+  assert.ok(v33.checks.some((c) => /Build it again: the button says Pro prompt/.test(c.see)), 'the v2.1.33 pro prompt check says it shows again');
+});
+
+test('test lab checks match the pro prompt button (Test lab report, folded into v2.1.36): it stays and opens on a tap, no check expects it to fade on its own', () => {
+  const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
+  const pro = registry.releases.flatMap((r) => (r.checks || []).map((c) => ({ v: r.version, see: (c.say || '') + ' ' + (c.see || '') }))).filter((c) => /🏆/.test(c.see) && /pro prompt|Pro prompt|What made it good/.test(c.see));
+  assert.ok(pro.length >= 3, 'the pro prompt checks are there');
+  assert.deepEqual(pro.filter((c) => /fades? after/i.test(c.see)).map((c) => c.v), [], 'a pro prompt check still expects the badge to fade');
+  assert.ok(pro.every((c) => /button/.test(c.see) && /What made it good/.test(c.see)), 'every pro prompt check says to tap the button for What made it good');
+});
+
 /* Test lab plan (app/lib/testlabPlan.js) */
 import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE, asksForNote } from '../app/lib/testlabPlan.js';
 

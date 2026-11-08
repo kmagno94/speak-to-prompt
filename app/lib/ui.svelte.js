@@ -24,7 +24,9 @@ export const ui = $state({
   notices: { form: null, result: null },
   round: null,        // Rework rounds: { n, stage: edit | writing | built, viewing, from, count, max, scores }. Memory only
   compare: null,      // Compare rounds table (lib/compare.js) once 2+ rounds are built. Memory only
-  grade: null         // the Quality check for the prompt on screen: { score, pass, label, tip, working }
+  grade: null,        // the Quality check for the prompt on screen: { score, pass, label, tip, working }
+  reading: false,     // Read is running on a Normal build, so Switch to Quick can show (v2.1.34)
+  goQuick: false      // Switch to Quick was tapped during Read: this build skips the questions
 });
 
 /* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]

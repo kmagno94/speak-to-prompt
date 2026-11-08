@@ -22,11 +22,11 @@ class StartHereState {
   phase = $state('');      // 'intro' | 'title' | 'box'
   #timers = [];
 
-  /* Shortcut hand-offs (#paste, #t=) already know where to go, so they skip it. */
+  /* Shortcut hand-offs (#paste, #t=) and starter links (#start=) already know where to go, so they skip it. */
   open() {
     if (seen()) return;
     const h = (typeof location !== 'undefined' && location.hash) || '';
-    if (h === '#paste' || h.indexOf('#t=') === 0) return;
+    if (h === '#paste' || h.indexOf('#t=') === 0 || h.indexOf('#start=') === 0) return;   /* #start=: a starter link (AGT-9) */
     this.active = true;
     this.phase = INTRO_MS ? 'intro' : 'title';
     this.#clear();

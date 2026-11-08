@@ -7,6 +7,7 @@
   import { analyze, pieces, whyText } from './lib/xray.js';
   import { ms } from './lib/motion.js';
   import GlowUp from './GlowUp.svelte';
+  import HearIt from './HearIt.svelte';
 
   let on = $state(false);
   /* AGT-21 (v2.1.30): a one-line hint says what Glow-Up and X-ray are, until you tap
@@ -49,6 +50,7 @@
 
 {#if xray.prompt && !on}
   <div class="xbar" id="xrayBar" onclickcapture={(e) => { if (e.target.closest && e.target.closest('#glowBtn, #xrayBtn')) hintSeen(); }}>
+    <HearIt />
     <GlowUp />
     <button type="button" id="xrayBtn" class="xbtn" aria-pressed="false" onclick={() => (on = true)}>🩻 X-ray</button>
   </div>
@@ -140,7 +142,7 @@
 {/if}
 
 <style>
-  .xbar { display: flex; justify-content: flex-end; margin-bottom: 8px; scroll-margin-top: 12px; }
+  .xbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; margin-bottom: 8px; scroll-margin-top: 12px; }
   .xhint { margin: -2px 0 10px; font-size: 13px; line-height: 1.4; color: var(--muted); text-align: right; }
   .xbtn { min-height: 0; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
   .xray {
