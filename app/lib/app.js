@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel } from './prompts.js';
+import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -571,7 +571,7 @@ export function startApp() {
     undoSnap = { box: thoughts.value, session: resultUp || qaUp ? session : null };
     if (resultUp) undoSnap.result = { output: output.value, dom: snapResult(), grade: ui.grade, round: ui.round, rounds: rounds.slice(), reworkFrom: reworkFrom, reworkSeed: reworkSeed, reworkDraft: reworkDraft, compare: ui.compare,
       mem: memory.suggestions.slice(), status: status.textContent, keep: keepStatus.textContent, noteSaved: noteSaved, promptCopied: promptCopied };
-    if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, plan: chat.plan, questions: chat.questions,
+    if (qaUp) undoSnap.qa = JSON.parse(JSON.stringify({ title: chat.title, need: chat.need, readGoal: chat.readGoal, goalEdited: chat.goalEdited, plan: chat.plan, questions: chat.questions,
       answers: chat.answers, tapped: chat.tapped, messages: chat.messages, current: chat.current }));
     undoTimer = setTimeout(function () { undoSnap = null; }, 7000);   /* a little past the 6 second pill */
   }
@@ -2248,6 +2248,7 @@ export function startApp() {
     /* Prep crew: the clean step's version (filler out, every detail kept) when it passed the phone check. */
     var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
     var text = withToday(withLessons(WRITE, lessons.list), session.today) + (cleaned ? "\n\nThe raw thoughts below were lightly cleaned by an earlier step: filler, false starts, and repeats removed, every detail kept." : "") + "\n\nRAW THOUGHTS:\n\"\"\"\n" + (cleaned || session.raw) + "\n\"\"\"\n\nANSWERS TO FOLLOW-UP QUESTIONS:\n" + (lines.length ? lines.join("\n\n") : "None given.");
+    text += goalText(session.goal);
     /* core: the person's standing profile shapes the prompt; it is never attached to it. */
     /* My context is not attached to the prompt: the writer works in only what this request needs. */
     /* Fact ledger (#44): what this prompt must keep, listed by Flash-Lite from the raw words. */
@@ -2497,6 +2498,12 @@ export function startApp() {
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
+    /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
+       the person's own words; one left as is was seen and kept. Rework rounds keep it. */
+    if (!(session.round >= 2)) {
+      var askedHere = session.questions && session.questions.length && chat.readGoal && chat.readGoal === session.need;
+      session.goal = askedHere && chat.need ? { text: chat.need, edited: !!chat.goalEdited } : null;
+    }
     session.polished = false; session.checked = false; session.cooking = false; session.standin = null;
     var lines = session.answers.map(function (a) { return "Q: " + a.question + "\nA: " + a.answer + (a.tapped ? " (tapped from suggested options)" : ""); });
     session.lessonsV = lessons.list.length ? lessons.v : 0;
@@ -2618,7 +2625,7 @@ export function startApp() {
               what: l.status === "ok" ? plural(l.items.length, "must-keep item", "must-keep items") + (l.dropped ? " (" + plural(l.dropped, "unbacked item", "unbacked items") + " thrown out)" : "") : l.status === "empty" ? "Nothing it listed was backed by your words" : l.status === "skipped" ? "Short note, nothing to list" : l.status === "failed" ? "Didn't come through, skipped" : "Didn't run" });
             if (session.prepWaitMs >= 500) rows.push({ name: "Prep wait", who: "Waiting", secs: session.prepWaitMs / 1000, what: "Clean or the ledger was still going when you finished, so writing waited for it" });
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
-            rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") : "No questions this time" });
+            rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") + (session.goal && session.goal.edited ? "; you fixed the goal line" : "") : "No questions this time" });
           }
           rows.push({ name: "Write", who: /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
             what: (r.history && r.history.length ? plural(r.history.length, "hand-off", "hand-offs") + " before it wrote" : "Written on the first try") + ((session.ledger && session.ledger.items && session.ledger.items.length) ? ", with the must-keep list" : "") });

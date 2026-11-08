@@ -2,6 +2,35 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.29",
+      "date": "2026-11-07",
+      "title": "Your goal, in one line you can fix",
+      "items": [
+        "While the follow-up questions show, the top of the card now says Your goal: plus one plain sentence of what the app thinks you want (like Plan a game night for 10 first-timers under $90), with an Edit link.",
+        "Not quite it? Tap Edit, fix the sentence, and tap Save goal. It then says Your goal (your words), and your prompt is written to aim at your version. Your facts still come from what you said. Saving it empty puts the original line back.",
+        "Leave it as is and the writer still gets it as the goal you saw and kept, so the prompt stays on target."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, in Normal, paste this note into the box and tap Build my prompt.",
+          "see": "On the questions card, under the title: Your goal: followed by one sentence that matches the note, a blue Edit link, and a small gray line under it: Not quite it? Tap Edit and fix it...",
+          "paste": "ok so my buddy Marco is turning 30 and I wanna throw him a game night, like 10 people, most of them never played board games before, keep it under 90 bucks total, he likes trivia and anything loud"
+        },
+        {
+          "say": "Tap Edit, change the sentence to say it should be a surprise, and tap Save goal.",
+          "see": "The line now starts Your goal (your words): with your new sentence. The gray hint is gone. Edit still works if you tap it again."
+        },
+        {
+          "say": "Answer or skip the questions and tap Write my prompt.",
+          "see": "The finished prompt is aimed at a surprise game night, and Marco, 10 people, first-timers, and the $90 budget are all still in it."
+        },
+        {
+          "say": "Tap New prompt, build the same note again, tap Edit, delete everything in the box, and tap Save goal.",
+          "see": "The original Your goal: line comes back, with the gray hint under it."
+        }
+      ]
+    },
+    {
       "version": "2.1.28",
       "date": "2026-11-07",
       "title": "Steady box, words that survive a reload, a clear Stop for Talk it out, fresh limits for a new key, My context on all your devices",

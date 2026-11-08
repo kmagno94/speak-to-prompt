@@ -5,6 +5,7 @@
 import { ms } from './motion.js';
 
 let nextId = 1;
+export const GOAL_MAX = 200;
 
 class ChatSession {
   title = $state('');
@@ -29,10 +30,23 @@ class ChatSession {
   onFinish = null;          // set by app.js: (answers, quick) => write the prompt
   #timer = 0;
 
+  /* Clarity mirror (AGT-13, v2.1.29): the Read step's one-line goal shows as
+     "Your goal: ..." with Edit. Your edit goes to the writer as the confirmed goal. */
+  readGoal = $state('');   // what the Read step said; saving it unchanged or empty goes back to it
+  goalEdited = $state(false);
+
+  setGoal(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim().slice(0, GOAL_MAX);
+    if (!t || t === this.readGoal) { this.need = this.readGoal; this.goalEdited = false; return; }
+    this.need = t;
+    this.goalEdited = true;
+  }
+
   start(intake, plan) {
     this.reset();
     this.title = intake.title || "Let's get the details right";
-    this.need = intake.need || '';
+    this.need = this.readGoal = intake.need || '';
+    this.goalEdited = false;
     this.plan = plan || '';
     this.questions = intake.questions;
     this.answers = intake.questions.map(() => null);
@@ -43,7 +57,8 @@ class ChatSession {
 
   reset() {
     clearTimeout(this.#timer);
-    this.title = this.need = this.plan = '';
+    this.title = this.need = this.plan = this.readGoal = '';
+    this.goalEdited = false;
     this.questions = []; this.answers = []; this.tapped = []; this.messages = [];
     this.current = -1; this.typing = false;
   }

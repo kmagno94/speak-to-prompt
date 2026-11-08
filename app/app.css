@@ -310,6 +310,15 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .buildstatus.bad { color: var(--danger); }
 .eyebrow { margin: 0; font-size: 14px; color: var(--accent); font-weight: 700; }
 .need { margin: 0; color: var(--muted); }
+/* Clarity mirror (AGT-13): "Your goal: ..." with Edit, above the questions. */
+.need.goal { color: var(--ink); line-height: 1.45; }
+.need.goal .goallbl { font-weight: 700; margin-right: 4px; }
+.need.goal .goalbtn { background: none; border: none; padding: 6px 4px; margin-left: 2px; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; box-shadow: none; }
+.goalhint { margin: 0; font-size: 13px; color: var(--muted); }
+.goaledit { display: grid; gap: 8px; margin: 2px 0; }
+.goaledit label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.goaledit textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); resize: vertical; }
+.goaledit .goalbtns { display: flex; gap: 10px; flex-wrap: wrap; }
 .voice { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 .btnlink { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; border-radius: 999px; padding: 11px 20px 11px 12px; min-height: 48px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line), 0 8px 20px -16px rgba(20, 40, 70, 0.5); }
 /* Voice Memos' red record dot: the voice way in. */

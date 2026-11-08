@@ -1575,6 +1575,42 @@ await check('chat questions: tap, type, skip, edit an answer, live summary, all 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('chat questions: Clarity mirror shows Your goal with Edit, and the goal reaches the writer, edited or kept (AGT-13, v2.1.29)', async () => {
+  const GOAL = 'Plan a trip to Japan for 2 under $3,000';
+  const intake = { title: 'Japan Trip', need: GOAL, category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['5 days', '10 days'] }] };
+  // 1. Edit the goal: the card shows it as your words, and the writer aims at it
+  const p = await page({ intake });
+  await withKey(p); await p.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(/^Your goal:/.test((await p.textContent('#qaNeed')).trim()) && await p.textContent('#qaGoalText') === GOAL && await p.isVisible('#qaGoalHint'), 'goal line with Edit: ' + await p.textContent('#qaNeed'));
+  await p.click('#qaGoalEditBtn');
+  expect(await p.inputValue('#qaGoalInput') === GOAL, 'Edit opens with the goal filled in');
+  await p.fill('#qaGoalInput', 'Plan a relaxed 10-day Japan trip for me and my wife under $3,000');
+  await p.click('#qaGoalSave');
+  expect(await p.textContent('#qaGoalText') === 'Plan a relaxed 10-day Japan trip for me and my wife under $3,000' && /your words/.test(await p.textContent('#qaNeed')) && !(await p.isVisible('#qaGoalHint')), 'edited goal shows as your words');
+  await p.click('#qaList .chips button >> text=10 days');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  const w = p.calls.find(c => !c.intake).text;
+  expect(/THE PERSON'S GOAL, IN THEIR OWN WORDS[^\n]*\nPlan a relaxed 10-day Japan trip for me and my wife under \$3,000/.test(w) && !/THE GOAL THE PERSON CONFIRMED/.test(w), 'edited goal reaches the writer as their words: ' + w.slice(-500));
+  // 2. Leave it: the writer gets it as the confirmed goal; saving it empty goes back to the Read line
+  const q = await page({ intake });
+  await withKey(q); await q.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await q.click('#build');
+  await q.waitForSelector('#qa:not([hidden])');
+  await q.click('#qaGoalEditBtn'); await q.fill('#qaGoalInput', '   '); await q.click('#qaGoalSave');
+  expect(await q.textContent('#qaGoalText') === GOAL && !/your words/.test(await q.textContent('#qaNeed')), 'an empty edit keeps the original goal');
+  await q.click('#qaList .chips button >> text=5 days');
+  await q.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await q.click('#qaGo'); await done(q);
+  const w2 = q.calls.find(c => !c.intake).text;
+  expect(/THE GOAL THE PERSON CONFIRMED[^\n]*\nPlan a trip to Japan for 2 under \$3,000/.test(w2) && !/IN THEIR OWN WORDS/.test(w2), 'kept goal reaches the writer as confirmed');
+  // 3. No questions: no goal line goes to the writer
+  const r = await page({ intake: { ...intake, questions: [] } });
+  await withKey(r); await r.fill('#thoughts', 'japan trip with my wife, around 3000 total'); await r.click('#build'); await done(r);
+  expect(!/THE GOAL THE PERSON CONFIRMED|IN THEIR OWN WORDS/.test(r.calls.find(c => !c.intake).text), 'no questions, no goal block');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
 await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
   const p = await page();
   await p.click('#starterBtn');
