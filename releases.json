@@ -2,6 +2,42 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.34",
+      "date": "2026-11-08",
+      "title": "Hear it works on iPhone, a pro prompt cheer every time, and Quick from the start",
+      "items": [
+        "🔊 Hear it now reads out loud on iPhone. Safari was dropping the speech, so it now starts the voice right inside your tap and reads the prompt piece by piece. If your phone still doesn't start talking, the button resets and tells you to check Silent mode and the volume.",
+        "The 🏆 badge and confetti now show every time your note has all 5 parts (or a prompt scores 5 of 5), so you know your input was great on each run. The very first one still says Your first pro prompt; after that it says Pro prompt.",
+        "On a Normal build, ⚡ Switch to Quick shows under the timer from the moment you tap Build, so you can skip the questions on the fly. On the questions, ⚡ Quick now sits in the bottom bar instead of hiding in ⋯. Your saved Quick or Normal setting stays the same.",
+        "The timer no longer jumps back to 0:00 when it moves from Prep to writing your prompt. It picks up right where it was."
+      ],
+      "checks": [
+        {
+          "say": "Make sure the side switch is off Silent and the volume is up. With your Gemini key, build this note, then tap 🔊 Hear it above the prompt.",
+          "see": "Your phone reads the prompt out loud, the button says Stop, and a small line says Silent mode mutes it. Tap Stop: it goes quiet and says Hear it again.",
+          "paste": "ok so umm my sister's birthday is next saturday and i wanna do something but i have no idea what, she likes plants i think and coffee. help me come up with stuff"
+        },
+        {
+          "say": "Flip the side switch to Silent and tap 🔊 Hear it again.",
+          "see": "Either it reads with no sound and the line says Silent mode mutes it, or after about 3 seconds the button goes back to Hear it and says your phone didn't start reading. No freeze either way."
+        },
+        {
+          "say": "Build this note in Normal, twice in a row.",
+          "see": "Both times: a 🏆 badge with a confetti pop at the top of the result that fades after a few seconds. The second one says Pro prompt and Great input.",
+          "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
+        },
+        {
+          "say": "In Normal, build this note and tap ⚡ Switch to Quick under the timer while it says Prep. Watch the timer.",
+          "see": "It says Quick it is, no questions show, and the prompt is written. The timer keeps counting up from where Prep was, never back to 0:00. Normal is still picked under Build.",
+          "paste": "yard sale this saturday morning, need a plan for pricing and a sign, i have old clothes books and a couch"
+        },
+        {
+          "say": "Build the same note in Normal and let the questions show. Look at the bottom bar, then tap ⚡ Quick.",
+          "see": "⚡ Quick sits right next to Write my prompt without opening ⋯. Tapping it writes the prompt, and the timer picks up from where Prep stopped."
+        }
+      ]
+    },
+    {
       "version": "2.1.33",
       "date": "2026-11-08",
       "title": "Hear it back, starter links, your first pro prompt, and a calmer first result",

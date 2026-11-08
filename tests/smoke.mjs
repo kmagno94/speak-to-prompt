@@ -1702,6 +1702,69 @@ await check('hear it back: 🔊 reads the prompt with the phone voice in short p
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
+await check('hear it back (iPhone fix, v2.1.34): no cancel before the first speak, resumes first, sets the language, speaks the next piece only after the last one ends, and keeps a Silent mode tip', async () => {
+  const LONG = 'You are a party planner. ' + Array.from({ length: 8 }, (_, i) => `Step ${i + 1}: think about the guests, the food, the games, the music, and the budget for the whole night.`).join(' ');
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, write: LONG });
+  await p.addInitScript(() => {
+    window.__said = []; window.__cancels = 0; window.__resumes = 0; window.__log = [];
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+    /* Like Safari on iOS: a speak right after a cancel in the same tap is dropped. */
+    let cancelledAt = -1;
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      speaking: false, pending: false,
+      getVoices: () => [{ name: 'Samantha', lang: 'en-US', localService: true }, { name: 'Cloud', lang: 'en-US', localService: false }],
+      resume: () => { window.__resumes++; window.__log.push('resume'); },
+      cancel: () => { window.__cancels++; window.__log.push('cancel'); cancelledAt = performance.now(); },
+      speak(u) { window.__log.push('speak'); if (performance.now() - cancelledAt < 5) { u.dropped = true; return; } window.__said.push(u); this.speaking = true; }
+    } });
+  });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#hearBtn');
+  await p.click('#hearBtn');
+  const first = await p.evaluate(() => ({ n: window.__said.length, cancels: window.__cancels, resumes: window.__resumes, lang: window.__said[0] && window.__said[0].lang, voice: window.__said[0] && window.__said[0].voice && window.__said[0].voice.name, log: window.__log.join(',') }));
+  expect(first.n === 1 && first.cancels === 0, 'only the first piece is spoken in the tap, with no cancel before it: ' + JSON.stringify(first));
+  expect(first.resumes >= 1 && first.log.indexOf('resume') < first.log.indexOf('speak'), 'resumes before speaking: ' + first.log);
+  expect(/^en/i.test(first.lang || '') && first.voice === 'Samantha', 'sets the language and an on-device voice: ' + JSON.stringify(first));
+  expect(/Silent mode/.test(await p.textContent('#hearNote')), 'a tip says Silent mode mutes it on iPhone');
+  // Each piece ends, the next one starts, until the whole prompt is read
+  for (let i = 0; i < 20; i++) {
+    const more = await p.evaluate(() => { const u = window.__said[window.__said.length - 1]; u.onstart && u.onstart(); u.onend && u.onend(); return document.getElementById('hearBtn').textContent.includes('Stop'); });
+    if (!more) break;
+  }
+  const said = await p.evaluate(() => window.__said.map((u) => u.text));
+  expect(said.length > 1 && said.join(' ') === LONG.replace(/\s+/g, ' ') && said.every((t) => t.length <= 220), 'reads the whole long prompt one piece at a time: ' + said.length + ' pieces');
+  expect((await p.textContent('#hearBtn')).includes('Hear it') && !(await p.$('#hearNote')), 'done: back to Hear it, tip gone');
+  // Stop while it plays cancels
+  await p.evaluate(() => { window.speechSynthesis.speaking = false; });
+  await p.click('#hearBtn');
+  await p.click('#hearBtn');
+  expect(await p.evaluate(() => window.__cancels) >= 1 && (await p.textContent('#hearBtn')).includes('Hear it'), 'Stop cancels and resets');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('hear it back (v2.1.34): if the phone never starts talking, the button resets and says to check Silent mode and volume', async () => {
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, write: 'Plan a game night for Friday. Keep it under $90.', hooks: { __hearStartMs: 400 } });
+  await p.addInitScript(() => {
+    window.__said = [];
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speaking: false, pending: false, speak: (u) => window.__said.push(u), cancel: () => {} } });
+  });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.click('#hearBtn');
+  await p.waitForFunction(() => document.getElementById('hearBtn').textContent.includes('Hear it'), null, { timeout: 3000 });
+  expect(/didn't start reading/.test(await p.textContent('#hearNote')) && /Silent mode/.test(await p.textContent('#hearNote')), 'says what to check: ' + await p.textContent('#hearNote'));
+  // It does start the next time: no stuck line
+  await p.click('#hearBtn');
+  await p.evaluate(() => { const u = window.__said[window.__said.length - 1]; u.onstart && u.onstart(); });
+  await p.waitForTimeout(600);
+  expect((await p.textContent('#hearBtn')).includes('Stop') && !/didn't start/.test(await p.textContent('#hearNote')), 'once it starts, it keeps going with no stuck line');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('starter links: #start=food opens Not sure where to start? on Food with the quick taps, clears the link, skips Start here, and Copy link copies it (AGT-9, v2.1.33)', async () => {
   const p = await page({ fresh: true, hash: '#start=food' });
   await p.waitForSelector('#starter .chips button');
@@ -1724,7 +1787,7 @@ await check('starter links: #start=food opens Not sure where to start? on Food w
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
-await check('first pro prompt: a 5 of 5 note shows the badge and confetti once, saves only a yes/no, fades, and Reduce Motion gets a glow (AGT-17, v2.1.33)', async () => {
+await check('first pro prompt: a 5 of 5 note shows the badge and confetti, saves only a yes/no, fades, says Pro prompt on every pro run after the first, and Reduce Motion gets a glow (AGT-17, v2.1.33; every run v2.1.34)', async () => {
   const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
   const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
   const p = await page({ intake, newbie: true, hooks: { __proMs: 1500 } });
@@ -1734,12 +1797,19 @@ await check('first pro prompt: a 5 of 5 note shows the badge and confetti once, 
   expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti bits');
   expect(await p.evaluate(() => localStorage.getItem('stp-pro')) === '1', 'only a yes/no flag is saved');
   await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
-  // Never again
+  // Build it again on the same phone: the badge and confetti come back every pro run (v2.1.34), as Pro prompt
+  await p.fill('#thoughts', STRONG + ' Thanks!'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(100);
+  await p.click('#build'); await p.waitForSelector('#proMoment', { timeout: 15000 });
+  const t2 = await p.textContent('#proMoment');
+  expect(/Pro prompt/.test(t2) && !/first/i.test(t2) && /Great input/.test(t2), 'second pro run: Pro prompt with reassurance, not first: ' + t2);
+  expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti again');
+  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
+  // A phone that already had its first: Pro prompt right away
   const again = await page({ intake, newbie: true });
   await again.evaluate(() => localStorage.setItem('stp-pro', '1')); await again.reload();
   await withKey(again); await again.fill('#thoughts', STRONG); await again.click('#build'); await done(again);
-  await again.waitForTimeout(300);
-  expect(!(await again.$('#proMoment')), 'no badge once seen');
+  await again.waitForSelector('#proMoment');
+  expect(/Pro prompt/.test(await again.textContent('#proMoment')) && !/first/i.test(await again.textContent('#proMoment')), 'after the first: Pro prompt, not Your first pro prompt');
   // A weaker note: no badge
   const weak = await page({ intake, newbie: true });
   await withKey(weak); await weak.fill('#thoughts', 'game night ideas'); await weak.click('#build'); await done(weak);
@@ -4166,6 +4236,49 @@ await check('copy and open: the dock menu copies and opens, and the status line 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('quick switch (v2.1.34): on a Normal build, ⚡ Switch to Quick shows from the moment Build is tapped, skips the questions for this build only, and the clock picks up where it was', async () => {
+  const intake = { title: 'Yard Sale', need: 'Plan a yard sale', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] };
+  const p = await page({ intake, intakeDelay: 2300 });
+  await withKey(p); await p.check('#normalMode');
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build');
+  await p.waitForSelector('#quickSwitch', { timeout: 2000 });
+  expect(await p.isVisible('#quickSwitch'), 'Switch to Quick shows while Read runs');
+  await p.click('#quickSwitch');
+  await p.waitForSelector('#quickSwitched');
+  await done(p);
+  const parse = (t) => { const m = /(\d+):(\d\d)/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : -1; };
+  const buildEl = parse(await p.textContent('#buildTrack .el')), resultEl = parse(await p.textContent('#resultTrack .el'));
+  expect(await p.isHidden('#qa'), 'no questions after switching');
+  const write = p.calls.filter(c => !c.intake).pop();
+  expect(/lite/.test(write.model), 'the quick version writes (Flash-Lite): ' + write.model);
+  expect(buildEl >= 2 && resultEl >= buildEl, 'the clock picks up from Prep, never from 0:00: prep ' + buildEl + 's, done ' + resultEl + 's');
+  expect(await p.isChecked('#normalMode') && await p.evaluate(() => Object.keys(localStorage).filter((k) => /stp-mode$/.test(k)).every((k) => localStorage.getItem(k) === 'normal')), 'the saved setting stays Normal');
+  expect(!(await p.isVisible('#quickSwitch')) && !(await p.isVisible('#quickSwitched')), 'gone once Read is done');
+  // Quick mode never shows it (already quick)
+  const q = await page({ intake, intakeDelay: 800 });
+  await withKey(q); await q.check('#quickMode');
+  await q.fill('#thoughts', 'yard sale this weekend'); await q.click('#build'); await q.waitForTimeout(300);
+  expect(!(await q.isVisible('#quickSwitch')), 'no Switch to Quick in Quick mode');
+  await done(q);
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
+await check('quick switch (v2.1.34): on the questions, ⚡ Quick is in view without opening ⋯, and its write picks up the clock from Prep', async () => {
+  const intake = { title: 'Yard Sale', need: 'Plan a yard sale', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] };
+  const p = await page({ intake, intakeDelay: 2300 });
+  await withKey(p); await p.check('#normalMode');
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  expect(await p.isVisible('#qaSkip') && !(await p.isVisible('#dockMenu')), '⚡ Quick shows in the dock bar with the menu closed');
+  const box = await p.$eval('#qaGo', (b) => ({ w: b.scrollWidth, c: b.clientWidth, t: b.textContent.trim() }));
+  expect(box.w <= box.c + 1 && /\(0 of 2\)/.test(box.t), 'Write my prompt (0 of 2) keeps its full width next to ⚡ Quick version: ' + JSON.stringify(box));
+  const prep = await p.textContent('#buildTrack .el');
+  await p.waitForTimeout(1200);   /* answering time is not machine time */
+  await p.click('#qaSkip'); await done(p);
+  const parse = (t) => { const m = /(\d+):(\d\d)/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : -1; };
+  expect(parse(await p.textContent('#resultTrack .el')) >= parse(prep) && parse(prep) >= 2, 'picks up from ' + prep + ', got ' + await p.textContent('#resultTrack .el'));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('next step dock: one main button per moment, the ⋯ menu, back to Build after a change, away during X-ray', async () => {
   const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] } });
   await withKey(p); await p.fill('#thoughts', 'yard sale this weekend');
@@ -4176,8 +4289,8 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   await p.click('#qaList .chips button'); await p.waitForTimeout(700);
   expect(/\(1 of 2\)/.test(await p.textContent('#qaGo')), 'the count should go up as you answer');
   await p.click('#dockMore');
-  expect(await p.isVisible('#qaSkip') && await p.isVisible('#reset') && !(await p.isVisible('.openrow')), 'questions menu: Quick version and New prompt only');
-  expect(/Quick version/.test(await p.textContent('#qaSkip')) && !(await p.$('#qa #qaSkip')), 'Quick version lives in the dock menu, not on the card');
+  expect(await p.isVisible('#qaSkip') && await p.isVisible('#reset') && !(await p.isVisible('.openrow')), 'questions: ⚡ Quick in view and New prompt in the menu, no Open in');
+  expect(/Quick/.test(await p.textContent('#qaSkip')) && !(await p.$('#qa #qaSkip')) && !(await p.$('#dockMenu #qaSkip')), 'Quick lives on the dock (v2.1.34), not on the card or tucked in ⋯');
   await p.click('h1'); await p.waitForTimeout(150);
   expect(!(await p.isVisible('#dockMenu')), 'a tap outside should close the menu');
   await p.click('#qaGo'); await done(p);
