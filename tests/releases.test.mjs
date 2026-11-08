@@ -54,6 +54,14 @@ test('the real releases.json is well formed and matches package.json', () => {
   assert.deepEqual(registryProblems(registry, pkg.version), []);
 });
 
+test('test lab checks match how things work now: the pro prompt badge shows every pro run, never "no badge" on a second build (v2.1.35)', () => {
+  const registry = JSON.parse(readFileSync(path.join(root, 'releases.json'), 'utf8'));
+  const stale = registry.releases.flatMap((r) => (r.checks || []).map((c) => ({ v: r.version, see: c.see || '' }))).filter((c) => /no badge this time/i.test(c.see));
+  assert.deepEqual(stale, [], 'a check still expects the once-only badge');
+  const v33 = registry.releases.find((r) => r.version === '2.1.33');
+  assert.ok(v33.checks.some((c) => /Build it again: the badge and confetti show again/.test(c.see)), 'the v2.1.33 pro prompt check says it shows again');
+});
+
 /* Test lab plan (app/lib/testlabPlan.js) */
 import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE, asksForNote } from '../app/lib/testlabPlan.js';
 

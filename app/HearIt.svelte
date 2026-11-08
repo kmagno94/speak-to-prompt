@@ -14,6 +14,8 @@
   import { xray } from './lib/xray.svelte.js';
 
   const can = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance === 'function';
+  /* v2.1.35 (Kevin, Test lab 11/08): 1.5x, since prompts run long. */
+  const RATE = 1.5;
   const START_MS = (typeof window !== 'undefined' && window.__hearStartMs) || 3000;   /* tests can shorten it */
   let speaking = $state(false);
   let note = $state('');      // '' | 'tip' (while playing) | 'stuck' (never started)
@@ -66,7 +68,7 @@
     let started = false;
     held = parts.map((t) => {
       const u = new SpeechSynthesisUtterance(t);
-      u.rate = 0.95; u.lang = lang;
+      u.rate = RATE; u.lang = lang;
       if (v) u.voice = v;
       return u;
     });

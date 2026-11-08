@@ -1702,7 +1702,7 @@ await check('hear it back: 🔊 reads the prompt with the phone voice in short p
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
-await check('hear it back (iPhone fix, v2.1.34): no cancel before the first speak, resumes first, sets the language, speaks the next piece only after the last one ends, and keeps a Silent mode tip', async () => {
+await check('hear it back (iPhone fix, v2.1.34; 1.5x v2.1.35): no cancel before the first speak, resumes first, sets the language, reads at 1.5x, speaks the next piece only after the last one ends, and keeps a Silent mode tip', async () => {
   const LONG = 'You are a party planner. ' + Array.from({ length: 8 }, (_, i) => `Step ${i + 1}: think about the guests, the food, the games, the music, and the budget for the whole night.`).join(' ');
   const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
   const p = await page({ intake, write: LONG });
@@ -1727,6 +1727,7 @@ await check('hear it back (iPhone fix, v2.1.34): no cancel before the first spea
   expect(first.n === 1 && first.cancels === 0, 'only the first piece is spoken in the tap, with no cancel before it: ' + JSON.stringify(first));
   expect(first.resumes >= 1 && first.log.indexOf('resume') < first.log.indexOf('speak'), 'resumes before speaking: ' + first.log);
   expect(/^en/i.test(first.lang || '') && first.voice === 'Samantha', 'sets the language and an on-device voice: ' + JSON.stringify(first));
+  expect(await p.evaluate(() => window.__said.every((u) => u.rate === 1.5)), 'reads at 1.5x (v2.1.35)');
   expect(/Silent mode/.test(await p.textContent('#hearNote')), 'a tip says Silent mode mutes it on iPhone');
   // Each piece ends, the next one starts, until the whole prompt is read
   for (let i = 0; i < 20; i++) {
