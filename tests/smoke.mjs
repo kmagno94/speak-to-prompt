@@ -40,7 +40,7 @@ const CORE = [
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
-  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:'
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -1795,28 +1795,6 @@ await check('hear it speed (v2.1.36): More options has 1x, 1.25x, 1.5x and 2x, 1
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
-await check('pro prompt confetti waits until the badge is on screen (v2.1.36): off screen it holds the confetti and the fade, then plays when scrolled into view', async () => {
-  const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
-  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
-  const p = await page({ intake, hooks: { __proMs: 1200 } });
-  /* The moment the badge appears, jump to the very top, like a page still scrolling. */
-  await p.addInitScript(() => {
-    new MutationObserver(() => { const e = document.getElementById('proMoment'); if (e && !window.__jumped) { window.__jumped = true; window.scrollTo({ top: 0, behavior: 'instant' }); window.__burstAtInsert = !!e.querySelector('.burst'); } }).observe(document, { childList: true, subtree: true });
-  });
-  await p.reload();
-  await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
-  await p.waitForSelector('#proMoment');
-  await p.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
-  await p.waitForTimeout(1600);   /* past the fade time: off screen it must still be waiting */
-  const off = await p.evaluate(() => { const e = document.getElementById('proMoment'); const r = e && e.getBoundingClientRect(); return { there: !!e, burst: !!(e && e.querySelector('.burst')), inView: r ? r.top < innerHeight && r.bottom > 0 : null, atInsert: window.__burstAtInsert }; });
-  expect(off.there && !off.burst && off.inView === false && off.atInsert === false, 'off screen: badge waits, no confetti yet, no fade: ' + JSON.stringify(off));
-  await p.evaluate(() => document.getElementById('proMoment').scrollIntoView({ block: 'center', behavior: 'instant' }));
-  await p.waitForSelector('#proMoment .burst i', { timeout: 2000 });
-  expect(await p.getAttribute('#proMoment', 'data-seen') === 'true', 'marked seen once on screen');
-  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 4000 });
-  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
-});
-
 await check('starter links: #start=food opens Not sure where to start? on Food with the quick taps, clears the link, skips Start here, and Copy link copies it (AGT-9, v2.1.33)', async () => {
   const p = await page({ fresh: true, hash: '#start=food' });
   await p.waitForSelector('#starter .chips button');
@@ -1839,42 +1817,49 @@ await check('starter links: #start=food opens Not sure where to start? on Food w
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
-await check('first pro prompt: a 5 of 5 note shows the badge and confetti, saves only a yes/no, fades, says Pro prompt on every pro run after the first, and Reduce Motion gets a glow (AGT-17, v2.1.33; every run v2.1.34)', async () => {
+await check('pro prompt button: a 5 of 5 note shows a 🏆 button that stays put, tapping it plays confetti and lists what made it good, tapping again tucks it away, and only a yes/no is saved (Test lab report, folded into v2.1.36)', async () => {
   const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
   const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
-  const p = await page({ intake, newbie: true, hooks: { __proMs: 1500 } });
+  const p = await page({ intake, newbie: true });
   await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
-  await p.waitForSelector('#proMoment');
-  expect(/Your first pro prompt/.test(await p.textContent('#proMoment')) && /all 5 things/.test(await p.textContent('#proMoment')), 'badge says why');
-  await p.waitForSelector('#proMoment .burst i', { timeout: 3000 });   /* plays once the badge is on screen (v2.1.36) */
-  expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti bits');
+  await p.waitForSelector('#proBtn');
+  const label = await p.textContent('#proBtn');
+  expect(/Your first pro prompt/.test(label) && /Tap to see what made it great/.test(label), 'first run: button says Your first pro prompt and invites a tap: ' + label);
+  expect(await p.getAttribute('#proBtn', 'aria-expanded') === 'false' && !(await p.$('#proMoment .burst')) && !(await p.$('#proWhy')), 'closed, no confetti before a tap');
+  await p.waitForTimeout(7000);   /* well past the old 6 second fade: it must still be there */
+  expect(await p.isVisible('#proBtn'), 'button stays on the result, no fade');
+  await p.click('#proBtn');
+  await p.waitForSelector('#proMoment .burst i', { timeout: 2000 });
+  await p.waitForSelector('#proWhy li');
+  const parts = await p.$$eval('#proWhy li[data-part]', (l) => l.map((x) => x.dataset.part));
+  expect(['goal', 'who', 'details', 'limits', 'good'].every((k) => parts.includes(k)), 'lists all 5 parts: ' + parts.join(','));
+  expect(/What made it good/.test(await p.textContent('#proWhy')) && await p.getAttribute('#proBtn', 'aria-expanded') === 'true', 'opens What made it good');
+  expect(!(await p.textContent('#proWhy')).includes('coworkers'), 'bullets are plain lines, never your words');
   expect(await p.evaluate(() => localStorage.getItem('stp-pro')) === '1', 'only a yes/no flag is saved');
-  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
-  // Build it again on the same phone: the badge and confetti come back every pro run (v2.1.34), as Pro prompt
+  await p.click('#proBtn');
+  await p.waitForSelector('#proWhy', { state: 'detached', timeout: 2000 });
+  expect(await p.isVisible('#proBtn') && await p.getAttribute('#proBtn', 'aria-expanded') === 'false', 'second tap tucks the list away, button stays');
+  // Tap again: the confetti plays again
+  await p.click('#proBtn'); await p.waitForSelector('#proMoment .burst i', { timeout: 2000 });
+  // Build again on the same phone: Pro prompt, closed, not first
   await p.fill('#thoughts', STRONG + ' Thanks!'); await p.evaluate(() => document.activeElement.blur()); await p.waitForTimeout(100);
-  await p.click('#build'); await p.waitForSelector('#proMoment', { timeout: 15000 });
-  const t2 = await p.textContent('#proMoment');
-  expect(/Pro prompt/.test(t2) && !/first/i.test(t2) && /Great input/.test(t2), 'second pro run: Pro prompt with reassurance, not first: ' + t2);
-  await p.waitForSelector('#proMoment .burst i', { timeout: 3000 });
-  expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti again');
-  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
-  // A phone that already had its first: Pro prompt right away
-  const again = await page({ intake, newbie: true });
-  await again.evaluate(() => localStorage.setItem('stp-pro', '1')); await again.reload();
-  await withKey(again); await again.fill('#thoughts', STRONG); await again.click('#build'); await done(again);
-  await again.waitForSelector('#proMoment');
-  expect(/Pro prompt/.test(await again.textContent('#proMoment')) && !/first/i.test(await again.textContent('#proMoment')), 'after the first: Pro prompt, not Your first pro prompt');
-  // A weaker note: no badge
+  await p.click('#build'); await p.waitForFunction(() => { const b = document.getElementById('proBtn'); return b && !/first/i.test(b.textContent); }, null, { timeout: 15000 });
+  expect(/Pro prompt/.test(await p.textContent('#proBtn')) && !(await p.$('#proWhy')), 'second pro run: Pro prompt, list closed');
+  await p.click('#proBtn'); await p.waitForSelector('#proWhy li');
+  expect(/Great input again/.test(await p.textContent('#proWhy')), 'second run reassures again');
+  // A weaker note: no button, no flag
   const weak = await page({ intake, newbie: true });
   await withKey(weak); await weak.fill('#thoughts', 'game night ideas'); await weak.click('#build'); await done(weak);
   await weak.waitForTimeout(300);
-  expect(!(await weak.$('#proMoment')) && await weak.evaluate(() => localStorage.getItem('stp-pro')) !== '1', 'no badge and no flag for a weaker note');
-  // Reduce Motion: a still glow, no confetti
+  expect(!(await weak.$('#proBtn')) && await weak.evaluate(() => localStorage.getItem('stp-pro')) !== '1', 'no button and no flag for a weaker note');
+  // Reduce Motion: no shimmer, no confetti, a still glow when open
   const r = await page({ intake, newbie: true, reduced: true });
   await withKey(r); await r.fill('#thoughts', STRONG); await r.click('#build'); await done(r);
-  await r.waitForSelector('#proMoment.still');
+  await r.waitForSelector('#proBtn');
+  expect(!(await r.$('#proBtn.shimmer')), 'no shimmer with Reduce Motion');
+  await r.click('#proBtn'); await r.waitForSelector('#proMoment.still.open #proWhy li');
   expect(!(await r.$('#proMoment .burst')), 'no confetti with Reduce Motion');
-  expect(![p, again, weak, r].some((x) => x.errors.length), 'page errors: ' + [p, again, weak, r].flatMap((x) => x.errors).join('; '));
+  expect(![p, weak, r].some((x) => x.errors.length), 'page errors: ' + [p, weak, r].flatMap((x) => x.errors).join('; '));
 });
 
 await check('first-timer strip: the Prep/Write/Polish time strip stays hidden for a phone\'s first 3 prompts, shows after, and always with run stats on (v2.1.33)', async () => {

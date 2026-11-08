@@ -4,10 +4,10 @@
     {
       "version": "2.1.36",
       "date": "2026-11-08",
-      "title": "Pick your Hear it speed, and confetti you actually see",
+      "title": "Pick your Hear it speed, and a pro prompt button you can't miss",
       "items": [
         "More options has a 🔊 Hear it speed setting: 1x, 1.25x, 1.5x (the default) or 2x. Your pick is remembered on this phone (just the number).",
-        "The pro prompt badge and confetti now wait until the badge is on your screen. Before, they could pop while the page was still scrolling to your prompt, so the confetti finished before you saw it."
+        "The 🏆 pro prompt badge is now a button that stays at the top of your result until your next prompt, with a soft shimmer so you notice it. Tap it for a confetti pop and What made it good: a plain bullet for each of the 5 parts your note nailed (plus the perfect Quality check score when that's why). Tap again to tuck it away. Before, the badge faded on its own and was easy to miss."
       ],
       "checks": [
         {
@@ -16,8 +16,8 @@
           "paste": "ok so um my cousin Theo starts a new job monday at a bike shop, he's nervous about the first day, help me write him a pep talk text that's funny but not cheesy"
         },
         {
-          "say": "Build this note in Normal and watch the top of the result as it appears.",
-          "see": "The 🏆 badge shows with a confetti pop you actually see (once it's on screen), then fades after a few seconds. If the Your note had everything card shows, the badge shows too.",
+          "say": "Build this note in Normal, wait about 10 seconds, then tap the 🏆 button at the top of the result.",
+          "see": "The button is still there after 10 seconds (it no longer fades). Tapping it pops confetti and opens What made it good with a bullet for Goal, Who it's for, Details, Limits and What good looks like. Tap again: the list tucks away and the button stays. Tap once more: confetti again.",
           "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
         }
       ]
@@ -64,7 +64,7 @@
         },
         {
           "say": "Build this note in Normal, twice in a row.",
-          "see": "Both times: a 🏆 badge with a confetti pop at the top of the result that fades after a few seconds. The second one says Pro prompt and Great input.",
+          "see": "Both times a 🏆 button sits at the top of the result and stays. The second one says Pro prompt. Tap it: confetti and What made it good, ending with Great input again.",
           "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
         },
         {
@@ -108,7 +108,7 @@
         },
         {
           "say": "On a phone that never had a pro prompt on staging (or after Clear results in Safari settings for the site), build this note in Normal.",
-          "see": "At the top of the result: 🏆 Your first pro prompt with a quick confetti pop, and it fades after a few seconds. Build it again: the badge and confetti show again, now saying Pro prompt (every pro run since v2.1.34).",
+          "see": "At the top of the result: a 🏆 button that says Your first pro prompt, with a soft shimmer, and it stays put. Tap it: confetti pops and What made it good opens with 5 bullets on why your note was great. Build it again: the button says Pro prompt (every pro run since v2.1.34), and tapping it shows the bullets again.",
           "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
         },
         {
