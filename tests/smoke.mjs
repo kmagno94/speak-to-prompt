@@ -4864,7 +4864,9 @@ await check('keyboard coach: while typing with the keyboard up, the meter and on
   expect(!(await p.isVisible('#stuck')), 'and not under the box (that spot is under the keyboard)');
   await p.click('#kbNudge');
   expect(await p.evaluate(() => document.activeElement.id === 'thoughts'), 'the nudge keeps the cursor in the box');
-  await fakeKeyboard(p, 0); await p.waitForTimeout(300);
+  await fakeKeyboard(p, 0);
+  /* The bar slides out; slow CI read it mid-slide (v2.1.35 run and the v2.1.36 promote run), so wait for it to settle. */
+  await p.waitForTimeout(300); await p.waitForSelector('#kbCoach', { state: 'hidden', timeout: 2500 }).catch(() => {});
   expect(!(await p.isVisible('#kbCoach')) && !(await p.$('#coach.kbaway')), 'keyboard down: bar gone, coach back under the box');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
