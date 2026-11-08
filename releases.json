@@ -2,6 +2,32 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.32",
+      "date": "2026-11-07",
+      "title": "Prompt school: one move I made, and why",
+      "items": [
+        "Under your prompt, a small Move I made card picks one thing the app added to help (like saying who it's for, or what a great result looks like) and says in plain words why it makes answers better.",
+        "When your own words skipped that move, the card adds a starter line to try yourself next time, like: start a line with It's for.",
+        "It steps aside while X-ray is open, and shows nothing when the whole prompt is your own words. Worked out on the phone, nothing saved or sent."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, in Normal, paste this note, tap Build my prompt, answer or skip any questions, then scroll under the prompt.",
+          "see": "A light blue Move I made card under the prompt: a move in bold (like I said who it's for), a Why line, a short quote from the prompt with a dashed line beside it, and a Try it yourself next time line with a starter.",
+          "paste": "ok so umm my sister's birthday is next saturday and i wanna do something but i have no idea what, she likes plants i think and coffee. help me come up with stuff"
+        },
+        {
+          "say": "Tap X-ray, then Done.",
+          "see": "The card hides while X-ray is open and comes back when you tap Done."
+        },
+        {
+          "say": "Tap New prompt and build this note the same way.",
+          "see": "A Move I made card again (maybe a different move). If it picks a move your note already did, there's no Try it yourself line, which is fine.",
+          "paste": "I need a short checklist for my coworkers' potluck this Friday. 12 people, under $60 for my part, and it has to be ready in 1 hour after work. Make it a table with dish, cost, and prep time."
+        }
+      ]
+    },
+    {
       "version": "2.1.31",
       "date": "2026-11-07",
       "title": "A strong note skips the questions",

@@ -1643,6 +1643,29 @@ await check('chat questions: a strong note (all 5 Ghost Coach parts) skips Read\
   expect(!p.errors.length && !three.errors.length && !cx.errors.length && !weak.errors.length, 'page errors: ' + [p, three, cx, weak].flatMap(x => x.errors).join('; '));
 });
 
+await check('prompt school: one Move I made card under the prompt, picked from what X-ray added, with a plain reason and a next-time tip; hides for X-ray, none when nothing was added (AGT-4, v2.1.32)', async () => {
+  const PROMPT = 'You are a party planner. Plan a game night for Friday with game ideas. The guests are coworkers who are new to board games. Keep the total cost under $90. Give me a checklist table with games, snacks and a schedule. Start right away.';
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, write: PROMPT });
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#moveCard');
+  const card = await p.textContent('#moveCard');
+  expect(/Move I made/.test(card) && /I said who it's for/.test(card) && /Why: Answers get way more specific/.test(card), 'card names the move and why: ' + card);
+  expect(/The guests are coworkers/.test(card) && /Try it yourself next time/.test(card) && /It's for/.test(card), 'card quotes the added part and gives a starter tip: ' + card);
+  const box = await p.$eval('#moveCard', el => el.getBoundingClientRect().top), out = await p.$eval('#output', el => el.getBoundingClientRect().top);
+  expect(box > out, 'the card sits under the prompt');
+  await p.click('#xrayBtn');
+  await p.waitForSelector('#moveCard', { state: 'detached' });
+  await p.click('#xray .xhead button');
+  await p.waitForSelector('#moveCard');
+  expect(!(await p.evaluate(() => Object.keys(localStorage).some(k => /move/i.test(k)))), 'nothing about moves is saved');
+  // Nothing added to help: no card
+  const q = await page({ intake, write: 'Plan a game night for Friday with game ideas.' });
+  await withKey(q); await q.fill('#thoughts', 'game night ideas for friday'); await q.click('#build'); await done(q);
+  expect(!(await q.$('#moveCard')), 'no card when the prompt is all your words');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
 await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
   const p = await page();
   await p.click('#starterBtn');

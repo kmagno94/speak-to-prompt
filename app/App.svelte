@@ -27,6 +27,7 @@
   import Notice from './Notice.svelte';
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
+  import MoveCard from './MoveCard.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
   import ContextRow from './ContextRow.svelte';
@@ -187,6 +188,7 @@
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
+    <MoveCard />
     <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
          The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
