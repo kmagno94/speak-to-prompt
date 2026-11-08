@@ -1611,6 +1611,38 @@ await check('chat questions: Clarity mirror shows Your goal with Edit, and the g
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
 });
 
+await check('chat questions: a strong note (all 5 Ghost Coach parts) skips Read\'s questions, says so, and Ask me anyway brings them back (AGT-14, v2.1.31)', async () => {
+  const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
+  const qs = [{ question: 'Any games you already own?', choices: ['None', 'A few'] }];
+  const intake = { title: 'Game Night', need: 'Plan a game night for 10 coworkers under $90', category: 'Social', complexity: 'standard', questions: qs };
+  // 1. Strong note, 1 question: straight to writing, the note says why, the tracker skips Ask
+  const p = await page({ intake });
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
+  expect(!(await p.isVisible('#qa')) && p.calls.filter(c => !c.intake).length === 1, 'no questions card, one write');
+  expect(/Your note had everything/.test(await p.textContent('#result')) && await p.isVisible('text=Ask me anyway'), 'the result says the note had everything, with Ask me anyway');
+  expect(await p.$eval('#resultTrack li[data-step=ask]', el => el.className) === 'skip', 'tracker marks Ask as skipped');
+  await p.click('#resultTrack .tsdetail summary');
+  const steps = await p.$$eval('#resultTrack .ts-row', l => l.map(x => x.querySelector('b').textContent + ' | ' + x.querySelector('.tsr-what').textContent));
+  expect(steps.some(x => /^Read \| Picked 1 question, skipped: your note had all 5 parts/.test(x)) && steps.some(x => /^Ask \| Skipped: your note had everything/.test(x)), 'Step by step says why: ' + steps.join(' / '));
+  // 2. Ask me anyway: the same questions come back with no new Read, and the next write has the answer
+  await p.click('text=Ask me anyway');
+  await p.waitForSelector('#qa:not([hidden])');
+  expect(p.calls.filter(c => c.intake).length === 1 && await p.isHidden('#result'), 'no second Read, the result steps aside');
+  await p.click('#qaList .chips button >> text=A few');
+  await p.waitForSelector('#qaList .msg.ai >> text=everything I need');
+  await p.click('#qaGo'); await done(p);
+  expect(/A: A few/.test(p.calls.filter(c => !c.intake).pop().text) && !/Your note had everything/.test(await p.textContent('#result')), 'the answer reaches the writer, and the strong-note line is gone');
+  // 3. Guards: 3 questions, a complex request, or a weaker note still ask
+  const three = await page({ intake: { ...intake, questions: [qs[0], { question: 'Indoors?', choices: ['Yes'] }, { question: 'Drinks?', choices: ['Yes'] }] } });
+  await withKey(three); await three.fill('#thoughts', STRONG); await three.click('#build'); await three.waitForSelector('#qa:not([hidden])');
+  const cx = await page({ intake: { ...intake, complexity: 'complex' } });
+  await withKey(cx); await cx.fill('#thoughts', STRONG); await cx.click('#build'); await cx.waitForSelector('#qa:not([hidden])');
+  const weak = await page({ intake });
+  await withKey(weak); await weak.fill('#thoughts', 'game night ideas'); await weak.click('#build'); await weak.waitForSelector('#qa:not([hidden])');
+  expect(!p.errors.length && !three.errors.length && !cx.errors.length && !weak.errors.length, 'page errors: ' + [p, three, cx, weak].flatMap(x => x.errors).join('; '));
+});
+
 await check('not sure where to start: pick a category, tap and type answers, get starting text', async () => {
   const p = await page();
   await p.click('#starterBtn');

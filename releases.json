@@ -2,6 +2,31 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.31",
+      "date": "2026-11-07",
+      "title": "A strong note skips the questions",
+      "items": [
+        "If your note already has all 5 things Prompt strength looks for (your goal, who it's for, details, limits, and what a great result looks like), and the app would only ask 1 or 2 questions, it skips them and writes your prompt right away.",
+        "The result says Your note had everything, with an Ask me anyway button. Tap it and the same questions come back (no extra wait for them), then Write my prompt writes it again with your answers.",
+        "Big requests (the complex kind) and notes that would get 3 or more questions still ask first. So does the full-version rebuild right after you add a key."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, in Normal, paste this note and tap Build my prompt.",
+          "see": "No questions card. It goes straight to writing, and the result has a note: Your note had everything, with an Ask me anyway button. (If questions show anyway, the app wanted 3 or more, which is fine: note it.)",
+          "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
+        },
+        {
+          "say": "Tap Ask me anyway.",
+          "see": "The questions card opens right away (no new loading wait) with the questions it skipped. Answer them and tap Write my prompt: a new prompt with your answers, and the Your note had everything line is gone."
+        },
+        {
+          "say": "Tap New prompt, type just: game night ideas, and tap Build my prompt.",
+          "see": "Questions show like before. A thin note still gets asked."
+        }
+      ]
+    },
+    {
       "version": "2.1.30",
       "date": "2026-11-07",
       "title": "Plain words on the result screen",
