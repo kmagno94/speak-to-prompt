@@ -6,7 +6,11 @@
      so the result stays calm. Once per prompt: a grade that lands later on the same prompt
      doesn't pop it twice. The very first one says Your first pro prompt; after that it says
      Pro prompt. Reduce Motion gets a still glow instead of confetti. Only a yes/no flag is
-     saved (stp-pro, "has had a first one"), never anything typed. */
+     saved (stp-pro, "has had a first one"), never anything typed.
+     v2.1.36 (Kevin: "it had everything it needed but no confetti"): the badge used to pop the
+     instant the prompt landed, while the page was still scrolling to the result, so on a phone
+     the confetti could finish off screen. Now the confetti and the fade timer wait until the
+     badge is actually on screen (most of it in view). */
   import { fade } from 'svelte/transition';
   import { xray } from './lib/xray.svelte.js';
   import { ui } from './lib/ui.svelte.js';
@@ -22,6 +26,7 @@
   let why = $state('');     // '' = hidden, 'note' or 'grade'
   let first = $state(false);
   let timer = 0;
+  let inView = $state(false);   // the badge has been on screen: confetti plays and the fade starts
 
   const reason = $derived.by(() => {
     if (!xray.prompt) return '';
@@ -30,7 +35,7 @@
   });
 
   /* A new prompt clears a badge from before. */
-  $effect(() => { xray.run; why = ''; clearTimeout(timer); });
+  $effect(() => { xray.run; why = ''; inView = false; clearTimeout(timer); });
   $effect(() => {
     const r = reason, at = xray.run;
     if (!r || shownFor === at) return;
@@ -38,17 +43,27 @@
     first = !had;
     if (!had) { had = true; try { localStorage.setItem(KEY, '1'); } catch (e) {} }
     why = r;
+    inView = false;
     clearTimeout(timer);
-    timer = setTimeout(() => { why = ''; }, SHOW_MS);
+    timer = setTimeout(() => { why = ''; }, 60000);   /* never seen: tidy up after a minute */
   });
+
+  /* Waits for the badge to be on screen, then plays the confetti and starts the fade. */
+  function onScreen(node) {
+    const go = () => { if (inView) return; inView = true; clearTimeout(timer); timer = setTimeout(() => { why = ''; }, SHOW_MS); };
+    if (typeof IntersectionObserver !== 'function') { go(); return {}; }
+    const io = new IntersectionObserver((list) => { if (list.some((e) => e.isIntersecting && e.intersectionRatio >= 0.6)) { go(); io.disconnect(); } }, { threshold: [0, 0.6, 1] });
+    io.observe(node);
+    return { destroy() { io.disconnect(); } };
+  }
 
   /* 18 pieces, fixed spread so it looks the same every time. */
   const BITS = Array.from({ length: 18 }, (_, i) => ({ x: Math.round(Math.cos(i * 2.4) * 140), y: -40 - (i * 37) % 90, r: (i * 47) % 360, c: i % 3, d: (i % 6) * 40 }));
 </script>
 
 {#if why}
-  <div class="pro" class:still={reduceMotion} id="proMoment" role="status" out:fade={{ duration: ms(400) }}>
-    {#if !reduceMotion}
+  <div class="pro" class:still={reduceMotion} id="proMoment" data-seen={inView} role="status" use:onScreen out:fade={{ duration: ms(400) }}>
+    {#if !reduceMotion && inView}
       <div class="burst" aria-hidden="true">
         {#each BITS as b}<i class="c{b.c}" style="--x: {b.x}px; --y: {b.y}px; --r: {b.r}deg; animation-delay: {b.d}ms"></i>{/each}
       </div>

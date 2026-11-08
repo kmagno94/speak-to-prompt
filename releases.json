@@ -2,6 +2,27 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.36",
+      "date": "2026-11-08",
+      "title": "Pick your Hear it speed, and confetti you actually see",
+      "items": [
+        "More options has a 🔊 Hear it speed setting: 1x, 1.25x, 1.5x (the default) or 2x. Your pick is remembered on this phone (just the number).",
+        "The pro prompt badge and confetti now wait until the badge is on your screen. Before, they could pop while the page was still scrolling to your prompt, so the confetti finished before you saw it."
+      ],
+      "checks": [
+        {
+          "say": "Open More options and look for 🔊 Hear it speed. Tap 1.25x, then build this note and tap 🔊 Hear it.",
+          "see": "Four choices with 1.5x picked at first. After picking 1.25x it reads a bit slower than before. Reload the page and More options still shows 1.25x.",
+          "paste": "ok so um my cousin Theo starts a new job monday at a bike shop, he's nervous about the first day, help me write him a pep talk text that's funny but not cheesy"
+        },
+        {
+          "say": "Build this note in Normal and watch the top of the result as it appears.",
+          "see": "The 🏆 badge shows with a confetti pop you actually see (once it's on screen), then fades after a few seconds. If the Your note had everything card shows, the badge shows too.",
+          "paste": "I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours."
+        }
+      ]
+    },
+    {
       "version": "2.1.35",
       "date": "2026-11-08",
       "title": "Hear it reads at 1.5x",

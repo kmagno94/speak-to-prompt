@@ -36,6 +36,7 @@
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
   import QuickSwitch from './QuickSwitch.svelte';
+  import HearSpeed from './HearSpeed.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
@@ -272,6 +273,7 @@
       </ol>
       <p>Needs iOS 18 or later on an iPhone 12 or newer. The transcript is made on your phone.</p>
     </details>
+      <HearSpeed />
       <div class="stats">
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
         <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>

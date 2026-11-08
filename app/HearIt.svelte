@@ -12,10 +12,10 @@
      While it plays, a small line reminds that Silent mode mutes it on iPhone. */
   import { onMount, untrack } from 'svelte';
   import { xray } from './lib/xray.svelte.js';
+  /* Speed: 1.5x by default (v2.1.35), picked in More options since v2.1.36. */
+  import { hear } from './lib/hear.svelte.js';
 
   const can = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance === 'function';
-  /* v2.1.35 (Kevin, Test lab 11/08): 1.5x, since prompts run long. */
-  const RATE = 1.5;
   const START_MS = (typeof window !== 'undefined' && window.__hearStartMs) || 3000;   /* tests can shorten it */
   let speaking = $state(false);
   let note = $state('');      // '' | 'tip' (while playing) | 'stuck' (never started)
@@ -68,7 +68,7 @@
     let started = false;
     held = parts.map((t) => {
       const u = new SpeechSynthesisUtterance(t);
-      u.rate = RATE; u.lang = lang;
+      u.rate = hear.rate; u.lang = lang;
       if (v) u.voice = v;
       return u;
     });

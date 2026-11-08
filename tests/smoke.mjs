@@ -1766,6 +1766,57 @@ await check('hear it back (v2.1.34): if the phone never starts talking, the butt
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('hear it speed (v2.1.36): More options has 1x, 1.25x, 1.5x and 2x, 1.5x is picked by default, a pick is used on the next Hear it and kept after a reload', async () => {
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, write: 'Plan a game night for Friday. Keep it under $90.' });
+  await p.addInitScript(() => {
+    window.__said = [];
+    window.SpeechSynthesisUtterance = function (t) { this.text = t; };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speaking: false, pending: false, speak: (u) => window.__said.push(u), cancel: () => {} } });
+  });
+  await p.reload();
+  await p.click('#moreOpts summary');
+  const btns = await p.$$eval('#hearSpeed .seg button', (l) => l.map((b) => b.textContent.trim() + ':' + b.getAttribute('aria-pressed')));
+  expect(btns.join() === '1x:false,1.25x:false,1.5x:true,2x:false', 'four speeds, 1.5x picked: ' + btns.join());
+  await p.click('#hearRate1_25');
+  expect(await p.getAttribute('#hearRate1_25', 'aria-pressed') === 'true', '1.25x is picked');
+  await withKey(p); await p.fill('#thoughts', 'game night ideas for friday'); await p.click('#build'); await done(p);
+  await p.click('#hearBtn');
+  expect(await p.evaluate(() => window.__said.length > 0 && window.__said.every((u) => u.rate === 1.25)), 'Hear it reads at the picked 1.25x');
+  const saved = await p.evaluate(() => Object.keys(localStorage).filter((k) => /stp-hear-rate$/.test(k)).map((k) => localStorage.getItem(k.replace(/^stg:/, ''))));
+  expect(saved.length === 1 && saved[0] === '1.25', 'only the number is saved: ' + JSON.stringify(saved));
+  await p.reload(); await p.click('#moreOpts summary');
+  expect(await p.getAttribute('#hearRate1_25', 'aria-pressed') === 'true', 'kept after a reload');
+  // No speech in the browser: no speed setting either
+  const q = await page({});
+  await q.addInitScript(() => { delete window.speechSynthesis; });
+  await q.reload(); await q.click('#moreOpts summary');
+  expect(!(await q.$('#hearSpeed')), 'no speed setting where the browser can\'t speak');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
+await check('pro prompt confetti waits until the badge is on screen (v2.1.36): off screen it holds the confetti and the fade, then plays when scrolled into view', async () => {
+  const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
+  const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
+  const p = await page({ intake, hooks: { __proMs: 1200 } });
+  /* The moment the badge appears, jump to the very top, like a page still scrolling. */
+  await p.addInitScript(() => {
+    new MutationObserver(() => { const e = document.getElementById('proMoment'); if (e && !window.__jumped) { window.__jumped = true; window.scrollTo({ top: 0, behavior: 'instant' }); window.__burstAtInsert = !!e.querySelector('.burst'); } }).observe(document, { childList: true, subtree: true });
+  });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
+  await p.waitForSelector('#proMoment');
+  await p.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await p.waitForTimeout(1600);   /* past the fade time: off screen it must still be waiting */
+  const off = await p.evaluate(() => { const e = document.getElementById('proMoment'); const r = e && e.getBoundingClientRect(); return { there: !!e, burst: !!(e && e.querySelector('.burst')), inView: r ? r.top < innerHeight && r.bottom > 0 : null, atInsert: window.__burstAtInsert }; });
+  expect(off.there && !off.burst && off.inView === false && off.atInsert === false, 'off screen: badge waits, no confetti yet, no fade: ' + JSON.stringify(off));
+  await p.evaluate(() => document.getElementById('proMoment').scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await p.waitForSelector('#proMoment .burst i', { timeout: 2000 });
+  expect(await p.getAttribute('#proMoment', 'data-seen') === 'true', 'marked seen once on screen');
+  await p.waitForSelector('#proMoment', { state: 'detached', timeout: 4000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('starter links: #start=food opens Not sure where to start? on Food with the quick taps, clears the link, skips Start here, and Copy link copies it (AGT-9, v2.1.33)', async () => {
   const p = await page({ fresh: true, hash: '#start=food' });
   await p.waitForSelector('#starter .chips button');
@@ -1795,6 +1846,7 @@ await check('first pro prompt: a 5 of 5 note shows the badge and confetti, saves
   await withKey(p); await p.fill('#thoughts', STRONG); await p.click('#build'); await done(p);
   await p.waitForSelector('#proMoment');
   expect(/Your first pro prompt/.test(await p.textContent('#proMoment')) && /all 5 things/.test(await p.textContent('#proMoment')), 'badge says why');
+  await p.waitForSelector('#proMoment .burst i', { timeout: 3000 });   /* plays once the badge is on screen (v2.1.36) */
   expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti bits');
   expect(await p.evaluate(() => localStorage.getItem('stp-pro')) === '1', 'only a yes/no flag is saved');
   await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
@@ -1803,6 +1855,7 @@ await check('first pro prompt: a 5 of 5 note shows the badge and confetti, saves
   await p.click('#build'); await p.waitForSelector('#proMoment', { timeout: 15000 });
   const t2 = await p.textContent('#proMoment');
   expect(/Pro prompt/.test(t2) && !/first/i.test(t2) && /Great input/.test(t2), 'second pro run: Pro prompt with reassurance, not first: ' + t2);
+  await p.waitForSelector('#proMoment .burst i', { timeout: 3000 });
   expect(await p.$$eval('#proMoment .burst i', (l) => l.length) > 0, 'confetti again');
   await p.waitForSelector('#proMoment', { state: 'detached', timeout: 9000 });
   // A phone that already had its first: Pro prompt right away
