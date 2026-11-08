@@ -4420,7 +4420,9 @@ await check('next step dock: changing your words on a finished prompt keeps Copy
   expect(await p.isVisible('#build') && await p.isVisible('#copy'), 'a change keeps Copy prompt in the pill, with Build my prompt under the box');
   await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(400);
   /* The pill swaps its buttons as you scroll; give it a moment to land (read mid-swap once in CI, 11/7 promote run). */
-  await p.waitForFunction(() => { const v = (id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; }; const d = document.getElementById('dockBuild'); return v('copy') && v('dockBuild') && v('dockMore') && d.textContent.trim() === 'Rebuild'; }, null, { timeout: 3000 }).catch(() => {});
+  /* v2.1.36 promote run: still read mid-swap in CI. The result can grow after the first scroll (cards land late on a slow runner),
+     so each poll scrolls to the real bottom again before reading the pill. */
+  await p.waitForFunction(() => { window.scrollTo(0, document.body.scrollHeight); const v = (id) => { const e = document.getElementById(id); return e && e.offsetParent !== null; }; const d = document.getElementById('dockBuild'); return v('copy') && v('dockBuild') && v('dockMore') && d.textContent.trim() === 'Rebuild'; }, null, { timeout: 6000, polling: 200 }).catch(() => {});
   expect(await p.isVisible('#copy') && await p.isVisible('#dockBuild') && (await p.textContent('#dockBuild')).trim() === 'Rebuild' && await p.isVisible('#dockMore'), 'scrolled down: Copy prompt, Rebuild and ⋯');
   expect(await p.evaluate(() => document.getElementById('copy').classList.contains('alt') && document.getElementById('copy').compareDocumentPosition(document.getElementById('dockBuild')) & 4), 'Copy prompt is the lighter button, before Rebuild');
   const fit = await p.evaluate(() => { const bar = document.querySelector('#nextDock .bar').getBoundingClientRect(); return [...document.querySelectorAll('#nextDock .bar button:not([hidden])')].every((b) => { const r = b.getBoundingClientRect(); return r.right <= bar.right + 1 && r.left >= bar.left - 1 && b.scrollWidth <= b.clientWidth + 1; }); });
@@ -4729,6 +4731,7 @@ await check('stuck nudge: a quiet box gets one sentence to finish; tap starts th
   await p.click('#stuckLine'); await p.waitForTimeout(300);
   const v = await p.inputValue('#thoughts');
   expect(v.startsWith('help me plan a yard sale\n') && v.trimEnd().endsWith(second.trim()), 'the sentence should start a new line: ' + JSON.stringify(v));
+  await p.waitForSelector('#stuck', { state: 'hidden', timeout: 2000 }).catch(() => {});   /* tucks away with a fade; slow CI read it mid-fade (v2.1.36 promote run) */
   expect(!(await p.isVisible('#stuck')), 'using it should tuck it away');
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
