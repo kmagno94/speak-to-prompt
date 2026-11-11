@@ -93,6 +93,7 @@ export function startApp() {
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
+        (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -263,7 +264,8 @@ export function startApp() {
       clean: session.clean ? session.clean.status + (session.clean.why ? " (" + session.clean.why + ")" : "") : null,   /* prep crew: status, model, time, word count only */
       clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null,
       ledger: session.ledger ? session.ledger.status : null, ledger_items: session.ledger && session.ledger.items ? session.ledger.items.length : null, ledger_model: session.ledger && session.ledger.model || null,
-      shape: session.shape ? !!(session.shape.success || session.shape.format) : null
+      shape: session.shape ? !!(session.shape.success || session.shape.format) : null,
+      ctx_nudge: savectx.stat || null   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -2325,6 +2327,8 @@ export function startApp() {
     savectx.start(from, title, [said].concat(ans).filter(Boolean).join("\n"));
   }
   savectx.hasResult = function () { return !result.hidden; };
+  /* Run stats: the run record waits for what you do next, so a tap or a save after Ready still makes it in. */
+  savectx.onStat = function (v) { if (pendingRun) pendingRun.ctx_nudge = v; };
   savectx.asker = function () {
     var key = gemini.key || gkey.value.trim();
     if (!key) return null;

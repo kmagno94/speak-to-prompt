@@ -19,7 +19,7 @@
     <p class="d">{savectx.candidate.why ? savectx.candidate.why + ' ' : ''}{place === 'wait' ? 'While you wait, answer a few quick questions once' : 'Answer a few quick questions once'} and you won't have to explain it again.</p>
     <div class="acts">
       <button type="button" class="go" id={place === 'wait' ? 'ctxNudgeGoWait' : 'ctxNudgeGo'} onclick={go}>Save as context</button>
-      <button type="button" class="link" id={place === 'wait' ? 'ctxNudgeLaterWait' : 'ctxNudgeLater'} onclick={() => (savectx.nudgeOff = true)}>Not now</button>
+      <button type="button" class="link" id={place === 'wait' ? 'ctxNudgeLaterWait' : 'ctxNudgeLater'} onclick={() => savectx.later()}>Not now</button>
     </div>
   </div>
 {/if}

@@ -65,6 +65,13 @@ class SaveCtx {
   /* The nudge (this build only, memory only). */
   candidate = $state(null);   // { title, why } from the Read call
   nudgeOff = $state(false);   // Not now, or already saved
+  /* Run stats (v2.1.37): how far the offer got on this build, as one fixed label and never a
+     word anyone typed: shown, tapped, saved, not now (the card), manual, manual saved (the ⋯
+     menu). app.js adds it to the run record, only while Show run stats is on. */
+  stat = '';
+  onStat = null;              // set by app.js: (label) => void
+  setStat(v) { this.stat = v; if (this.onStat) this.onStat(v); }
+  later() { this.nudgeOff = true; this.setStat('not now'); }
 
   /* The sheet. */
   open = $state(false);
@@ -95,10 +102,11 @@ class SaveCtx {
   get ask() { return this.asker ? this.asker() : null; }
 
   /* A new build starts clean: last build's nudge never carries over. */
-  newBuild() { this.candidate = null; this.nudgeOff = false; }
+  newBuild() { this.candidate = null; this.nudgeOff = false; this.stat = ''; }
   setCandidate(c) {
     const title = c && String(c.title || '').replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX);
     this.candidate = title ? { title, why: String(c.why || '').replace(/\s+/g, ' ').trim().slice(0, 160) } : null;
+    if (this.candidate) this.setStat('shown');
   }
 
   reset() {
@@ -116,7 +124,8 @@ class SaveCtx {
     this.title = String(title || '').slice(0, TITLE_MAX);
     this.source = String(source || '').trim().slice(0, SOURCE_MAX);
     this.open = true;
-    if (from === 'nudge') this.nudgeOff = true;
+    if (from === 'nudge') { this.nudgeOff = true; this.setStat('tapped'); }
+    else if (from === 'result') this.setStat('manual');
     this.next();
   }
   /* Bring in found pieces whose title is already here with different words. */
@@ -210,6 +219,7 @@ class SaveCtx {
     this.pickedNow = !this.hasResult();
     context.pickNext(id, this.pickedNow);
     this.nudgeOff = true;
+    if (this.from === 'nudge') this.setStat('saved'); else if (this.from === 'result') this.setStat('manual saved');
     this.stage = 'done';
   }
 }

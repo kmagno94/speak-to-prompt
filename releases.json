@@ -11,7 +11,8 @@
         "The finished piece is a clean labeled note built only from what you said. If the cleanup adds a number you never said, your own words are used instead. It saves like any My context piece (so it follows Save on this phone) and gets picked for your next prompt.",
         "You can also start it yourself: 🧱 Save as context in the ⋯ menu on a finished prompt, or Build one with questions in the My context editor (that one works with no key).",
         "If a piece overlaps one you already have, you see old vs new with Update, Keep both, or Skip. Bring in uses the same screen now, so it never overwrites a piece without asking.",
-        "⚡ Quick version (faster, lighter) is now one steady chip under the timer for the whole build, not just the first few seconds. Tap it while the prompt is being written and the quick model takes over right away. At 2:00 the countdown shows on that same chip instead of a second button."
+        "⚡ Quick version (faster, lighter) is now one steady chip under the timer for the whole build, not just the first few seconds. Tap it while the prompt is being written and the quick model takes over right away. At 2:00 the countdown shows on that same chip instead of a second button.",
+        "Run stats (only when Show run stats is on) now count how far the Save as context offer got: shown, tapped, saved, or not now. A label only, never your words, so reviews can tell if the offer earns its spot."
       ],
       "checks": [
         {
@@ -54,6 +55,11 @@
         {
           "say": "In My context, tap Copy for Notes. Change the words in one piece, then tap Bring in.",
           "see": "It does not overwrite your changed piece. A screen shows old vs new and asks Update, Keep both, or Skip."
+        },
+        {
+          "say": "Turn on Show run stats and daily usage in More options. Build this note, wait for the 🧱 Save as context card, then open Run stats at the bottom of the page.",
+          "see": "The newest run has a line that says save as context offer: shown, and none of your words. (What you tap after that reaches the Run log issue on GitHub once this build is live.)",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
         }
       ]
     },

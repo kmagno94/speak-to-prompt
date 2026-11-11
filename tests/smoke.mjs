@@ -5160,10 +5160,27 @@ await check('save as context: Read spots background with no extra call, the nudg
   await q.click('#ctxNudgeLater');
   await q.waitForFunction(() => !document.getElementById('ctxNudge'));
   expect(!q.interviews && await q.evaluate(() => !Object.keys(localStorage).some((k) => /stp-context/.test(k))) && !(await q.$('#contextRow .ctxchip')), 'Not now: no call, nothing saved');
-  // 6. No candidate from Read: no card
+  // 7 (below) checks run stats. 6. No candidate from Read: no card
   const r = await page({ intake: { ...intake, context_candidate: null } });
   await withKey(r); await r.fill('#thoughts', RAW); await r.click('#build'); await done(r);
   expect(!(await r.$('#ctxNudge')) && !(await r.$('#ctxNudgeWait')), 'no offer when Read found nothing worth saving');
+  // 7. Run stats: how far the offer got rides the run record as one fixed label, never words
+  const runsOf = async (pg) => { const sent = []; await pg.route('https://relay.test/report/run', async (rt) => { const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' }; if (rt.request().method() === 'OPTIONS') return rt.fulfill({ status: 204, headers: h }); sent.push(JSON.parse(rt.request().postData()).run); return rt.fulfill({ status: 201, headers: h, body: '{"ok":true}' }); }); return sent; };
+  const s1 = await page({ intake, interview: [{ covered: ['what'], done: true, part: '', question: '' }], iron: IRON });
+  const sent1 = await runsOf(s1);
+  await s1.click('#moreOpts summary'); await s1.check('#statsToggle');
+  await withKey(s1); await s1.check('#quickMode'); await s1.fill('#thoughts', RAW); await s1.click('#build'); await done(s1);
+  await s1.click('#ctxNudgeGo'); await s1.waitForSelector('#ctxPiece', { timeout: 8000 }); await s1.click('#ctxSave'); await s1.waitForSelector('#ctxDoneLine'); await s1.click('#ctxDone');
+  await s1.click('#copy'); await s1.waitForTimeout(400);
+  expect(sent1.length === 1 && sent1[0].ctx_nudge === 'saved' && !/roaster|Tuesday|Bean/.test(JSON.stringify(sent1[0])), 'a saved offer is logged as a label only: ' + JSON.stringify(sent1[0] && sent1[0].ctx_nudge));
+  const s2 = await page({ intake });
+  const sent2 = await runsOf(s2);
+  await s2.click('#moreOpts summary'); await s2.check('#statsToggle');
+  await withKey(s2); await s2.check('#quickMode'); await s2.fill('#thoughts', RAW); await s2.click('#build'); await done(s2);
+  await s2.click('#ctxNudgeLater'); await s2.click('#copy'); await s2.waitForTimeout(400);
+  expect(sent2.length === 1 && sent2[0].ctx_nudge === 'not now', 'Not now is logged: ' + JSON.stringify(sent2[0] && sent2[0].ctx_nudge));
+  expect(await q.evaluate(() => !localStorage.getItem('stp-testlog')), 'with run stats off nothing about the offer is kept');
+  expect(!s1.errors.length && !s2.errors.length, 'page errors: ' + [s1, s2].flatMap(x => x.errors).join('; '));
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
 });
 
