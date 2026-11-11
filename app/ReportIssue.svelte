@@ -3,6 +3,7 @@
   import { report, REASONS, FRONT_REASONS, RELAY } from './lib/report.svelte.js';
   import { core } from './lib/core.svelte.js';
   import { ms } from './lib/motion.js';
+  import { ui } from './lib/ui.svelte.js';
 
   /* place: 'result' (under the finished prompt) or 'front' (the first screen). */
   let { place = 'result' } = $props();
@@ -16,9 +17,14 @@
   let status = $state('');
   let sent = $state(false);
   let sending = $state(false);
+  /* 👍 Worked great (#5, v2.1.38): the other half of Something went wrong?, so reviews learn what
+     works too. Shows only with Show run stats on (otherwise nothing would be counted), once per
+     prompt. It adds a yes to the run's numbers, never your words. app.js does the counting. */
+  let liked = $state(false);
+  function like() { liked = true; window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'worked', where: 'result' } })); }
 
   /* A new prompt means a fresh, closed report under it. */
-  $effect(() => { report.run; if (front) return; open = false; picked = []; note = ''; status = ''; sent = false; });
+  $effect(() => { report.run; if (front) return; open = false; picked = []; note = ''; status = ''; sent = false; liked = false; });
 
   const ready = $derived(picked.length > 0 || note.trim().length > 0);
   const preview = $derived(open ? report.text(picked, note, place) : '');
@@ -57,8 +63,14 @@
 </script>
 
 <div class="report" class:front>
-  <button type="button" id={id('Btn')} class="reportbtn" aria-expanded={open} aria-controls={id('Box')}
-          onclick={() => (open = !open)}>{open ? 'Close report' : 'Something went wrong?'}</button>
+  <div class="rrow">
+    {#if !front && ui.statsOn}
+      {#if liked}<span class="liked" id="workedDone" role="status">👍 Thanks, counted</span>
+      {:else}<button type="button" class="likebtn" id="workedBtn" onclick={like}>👍 Worked great</button>{/if}
+    {/if}
+    <button type="button" id={id('Btn')} class="reportbtn" aria-expanded={open} aria-controls={id('Box')}
+            onclick={() => (open = !open)}>{open ? 'Close report' : 'Something went wrong?'}</button>
+  </div>
   {#if open}
     <div class="reportbox" id={id('Box')} transition:slide={{ duration: ms(200) }}>
       <p class="rhead">What went wrong? Tap any that fit.</p>
@@ -89,7 +101,10 @@
 <style>
   .report { display: grid; gap: 10px; }
   .report.front { margin-top: 2px; }
-  .reportbtn { justify-self: end; background: none; border: none; min-height: 0; padding: 4px 2px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  .rrow { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 14px; }
+  .likebtn { margin-right: auto; min-height: 40px; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
+  .liked { margin-right: auto; font-size: 14px; font-weight: 700; color: var(--ok); }
+  .reportbtn { background: none; border: none; min-height: 0; padding: 4px 2px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
   .reportbox { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
   .rhead { margin: 0; font-weight: 700; }
   label { font-size: 14px; font-weight: 700; }

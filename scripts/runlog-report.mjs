@@ -140,7 +140,9 @@ export function scorecard(runs) {
       xray_opened_pct: share(acted.filter((r) => r.xray_opened === true).length, acted.length),
       /* Save as context (#50, v2.1.37): how far the offer got, from the ctx_nudge label. */
       ctx: ((n) => ({ offered: n.length, ...count(n, 'ctx_nudge'), tapped_pct: share(n.filter((r) => /^(tapped|saved)$/.test(r.ctx_nudge)).length, n.length), saved_pct: share(n.filter((r) => r.ctx_nudge === 'saved').length, n.length) }))(ok.filter((r) => /^(shown|tapped|saved|not now)$/.test(r.ctx_nudge || ''))),
-      ctx_manual: ok.filter((r) => /^manual/.test(r.ctx_nudge || '')).length
+      ctx_manual: ok.filter((r) => /^manual/.test(r.ctx_nudge || '')).length,
+      /* 👍 Worked great (#5, v2.1.38): a yes on the run, or on a follow-up record (outcome "thumbs up") when the run was already sent. */
+      worked: runs.filter((r) => r.worked === true).length, worked_pct: share(runs.filter((r) => r.worked === true).length, ok.length)
     }
   };
   s.flags = flagsFor(s);
@@ -253,6 +255,7 @@ export function markdown(s, since) {
     `| Kept (copied, opened an AI, or saved) | ${fmt(s.use.kept_pct, '%')} |`,
     `| Redone (started over or rebuilt) | ${fmt(s.use.redone_pct, '%')} |`,
     `| Opened X-ray | ${fmt(s.use.xray_opened_pct, '%')} |`,
+    `| 👍 Worked great taps | ${s.use.worked ? s.use.worked + ' (' + fmt(s.use.worked_pct, '%') + ' of finished runs)' : 'none yet'} |`,
     `| Save as context offer | ${s.use.ctx.offered ? 'offered ' + s.use.ctx.offered + ', tapped ' + fmt(s.use.ctx.tapped_pct, '%') + ', saved ' + fmt(s.use.ctx.saved_pct, '%') + ', not now ' + (s.use.ctx['not now'] || 0) + (s.use.ctx.offered < 10 ? ' (too few to trust)' : '') : 'not offered yet'}${s.use.ctx_manual ? '; started from the menu ' + s.use.ctx_manual : ''} |`,
     `| All actions | ${Object.entries(s.use.actions).map(([k, v]) => k + ' ' + v).join(', ') || 'none yet'} |`, '');
   L.push('**Models**', '', `Write models: ${Object.entries(s.models.write).map(([k, v]) => k + ' ' + v).join(', ') || 'n/a'}. Fallbacks in ${fmt(s.models.fallback_pct, '%')} of runs.`, '');

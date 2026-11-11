@@ -93,7 +93,7 @@ export function startApp() {
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
-        (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") +
+        (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") + (r.worked ? "\n  \ud83d\udc4d worked great" : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -195,6 +195,7 @@ export function startApp() {
     }
     function setOn(v) {
       on = v;
+      ui.statsOn = !!v;
       store(TEST_FLAG, v ? "1" : null);
       if (!v) { store(TEST_LOG, null); store(TEST_USAGE, null); }
       render();
@@ -205,6 +206,14 @@ export function startApp() {
       r.when = (d.getMonth() + 1) + "/" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
       var list = runs(); list.push(r);
       store(TEST_LOG, JSON.stringify(list.slice(-200)));
+      render();
+    }
+    /* Adds one field to the newest run on this device (the 👍 Worked great tap, #5). */
+    function mark(field, value) {
+      if (!on) return;
+      var list = runs(); if (!list.length) return;
+      list[list.length - 1][field] = value;
+      store(TEST_LOG, JSON.stringify(list));
       render();
     }
     /* Called for every request Gemini answers or refuses. A refusal for the daily
@@ -246,7 +255,7 @@ export function startApp() {
     }
     /* A new Gemini key starts today's count fresh (v2.1.28). Run history stays. */
     function newKey() { store(TEST_USAGE, null); if (on) render(); }
-    return { init: init, add: add, request: request, miss: miss, runs: runs, newKey: newKey, on: function () { return on; }, refresh: function () { if (on) render(); } };
+    return { init: init, add: add, mark: mark, request: request, miss: miss, runs: runs, newKey: newKey, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -315,6 +324,7 @@ export function startApp() {
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
     else if (act === "goquick") goQuick();
+    else if (act === "worked") workedGreat();   /* #5 */
     else if (act === "savectx") saveAsContext(e.detail.where === "nudge" ? "nudge" : "result");   /* #50 */
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
@@ -3445,11 +3455,30 @@ export function startApp() {
     postRun(run);
   }
   function postRun(run) {
+    if (run.outcome === "ok") lastSent = run;
     try {
       fetch(RELAY.replace(/\/+$/, "") + "/run", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run: run }), keepalive: true }).catch(function () {});
     } catch (e) {}
   }
+  /* 👍 Worked great (#5, v2.1.38): one tap under a finished prompt, only with run stats on, so
+     reviews learn what works and not just what breaks. A yes on the run record, never words.
+     Still waiting to be sent: it rides along. Already sent (you copied first): a tiny follow-up
+     record goes out with the mode and the yes, marked so it never counts as a second run. */
+  var lastSent = null;
+  function workedGreat() {
+    if (!testLog.on() || !session) return;
+    testLog.mark("worked", true);
+    if (pendingRun) { pendingRun.worked = true; return; }
+    if (!RELAY || !lastSent) return;
+    postRun({ app: lastSent.app, device: lastSent.device, mode: lastSent.mode, depth: lastSent.depth || null, write_model: lastSent.write_model || null, outcome: "thumbs up", worked: true });
+    lastSent = null;
+  }
+  /* Stay-on-screen guard (#37, v2.1.38): closing or refreshing while a prompt is being written
+     asks first (the browser's own Leave site? box). Only while it works, never when idle.
+     Phones can't catch an app switch, so this mostly helps iPad keyboards and computers. */
+  window.addEventListener("beforeunload", function (e) { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+
   /* Capture phase: noted before the button's own handler runs. */
   document.addEventListener("click", function (e) {
     if (!pendingRun || !e.target || !e.target.closest) return;

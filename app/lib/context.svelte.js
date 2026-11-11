@@ -82,17 +82,27 @@ class Context {
     this.save();
   }
 
+  /* A piece you just added picks itself for this prompt the moment it gets its first words
+     (v2.1.38, idea mw9q183odo7y), so writing one doesn't end with hunting for its chip. Once
+     only: untick it and it stays unticked. Pieces from Bring in are never picked for you. */
+  fresh = [];
   add() {
     const c = { id: newId(), title: '', text: '' };
     this.list = [c, ...this.list];   /* newest first, so the editor opens on it at the top */
+    this.fresh.push(c.id);
     return c.id;
   }
   update(id, field, value) {
     const max = field === 'title' ? MAX_TITLE : MAX_TEXT;
     this.list = this.list.map((c) => (c.id === id ? { ...c, [field]: String(value).slice(0, max) } : c));
+    if (field === 'text' && String(value).trim() && this.fresh.includes(id)) {
+      this.fresh = this.fresh.filter((f) => f !== id);
+      if (!this.picked.includes(id)) this.picked = [...this.picked, id];
+    }
     this.save();
   }
   remove(id) {
+    this.fresh = this.fresh.filter((f) => f !== id);
     this.list = this.list.filter((c) => c.id !== id);
     this.picked = this.picked.filter((p) => p !== id);
     this.save();

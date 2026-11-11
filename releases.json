@@ -2,6 +2,41 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.38",
+      "date": "2026-11-11",
+      "title": "New context picks itself, a 👍 Worked great tap, and a leave warning mid-build",
+      "items": [
+        "A My context piece you just wrote is picked for this prompt by itself as soon as it has words, so you don't have to find and tap its chip. It only does this once: untick it and it stays unticked. Pieces from Bring in are not picked for you.",
+        "👍 Worked great: with Show run stats on, a thumbs-up sits next to Something went wrong? under a finished prompt. One tap adds a yes to that run's numbers (never your words), so reviews learn what works and not just what breaks.",
+        "If you try to close or refresh the page while a prompt is being written, the browser asks first. Only while it's working, never when idle. Phones can't catch an app switch, so this mostly helps on iPad keyboards and computers.",
+        "Behind the scenes: if GitHub can't reach Ubuntu's servers while setting up the tests, the deploy now carries on with the browser alone instead of failing before a single test runs."
+      ],
+      "checks": [
+        {
+          "say": "In My context, tap + New (or + Add context you can reuse). Type a title, then type a sentence in the big box, and look at the chips above.",
+          "see": "The moment the big box has words, the new piece shows as a chip with a check, and the line says 1 added to this prompt. You never tapped the chip."
+        },
+        {
+          "say": "Tap that chip to untick it, then tap Edit and change a word in the piece.",
+          "see": "It stays unticked. It only picks itself the first time."
+        },
+        {
+          "say": "Turn on Show run stats and daily usage in More options. Build this note, then look under the prompt next to Something went wrong? and tap 👍 Worked great.",
+          "see": "The button turns into 👍 Thanks, counted. Open Run stats at the bottom: the newest run has a 👍 worked great line and none of your words.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        },
+        {
+          "say": "Turn Show run stats off and build any prompt.",
+          "see": "No 👍 Worked great button, only Something went wrong?."
+        },
+        {
+          "say": "On a Mac or an iPad with a keyboard: open the staging link that ends in #flashbusy, tap Normal, build this note, and press refresh (⌘R) while it says Writing your prompt.",
+          "see": "The browser asks if you want to leave or reload. Cancel and the build keeps going. Refresh when nothing is building: no question.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        }
+      ]
+    },
+    {
       "version": "2.1.37",
       "date": "2026-11-11",
       "title": "Save as context, and a Quick version button that stays for the whole build",

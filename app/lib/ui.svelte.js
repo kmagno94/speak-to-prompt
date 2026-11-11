@@ -31,7 +31,8 @@ export const ui = $state({
   build: '',          // which part of a build is running: '' | 'read' | 'write' | 'finish' (Polish and Check)
   quickOn: false,     // this write is already the quick version (Quick mode), so there's nothing to switch to
   switched: false,    // the chip was tapped during Write: the quick model is writing it now
-  slow: null          // from 2:00 on a slow Flash write: { until, total }, the countdown shown on the chip
+  slow: null,         // from 2:00 on a slow Flash write: { until, total }, the countdown shown on the chip
+  statsOn: false      // Show run stats and daily usage is on (the 👍 Worked great tap only shows then, #5)
 });
 
 /* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]

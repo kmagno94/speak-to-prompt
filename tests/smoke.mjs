@@ -3839,6 +3839,9 @@ await check('my context compact (v2.1.28): recently used pieces go first, only 3
   }
   await p.click('#contextEditor button:text-is("Done")');
   const chips = () => p.$$eval('#contextRow .ctxchip', (l) => l.map((b) => b.title.replace(/ · over.*$/, '')));
+  /* v2.1.38: pieces you just wrote pick themselves (and a picked piece always shows). Picks are per visit, so a reload starts unpicked. */
+  expect((await chips()).length === 5, 'the five pieces just written are all picked, so all show');
+  await p.reload();
   let c = await chips();
   expect(c.length === 3 && await p.isVisible('#contextMore') && /\+2 more/.test(await p.textContent('#contextMore')), 'only 3 chips plus +2 more, got ' + JSON.stringify(c));
   expect(c[0].startsWith('# Corner bakery'), 'never-used pieces show newest first, got ' + JSON.stringify(c));
@@ -5254,6 +5257,74 @@ await check('save as context: an ironed note with a number you never said falls 
   await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
   expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
   expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
+});
+
+/* v2.1.38 Fix session: idea mw9q183odo7y, #5 Worked great, #37 leave warning. */
+await check('my context: a piece you just added picks itself once it has words, once only, and brought-in pieces stay unpicked (v2.1.38)', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', 'Pottery class');
+  expect(!(await p.$('#contextRow .ctxchip')), 'a title alone is not a piece yet, nothing picked');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Thursday nights at Kiln House, wheel throwing, 8 students.');
+  await p.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Pottery class")');
+  expect(/1 added to this prompt/.test(await p.textContent('#contextCount')), 'it counts as added to this prompt: ' + await p.textContent('#contextCount'));
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.fill('#thoughts', 'help me write a welcome note'); await p.click('#build'); await done(p);
+  expect(/Kiln House/.test(await p.inputValue('#output')), 'the new piece goes into the prompt without tapping its chip');
+  // Untick it, then edit it: it stays unticked (it only picks itself once)
+  await p.click('#contextRow .ctxchip:has-text("Pottery class")');
+  await p.click('#contextEdit');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Thursday nights at Kiln House, wheel throwing, 9 students.');
+  expect(await p.getAttribute('#contextRow .ctxchip:has-text("Pottery class")', 'aria-pressed') === 'false', 'unticked stays unticked when you edit it');
+  // Bring in: pieces from a note are never picked for you
+  const note = 'Speak to Prompt · My context · 1 piece · 11/11\nhow\n\n## Run club\nSaturday 7am at the pier\n\n~ end of My context ~';
+  await p.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await p.click('#contextIn');
+  await p.waitForSelector('#contextRow .ctxchip:has-text("Run club")');
+  expect(await p.getAttribute('#contextRow .ctxchip:has-text("Run club")', 'aria-pressed') === 'false', 'a brought-in piece is not picked for you');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('run stats: 👍 Worked great shows only with run stats on, adds a yes to the run (or a follow-up when the run already went), and never words (#5)', async () => {
+  const hook = async (pg) => { const sent = []; await pg.route('https://relay.test/report/run', async (rt) => { const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' }; if (rt.request().method() === 'OPTIONS') return rt.fulfill({ status: 204, headers: h }); sent.push(JSON.parse(rt.request().postData()).run); return rt.fulfill({ status: 201, headers: h, body: '{"ok":true}' }); }); return sent; };
+  // Run stats off: no button
+  const o = await page();
+  await o.fill('#thoughts', 'my secret memo'); await o.click('#build'); await done(o);
+  expect(!(await o.$('#workedBtn')), 'no Worked great button while run stats is off');
+  // On: tap it before copying, and the yes rides the run
+  const p = await page();
+  const sent = await hook(p);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', 'my secret memo'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#workedBtn') && await p.isVisible('#reportBtn'), 'Worked great sits next to Something went wrong?');
+  await p.click('#workedBtn');
+  await p.waitForSelector('#workedDone');
+  expect(!(await p.$('#workedBtn')) && sent.length === 0, 'one tap per prompt, and the run still waits for what happens next');
+  expect(/worked great/.test(await p.textContent('#testRuns')), 'the run on this device shows it: ' + await p.textContent('#testRuns'));
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent.length === 1 && sent[0].worked === true && sent[0].action === 'copied' && !/secret/.test(JSON.stringify(sent[0])), 'the yes rides the run, no words: ' + JSON.stringify(sent[0]));
+  // Copy first, then tap: a small follow-up that is not a second run
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'my secret memo'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#workedBtn'), 'a new prompt gets a fresh button');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  await p.click('#workedBtn'); await p.waitForTimeout(400);
+  expect(sent.length === 3 && sent[1].outcome === 'ok' && !sent[1].worked && sent[2].outcome === 'thumbs up' && sent[2].worked === true && sent[2].mode && !/secret/.test(JSON.stringify(sent[2])), 'a tap after the run went sends a follow-up: ' + JSON.stringify(sent[2]));
+  expect(!o.errors.length && !p.errors.length, 'page errors: ' + [o, p].flatMap(x => x.errors).join('; '));
+});
+
+await check('stay on screen: closing or refreshing asks first only while a prompt is being written (#37)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ intake, slow: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'] });
+  const asks = () => p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; });
+  expect(!(await asks()), 'no warning while idle');
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  for (let i = 0; i < 40 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
+  expect(await asks(), 'leaving mid-write asks first');
+  p.releaseSlow();
+  await done(p);
+  expect(!(await asks()), 'no warning once the prompt is ready');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await browser.close();
