@@ -288,7 +288,10 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .ts-check { background: var(--ok); } .tslegend .ts-check::before { background: var(--ok); }
 .tslegend span[class^="ts-"] { background: none; }
 /* Cooking (v2.1.19): the prompt card shows only its heading, the tracker, round banner, and messages until the prompt is ready. */
-#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round) { display: none !important; }
+#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round):not(.waitrow) { display: none !important; }
+.waitrow { display: grid; gap: var(--sp-2); }
+.waitrow > :first-child { margin-top: 0; }
+.waitrow:not(:has(*)) { display: none; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }
 .tracker li::before { content: ""; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); box-sizing: border-box; }
 .tracker li.done { color: var(--ink); }
@@ -518,7 +521,7 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* The floating 💡 Ideas and 🧪 Test lab buttons tuck away while a bottom bar needs the space:
    the My context Done bar (ContextRow.svelte) and the keyboard coach bar (KeyboardCoach.svelte). */
-body:is(.fabs-away, .fabs-away-kb, .fabs-away-mic) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
+body:is(.fabs-away, .fabs-away-kb, .fabs-away-mic, .fabs-away-ctx) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out; } }
 
 /* Next step dock (#17): while it shows, the page ends above it, and the floating buttons and

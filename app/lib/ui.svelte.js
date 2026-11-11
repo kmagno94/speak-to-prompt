@@ -26,7 +26,12 @@ export const ui = $state({
   compare: null,      // Compare rounds table (lib/compare.js) once 2+ rounds are built. Memory only
   grade: null,        // the Quality check for the prompt on screen: { score, pass, label, tip, working }
   reading: false,     // Read is running on a Normal build, so Switch to Quick can show (v2.1.34)
-  goQuick: false      // Switch to Quick was tapped during Read: this build skips the questions
+  goQuick: false,     // Switch to Quick was tapped during Read: this build skips the questions
+  /* ⚡ Quick version chip, Build to Ready (#51, v2.1.37). Memory only. */
+  build: '',          // which part of a build is running: '' | 'read' | 'write' | 'finish' (Polish and Check)
+  quickOn: false,     // this write is already the quick version (Quick mode), so there's nothing to switch to
+  switched: false,    // the chip was tapped during Write: the quick model is writing it now
+  slow: null          // from 2:00 on a slow Flash write: { until, total }, the countdown shown on the chip
 });
 
 /* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]

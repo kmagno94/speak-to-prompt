@@ -77,17 +77,54 @@ export function unpack(text) {
   return read ? clean(read) : null;
 }
 
-/* Folds pieces in by title: a new title is added, the same title with new words is updated,
-   the same title and words are left alone. Nothing here is ever deleted. */
+/* Folds pieces in by title: a new title is added and the same title and words are left alone.
+   The same title with different words used to be overwritten without a word (Bring in's silent
+   overwrite). Since v2.1.37 (#50) those come back as `conflicts` and nothing is changed: the
+   overlap screen (SaveContext.svelte) shows old vs new and the person picks Update, Keep both,
+   or Skip for each one. Nothing here is ever deleted. */
 export function merge(list, incoming, newId) {
   const out = list.filter((c) => c.title.trim() || c.text.trim()).map((c) => ({ ...c }));
-  let added = 0, updated = 0, same = 0;
+  const conflicts = [];
+  let added = 0, same = 0;
   for (const inc of incoming) {
     const key = inc.title.toLowerCase();
     const hit = out.find((c) => c.title.trim().toLowerCase() === key);
     if (!hit) { out.push({ id: newId(), title: inc.title, text: inc.text }); added++; }
-    else if (hit.text.trim() !== inc.text.trim()) { hit.text = inc.text; updated++; }
+    else if (hit.text.trim() !== inc.text.trim()) conflicts.push({ id: hit.id, title: hit.title, old: hit.text, text: inc.text });
     else same++;
   }
-  return { list: out, added, updated, same };
+  return { list: out, added, updated: 0, same, conflicts };
+}
+
+/* Does a new piece overlap one that's already here? The same title (any case), or mostly the
+   same words: 60% or more of the new piece's meaning words are in the old one (8 words at least,
+   so two short notes never match by accident). Returns the existing piece, or null. */
+const STOP = /^(that|this|with|from|have|want|need|about|they|their|them|then|just|like|some|into|your|will|would|should|could|really|very|also|what|when|there|here|been|were|each|which|because|always|never|what's)$/;
+const meaning = (t) => [...new Set((String(t).toLowerCase().match(/[a-z0-9][a-z0-9']{3,}/g) || []).filter((w) => !STOP.test(w)))];
+export function findOverlap(list, piece) {
+  const key = String(piece.title || '').trim().toLowerCase();
+  const text = String(piece.text || '').trim();
+  const byTitle = key && list.find((c) => c.title.trim().toLowerCase() === key && c.text.trim());
+  if (byTitle) return byTitle.text.trim() === text ? null : byTitle;
+  const words = meaning(text);
+  if (words.length < 8) return null;
+  let best = null, top = 0;
+  for (const c of list) {
+    if (!c.text.trim()) continue;
+    const have = new Set(meaning(c.text));
+    const share = words.filter((w) => have.has(w)).length / words.length;
+    if (share >= 0.6 && share > top) { best = c; top = share; }
+  }
+  return best;
+}
+/* A free title for Keep both: "Title (new)", then "Title (new 2)"... within the 60 character cap. */
+export function freeTitle(list, title) {
+  const taken = new Set(list.map((c) => c.title.trim().toLowerCase()));
+  const base = String(title || 'Untitled').trim();
+  for (let i = 1; i < 50; i++) {
+    const tail = i === 1 ? ' (new)' : ' (new ' + i + ')';
+    const t = base.slice(0, MAX_TITLE - tail.length) + tail;
+    if (!taken.has(t.toLowerCase())) return t;
+  }
+  return base.slice(0, MAX_TITLE);
 }

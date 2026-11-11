@@ -28,6 +28,7 @@
   import { ideas } from './lib/ideas.svelte.js';
   import { lab } from './lib/testlab.svelte.js';
   import { context } from './lib/context.svelte.js';
+  import { savectx } from './lib/savectx.svelte.js';
 
   let moment = $state('input');   // 'input' | 'qa' | 'result' | 'redo' (words changed on a finished prompt)
   let inlineSeen = $state(true);  // the Build my prompt under the box isn't scrolled past yet
@@ -39,7 +40,7 @@
   let undoTimer = 0;
   const UNDO_MS = 6000;
 
-  const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open);
+  const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open || savectx.open);
   const building = $derived(moment === 'input' || moment === 'redo');   // the next step is Build
   const showBuild = $derived(building && !inlineSeen);
   const showCopy = $derived(moment === 'result' || moment === 'redo');
@@ -190,6 +191,7 @@
   const openList = $derived([...AIS.filter((a) => a.name === lastAI), ...AIS.filter((a) => a.name !== lastAI)]);
   const openedIn = (name) => setTimeout(() => { lastAI = name; menu = false; }, 0);
   function quick() { menu = false; chat.finish(true); }
+  function saveCtx() { menu = false; window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'savectx', where: 'result' } })); }
 
   /* Undo: app.js puts back your words and whatever was on screen (questions or the prompt). */
   function undoReset() {
@@ -225,6 +227,11 @@
       {#each openList as ai (ai.name)}
         <a class="openai" id={ai.id} href={ai.href} target="_blank" rel="noopener" role="menuitem" onclick={() => openedIn(ai.name)}>{ai.name}</a>
       {/each}
+    </div>
+    <!-- Save as context (#50): turn this prompt's background into a My context piece. -->
+    <div class="grp" hidden={!showCopy}>
+      <span class="ghead">Keep for later</span>
+      <button type="button" id="dockSaveCtx" role="menuitem" onclick={saveCtx}>🧱 Save as context</button>
     </div>
     <div class="grp">
       <span class="ghead">Start again</span>

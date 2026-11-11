@@ -15,7 +15,7 @@
    Budget: picks should stay under BUDGET tokens. Past 100%, a build with a key runs one
    Flash-Lite squeeze (app.js) and keeps the shorter version here in memory only, for these
    exact picks: the saved pieces never change, and a reload or a new pick drops it. */
-import { merge } from './contextsync.js';
+import { merge, freeTitle } from './contextsync.js';
 
 const KEY = 'stp-context';
 const KEEP_KEY = 'stp-context-keep';
@@ -97,12 +97,41 @@ class Context {
     this.picked = this.picked.filter((p) => p !== id);
     this.save();
   }
-  /* Bring in pieces from another device (lib/contextsync.js). Saved only if Save on this phone is on. */
+  /* Bring in pieces from another device (lib/contextsync.js). Saved only if Save on this phone is on.
+     New titles come in; a title that's already here with different words is NOT changed any more
+     (v2.1.37, #50): it comes back in r.conflicts for the overlap screen to settle. */
   bringIn(incoming) {
     const r = merge(this.list, incoming, newId);
     this.list = r.list;
     this.save();
     return r;
+  }
+  /* Save as context (#50): a finished piece goes in as a normal piece, newest first. */
+  addPiece(title, text) {
+    const c = { id: newId(), title: String(title || '').trim().slice(0, MAX_TITLE), text: String(text || '').slice(0, MAX_TEXT) };
+    this.list = [c, ...this.list.filter((x) => x.title.trim() || x.text.trim())];
+    this.save();
+    return c.id;
+  }
+  /* The overlap screen's three answers. Update replaces the old words; Keep both adds the new
+     one under a free title; Skip changes nothing. Returns the id the new words ended up in. */
+  settle(id, text, how, title) {
+    if (how === 'update') { this.update(id, 'text', text); return id; }
+    if (how === 'both') return this.addPiece(freeTitle(this.list, title), text);
+    return '';
+  }
+  /* Picked for your next prompt: right away when no prompt is on screen; otherwise it waits for
+     New prompt, so saving a piece never turns a finished prompt into "build again". */
+  later = [];
+  pickNext(id, now) {
+    if (!id) return;
+    if (now) { if (!this.picked.includes(id)) this.picked = [...this.picked, id]; }
+    else if (!this.later.includes(id)) this.later.push(id);
+  }
+  pickWaiting() {
+    const ids = this.later.filter((id) => !this.picked.includes(id) && this.list.some((c) => c.id === id));
+    this.later = [];
+    if (ids.length) this.picked = [...this.picked, ...ids];
   }
   toggle(id) { this.picked = this.picked.includes(id) ? this.picked.filter((p) => p !== id) : [...this.picked, id]; }
 

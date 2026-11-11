@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
+import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -16,6 +16,7 @@ import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 import { IS_STAGING } from './channel.js';
+import { savectx } from './savectx.svelte.js';   /* Save as context (#50), see savectx.svelte.js */
 
 export function startApp() {
   /* What you copy is the prompt only. Nothing is tacked onto the end any more: the writer
@@ -312,6 +313,7 @@ export function startApp() {
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
     else if (act === "goquick") goQuick();
+    else if (act === "savectx") saveAsContext(e.detail.where === "nudge" ? "nudge" : "result");   /* #50 */
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
@@ -392,6 +394,7 @@ export function startApp() {
   }
   function showResult(text, madeBy, title) {
     notify("result");
+    ui.build = ""; ui.slow = null; ui.switched = false;   /* #51: Ready, the chip steps away */
     ui.quickResult = false;   /* showQuick turns it back on; KeyNudge reads it */
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
@@ -546,6 +549,9 @@ export function startApp() {
     writeRun++;
     busy = false;
     setBusy(false);
+    ui.build = ""; ui.slow = null; ui.switched = false;
+    savectx.newBuild();
+    context.pickWaiting();   /* #50: a piece saved from the last prompt is picked for this one */
     stopTicker();
     setProgress(document.getElementById("resultProg"), "off");
     setReady(true);
@@ -712,7 +718,7 @@ export function startApp() {
     if (st) TIME_SCALE = 0.1;
     var at = st ? ["0:12", "0:18"] : ["2:00", "3:00"];
     notify("form", "info", fb && st ? "Busy Flash + 10x timing test is on" : fb ? "Flash models will say busy for 5 minutes" : "Slow-write test is on (10x faster)",
-      "Staging test. Tap Normal and build" + (fb ? ": every Flash model says busy, the page keeps trying them" : " something with a few details") + ", Switch to quick shows at " + at[0] + ", and the quick model writes it at " + at[1] + ". Reload to go back to normal.");
+      "Staging test. Tap Normal and build" + (fb ? ": every Flash model says busy, the page keeps trying them" : " something with a few details") + ", the \u26a1 Quick version chip under the timer grows a countdown at " + at[0] + ", and the quick model writes it at " + at[1] + ". Reload to go back to normal.");
   }
   window.addEventListener("hashchange", stagingSwitches);
   setTimeout(stagingSwitches, 0);
@@ -2063,6 +2069,8 @@ export function startApp() {
       shape: (function (sh) { sh = sh && typeof sh === "object" ? sh : {}; return { success: String(sh.success || "").trim().slice(0, 240), format: String(sh.format || "").trim().slice(0, 240) }; })(data.shape),
       memUse: Array.isArray(data.use_memory) ? data.use_memory : [],
       memRemember: (Array.isArray(data.remember) ? data.remember : []).map(function (x) { return String(x || "").trim(); }).filter(Boolean).slice(0, 2),
+      /* Save as context (#50): background worth keeping, spotted by this same call. */
+      candidate: (function (c) { return c && typeof c === "object" && String(c.title || "").trim() ? { title: String(c.title), why: String(c.why || "") } : null; })(data.context_candidate),
       questions: qs.slice(0, 5).map(function (q) {
         return {
           question: String((q && q.question) || "").trim(),
@@ -2201,10 +2209,13 @@ export function startApp() {
     session.t0 = Date.now();
     ui.goQuick = false;
     ui.reading = currentMode() !== "quick";
+    ui.build = "read"; ui.switched = false; ui.slow = null; ui.quickOn = currentMode() === "quick";   /* #51: the chip stays from here to Ready */
+    savectx.newBuild();   /* #50: last build's Save as context offer never carries over */
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     snapTo(document.getElementById("buildTrack"));
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
+    base = withCandidate(base);   /* #50: the same Read call also spots background worth saving, no extra call */
     memory.suggestions = [];
     var intakeText = "";
     ensureModel(key).then(function () {
@@ -2236,8 +2247,10 @@ export function startApp() {
       session.complexity = intake.complexity;
       session.category = intake.category;
       session.need = intake.need;
+      savectx.setCandidate(intake.candidate);   /* #50: the nudge shows under the tracker while it writes, or under the result */
       session.readSecs = (Date.now() - session.t0) / 1000;   /* the Write clock picks up from here */
       setBusy(false);
+      ui.build = "";
       var mode = currentMode();
       if (mode === "quick" || session.goQuick) { session.mode = "Quick mode"; if (session.goQuick) session.switchedQuick = "during Prep"; setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
@@ -2253,6 +2266,7 @@ export function startApp() {
       setBusy(false);
       setBuild("");
       cookStop();
+      ui.build = "";
       signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
@@ -2290,10 +2304,37 @@ export function startApp() {
      way the clock picks up where it was, never from 0. This build only: the saved Quick or
      Normal setting doesn't change. */
   function goQuick() {
-    if (!session || session.round >= 2) return;
-    if (ui.reading) { session.goQuick = true; ui.goQuick = true; return; }
-    if (!qa.hidden && !busy) { session.switchedQuick = "on the questions"; chat.finish(true); }
+    if (!session) return;
+    if (ui.reading) { if (session.round >= 2) return; session.goQuick = true; ui.goQuick = true; return; }
+    if (!qa.hidden && !busy) { session.switchedQuick = "on the questions"; chat.finish(true); return; }
+    /* #51 (v2.1.37): during Write, the chip stops the Flash race and the quick model writes from
+       your words and any answers so far. Still waiting on the cleanup: it writes quick when that ends. */
+    if (ui.build !== "write" || ui.quickOn || ui.switched) return;
+    if (session.waitingClean) { session.quickAfterClean = true; ui.switched = true; return; }
+    slowQuick(false);
   }
+
+  /* Save as context (#50, v2.1.37): opens the guided interview (SaveContext.svelte) from the nudge
+     or from the result's ⋯. It starts from the words of this prompt (your note and your answers),
+     held in memory only. Its Flash-Lite calls go through here so they use the same key, model
+     plan, and usage count as everything else; with no key it asks its five fixed questions. */
+  function saveAsContext(from) {
+    var s = session, said = s ? s.raw : thoughts.value.trim();
+    var ans = (s && s.answers || []).filter(function (a) { return a.answer && !a.tapped; }).map(function (a) { return a.question + " " + a.answer; });
+    var title = savectx.candidate ? savectx.candidate.title : "";
+    savectx.start(from, title, [said].concat(ans).filter(Boolean).join("\n"));
+  }
+  savectx.hasResult = function () { return !result.hidden; };
+  savectx.asker = function () {
+    var key = gemini.key || gkey.value.trim();
+    if (!key) return null;
+    return function (text, asJson) {
+      return ensureModel(key).then(function () {
+        var lites = route("squeeze");
+        return askGemini(text, asJson, lites.length ? lites : gemini.plan.intake, "auto", null, 30000);
+      }).then(function (r) { return r.text; });
+    };
+  };
 
   /* The questions are a chat now (ChatBuilder.svelte + chat.svelte.js). */
   function renderQuestions(intake) {
@@ -2487,7 +2528,7 @@ export function startApp() {
      and at 3:00 the quick model takes over by itself. The 3 minutes count from the first
      Write tap of this round (at least 20 seconds more for a write that starts late). Memory only. */
   var slowWrite = null;
-  function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } }
+  function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } ui.slow = null; }
   function watchSlowWrite(run, handle) {
     stopSlowWrite();
     var key = session.round || 1, now = Date.now();
@@ -2501,9 +2542,11 @@ export function startApp() {
       offer: setTimeout(function () {
         if (!slowWrite || run !== writeRun || !busy) return;
         slowWrite.offered = true;
+        /* #51 (SPEC 11/08, round 5): the note says why, and its countdown joins the one steady
+           ⚡ Quick version chip under the tracker instead of bringing a second button. */
+        ui.slow = { until: autoAt, total: autoAt - Date.now() };
         notify("result", "info", "Taking longer than usual",
-          "Flash is still writing and may finish any second. If it isn't done at 0:00, the quick model takes over, so you'll have a prompt by then. Or switch now: faster, but not as strong.",
-          [{ label: "Switch to quick", act: "slowquick" }], { until: autoAt, total: autoAt - Date.now(), label: "until the quick model takes over", done: "Switching to quick..." });
+          "Flash is still writing and may finish any second. If it isn't done when the countdown on \u26a1 Quick version hits 0:00, the quick model takes over, so you'll have a prompt by then. Or tap it now: faster, but not as strong.");
       }, offerAt - now),
       auto: setTimeout(function () { slowQuick(true); }, autoAt - now)
     };
@@ -2514,11 +2557,13 @@ export function startApp() {
     var s = slowWrite;
     if (!s || s.run !== writeRun || !session) return;
     if (!s.handle.stop || !s.handle.stop()) return;
+    var early = !auto && !s.offered;   /* #51: tapped the chip before the 2:00 note */
     stopSlowWrite();
     notify("result");
     session.autoQuick = !!auto;
-    session.slowSwitch = auto ? "auto at 3:00" : "tapped";
-    logRun({ outcome: auto ? "flash slow 3 min, quick model wrote it" : "flash slow, switched to quick", round: session.round || null });
+    session.slowSwitch = auto ? "auto at 3:00" : early ? "tapped early" : "tapped";
+    if (!auto) ui.switched = true;
+    logRun({ outcome: auto ? "flash slow 3 min, quick model wrote it" : early ? "switched to quick during write" : "flash slow, switched to quick", round: session.round || null });
     setBusy(false);
     writeFinal(session.answers, true);
   }
@@ -2532,6 +2577,7 @@ export function startApp() {
     setProgress(document.getElementById("resultProg"), "off");
     setBusy(false);
     setBuild("");
+    ui.build = "";
     qaStatus.textContent = "";
     session.flashAsked = (session.flashAsked || 0) + 1;
     logRun({ outcome: "flash used up, asked: " + why, round: session.round || null });
@@ -2557,8 +2603,10 @@ export function startApp() {
       setSteps(document.getElementById("resultTrack"), "clean", session.mode === "Quick mode" || !(session.questions && session.questions.length));
       document.getElementById("resultTrack").hidden = false;
       var waitRun = ++writeRun, waitT0 = Date.now();
+      ui.build = "write"; ui.quickOn = !!quick; session.waitingClean = true;   /* #51: the chip works here too */
       return session.cleanP.then(function () {
-        session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick); } });
+        session.waitingClean = false;
+        session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick || !!session.quickAfterClean); } });
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
@@ -2574,6 +2622,12 @@ export function startApp() {
     session.today = todayText();
     var text = writerText();
     setBusy(true, "Writing your prompt...");
+    /* #51: the ⚡ Quick version chip stays under the tracker for the whole write. A quick write
+       that came from a tap on it says so; Quick mode shows no chip (it's already quick). */
+    ui.build = "write"; ui.slow = null;
+    if (!quick) ui.switched = false;
+    ui.quickOn = !!quick && !ui.switched;
+    session.quickAfterClean = false;
     hideGrade();
     setBuild("");
     qaStatus.textContent = "";
@@ -2615,6 +2669,7 @@ export function startApp() {
       var before = fullCheck(draft);
       if (!before.score) return showWritten(draft, r, { status: "none" }, before);
       session.polished = true;
+      ui.build = "finish";   /* #51: written, only the finishing checks are left */
       setSteps(resultProg.closest(".tracker"), "polish", skipAsk);
       eta.phase("Polish \u00b7 fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found", POLISH_SECS, techOn() ? writeModels(true)[0] : "");
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
@@ -2654,6 +2709,7 @@ export function startApp() {
         var doStand = !quick && words(session.raw) >= STANDIN_MIN_WORDS, grading = testLog.on();
         if (!doStand && !grading) return reveal(0);
         session.checked = true;
+        ui.build = "finish";
         setSteps(resultProg.closest(".tracker"), "check", skipAsk);
         setBusy(true, "\ud83c\udfaf Checking it like your AI would...");
         document.getElementById("resultHead").textContent = "\ud83c\udfaf Checking it like your AI would...";
@@ -2767,6 +2823,7 @@ export function startApp() {
       setProgress(resultProg, "off");
       setBusy(false);
       setBuild("");
+      ui.build = "";
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
       /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).

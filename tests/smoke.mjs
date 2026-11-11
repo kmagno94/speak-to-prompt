@@ -40,7 +40,8 @@ const CORE = [
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
-  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:'
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
+  'quick chip:', 'save as context:'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -136,6 +137,19 @@ async function page(opts = {}) {
       if (opts.cleanFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const out = opts.cleanFn ? opts.cleanFn(raw) : opts.clean != null ? opts.clean : raw;
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
+    }
+    /* Save as context (#50): the interview turns (opts.interview: one reply per call, the last repeats) and the iron pass (opts.iron) */
+    if (/^CONTEXT INTERVIEW STEP\./.test(ask)) {
+      (p.interviews = p.interviews || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.interviewFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const turns = opts.interview || [];
+      const turn = turns[Math.min(p.interviews.length - 1, turns.length - 1)] || { covered: [], done: true, part: '', question: '' };
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(turn) }] } }] }) });
+    }
+    if (/^CONTEXT IRON STEP\./.test(ask)) {
+      (p.irons = p.irons || []).push({ model, text: ask });
+      if (opts.ironFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.iron != null ? opts.iron : 'What this is: MOCK NOTE' }] } }] }) });
     }
     if (/CONTEXT SQUEEZE STEP/.test(ask)) {
       (p.squeezes = p.squeezes || []).push({ model, text: ask });
@@ -1047,12 +1061,15 @@ await check('slow write: each Flash gets 30s, Switch to quick shows at 2:00, the
   // 2. At 2:00: Switch to quick, with a live countdown to the quick model
   await t(p, 61000);
   const note = await p.textContent('#notice-result');
-  expect(/Taking longer than usual/.test(note) && /until the quick model takes over/.test(note), 'the 2:00 note should show: ' + note);
-  const c = (await p.textContent('#notice-result .mclock')).trim();
-  expect(/^(1:00|0:5\d)$/.test(c), 'countdown should start near 1:00, got ' + c);
-  expect(!(await p.getAttribute('#notice-result button:has-text("Switch to quick")', 'class') || '').includes('primary'), 'waiting is still the default');
+  expect(/Taking longer than usual/.test(note) && /the quick model takes over/.test(note), 'the 2:00 note should show: ' + note);
+  /* v2.1.37 (#51): the countdown lives on the one ⚡ Quick version chip under the tracker; the note has no button of its own. */
+  expect(!(await p.$('#notice-result button')) && !(await p.$('#notice-result .mclock')), 'the 2:00 note brings no second button or clock');
+  const c = (await p.textContent('#quickChip #quickCount b')).trim();
+  expect(/^(1:00|0:5\d)$/.test(c), 'countdown on the chip should start near 1:00, got ' + c);
+  expect(/Quick version/.test(await p.textContent('#quickChip')) && /faster, lighter/.test(await p.textContent('#quickChip')), 'the chip keeps its honest label: ' + await p.textContent('#quickChip'));
+  expect(!(await p.getAttribute('#quickChip', 'class') || '').includes('primary'), 'waiting is still the default');
   // 3. Tap it: the Flash writers stop and the quick model writes now, with no 3-minute note
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(p, 500);
   expect(/lite/.test(writers(p).pop()) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it: ' + writers(p).join());
   const noteText = async (pg) => pg.evaluate(() => (document.getElementById('notice-result') || {}).textContent || '');
@@ -1215,7 +1232,7 @@ await check('model switching: Flash-Lite never writes a Normal prompt on its own
   await withKey(p); await p.fill('#thoughts', 'it goes pretty fast and wow 13 14 94'); await p.click('#build');
   for (let i = 0; i < 130 && !(await p.isVisible('#notice-result:has-text("Taking longer")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(20); }
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write without asking: ' + p.calls.map(c => c.model).join());
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
   expect(/lite/.test(p.calls.filter(c => !c.intake).pop().model) && await p.inputValue('#output') === 'THE PROMPT', 'a tap uses the quick model');
   // 2. Flash used up for the day: no wait offered, only the quick model
@@ -2573,7 +2590,7 @@ await check('limits: per-minute and busy are tried again, daily is used up (and 
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write a Normal prompt without asking (#35)');
   const tries = (m) => p.calls.filter(c => !c.intake && c.model === m).length;
   expect(tries('gemini-3.7-flash') === 1 && tries('gemini-3.6-flash') >= 3, 'used up drops out of the cycle, busy keeps getting tried: 3.7 x' + tries('gemini-3.7-flash') + ', 3.6 x' + tries('gemini-3.6-flash'));
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
   expect(await p.inputValue('#output') === 'THE PROMPT' && /lite/.test(p.calls.filter(c => !c.intake).pop().model), 'after Switch to quick, Flash-Lite writes it');
   await p.clock.resume();
@@ -3606,7 +3623,7 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   await q.clock.install();
   await q.click('#build');
   for (let i = 0; i < 130 && !(await q.isVisible('#notice-result:has-text("Taking longer")')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(20); }
-  await q.click('#notice-result button:has-text("Switch to quick")');
+  await q.click('#quickChip');
   for (let i = 0; i < 40 && !(await q.isVisible('#notice-result:has-text("Round 2 didn")')); i++) { await q.clock.runFor(500); await q.waitForTimeout(20); }
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
@@ -3740,14 +3757,23 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
   expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
   expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
-  // Again, with one piece changed on the first device: 1 updated, 1 already here, no duplicates
+  // Again, with one piece changed on the first device: 1 already here, and the changed one is never overwritten without asking (v2.1.37, #50)
   await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice moved to Sunday 10am at Elm Park.');
   await p.click('#contextSend');
   await q.evaluate((n) => navigator.clipboard.writeText(n), await p.evaluate(() => navigator.clipboard.readText()));
   await q.check('#contextKeep');
   await q.click('#contextIn');
-  await q.waitForSelector('#contextSyncMsg:has-text("1 updated")');
-  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 needs your pick")');
+  await q.waitForSelector('#saveCtx[open] #ctxOverlapLine');
+  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')), 'the unchanged piece is just counted: ' + await q.textContent('#contextSyncMsg'));
+  expect(/Saturday/.test(await q.textContent('#ctxOld')) && /Sunday 10am/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
+  expect(!(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)) && !(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
+  await q.click('#ctxUpdate');
+  await q.waitForSelector('#ctxDoneLine:has-text("1 updated")');
+  expect(/1 already here/.test(await q.textContent('#ctxDoneLine')), 'the summary counts both: ' + await q.textContent('#ctxDoneLine'));
+  await q.click('#ctxDone');
+  await q.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
   expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
   expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
   // A clipboard without the code: the paste box opens, and junk says what to do
@@ -5037,6 +5063,181 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(raw.includes('stp-probe') && !raw.some(k => k.startsWith('stg:')), 'live keys should be unprefixed, got: ' + raw.join(', '));
   });
 }
+
+
+/* v2.1.37: #51 Quick version all through the build, #50 Save as context. */
+await check('quick chip: ⚡ Quick version stays under the tracker for the whole build, a tap during Write stops Flash and the quick model writes, and it steps aside for the finishing checks (#51)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const writers = (pg) => pg.calls.filter(c => !c.intake).map(c => c.model);
+  // 1. During Write: the chip is there from the start (no waiting for 2:00), and a tap hands the write to the quick model
+  const p = await page({ intake, slow });
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  await p.waitForSelector('#waitRow #quickChip', { timeout: 6000 });
+  const label = await p.textContent('#quickChip');
+  expect(/Quick version/.test(label) && /\(faster, lighter\)/.test(label), 'the chip keeps its honest label: ' + label);
+  expect(!(await p.$('#quickCount')), 'no countdown before 2:00');
+  expect(!(await p.getAttribute('#quickChip', 'class') || '').includes('primary'), 'never the main button');
+  expect(await p.evaluate(() => { const r = document.getElementById('waitRow'), t = document.getElementById('resultTrack'); return !!(t.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING) && r.getBoundingClientRect().height > 0; }), 'the chip sits right under the tracker, in view while it cooks');
+  expect(writers(p).length >= 1 && !writers(p).some(m => /lite/.test(m)), 'Flash is writing first: ' + writers(p).join());
+  await p.click('#quickChip');
+  await done(p);
+  expect(/lite/.test(writers(p).pop()) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it after the tap: ' + writers(p).join());
+  expect(!(await p.$('#waitRow')) && !(await p.$('#quickChip')), 'the chip steps away at Ready');
+  expect(!/The quick model wrote this one/.test(await p.evaluate(() => (document.getElementById('notice-result') || {}).textContent || '')), 'a tap needs no explaining');
+  if (p.releaseSlow) p.releaseSlow();
+  await p.waitForTimeout(400);
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'a late Flash answer must not replace the quick prompt');
+  // 2. Written, with Polish still going: nothing left to speed up, so the chip becomes a quiet line
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const q = await page({ intake, write: BAD, repairDelay: 1500 });
+  await withKey(q); await q.fill('#thoughts', RAW); await q.click('#build');
+  await q.waitForSelector('#quickPast', { timeout: 8000 });
+  expect(!(await q.$('#quickChip')), 'no Quick version button once the prompt is written');
+  await done(q);
+  expect(!(await q.$('#quickPast')), 'the line goes away at Ready');
+  // 3. Quick mode is already the quick version: no chip
+  const r = await page({ intake, slow: ['gemini-3.5-flash-lite'] });
+  await withKey(r); await r.check('#quickMode');
+  await r.fill('#thoughts', 'plan my roast week'); await r.click('#build');
+  for (let i = 0; i < 40 && !r.calls.some(c => !c.intake); i++) await r.waitForTimeout(100);
+  await r.waitForTimeout(200);
+  expect(!(await r.$('#quickChip')) && !(await r.$('#quickSwitch')), 'no Quick version chip in Quick mode');
+  if (r.releaseSlow) r.releaseSlow();
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: Read spots background with no extra call, the nudge shows under the tracker while it writes and under the result after, and the interview saves a piece (#50)', async () => {
+  const cand = { title: 'Bean roasting', why: 'You explained how your roast week works.' };
+  const intake = { title: 'Roast Week Plan', need: 'Plan my roast week', category: 'Work', complexity: 'simple', questions: [], context_candidate: cand };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const RAW = 'ok so I run the roaster at a small coffee shop, we roast on Tuesday and Friday, two blends, and I need a plan for this week';
+  const interview = [{ covered: ['what', 'facts'], done: false, part: 'goals', question: 'What do you usually want help with?' }, { covered: ['what', 'facts', 'goals'], done: true, part: '', question: '' }];
+  const IRON = 'What this is: I run the roaster at a small coffee shop.\nKey facts:\n- We roast on Tuesday and Friday\n- Two blends\nGoals: A weekly roast plan I can follow.';
+  const p = await page({ intake, slow, interview, iron: IRON });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build');
+  // 1. While it writes: the offer sits under the tracker, next to the Quick version chip
+  await p.waitForSelector('#waitRow #ctxNudgeWait', { timeout: 6000 });
+  expect(/Bean roasting/.test(await p.textContent('#ctxNudgeWait')) && /roast week/.test(await p.textContent('#ctxNudgeWait')), 'the card names what it spotted: ' + await p.textContent('#ctxNudgeWait'));
+  expect(await p.isVisible('#waitRow #quickChip'), 'the Quick version chip is right there with it');
+  const reads = p.calls.filter(c => c.intake);
+  expect(reads.length === 1 && /context_candidate/.test(reads[0].text) && !p.interviews && !p.irons, 'spotting it rides the Read call: no extra request');
+  // 2. The prompt finishes first: the offer moves under the result
+  p.releaseSlow();
+  await done(p);
+  expect(!(await p.$('#ctxNudgeWait')) && await p.isVisible('#ctxNudge'), 'the offer moves under the result');
+  expect(await p.evaluate(() => !!(document.getElementById('output').compareDocumentPosition(document.getElementById('ctxNudge')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'it sits below the prompt');
+  // 3. The interview: one question at a time, a Covered so far checklist, Save what we have always there
+  await p.click('#ctxNudgeGo');
+  await p.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("What do you usually want help with?")', { timeout: 8000 });
+  expect(await p.inputValue('#ctxTitleIn') === 'Bean roasting', 'the title starts as what Read called it');
+  expect((await p.$$eval('#ctxCovered li', (l) => l.length)) === 5 && (await p.$$eval('#ctxCovered li.on', (l) => l.map((x) => x.dataset.part).join())) === 'what,facts', 'the checklist is the five parts, with what your words cover ticked');
+  expect(await p.isVisible('#ctxSaveNow') && await p.isEnabled('#ctxSaveNow'), 'Save what we have is on screen from the first question');
+  expect(p.interviews.length === 1 && p.interviews[0].text.includes('Tuesday and Friday') && p.interviews[0].json && /lite/.test(p.interviews[0].model), 'the interview reads your words on Flash-Lite');
+  await p.fill('#ctxAnswer', 'a weekly plan I can follow');
+  await p.click('#ctxNext');
+  await p.waitForSelector('#ctxPiece', { timeout: 8000 });
+  expect(p.interviews.length === 2 && /a weekly plan I can follow/.test(p.interviews[1].text), 'it checks again after each answer and stops when nothing important is missing');
+  expect(p.irons.length === 1 && /a weekly plan I can follow/.test(p.irons[0].text) && await p.inputValue('#ctxPiece') === IRON, 'one iron pass writes the labeled note');
+  // 4. Save: a normal piece, following Save on this phone; picked for the next prompt, not this one
+  await p.click('#ctxSave');
+  await p.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /stp-context/.test(k))), 'with Save on this phone off, nothing is written to the phone');
+  await p.check('#ctxKeepHere');
+  expect(await p.evaluate(() => /Tuesday and Friday/.test(localStorage.getItem('stp-context') || '')), 'turning Save on this phone on keeps it, like any piece');
+  await p.click('#ctxDone');
+  await p.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect(!(await p.$('#ctxNudge')), 'the offer is done once it is saved');
+  expect(await p.isHidden('#dockBuild') && await p.isVisible('#copy'), 'saving never turns a finished prompt into build again');
+  await menuTap(p, '#reset');
+  await p.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Bean roasting")', { timeout: 3000 });
+  // 5. Quick mode gets the offer too, and Not now saves nothing
+  const q = await page({ intake });
+  await withKey(q); await q.check('#quickMode');
+  await q.fill('#thoughts', RAW); await q.click('#build'); await done(q);
+  await q.waitForSelector('#ctxNudge', { timeout: 3000 });
+  await q.click('#ctxNudgeLater');
+  await q.waitForFunction(() => !document.getElementById('ctxNudge'));
+  expect(!q.interviews && await q.evaluate(() => !Object.keys(localStorage).some((k) => /stp-context/.test(k))) && !(await q.$('#contextRow .ctxchip')), 'Not now: no call, nothing saved');
+  // 6. No candidate from Read: no card
+  const r = await page({ intake: { ...intake, context_candidate: null } });
+  await withKey(r); await r.fill('#thoughts', RAW); await r.click('#build'); await done(r);
+  expect(!(await r.$('#ctxNudge')) && !(await r.$('#ctxNudgeWait')), 'no offer when Read found nothing worth saving');
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: an ironed note with a number you never said falls back to your own words, no key uses the five fixed questions, and an overlap asks Update, Keep both, or Skip (#50)', async () => {
+  const RAW = 'ok so I run the roaster at a small coffee shop, we roast on Tuesday and Friday, two blends, and I need a plan for this week';
+  const intake = { title: 'Roast Week Plan', need: 'Plan my roast week', category: 'Work', complexity: 'simple', questions: [] };
+  // 1. From the result's ⋯ (no nudge needed). The iron pass invents a number: the phone throws it out and uses your words
+  const p = await page({ intake, interview: [{ covered: ['what'], done: true, part: '', question: '' }], iron: 'What this is: I run the roaster.\nKey facts:\n- We roast 40 batches a week' });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  await menuTap(p, '#dockSaveCtx');
+  await p.waitForSelector('#saveCtx[open] #ctxPiece', { timeout: 8000 });
+  const piece = await p.inputValue('#ctxPiece');
+  expect(p.irons.length === 1 && !/40/.test(piece) && /^What this is:/.test(piece) && piece.includes('Tuesday and Friday'), 'a number you never said never gets saved: ' + piece);
+  await p.click('#ctxSave');
+  expect(/short title/.test(await p.textContent('#saveCtx .err')), 'a piece needs a title before it saves');
+  await p.fill('#ctxTitleIn', 'Roaster');
+  await p.click('#ctxSave');
+  await p.waitForSelector('#ctxDoneLine');
+  await p.click('#ctxDone');
+  // 2. A Flash-Lite call that fails: the fixed questions take over
+  const f = await page({ intake, interviewFail: true });
+  await withKey(f); await f.fill('#thoughts', RAW); await f.click('#build'); await done(f);
+  await menuTap(f, '#dockSaveCtx');
+  await f.waitForSelector('#ctxQuestion:has-text("what is this")', { timeout: 20000 });
+  // 3. No key, from the My context editor: five fixed questions, your own words under the labels
+  const q = await page();
+  await q.click('#contextNew');
+  await q.click('#contextGuided');
+  await q.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  expect(await q.isDisabled('#ctxSaveNow'), 'nothing to save before the first answer');
+  await q.fill('#ctxTitleIn', 'Soccer team');
+  await q.fill('#ctxAnswer', 'U10 Rockets, the team I coach'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("always know")');
+  expect((await q.$$eval('#ctxCovered li.on', (l) => l.map((x) => x.dataset.part).join())) === 'what' && await q.isEnabled('#ctxSaveNow'), 'each answer ticks its part');
+  await q.fill('#ctxAnswer', 'Practice Saturday 9am at Elm Park'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("get done")'); await q.click('#ctxSkip');
+  await q.waitForSelector('#ctxQuestion:has-text("changes often")'); await q.fill('#ctxAnswer', 'nothing'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("leave out")'); await q.click('#ctxSkip');
+  await q.waitForSelector('#ctxPiece');
+  const own = await q.inputValue('#ctxPiece');
+  expect(own === 'What this is:\nU10 Rockets, the team I coach\n\nKey facts:\nPractice Saturday 9am at Elm Park', 'your words under the labels, skipped and "nothing" parts left out: ' + JSON.stringify(own));
+  expect(!q.calls.length && !q.interviews && !q.irons, 'no key, no calls');
+  await q.click('#ctxSave');
+  await q.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  expect(/picked for your next prompt\./.test(await q.textContent('#saveCtx')), 'with no prompt on screen it is picked right away');
+  await q.click('#ctxDone');
+  await q.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Soccer team")');
+  // 4. The same title again with different words: old vs new, and nothing changes until you pick
+  const again = async (words) => {
+    await q.click('#contextGuided');
+    await q.waitForSelector('#saveCtx[open] #ctxQuestion');
+    await q.fill('#ctxTitleIn', 'soccer team');
+    await q.fill('#ctxAnswer', words); await q.click('#ctxNext');
+    await q.waitForSelector('#ctxQuestion:has-text("always know")');
+    await q.click('#ctxSaveNow');
+    await q.waitForSelector('#ctxPiece'); await q.click('#ctxSave');
+    await q.waitForSelector('#ctxOverlapLine');
+  };
+  await again('U10 Rockets moved to Sunday');
+  expect(/Saturday 9am/.test(await q.textContent('#ctxOld')) && /moved to Sunday/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 1, 'nothing changes until you pick');
+  await q.click('#ctxBoth');
+  await q.waitForSelector('#ctxDoneLine'); await q.click('#ctxDone');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.map((c) => c.textContent.replace('✓ ', '').trim()).sort().join('|'))) === 'Soccer team|soccer team (new)', 'Keep both saves the new one under its own title');
+  await again('U10 Rockets, now at Oak Field');
+  await q.click('#ctxSkipOverlap');
+  await q.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
+  await again('U10 Rockets, now at Oak Field');
+  await q.click('#ctxUpdate');
+  await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
+  expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
+});
 
 await browser.close();
 server.kill();

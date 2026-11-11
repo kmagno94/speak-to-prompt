@@ -36,6 +36,9 @@
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
   import QuickSwitch from './QuickSwitch.svelte';
+  import ContextNudge from './ContextNudge.svelte';
+  import SaveContext from './SaveContext.svelte';
+  import { ui } from './lib/ui.svelte.js';
   import HearSpeed from './HearSpeed.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
@@ -178,6 +181,10 @@
       <p class="detail"></p>
       <div class="timestrip" hidden></div>
     </div>
+    <!-- While the prompt is being written (#50, #51): the ⚡ Quick version chip, and next to it the
+         Save as context offer when Read spotted background worth keeping. Outside #resultTrack on
+         purpose: Rework rounds redraw that from saved HTML. -->
+    {#if ui.build}<div class="waitrow" id="waitRow"><QuickSwitch place="result" /><ContextNudge place="wait" /></div>{/if}
     <p id="madeBy" class="madeby"></p>
     <KeyNudge place="result" />
     <Notice where="result" />
@@ -202,6 +209,8 @@
       </div>
     </div>
     <p id="status" class="status openstatus" role="status"></p>
+    <!-- The prompt finished before the offer was answered: it waits here, under the result (#50). -->
+    <ContextNudge place="done" />
     <ReportIssue />
     <MemorySuggest />
     <div class="devrow" id="devRow" hidden={!core.dev}>
@@ -341,6 +350,7 @@
   </details>
 
   <Tutorial bind:this={tutorial} />
+  <SaveContext />
   <IdeasTab />
   <TestLab />
   <Guide />

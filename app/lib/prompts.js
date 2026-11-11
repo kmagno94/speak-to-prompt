@@ -55,6 +55,59 @@ export function withContext(analyze, block) {
   return analyze.replace('RAW THOUGHTS:', 'CONTEXT THE PERSON PICKED FOR THIS REQUEST (already known; never ask a question it answers, and never ask them to repeat it):\n' + block + '\n\nRAW THOUGHTS:');
 }
 
+/* Save as context (#50, v2.1.37): the Read call also says whether the raw thoughts hold
+   reusable background worth saving as a My context piece. It rides the same call as one more
+   JSON field (context_candidate), so the nudge costs no extra request. */
+export function withCandidate(analyze) {
+  return analyze.replace('RAW THOUGHTS:',
+    'Also add "context_candidate" to your JSON. If the raw thoughts spend real effort explaining lasting background the person would otherwise have to explain again in a later request (who they are, their job or business, an ongoing project, their setup, tools, or a standing situation), set it to {"title": "a 2 to 5 word name for that background, like Bean N Bean roasting or My home network", "why": "one short plain line naming what they explained, written to them (for example: You explained how your roasting schedule works)"}. ' +
+    'Set it to null when the request is a one-off (a single message, a quick question, a one-time event), when the background is only a sentence or two, or when the context they picked above already covers it.\n\nRAW THOUGHTS:');
+}
+
+/* Save as context, the guided interview (#50): after each answer one Flash-Lite call says
+   which labeled parts are covered and asks the next question, or says it's done. No cap on
+   questions (SPEC 11/08); Save what we have is always on screen. */
+export const CTX_PARTS = [
+  { key: 'what', label: 'What this is', ask: 'In a sentence or two, what is this? A project, your job, a setup, a routine, anything you keep explaining.' },
+  { key: 'facts', label: 'Key facts', ask: 'What should an AI always know about it? Names, numbers, tools, how it works.' },
+  { key: 'goals', label: 'Goals', ask: 'What are you usually trying to get done with it, or what does a good result look like?' },
+  { key: 'changes', label: 'What changes often', ask: 'What changes often, so an AI should ask you instead of assuming? Say "nothing" if it stays the same.' },
+  { key: 'leave', label: 'Leave out', ask: 'Anything an AI should leave out or never do here? Say "nothing" if not.' }
+];
+function ctxSaid(title, source, turns) {
+  const out = ["TITLE: " + (title || "(none yet)"), "", "WHAT THEY SAID FIRST:", '"""', source || "(nothing yet)", '"""'];
+  const t = (turns || []).filter((x) => x && x.q);
+  out.push("", "QUESTIONS ASKED SO FAR, WITH THEIR ANSWERS:");
+  out.push(t.length ? t.map((x) => "Q (" + x.part + "): " + x.q + "\nA: " + (x.a ? x.a : "(skipped, do not ask again)")).join("\n\n") : "None yet.");
+  return out;
+}
+export function interviewPrompt(title, source, turns) {
+  return [
+    "CONTEXT INTERVIEW STEP. A person is saving reusable background (a \"context\") about one thing in their life or work, so they never have to explain it to an AI again. You interview them, one short question at a time.",
+    "The saved context has five parts: what (what this is), facts (key facts: names, numbers, tools, how it works), goals (what they want from it or what good looks like), changes (what changes often, so an AI should ask instead of assuming), leave (what an AI should leave out or never do).",
+    "1. Decide which parts their words already cover well enough that an AI would not need to ask.",
+    "2. If something important is still missing, ask ONE short, plain, friendly question about the most important missing thing, and say which part it belongs to. Never ask about something they already said, never repeat a question, and never ask again about something they skipped.",
+    "3. If nothing important is missing, you are done. Do not ask a question just to fill a part: changes and leave can stay empty when nothing suggests they matter.",
+    "",
+    'Respond with JSON only, in exactly this shape: {"covered": ["what", "facts"], "done": false, "part": "goals", "question": "the one short question"}. When done is true, question is an empty string.',
+    ""
+  ].concat(ctxSaid(title, source, turns)).join("\n");
+}
+/* The iron pass (#50): one Flash-Lite call turns everything they said into the labeled note.
+   The phone checks it (no new numbers, under the cap, has its first label) and falls back to
+   their own words under the same labels if it fails. */
+export function ironPrompt(title, source, turns) {
+  return [
+    "CONTEXT IRON STEP. Turn what a person said below into one saved context note an AI can read before helping them.",
+    "Use only facts they said. Never add a fact, a guess, advice, or a number they did not say. Keep every name, number, version, date, and amount exactly as they wrote it, and keep their hedges (maybe, around, I think).",
+    "Write in first person, as them (I, my). Plain words, no filler, nothing said twice. Under 3,000 characters.",
+    "Use exactly these labels, each starting its own line, in this order: What this is: / Key facts: / Goals: / What changes often: / Leave out:",
+    "Key facts is a short list, one fact per line starting with \"- \". Leave a label out entirely when they said nothing for it (an answer like \"nothing\" or a skipped question means leave it out).",
+    "Output only the note: no title line, no intro, no closing line, and no code fences.",
+    ""
+  ].concat(ctxSaid(title, source, turns)).join("\n");
+}
+
 /* My context squeeze: past the 1,500 token budget, one Flash-Lite call makes the picked
    pieces shorter for this build only. Facts stay, filler goes, nothing new comes in. */
 export const SQUEEZE = [

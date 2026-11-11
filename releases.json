@@ -2,6 +2,62 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.37",
+      "date": "2026-11-11",
+      "title": "Save as context, and a Quick version button that stays for the whole build",
+      "items": [
+        "🧱 Save as context: when your words hold background you'd otherwise retype (your job, a project, a setup), a card offers to save it as a My context piece. It shows under the timer while your prompt is written, and moves under the result if the prompt finishes first. It works in Quick mode too. Spotting it costs nothing extra: it rides the Read step that already runs.",
+        "The interview asks one question at a time, with no limit. A Covered so far checklist ticks off What this is, Key facts, Goals, What changes often, and Leave out. It stops when nothing important is missing, and Save what we have is always on screen.",
+        "The finished piece is a clean labeled note built only from what you said. If the cleanup adds a number you never said, your own words are used instead. It saves like any My context piece (so it follows Save on this phone) and gets picked for your next prompt.",
+        "You can also start it yourself: 🧱 Save as context in the ⋯ menu on a finished prompt, or Build one with questions in the My context editor (that one works with no key).",
+        "If a piece overlaps one you already have, you see old vs new with Update, Keep both, or Skip. Bring in uses the same screen now, so it never overwrites a piece without asking.",
+        "⚡ Quick version (faster, lighter) is now one steady chip under the timer for the whole build, not just the first few seconds. Tap it while the prompt is being written and the quick model takes over right away. At 2:00 the countdown shows on that same chip instead of a second button."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, tap Normal and build this note. While it says Writing your prompt, look right under the timer.",
+          "see": "A ⚡ Quick version (faster, lighter) chip is there the whole time it writes, and it is not the big main button. When the prompt is ready, the chip is gone.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Build this note again in Normal, and tap ⚡ Quick version as soon as the timer says Write.",
+          "see": "It says Quick version it is, and a prompt shows up within a few seconds. No questions get asked again and the clock does not restart at 0:00.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Open the staging link that ends in #flashbusy-slowtest, tap Normal, and build this note. Watch the chip under the timer for about 20 seconds.",
+          "see": "At about 0:12 a Taking longer than usual note shows with no button of its own, and the ⚡ Quick version chip grows a countdown. At about 0:18 the quick model writes it by itself and a note says so.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Build this note in Normal. Look for a 🧱 Save as context card under the timer while it writes, or under the prompt when it is done. Tap Save as context and answer the questions.",
+          "see": "The card names the background it spotted. The sheet asks one question at a time, shows Covered so far with five parts, and Save what we have is always there. At the end you see a labeled note made from only what you said. Tap Save to My context: it says Saved, and that it gets picked when you tap New prompt.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "After saving, tap ⋯ then New prompt and look at My context.",
+          "see": "The new piece is there as a chip with a check, already picked for this prompt."
+        },
+        {
+          "say": "Switch to Quick and build this note.",
+          "see": "The 🧱 Save as context card shows under the result in Quick mode too. Tap Not now: it goes away and nothing is saved.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "On a finished prompt, tap ⋯ and then 🧱 Save as context. Give it the same title as the piece you saved before, change a few words in the note, and tap Save to My context.",
+          "see": "A You already have this one screen shows Already here and New side by side, with Update, Keep both, and Skip. Nothing changes until you pick. Keep both adds a second piece with (new) in its title."
+        },
+        {
+          "say": "Open My context, tap Edit, then 🧱 Build one with questions. Answer two questions and tap Save what we have.",
+          "see": "It starts with a plain question about what this is, each answer ticks a part in Covered so far, and the note at the end has your answers under labels like What this is and Key facts."
+        },
+        {
+          "say": "In My context, tap Copy for Notes. Change the words in one piece, then tap Bring in.",
+          "see": "It does not overwrite your changed piece. A screen shows old vs new and asks Update, Keep both, or Skip."
+        }
+      ]
+    },
+    {
       "version": "2.1.36",
       "date": "2026-11-08",
       "title": "Pick your Hear it speed, and a pro prompt button you can't miss",
