@@ -12,6 +12,11 @@
 # Run workflow, type a tag in "live_tag" (like v2.0.0). That pins live to the tag (a
 # live-hold tag) so later staging pushes keep it there. Type "main" to unpin.
 #
+# Test browser: each test step first tries the full install (browser plus Ubuntu's system
+# packages). If Ubuntu's servers can't be reached (11/11: three deploys failed before a single
+# test ran), it falls back to the browser alone, which is all the tests need on GitHub's
+# machines. A real test failure still stops the deploy.
+#
 # Two speeds, so staging stays quick and live stays safe:
 #   staging push  release check + QUICK core smoke tests gate the deploy (a few minutes);
 #                 live is rebuilt but not re-tested if main's commit already passed;
@@ -119,7 +124,7 @@ jobs:
         if: steps.src.outputs.test_live == 'true'
         working-directory: live
         run: |
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium || npx playwright install chromium
           env -u GITHUB_SHA npm test
       # Release loop: releases.json matches package.json and staging is at most 5 builds
       # ahead of live (main's package.json). Skipped on a manual run, so a roll back is never blocked.
@@ -136,7 +141,7 @@ jobs:
         working-directory: stg
         run: |
           npm ci
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium || npx playwright install chromium
           env -u GITHUB_SHA APP_CHANNEL=staging QUICK=${{ steps.src.outputs.quick }} npm test
 
       - name: Build live
@@ -177,7 +182,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium || npx playwright install chromium
       - run: env -u GITHUB_SHA APP_CHANNEL=staging npm test
 
   # The Cloudflare Worker (worker/report-relay.js), only after the tests pass, and only
