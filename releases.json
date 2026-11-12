@@ -2,6 +2,37 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.41",
+      "date": "2026-11-12",
+      "title": "Shortcut stand-in: Cloud Pro, and a shorter set of writing rules for Apple's models",
+      "items": [
+        "🔀 Write with (dev tools) has a fourth choice: Shortcut (Cloud Pro), Apple's cloud model with more reasoning. Run stats tag it shortcut-cloud-pro.",
+        "The shortcut now gets a shorter set of writing rules than Flash. On the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full rules. The short version has six plain rules, asks for numbers as digits, and puts the must-keep list last. It leaves out lessons, your core, and memory. Flash is not changed.",
+        "The hand-off card offers both other Apple models (like Try Cloud Pro and Try On-Device), plus Use Flash instead.",
+        "The STP Flash Backup shortcut needs one more branch for Cloud Pro: input that contains cloudpro uses the Cloud Pro model.",
+        "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied."
+      ],
+      "checks": [
+        {
+          "say": "Open More options with Show my dev tools on and look at Write with.",
+          "see": "Four choices: Flash, Shortcut (Cloud), Shortcut (Cloud Pro), and Shortcut (On-Device)."
+        },
+        {
+          "say": "Pick Shortcut (Cloud Pro), tap Normal, and build this note. Answer or skip any questions.",
+          "see": "A card says Hand this write to STP Flash Backup (Cloud Pro), with Copy and run shortcut, Try Cloud, Try On-Device, and Use Flash instead.",
+          "paste": "so um my coworker Imani is running her first 10k on the 23rd and I wanna make her a little race day kit, I've got like 40 bucks, she loves sour candy and can't stand anything mint, and it has to fit in her locker which is tiny, what should I put in it"
+        },
+        {
+          "say": "With the Cloud Pro branch added to the shortcut, tap Copy and run shortcut.",
+          "see": "The shortcut brings you back, Polish and Check finish, and the line under the prompt says STP Flash Backup (Cloud Pro). The prompt has the 23rd, $40 as digits, sour candy, no mint, and the tiny locker."
+        },
+        {
+          "say": "Build a prompt with Write with set to Flash, type one more word in the box, and scroll to the bottom.",
+          "see": "The pill at the bottom shows Copy prompt, Rebuild, and ⋯."
+        }
+      ]
+    },
+    {
       "version": "2.1.40",
       "date": "2026-11-11",
       "title": "Dev tools: hand the Flash write to the STP Flash Backup shortcut",

@@ -102,6 +102,11 @@
     const seen = new IntersectionObserver(([e]) => { const r = e.boundingClientRect; inlineSeen = !(r.height && r.top + r.height / 2 < (e.rootBounds?.top || 0)); }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
     seen.observe(inline);
     inlineEl = inline;
+    /* v2.1.41: the observer still missed it on slow runs (the 11/11 staging runs read the pill
+       without Rebuild while Build was far above), so a scroll re-measures too, once per frame. */
+    let scrollRaf = 0;
+    const onScroll = () => { if (scrollRaf) return; scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; if (building) measure(); }); };
+    window.addEventListener('scroll', onScroll, { passive: true });
     const mirror = () => { busy = inline.disabled; busyLabel = inline.textContent.trim(); };
     const mo = new MutationObserver(mirror);
     mo.observe(inline, { attributes: true, attributeFilter: ['disabled'], childList: true, characterData: true, subtree: true });
@@ -136,6 +141,7 @@
     };
     document.addEventListener('keydown', keys);
     return () => {
+      window.removeEventListener('scroll', onScroll); cancelAnimationFrame(scrollRaf);
       seen.disconnect(); mo.disconnect(); revealWatch.disconnect(); clearTimeout(pulseTimer);
       copyBtn.removeEventListener('animationend', endPulse); window.removeEventListener('stp-ready', ran);
       reset.removeEventListener('click', snap, true); window.removeEventListener('stp-undo', undone); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);

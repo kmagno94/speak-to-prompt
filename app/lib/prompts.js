@@ -209,6 +209,41 @@ export const WRITE = [
   "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
 ].join("\n");
 
+/* Short writer text for the Shortcut stand-in (#53, v2.1.41, dev tools only). Apple's models
+   lost details under the full WRITE rules (first test 11/12: Cloud dropped the date, the budget,
+   and three preferences), so the shortcut gets a short version: six plain rules, the notes, the
+   answers, and the must-keep list last, where a small model reads it right before writing.
+   Left out on purpose: lessons, your core, memory, and Rework. Flash never gets this text. */
+export function shortWriteText(o) {
+  const out = [
+    "Rewrite my notes below into one clear prompt that I can paste into an AI assistant such as ChatGPT, Claude, or Gemini.",
+    "",
+    "Rules:",
+    "1. Write it as me, in first person.",
+    "2. Use these labels, each on its own line, in this order: Role: (the expert the AI should be), Context: (my situation), Task: (exactly what I want), Limits: (every limit, like, and dislike I gave), A great answer: (how I will judge it), Format: (the shape and length of the answer).",
+    "3. Keep every name, number, date, limit, like, and dislike from my notes and answers. Write numbers as digits, exactly as I gave them (like $75 or the 14th). Keep words like maybe and around.",
+    "4. Add nothing I did not say: no new facts, people, devices, or rules.",
+    "5. End with this line: Start right away, and ask at most one short question only if something essential is missing.",
+    "6. Output only the prompt. No title, no intro, no closing words, no code fences.",
+    "",
+    "MY NOTES:",
+    '"""',
+    o.raw || "",
+    '"""'
+  ];
+  const a = (o.answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "MY ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n"));
+  if (o.goal) out.push("", "MY GOAL IN ONE LINE (aim the prompt at it; it adds no facts): " + o.goal);
+  const sh = o.shape || {};
+  if (sh.success || sh.format) out.push("", "ONLY IF I DID NOT SAY (suggestions, my own words win):" + (sh.success ? "\nA great answer: " + sh.success : "") + (sh.format ? "\nFormat: " + sh.format : ""));
+  if (o.context) out.push("", "BACKGROUND I PICKED (use only the facts this request needs, in plain words; never paste it in as a block):", o.context);
+  if (o.today) out.push("", "TODAY IS " + o.today + ". Use it only to count days. Never add a year, weekday, or month to a date I gave.");
+  const items = o.items || [];
+  if (items.length) out.push("", "MUST KEEP (every item below has to be in the prompt, in a clean sentence):", ...items.map((i) => "- " + i));
+  out.push("", "Now write the prompt.");
+  return out.join("\n");
+}
+
 /* Lessons learned: short, general rules the twice-daily review writes into
    lessons.json from graded runs and stress tests. They never hold anyone's words,
    only how to write better prompts. Added to WRITE so every run uses them. */

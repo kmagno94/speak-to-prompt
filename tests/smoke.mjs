@@ -4870,7 +4870,8 @@ await check('stuck nudge: a quiet box gets one sentence to finish; tap starts th
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
   expect(!(await p.$('#stuckClose')), 'no ✕: a stray tap must not switch the nudges off');
-  await p.type('#thoughts', ' more'); await p.waitForTimeout(300);
+  await p.type('#thoughts', ' more');
+  await p.waitForSelector('#stuck', { state: 'hidden', timeout: 2000 }).catch(() => {});   /* same fade as above: the 11/11 staging run read it mid-fade */
   expect(!(await p.isVisible('#stuck')), 'typing should tuck it away');
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'nudges stay: it comes back after every quiet stretch');
@@ -5473,7 +5474,8 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(link.startsWith('shortcuts://run-shortcut?name=STP%20Flash%20Backup&input=text&text='), 'run link wrong: ' + link);
   expect(decodeURIComponent(link.split('&text=')[1]) === BASE + '#stpback=cloud.', 'the link should carry where to come back to: ' + link);
   const sent = await p.evaluate(() => navigator.clipboard.readText());
-  expect(/RAW THOUGHTS:/.test(sent) && /taco night/.test(sent), 'the clipboard should hold what Flash would get');
+  expect(/MY NOTES:/.test(sent) && /taco night/.test(sent) && /Now write the prompt\.$/.test(sent), 'the clipboard should hold the short writer text');
+  expect(!/world-class prompt engineer|LESSONS FROM REVIEWS/.test(sent) && sent.length < 2500, 'the shortcut gets the short rules, not the full WRITE text: ' + sent.length);
   expect(/Waiting for STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'waiting card missing');
   expect(/taco night/.test(await scStored(p)), 'the build is kept for a new tab while it waits');
   /* The shortcut is back in the same tab. */
@@ -5484,6 +5486,18 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(await p.evaluate(() => location.hash) === '', 'the link should be cleared');
   expect(!(await scStored(p)), 'the kept build is deleted once the result is back');
   expect(!p.calls.some(c => !c.intake), 'still nothing sent to a Flash writer');
+  /* Cloud Pro (v2.1.41): its own link word, label, and made-by line. */
+  await p.click('#writerPro');   /* More options is still open */
+  await p.evaluate(() => { document.getElementById('reset').click(); window.__scOpens = []; });
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/STP Flash Backup \(Cloud Pro\)/.test(await scCardText(p)), 'card should name Cloud Pro: ' + await scCardText(p));
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/stpback%3Dcloudpro\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use Cloud Pro');
+  await p.evaluate((t) => { location.hash = '#stpback=cloudpro.' + encodeURIComponent(t); }, SC_PROMPT);
+  await done(p);
+  expect(/STP Flash Backup \(Cloud Pro\)/.test(await p.textContent('#madeBy')), 'made-by line should name Cloud Pro: ' + await p.textContent('#madeBy'));
   /* Dev tools off: the saved choice does nothing. */
   await p.evaluate(() => localStorage.setItem('stp-dev', '0')); await p.reload();
   await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await done(p);

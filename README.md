@@ -74,13 +74,15 @@ Under the Grader bench, **Run flow bench** runs the 5 hardest notes in `flowbenc
 
 ### Shortcut stand-in for the Flash write (dev tools, proof of concept, v2.1.40)
 
-Busy hours make Flash unreliable, so with **More options > Show my dev tools** on, **Write with** offers **Flash** (the default), **Shortcut (Cloud)**, and **Shortcut (On-Device)**. With a Shortcut choice, the full write shows a card instead of calling Flash:
+Busy hours make Flash unreliable, so with **More options > Show my dev tools** on, **Write with** offers **Flash** (the default), **Shortcut (Cloud)**, **Shortcut (Cloud Pro)** (v2.1.41), and **Shortcut (On-Device)**. With a Shortcut choice, the full write shows a card instead of calling Flash:
 
-1. **Copy and run shortcut** copies exactly what Flash would get and opens the Apple Shortcut **STP Flash Backup** (`shortcuts://run-shortcut`). The shortcut's input is the address to come back to, ending in `#stpback=cloud.` or `#stpback=ondevice.`, which is also how the shortcut knows which Apple model to use.
+1. **Copy and run shortcut** copies the job (your notes, answers, and the must-keep list under a short set of writing rules, `shortWriteText` in `prompts.js`) and opens the Apple Shortcut **STP Flash Backup** (`shortcuts://run-shortcut`). The shortcut's input is the address to come back to, ending in `#stpback=cloud.`, `#stpback=cloudpro.`, or `#stpback=ondevice.`, which is also how the shortcut knows which Apple model to use.
 2. The shortcut runs **Use Model** on the clipboard and opens that address with the URL-encoded prompt after it. Past 8,000 characters it copies the prompt and sends `STP-CLIPBOARD` instead, and the card asks for one **Paste result** tap.
-3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag the writer as `shortcut-cloud` or `shortcut-on-device`.
+3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag the writer as `shortcut-cloud`, `shortcut-cloud-pro`, or `shortcut-on-device`.
 
-Nothing switches models on its own: the card always has **Run shortcut again**, **Try On-Device** (or Cloud), and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
+The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full WRITE rules. The short text has six plain rules, asks for numbers as digits, and puts the must-keep list last. It leaves out lessons, your core, and memory; picked My context stays.
+
+Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for the other two Apple models, and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
 
 ### 💡 Ideas tab (just for me)
 

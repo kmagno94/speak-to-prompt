@@ -1,4 +1,4 @@
-import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
+import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, shortWriteText, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -328,7 +328,7 @@ export function startApp() {
     else if (act === "worked") workedGreat();   /* #5 */
     else if (act === "savectx") saveAsContext(e.detail.where === "nudge" ? "nudge" : "result");   /* #50 */
     else if (act === "scrun") scRun();   /* #53: the Shortcut stand-in's card */
-    else if (act === "scother") scOther();
+    else if (/^scother-/.test(act)) scOther(act.slice(8));
     else if (act === "scflash") scFlash();
     else if (act === "scpaste") scPaste();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
@@ -1221,7 +1221,7 @@ export function startApp() {
      it from dropping details. A Flash backup stays light so it stays quick. */
   function quickLevel(model) { return /lite/.test(model) ? "medium" : "low"; }
   function depthWords(depth, model) {
-    if (/^shortcut-/.test(model)) return model === "shortcut-on-device" ? "Apple on-device model" : "Apple cloud model";   /* #53 */
+    if (/^shortcut-/.test(model)) return "Apple " + scLabel(scOf(model)) + " model";   /* #53 */
     if (depth.level !== "quick") return depth.words;
     return quickLevel(model) === "medium" ? "balanced thinking" : "light thinking";
   }
@@ -2631,10 +2631,11 @@ export function startApp() {
      Busy hours make Flash unreliable, so with Write with set to Shortcut (More options, dev
      tools) the full write is handed to the Apple Shortcut "STP Flash Backup", which runs
      Apple's Use Model (Cloud or On-Device) on an iPhone, iPad, or Mac:
-       1. A card offers one tap: it copies exactly what Flash would get (writerText) and opens
+       1. A card offers one tap: it copies the job for the shortcut (scText) and opens
           shortcuts://run-shortcut with the address to come back to as the shortcut's input.
-          That address ends in #stpback=cloud. or #stpback=ondevice., which is also how the
-          shortcut knows which model to use.
+          That address ends in #stpback=cloud., #stpback=cloudpro. or #stpback=ondevice., which is also how
+          the shortcut knows which model to use. What gets copied is the short writer text
+          (scText, v2.1.41), since Apple's models dropped details under the full one.
        2. The shortcut opens that address with the prompt after it (the part after # never
           leaves the device). Over 8,000 characters it copies the prompt instead and sends the
           word STP-CLIPBOARD, and the card asks for one Paste tap.
@@ -2651,10 +2652,24 @@ export function startApp() {
   var scWait = null;   /* the write waiting on the shortcut: { run, text, model, t0, sent, swaps, resolve, reject } */
   var scBack = null;   /* a result that arrived in a tab the shortcut opened: { model, text, long, t0 } */
   var scLeaving = 0;   /* when the shortcut was last opened, so the leave warning stays quiet for it */
-  function scModel() { return core.dev && (core.writer === "cloud" || core.writer === "device") ? core.writer : ""; }
-  function scLabel(m) { return m === "device" ? "On-Device" : "Cloud"; }
+  /* Three Apple models (Cloud Pro added in v2.1.41): the name in the saved setting, the word the
+     shortcut matches in its input, the label on screen, and the tag in run stats. */
+  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, pro: { slug: "cloudpro", label: "Cloud Pro", tag: "shortcut-cloud-pro" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
+  function scModel() { return core.dev && SC_MODELS[core.writer] ? core.writer : ""; }
+  function scLabel(m) { return (SC_MODELS[m] || SC_MODELS.cloud).label; }
+  function scOf(tagOrSlug) { for (var k in SC_MODELS) if (SC_MODELS[k].tag === tagOrSlug || SC_MODELS[k].slug === tagOrSlug) return k; return "cloud"; }
+  /* What the shortcut's model reads (v2.1.41): the short rules, not the full WRITE text. Apple's
+     models dropped details under the long one. Picked My context stays; lessons, your core,
+     and memory are left out. */
+  function scText() {
+    var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
+    var sh0 = session.shape || {};
+    return shortWriteText({ raw: cleaned || session.raw, answers: session.answers, goal: session.goal && session.goal.text || "",
+      shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
+      context: context.active ? context.block : "", today: session.today, items: session.ledger && session.ledger.items || [] });
+  }
   function scLink(m) {
-    var back = location.origin + location.pathname + "#stpback=" + (m === "device" ? "ondevice" : "cloud") + ".";
+    var back = location.origin + location.pathname + "#stpback=" + (SC_MODELS[m] || SC_MODELS.cloud).slug + ".";
     return "shortcuts://run-shortcut?name=" + encodeURIComponent(SC_NAME) + "&input=text&text=" + encodeURIComponent(back);
   }
   function scDrop() { try { localStorage.removeItem(SC_KEY); } catch (e) {} }
@@ -2698,20 +2713,21 @@ export function startApp() {
   function scCard(state) {
     var w = scWait;
     if (!w) return;
-    var name = SC_NAME + " (" + scLabel(w.model) + ")", other = w.model === "device" ? "Cloud" : "On-Device";
+    var name = SC_NAME + " (" + scLabel(w.model) + ")";
+    var others = ["pro", "cloud", "device"].filter(function (m) { return m !== w.model; });
     var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
-    var swap = { label: "Try " + other, act: "scother" }, flash = { label: "Use Flash instead", act: "scflash" };
+    var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use Flash instead", act: "scflash" };
     var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
     document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
-    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies what Flash would get and runs the shortcut. It brings you back here with the prompt, then Polish and Check carry on like always.", [run, swap, flash]);
-    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it opens this page again with your prompt. Nothing came back? Run it again, try the other model, or let Flash write it. Your words and answers stay put.", [run, swap, flash, paste]);
+    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here with the prompt, then Polish and Check carry on like always.", [run, swap, swap2, flash]);
+    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it opens this page again with your prompt. Nothing came back? Run it again, try another model, or let Flash write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
     else if (state === "long") notify("result", "info", "Result was long, tap Paste", "The shortcut copied the prompt instead of sending it in the link.", [paste, run, flash]);
-    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, flash, paste]);
+    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, swap2, flash, paste]);
     else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let Flash write it.", [run, flash]);
     else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let Flash write it.", [paste, run, flash]);
-    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try " + other + ", or let Flash write it.", [run, swap, flash, paste]);
+    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try another model, or let Flash write it.", [run, swap, swap2, flash, paste]);
   }
-  /* Copy what Flash would get, keep the build for a new tab, open the shortcut. Needs a tap. */
+  /* Copy the job, keep the build for a new tab, open the shortcut. Needs a tap. */
   function scRun() {
     var w = scWait;
     if (!w || !session) return;
@@ -2726,11 +2742,11 @@ export function startApp() {
       (window.__scOpen || function (u) { location.href = u; })(scLink(w.model));
     }, function () { if (scWait === w) scCard("nocopy"); });
   }
-  /* Try the other Apple model for this build only; the saved Write with setting stays. */
-  function scOther() {
+  /* Try another Apple model for this build only; the saved Write with setting stays. */
+  function scOther(m) {
     var w = scWait;
-    if (!w || !session) return;
-    w.model = w.model === "device" ? "cloud" : "device";
+    if (!w || !session || !SC_MODELS[m]) return;
+    w.model = m;
     session.scModel = w.model;
     w.swaps.push("switched to the " + scLabel(w.model) + " model");
     scRun();
@@ -2760,14 +2776,14 @@ export function startApp() {
     scWait = null;
     scDrop();
     notify("result");
-    w.resolve({ text: out, model: w.model === "device" ? "shortcut-on-device" : "shortcut-cloud", ms: Math.max(0, Date.now() - w.t0), away: 0, history: w.swaps, tokens: null, thinkingTokens: 0 });
+    w.resolve({ text: out, model: SC_MODELS[w.model].tag, ms: Math.max(0, Date.now() - w.t0), away: 0, history: w.swaps, tokens: null, thinkingTokens: 0 });
   }
   /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
   function scReturn() {
-    var mt = /^#stpback=(cloud|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
+    var mt = /^#stpback=(cloudpro|cloud|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
     if (!mt) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    var model = mt[1] === "ondevice" ? "device" : "cloud", text = mt[2];
+    var model = scOf(mt[1]), text = mt[2];
     try { text = decodeURIComponent(text); } catch (e) { try { text = decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, "%25")); } catch (e2) {} }
     text = text.trim();
     var long = text === SC_LONG;
@@ -2880,7 +2896,7 @@ export function startApp() {
     var handle = { cycle: !quick && flashOnly() };
     if (!quick && !viaSc) watchSlowWrite(run, handle);
     var onWriter = function (m) { if (run === writeRun) eta(m); };
-    return (viaSc ? askShortcut(text, run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
+    return (viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
@@ -3010,7 +3026,7 @@ export function startApp() {
           };
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
-          var bySc = /^shortcut-/.test(r.model) ? SC_NAME + " (" + (r.model === "shortcut-on-device" ? "On-Device" : "Cloud") + ")" : "";   /* #53 */
+          var bySc = /^shortcut-/.test(r.model) ? SC_NAME + " (" + scLabel(scOf(r.model)) + ")" : "";   /* #53 */
           showResult(extras(finalPrompt), techOn()   /* core */
             ? (offset ? "Round " + session.round + " built" : "Built") + " with " + (bySc || "Gemini (" + r.model + ", " + depthWords(depth, r.model) + ")") + " in " + secs + total + detour + ". Your AI can start working right away."
             : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + (bySc ? ", written by " + bySc : "") + ". Your AI can start working right away.", session.title);
