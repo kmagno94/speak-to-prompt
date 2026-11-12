@@ -300,7 +300,7 @@
           <button type="button" id="writerPro" aria-pressed={core.writer === 'pro'} onclick={() => core.setWriter('pro')}>Shortcut (Cloud Pro)</button>
           <button type="button" id="writerDevice" aria-pressed={core.writer === 'device'} onclick={() => core.setWriter('device')}>Shortcut (On-Device)</button>
         </div>
-        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (Apple\'s ' + (core.writer === 'device' ? 'on-device' : core.writer === 'pro' ? 'Cloud Pro' : 'cloud') + ' model) and comes back here for Polish and Check. The shortcut gets a shorter set of writing rules than Flash, without lessons, your core, or memory. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
+        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (Apple\'s ' + (core.writer === 'device' ? 'on-device' : core.writer === 'pro' ? 'Cloud Pro' : 'cloud') + ' model) and comes back here for Polish and Check. The shortcut gets a shorter set of writing rules than Flash, with your core, memory, lessons, and picked context still included. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
         <p class="hint">While a build waits on the shortcut, its words are kept on this device so the shortcut can bring you back to it. They are deleted the moment it returns, when you start a new prompt, or after 30 minutes.</p>
       </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>

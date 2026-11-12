@@ -7,7 +7,7 @@
       "title": "Shortcut stand-in: Cloud Pro, and a shorter set of writing rules for Apple's models",
       "items": [
         "🔀 Write with (dev tools) has a fourth choice: Shortcut (Cloud Pro), Apple's cloud model with more reasoning. Run stats tag it shortcut-cloud-pro.",
-        "The shortcut now gets a shorter set of writing rules than Flash. On the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full rules. The short version has six plain rules, asks for numbers as digits, and puts the must-keep list last. It leaves out lessons, your core, and memory. Flash is not changed.",
+        "The shortcut now gets a shorter set of writing rules than Flash. On the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full rules. The short version has six plain rules, asks for numbers as digits, and puts the must-keep list last. Your core, memory, lessons, and picked My context still go along, each in a compact form, so it is one to one with what Flash gets. Flash is not changed.",
         "The hand-off card offers both other Apple models (like Try Cloud Pro and Try On-Device), plus Use Flash instead.",
         "The STP Flash Backup shortcut needs one more branch for Cloud Pro: input that contains cloudpro uses the Cloud Pro model.",
         "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied."

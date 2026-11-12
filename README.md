@@ -80,7 +80,7 @@ Busy hours make Flash unreliable, so with **More options > Show my dev tools** o
 2. The shortcut runs **Use Model** on the clipboard and opens that address with the URL-encoded prompt after it. Past 8,000 characters it copies the prompt and sends `STP-CLIPBOARD` instead, and the card asks for one **Paste result** tap.
 3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag the writer as `shortcut-cloud`, `shortcut-cloud-pro`, or `shortcut-on-device`.
 
-The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full WRITE rules. The short text has six plain rules, asks for numbers as digits, and puts the must-keep list last. It leaves out lessons, your core, and memory; picked My context stays.
+The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full WRITE rules. The short text has six plain rules, asks for numbers as digits, and puts the must-keep list last. Lessons, your core, the memory facts Read picked, and picked My context all ride along in a compact form, so it is one to one with what Flash gets; only Rework is left out.
 
 Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for the other two Apple models, and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
 

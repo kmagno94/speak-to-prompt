@@ -5475,7 +5475,7 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(decodeURIComponent(link.split('&text=')[1]) === BASE + '#stpback=cloud.', 'the link should carry where to come back to: ' + link);
   const sent = await p.evaluate(() => navigator.clipboard.readText());
   expect(/MY NOTES:/.test(sent) && /taco night/.test(sent) && /Now write the prompt\.$/.test(sent), 'the clipboard should hold the short writer text');
-  expect(!/world-class prompt engineer|LESSONS FROM REVIEWS/.test(sent) && sent.length < 2500, 'the shortcut gets the short rules, not the full WRITE text: ' + sent.length);
+  expect(!/world-class prompt engineer|LESSONS FROM REVIEWS/.test(sent), 'the shortcut gets the short rules, not the full WRITE text');
   expect(/Waiting for STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'waiting card missing');
   expect(/taco night/.test(await scStored(p)), 'the build is kept for a new tab while it waits');
   /* The shortcut is back in the same tab. */
@@ -5486,8 +5486,20 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(await p.evaluate(() => location.hash) === '', 'the link should be cleared');
   expect(!(await scStored(p)), 'the kept build is deleted once the result is back');
   expect(!p.calls.some(c => !c.intake), 'still nothing sent to a Flash writer');
+  /* One to one (v2.1.41): your core rides along in the short text, before the notes, with the must-keep list still last. */
+  await p.evaluate(() => { localStorage.setItem('stp-core', JSON.stringify({ user: 'I roast coffee for a living', soul: '- Be direct', role: 'Coach', identity: '', on: true })); });
+  await p.reload();
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const withCore = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/ABOUT ME/.test(withCore) && /I roast coffee for a living/.test(withCore) && /Coach/.test(withCore), 'your core should ride along in the short text');
+  expect(withCore.indexOf('ABOUT ME') < withCore.indexOf('MY NOTES:') && /Now write the prompt\.$/.test(withCore), 'core goes before the notes');
+  await p.evaluate(() => { document.getElementById('reset').click(); localStorage.removeItem('stp-core'); });
+  await p.reload();
   /* Cloud Pro (v2.1.41): its own link word, label, and made-by line. */
-  await p.click('#writerPro');   /* More options is still open */
+  await p.click('#moreOpts summary'); await p.click('#writerPro');
   await p.evaluate(() => { document.getElementById('reset').click(); window.__scOpens = []; });
   await p.fill('#thoughts', SC_NOTE); await p.click('#build');
   await p.waitForSelector('#notice-result');

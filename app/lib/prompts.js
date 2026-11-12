@@ -213,7 +213,9 @@ export const WRITE = [
    lost details under the full WRITE rules (first test 11/12: Cloud dropped the date, the budget,
    and three preferences), so the shortcut gets a short version: six plain rules, the notes, the
    answers, and the must-keep list last, where a small model reads it right before writing.
-   Left out on purpose: lessons, your core, memory, and Rework. Flash never gets this text. */
+   One to one with what Flash gets (Kevin, 11/12: "I wanted everything to be a one to one fit"):
+   lessons, your core, memory, and picked My context all ride along, each in a compact form.
+   Only Rework is left out (round 2 stays on Gemini). Flash never gets this text. */
 export function shortWriteText(o) {
   const out = [
     "Rewrite my notes below into one clear prompt that I can paste into an AI assistant such as ChatGPT, Claude, or Gemini.",
@@ -224,13 +226,14 @@ export function shortWriteText(o) {
     "3. Keep every name, number, date, limit, like, and dislike from my notes and answers. Write numbers as digits, exactly as I gave them (like $75 or the 14th). Keep words like maybe and around.",
     "4. Add nothing I did not say: no new facts, people, devices, or rules.",
     "5. End with this line: Start right away, and ask at most one short question only if something essential is missing.",
-    "6. Output only the prompt. No title, no intro, no closing words, no code fences.",
-    "",
-    "MY NOTES:",
-    '"""',
-    o.raw || "",
-    '"""'
+    "6. Output only the prompt. No title, no intro, no closing words, no code fences."
   ];
+  const ls = (o.lessons || []).filter(Boolean);
+  if (ls.length) out.push("", "Extra rules learned from earlier prompts (follow them when they fit; what I said always wins):", ...ls.map((l) => "- " + l));
+  if (o.core) out.push("", "ABOUT ME (my standing background: who I am, how I like answers, and the role I want the AI to take. Use it to shape the prompt where it fits this request, in plain words. Never paste it in as a block, and never let it push out a detail from my notes):", o.core);
+  const mem = (o.memory || []).filter(Boolean);
+  if (mem.length) out.push("", "FACTS I SAVED ABOUT MYSELF (they matter for this request; work them in where they help):", ...mem.map((m) => "- " + m));
+  out.push("", "MY NOTES:", '"""', o.raw || "", '"""');
   const a = (o.answers || []).filter((x) => x && x.answer);
   if (a.length) out.push("", "MY ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n"));
   if (o.goal) out.push("", "MY GOAL IN ONE LINE (aim the prompt at it; it adds no facts): " + o.goal);

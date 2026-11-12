@@ -2659,14 +2659,15 @@ export function startApp() {
   function scLabel(m) { return (SC_MODELS[m] || SC_MODELS.cloud).label; }
   function scOf(tagOrSlug) { for (var k in SC_MODELS) if (SC_MODELS[k].tag === tagOrSlug || SC_MODELS[k].slug === tagOrSlug) return k; return "cloud"; }
   /* What the shortcut's model reads (v2.1.41): the short rules, not the full WRITE text. Apple's
-     models dropped details under the long one. Picked My context stays; lessons, your core,
-     and memory are left out. */
+     models dropped details under the long one. Everything else Flash gets rides along in a
+     compact form: lessons, your core, the memory facts Read picked, and picked My context. */
   function scText() {
     var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
     var sh0 = session.shape || {};
     return shortWriteText({ raw: cleaned || session.raw, answers: session.answers, goal: session.goal && session.goal.text || "",
       shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
-      context: context.active ? context.block : "", today: session.today, items: session.ledger && session.ledger.items || [] });
+      context: context.active ? context.block : "", today: session.today, items: session.ledger && session.ledger.items || [],
+      lessons: lessons.list, core: core.active ? core.facts : "", memory: session.memFacts || [] });
   }
   function scLink(m) {
     var back = location.origin + location.pathname + "#stpback=" + (SC_MODELS[m] || SC_MODELS.cloud).slug + ".";
