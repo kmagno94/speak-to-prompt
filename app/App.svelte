@@ -292,6 +292,16 @@
         <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
         <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
       </div>
+      <div class="stats gradersrc" id="writerSrc" hidden={!core.dev}>
+        <p class="srchead">Write with</p>
+        <div class="seg wide" role="group" aria-label="Who writes the prompt">
+          <button type="button" id="writerFlash" aria-pressed={core.writer === 'flash'} onclick={() => core.setWriter('flash')}>Flash</button>
+          <button type="button" id="writerCloud" aria-pressed={core.writer === 'cloud'} onclick={() => core.setWriter('cloud')}>Shortcut (Cloud)</button>
+          <button type="button" id="writerDevice" aria-pressed={core.writer === 'device'} onclick={() => core.setWriter('device')}>Shortcut (On-Device)</button>
+        </div>
+        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (Apple\'s ' + (core.writer === 'device' ? 'on-device' : 'cloud') + ' model) and comes back here for Polish and Check. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
+        <p class="hint">While a build waits on the shortcut, its words are kept on this device so the shortcut can bring you back to it. They are deleted the moment it returns, when you start a new prompt, or after 30 minutes.</p>
+      </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>
         <div class="seg" role="group" aria-label="Grader source">

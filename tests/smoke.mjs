@@ -5441,6 +5441,119 @@ await check('stay on screen: closing or refreshing asks first only while a promp
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* Shortcut stand-in (#53, v2.1.40): dev tools can hand the Flash write to the STP Flash Backup shortcut. */
+const SC_INTAKE = { title: 'Taco night', need: 'Plan a taco night', category: 'Ideas', complexity: 'simple', questions: [] };
+const SC_NOTE = 'plan a taco night for 6 people on friday at 7 with a 60 dollar budget and my cousin is vegetarian';
+const SC_PROMPT = 'Role: You are a friendly party planner. Task: plan a taco night for 6 people on Friday at 7 with a 60 dollar budget. My cousin is vegetarian, so include a vegetarian option.';
+async function scPage(writer, opts = {}) {
+  const p = await page({ intake: SC_INTAKE, ...opts });
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await p.evaluate((w) => { localStorage.setItem('stp-dev', '1'); if (w) localStorage.setItem('stp-writer', w); localStorage.setItem('stp-gemini-key', 'FAKE'); }, writer);
+  await p.reload();
+  return p;
+}
+const scCardText = (p) => p.evaluate(() => { const n = document.getElementById('notice-result'); return n ? n.textContent : ''; });
+const scTap = (p, label) => p.click(`#notice-result button:text-is("${label}")`);
+const scStored = (p) => p.evaluate(() => localStorage.getItem('stp-sc-wait'));
+
+await check('shortcut writer: with dev tools on and Write with set to Shortcut, the Flash write goes to STP Flash Backup, comes back in the link, and Polish and Check carry on (#53)', async () => {
+  const p = await scPage('');
+  await p.click('#moreOpts summary');
+  expect(await p.getAttribute('#writerFlash', 'aria-pressed') === 'true', 'Flash should be the default writer');
+  await p.click('#writerCloud');
+  expect(await p.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the Write with choice should be saved');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/Hand this write to STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'hand-off card missing: ' + await scCardText(p));
+  expect(!p.calls.some(c => !c.intake), 'nothing should be sent to a Flash writer');
+  expect(!(await scStored(p)), 'nothing is kept before the hand-off tap');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const link = await p.evaluate(() => window.__scOpens[0]);
+  expect(link.startsWith('shortcuts://run-shortcut?name=STP%20Flash%20Backup&input=text&text='), 'run link wrong: ' + link);
+  expect(decodeURIComponent(link.split('&text=')[1]) === BASE + '#stpback=cloud.', 'the link should carry where to come back to: ' + link);
+  const sent = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/RAW THOUGHTS:/.test(sent) && /taco night/.test(sent), 'the clipboard should hold what Flash would get');
+  expect(/Waiting for STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'waiting card missing');
+  expect(/taco night/.test(await scStored(p)), 'the build is kept for a new tab while it waits');
+  /* The shortcut is back in the same tab. */
+  await p.evaluate((t) => { location.hash = '#stpback=cloud.' + encodeURIComponent(t); }, SC_PROMPT);
+  await done(p);
+  expect(await p.inputValue('#output') === SC_PROMPT, 'the shortcut\'s prompt should show, got: ' + await p.inputValue('#output'));
+  expect(/STP Flash Backup \(Cloud\)/.test(await p.textContent('#madeBy')), 'made-by line should name the shortcut: ' + await p.textContent('#madeBy'));
+  expect(await p.evaluate(() => location.hash) === '', 'the link should be cleared');
+  expect(!(await scStored(p)), 'the kept build is deleted once the result is back');
+  expect(!p.calls.some(c => !c.intake), 'still nothing sent to a Flash writer');
+  /* Dev tools off: the saved choice does nothing. */
+  await p.evaluate(() => localStorage.setItem('stp-dev', '0')); await p.reload();
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'THE PROMPT' && p.calls.some(c => !c.intake && c.model === 'gemini-3.8-flash'), 'with dev tools off Flash writes as usual');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('shortcut writer: a new tab picks the build up, a long result comes back by Paste, run stats tag the model, and junk offers Run again, the other model, or Flash (#53)', async () => {
+  /* 1. The shortcut opens a new tab: the build is picked up from the kept copy and deleted. */
+  const p = await scPage('device');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/STP Flash Backup \(On-Device\)/.test(await scCardText(p)), 'card should name the On-Device model');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/stpback%3Dondevice\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use On-Device');
+  await p.goto(BASE + '?tab=2#stpback=ondevice.' + encodeURIComponent(SC_PROMPT));
+  await done(p);
+  expect(await p.inputValue('#output') === SC_PROMPT, 'new tab should show the shortcut\'s prompt, got: ' + await p.inputValue('#output'));
+  expect(await p.inputValue('#thoughts') === SC_NOTE, 'your words should be back in the box');
+  expect(!(await scStored(p)), 'the kept build is deleted after the new tab picks it up');
+  expect(!p.calls.some(c => !c.intake), 'no Flash write in either tab');
+  const log = await p.evaluate(() => localStorage.getItem('stp-test-log') || '');
+  expect(/shortcut-on-device/.test(log), 'run stats should tag the writer as shortcut-on-device: ' + log.slice(0, 300));
+  expect(!/taco/.test(log), 'run stats never hold words');
+  /* 2. A long result: the shortcut copies it and the card asks for one Paste tap. */
+  const q = await scPage('cloud');
+  await q.fill('#thoughts', SC_NOTE); await q.click('#build');
+  await q.waitForSelector('#notice-result');
+  await scTap(q, 'Copy and run shortcut');
+  await q.waitForFunction(() => window.__scOpens.length === 1);
+  await q.evaluate(() => { location.hash = '#stpback=cloud.STP-CLIPBOARD'; });
+  await q.waitForFunction(() => /Result was long, tap Paste/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  await scTap(q, 'Paste result');   /* the clipboard still has what was sent: not an answer */
+  await q.waitForFunction(() => /hasn't answered yet/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  await q.evaluate((t) => navigator.clipboard.writeText(t), SC_PROMPT);
+  await scTap(q, 'Paste result');
+  await done(q);
+  expect(await q.inputValue('#output') === SC_PROMPT, 'pasted result should show');
+  /* 3. Junk comes back: nothing switches on its own, and Use Flash instead lets Flash write it. */
+  const r = await scPage('cloud');
+  await r.fill('#thoughts', SC_NOTE); await r.click('#build');
+  await r.waitForSelector('#notice-result');
+  await scTap(r, 'Copy and run shortcut');
+  await r.waitForFunction(() => window.__scOpens.length === 1);
+  await r.evaluate(() => { location.hash = '#stpback=cloud.' + encodeURIComponent('Sorry, no.'); });
+  await r.waitForFunction(() => /didn't look like a prompt/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  expect(await r.inputValue('#thoughts') === SC_NOTE, 'your words stay put');
+  expect(!r.calls.some(c => !c.intake), 'no model switch on its own');
+  await scTap(r, 'Try On-Device');
+  await r.waitForFunction(() => window.__scOpens.length === 2);
+  expect(/stpback%3Dondevice\./.test(await r.evaluate(() => window.__scOpens[1])), 'Try On-Device should run the shortcut with the other model');
+  expect(await r.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the saved Write with choice stays');
+  await scTap(r, 'Use Flash instead');
+  await done(r);
+  expect(await r.inputValue('#output') === 'THE PROMPT' && r.calls.some(c => !c.intake && c.model === 'gemini-3.8-flash'), 'Use Flash instead should let Flash write it');
+  expect(!(await scStored(r)), 'the kept build is deleted on Use Flash instead');
+  /* 4. New prompt while waiting deletes the kept build too. */
+  const n = await scPage('cloud');
+  await n.fill('#thoughts', SC_NOTE); await n.click('#build');
+  await n.waitForSelector('#notice-result');
+  await scTap(n, 'Copy and run shortcut');
+  await n.waitForFunction(() => window.__scOpens.length === 1);
+  expect(await scStored(n), 'kept while waiting');
+  await n.evaluate(() => document.getElementById('reset').click());
+  expect(!(await scStored(n)), 'New prompt deletes the kept build');
+  for (const x of [p, q, r, n]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));

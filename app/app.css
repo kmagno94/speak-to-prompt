@@ -219,6 +219,8 @@ footer { font-size: 13px; color: var(--muted); }
 .seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: 0.45; }
+.seg.wide { flex-wrap: wrap; border-radius: 14px; }
+.seg.wide button { padding: 8px 12px; font-size: 14px; flex: 1 1 auto; }
 .gradersrc .linkish { background: none; border: none; padding: 8px 4px; color: var(--muted, inherit); text-decoration: underline; text-underline-offset: 3px; min-height: 0; box-shadow: none; }
 #testLog .sub { font-family: var(--display); font-size: 16px; margin: 4px 0 0; }
 #testLog .sub .hint { font-family: var(--body); font-weight: 400; }

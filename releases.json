@@ -2,6 +2,43 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.40",
+      "date": "2026-11-11",
+      "title": "Dev tools: hand the Flash write to the STP Flash Backup shortcut",
+      "items": [
+        "🔀 Shortcut stand-in (#53, proof of concept, dev tools only): More options has a new Write with choice: Flash, Shortcut (Cloud), or Shortcut (On-Device). Flash stays the default, and nothing changes for anyone with dev tools off.",
+        "With a Shortcut choice picked, the full write shows a card instead of calling Flash. One tap copies exactly what Flash would get and runs the STP Flash Backup shortcut, which uses Apple's cloud or on-device model on an iPhone, iPad, or Mac.",
+        "The shortcut brings you back with the prompt in the link (the part after the # never leaves the device), and Polish and Check carry on like always. A result over 8,000 characters comes back on the clipboard instead, with one Paste tap.",
+        "Nothing switches models on its own. The card always offers Run shortcut again, Try the other model, and Use Flash instead, and your words and answers stay put.",
+        "Run stats tag the writer as shortcut-cloud or shortcut-on-device, so grades can be compared with Flash.",
+        "While a build waits on the shortcut, it is kept on this device so a new tab can pick it up. It is deleted when the result is back, on Use Flash instead, on New prompt, and after 30 minutes. Quick writes and round 2 still use Gemini."
+      ],
+      "checks": [
+        {
+          "say": "Open More options and turn on Show my dev tools. Look for Write with.",
+          "see": "Three choices: Flash, Shortcut (Cloud), and Shortcut (On-Device). Flash is picked."
+        },
+        {
+          "say": "Pick Shortcut (Cloud), tap Normal, and build this note. Answer or skip any questions.",
+          "see": "After Prep, a card says Hand this write to STP Flash Backup (Cloud), with Copy and run shortcut, Try On-Device, and Use Flash instead.",
+          "paste": "ok so my friend Dario is turning 30 and I want to do a surprise game night at my place, like 8 people, saturday the 21st around 6, budget is maybe 120 bucks, he loves ramen and old racing games, help me plan it"
+        },
+        {
+          "say": "With the STP Flash Backup shortcut on this device, tap Copy and run shortcut and allow Shortcuts to open.",
+          "see": "The shortcut runs and brings you back here. Polish and Check finish, the prompt shows, and the line under it says STP Flash Backup (Cloud)."
+        },
+        {
+          "say": "Tap New prompt, build the same note again, and on the card tap Use Flash instead.",
+          "see": "Flash writes it like normal, and the line under the prompt names a Gemini model (with run stats on) or just says Ready in.",
+          "paste": "ok so my friend Dario is turning 30 and I want to do a surprise game night at my place, like 8 people, saturday the 21st around 6, budget is maybe 120 bucks, he loves ramen and old racing games, help me plan it"
+        },
+        {
+          "say": "In More options, set Write with back to Flash, tap New prompt, and build any note.",
+          "see": "No shortcut card. Flash writes it like before."
+        }
+      ]
+    },
+    {
       "version": "2.1.39",
       "date": "2026-11-11",
       "title": "The Quality check tip asks you what's missing, and Test lab links you can tap",

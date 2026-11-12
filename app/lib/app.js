@@ -327,6 +327,10 @@ export function startApp() {
     else if (act === "goquick") goQuick();
     else if (act === "worked") workedGreat();   /* #5 */
     else if (act === "savectx") saveAsContext(e.detail.where === "nudge" ? "nudge" : "result");   /* #50 */
+    else if (act === "scrun") scRun();   /* #53: the Shortcut stand-in's card */
+    else if (act === "scother") scOther();
+    else if (act === "scflash") scFlash();
+    else if (act === "scpaste") scPaste();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
@@ -558,6 +562,7 @@ export function startApp() {
     result.hidden = true;
     qa.hidden = true;
     chat.reset();
+    scStop();   /* #53: a build waiting on the shortcut is called off, and its kept words deleted */
     session = null;
     writeRun++;
     busy = false;
@@ -728,6 +733,7 @@ export function startApp() {
   var fakeBusyUntil = 0, fakeLowGrade = false;
   function stagingSwitches() {
     var h = location.hash || "";
+    if (/^#stpback=/.test(h)) return;   /* a shortcut result (#53) is never a test switch */
     if (IS_STAGING && /lowgrade/.test(h)) {
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
       fakeLowGrade = true;
@@ -1215,6 +1221,7 @@ export function startApp() {
      it from dropping details. A Flash backup stays light so it stays quick. */
   function quickLevel(model) { return /lite/.test(model) ? "medium" : "low"; }
   function depthWords(depth, model) {
+    if (/^shortcut-/.test(model)) return model === "shortcut-on-device" ? "Apple on-device model" : "Apple cloud model";   /* #53 */
     if (depth.level !== "quick") return depth.words;
     return quickLevel(model) === "medium" ? "balanced thinking" : "light thinking";
   }
@@ -2334,6 +2341,8 @@ export function startApp() {
        your words and any answers so far. Still waiting on the cleanup: it writes quick when that ends. */
     if (ui.build !== "write" || ui.quickOn || ui.switched) return;
     if (session.waitingClean) { session.quickAfterClean = true; ui.switched = true; return; }
+    /* #53: waiting on the shortcut, the chip calls it off and the quick model writes now. */
+    if (scWait) { scStop(); notify("result"); session.slowSwitch = "tapped while waiting on the shortcut"; ui.switched = true; setBusy(false); writeFinal(session.answers, true); return; }
     slowQuick(false);
   }
 
@@ -2618,9 +2627,192 @@ export function startApp() {
     notify("result");
     writeFinal(session.answers, true);
   }
+  /* Shortcut stand-in for the Flash write (#53, v2.1.40, dev tools only, SPEC LOCKED 11/11).
+     Busy hours make Flash unreliable, so with Write with set to Shortcut (More options, dev
+     tools) the full write is handed to the Apple Shortcut "STP Flash Backup", which runs
+     Apple's Use Model (Cloud or On-Device) on an iPhone, iPad, or Mac:
+       1. A card offers one tap: it copies exactly what Flash would get (writerText) and opens
+          shortcuts://run-shortcut with the address to come back to as the shortcut's input.
+          That address ends in #stpback=cloud. or #stpback=ondevice., which is also how the
+          shortcut knows which model to use.
+       2. The shortcut opens that address with the prompt after it (the part after # never
+          leaves the device). Over 8,000 characters it copies the prompt instead and sends the
+          word STP-CLIPBOARD, and the card asks for one Paste tap.
+       3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag
+          the writer as shortcut-cloud or shortcut-on-device, so grades can be compared.
+     Nothing switches models on its own: the card always has Run shortcut again, Try the other
+     model, and Use Flash instead, and your words and answers stay put.
+     Safari often reuses the open tab (hashchange); when the shortcut opens a new tab instead,
+     the build is picked up there from a copy kept on this device (localStorage "stp-sc-wait":
+     this build's session, your words included). That copy exists only while a build waits on
+     the shortcut, and is deleted when the result is back, on Use Flash instead, on New prompt,
+     and after 30 minutes. Dev tools only; everyone else never writes it. */
+  var SC_NAME = "STP Flash Backup", SC_KEY = "stp-sc-wait", SC_MAX_MS = 30 * 60000, SC_MIN_WORDS = 8, SC_LONG = "STP-CLIPBOARD";
+  var scWait = null;   /* the write waiting on the shortcut: { run, text, model, t0, sent, swaps, resolve, reject } */
+  var scBack = null;   /* a result that arrived in a tab the shortcut opened: { model, text, long, t0 } */
+  var scLeaving = 0;   /* when the shortcut was last opened, so the leave warning stays quiet for it */
+  function scModel() { return core.dev && (core.writer === "cloud" || core.writer === "device") ? core.writer : ""; }
+  function scLabel(m) { return m === "device" ? "On-Device" : "Cloud"; }
+  function scLink(m) {
+    var back = location.origin + location.pathname + "#stpback=" + (m === "device" ? "ondevice" : "cloud") + ".";
+    return "shortcuts://run-shortcut?name=" + encodeURIComponent(SC_NAME) + "&input=text&text=" + encodeURIComponent(back);
+  }
+  function scDrop() { try { localStorage.removeItem(SC_KEY); } catch (e) {} }
+  function scRead() {
+    try {
+      var d = JSON.parse(localStorage.getItem(SC_KEY) || "null");
+      if (d && Date.now() - d.at > SC_MAX_MS) { scDrop(); return null; }
+      return d && d.session && typeof d.session.raw === "string" ? d : null;
+    } catch (e) { return null; }
+  }
+  /* The copy a new tab picks the build up from: the session without anything that can't be saved. */
+  function scKeep() {
+    if (!scWait || !session) return;
+    var s = {};
+    for (var k in session) { var v = session[k]; if (typeof v !== "function" && !(v && typeof v.then === "function")) s[k] = v; }
+    try { localStorage.setItem(SC_KEY, JSON.stringify({ at: Date.now(), t0: scWait.t0, model: scWait.model, session: s })); } catch (e) {}
+  }
+  function scStop() {
+    var w = scWait;
+    scWait = null; scBack = null;
+    if (!w) return;
+    scDrop();
+    var s = new Error("The shortcut write was called off."); s.status = "stopped";
+    w.reject(s);
+  }
+  function askShortcut(text, run, onModel) {
+    return new Promise(function (resolve, reject) {
+      var m = (session && session.scModel) || scModel() || "cloud";
+      scWait = { run: run, text: text, model: m, t0: Date.now(), sent: false, swaps: [], resolve: resolve, reject: reject };
+      if (scBack) {   /* back in a new tab: the answer (or the Paste card) is already here */
+        var b = scBack; scBack = null;
+        scWait.model = b.model; scWait.t0 = b.t0 || scWait.t0; scWait.sent = true;
+        if (onModel) onModel(SC_NAME + " (" + scLabel(b.model) + ")");
+        if (b.long) scCard("long"); else scTake(b.text);
+        return;
+      }
+      if (onModel) onModel(SC_NAME + " (" + scLabel(m) + ")");
+      scCard("ready");
+    });
+  }
+  function scCard(state) {
+    var w = scWait;
+    if (!w) return;
+    var name = SC_NAME + " (" + scLabel(w.model) + ")", other = w.model === "device" ? "Cloud" : "On-Device";
+    var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
+    var swap = { label: "Try " + other, act: "scother" }, flash = { label: "Use Flash instead", act: "scflash" };
+    var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
+    document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
+    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies what Flash would get and runs the shortcut. It brings you back here with the prompt, then Polish and Check carry on like always.", [run, swap, flash]);
+    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it opens this page again with your prompt. Nothing came back? Run it again, try the other model, or let Flash write it. Your words and answers stay put.", [run, swap, flash, paste]);
+    else if (state === "long") notify("result", "info", "Result was long, tap Paste", "The shortcut copied the prompt instead of sending it in the link.", [paste, run, flash]);
+    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, flash, paste]);
+    else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let Flash write it.", [run, flash]);
+    else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let Flash write it.", [paste, run, flash]);
+    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try " + other + ", or let Flash write it.", [run, swap, flash, paste]);
+  }
+  /* Copy what Flash would get, keep the build for a new tab, open the shortcut. Needs a tap. */
+  function scRun() {
+    var w = scWait;
+    if (!w || !session) return;
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return scCard("nocopy");
+    navigator.clipboard.writeText(w.text).then(function () {
+      if (scWait !== w) return;
+      if (!w.sent) w.t0 = Date.now();
+      w.sent = true;
+      scKeep();
+      scCard("wait");
+      scLeaving = Date.now();
+      (window.__scOpen || function (u) { location.href = u; })(scLink(w.model));
+    }, function () { if (scWait === w) scCard("nocopy"); });
+  }
+  /* Try the other Apple model for this build only; the saved Write with setting stays. */
+  function scOther() {
+    var w = scWait;
+    if (!w || !session) return;
+    w.model = w.model === "device" ? "cloud" : "device";
+    session.scModel = w.model;
+    w.swaps.push("switched to the " + scLabel(w.model) + " model");
+    scRun();
+  }
+  function scFlash() {
+    if (!scWait || !session) return;
+    scStop();
+    notify("result");
+    session.noShortcut = true;
+    setBusy(false);
+    writeFinal(session.answers, false);
+  }
+  function scPaste() {
+    var w = scWait;
+    if (!w) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) return scCard("nopaste");
+    navigator.clipboard.readText().then(function (t) { if (scWait === w) scTake(t, true); }, function () { if (scWait === w) scCard("nopaste"); });
+  }
+  /* The shortcut's answer. Almost nothing, or the text that was sent out, is not a prompt:
+     the card comes back and nothing is lost. Otherwise it carries on like a Flash answer. */
+  function scTake(text, pasted) {
+    var w = scWait;
+    if (!w) return;
+    var out = cleanPrompt(text);
+    if (pasted && out === cleanPrompt(w.text)) return scCard("same");
+    if (words(out) < SC_MIN_WORDS) return scCard("junk");
+    scWait = null;
+    scDrop();
+    notify("result");
+    w.resolve({ text: out, model: w.model === "device" ? "shortcut-on-device" : "shortcut-cloud", ms: Math.max(0, Date.now() - w.t0), away: 0, history: w.swaps, tokens: null, thinkingTokens: 0 });
+  }
+  /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
+  function scReturn() {
+    var mt = /^#stpback=(cloud|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
+    if (!mt) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    var model = mt[1] === "ondevice" ? "device" : "cloud", text = mt[2];
+    try { text = decodeURIComponent(text); } catch (e) { try { text = decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, "%25")); } catch (e2) {} }
+    text = text.trim();
+    var long = text === SC_LONG;
+    /* Same tab: the build is still here, waiting. */
+    if (scWait && session) { scWait.model = model; if (long) scCard("long"); else scTake(text); return; }
+    /* A new tab: pick the build up from the kept copy, then delete it. */
+    var snap = scRead();
+    if (!snap || busy || session) return notify("form", "info", "No build was waiting for the shortcut", "The shortcut came back, but there's no build here for its answer. It may have finished in another tab, or more than 30 minutes passed. Build again to send a new one.");
+    scDrop();
+    session = snap.session;
+    session.cleanP = null; session.scModel = model;
+    thoughts.value = session.raw;
+    thoughts.dispatchEvent(new Event("stp:changed"));
+    var key = gemini.key || gkey.value.trim();
+    var plain = function () {   /* no saved key in this tab: the prompt still shows, without Polish and Check */
+      if (long) return notify("form", "info", "The prompt is on your clipboard", "The shortcut copied it because it was long. This tab has no Gemini key, so Polish and Check can't run: paste it straight into your AI.");
+      var out = cleanPrompt(text);
+      session.basePrompt = out;
+      showResult(extras(out), "Written by " + SC_NAME + " (" + scLabel(model) + "). Polish and Check were skipped: this tab has no Gemini key.", session.title);
+    };
+    if (!key) return plain();
+    scBack = { model: model, text: text, long: long, t0: snap.t0 };
+    ensureModel(key).then(function () { writeFinal(session.answers || [], false); }, plain);
+  }
+  window.addEventListener("hashchange", scReturn);
+  setTimeout(scReturn, 0);
+  /* Back on a tab whose build was picked up by the tab the shortcut opened (or sat past 30
+     minutes): the wait ends here and the words stay in the box. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible" || !scWait || !scWait.sent || /^#stpback=/.test(location.hash || "") || scRead()) return;
+    scStop();
+    stopTicker();
+    cookStop();
+    setProgress(document.getElementById("resultProg"), "off");
+    setBusy(false);
+    setBuild("");
+    ui.build = "";
+    result.hidden = true;
+    notify("form", "info", "The shortcut hand-off ended here", "It finished in the tab the shortcut opened, or 30 minutes passed. Your words are still in the box: tap Build my prompt to go again.");
+  });
+
   function writeFinal(answers, quick) {
     stopFlashWait();
     stopSlowWrite();
+    if (scWait) scStop();   /* #53: a new write replaces one that was waiting on the shortcut */
     /* The clean step is still going (rare, it started with the questions): wait for it. */
     if (session.cleanP && prepRunning()) {
       setBusy(true, "Finishing the cleanup...");
@@ -2637,7 +2829,7 @@ export function startApp() {
     session.answers = answers.filter(function (a) { return a.answer; });
     /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
        the person's own words; one left as is was seen and kept. Rework rounds keep it. */
-    if (!(session.round >= 2)) {
+    if (!(session.round >= 2) && !scBack) {   /* #53: back from the shortcut in a new tab, the goal line is the one that was sent */
       var askedHere = session.questions && session.questions.length && chat.readGoal && chat.readGoal === session.need;
       session.goal = askedHere && chat.need ? { text: chat.need, edited: !!chat.goalEdited } : null;
     }
@@ -2680,13 +2872,15 @@ export function startApp() {
        and the first good prompt wins. Busy hours can start the backup sooner. */
     var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
+    /* Shortcut stand-in (#53, dev tools): the first full write goes to the STP Flash Backup
+       shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini. */
+    var viaSc = !quick && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
     /* Every Flash model is used up for today: say so before anything is sent (#35). */
-    if (!quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
+    if (!viaSc && !quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
     var handle = { cycle: !quick && flashOnly() };
-    if (!quick) watchSlowWrite(run, handle);
-    return askGemini(text, false, models, depth.level, function (m) {
-      if (run === writeRun) eta(m);
-    }, WRITE_LIMIT, hedgeAfter, handle).then(function (r) {
+    if (!quick && !viaSc) watchSlowWrite(run, handle);
+    var onWriter = function (m) { if (run === writeRun) eta(m); };
+    return (viaSc ? askShortcut(text, run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
@@ -2776,7 +2970,7 @@ export function startApp() {
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
             rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") + (session.goal && session.goal.edited ? "; you fixed the goal line" : "") : session.strongSkip ? "Skipped: your note had everything" : "No questions this time" });
           }
-          rows.push({ name: "Write", who: /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
+          rows.push({ name: "Write", who: /^shortcut-/.test(r.model) ? "Shortcut" : /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
             what: (r.history && r.history.length ? plural(r.history.length, "hand-off", "hand-offs") + " before it wrote" : "Written on the first try") + ((session.ledger && session.ledger.items && session.ledger.items.length) ? ", with the must-keep list" : "") });
           if (session.polished) rows.push({ name: "Polish", who: "Flash-Lite", model: rep.model, secs: rep.secs || 0,
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
@@ -2816,9 +3010,10 @@ export function startApp() {
           };
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
+          var bySc = /^shortcut-/.test(r.model) ? SC_NAME + " (" + (r.model === "shortcut-on-device" ? "On-Device" : "Cloud") + ")" : "";   /* #53 */
           showResult(extras(finalPrompt), techOn()   /* core */
-            ? (offset ? "Round " + session.round + " built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
-            : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+            ? (offset ? "Round " + session.round + " built" : "Built") + " with " + (bySc || "Gemini (" + r.model + ", " + depthWords(depth, r.model) + ")") + " in " + secs + total + detour + ". Your AI can start working right away."
+            : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + (bySc ? ", written by " + bySc : "") + ". Your AI can start working right away.", session.title);
           if (session.round >= 2 && ui.round) roundBuilt(session.round);
           /* Left mid-build and came back before it finished: say it picked back up. */
           if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
@@ -3555,7 +3750,7 @@ export function startApp() {
   /* Stay-on-screen guard (#37, v2.1.38): closing or refreshing while a prompt is being written
      asks first (the browser's own Leave site? box). Only while it works, never when idle.
      Phones can't catch an app switch, so this mostly helps iPad keyboards and computers. */
-  window.addEventListener("beforeunload", function (e) { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+  window.addEventListener("beforeunload", function (e) { if (busy && Date.now() - scLeaving > 3000) { e.preventDefault(); e.returnValue = ""; } });   /* #53: opening the shortcut is not leaving */
 
   /* Capture phase: noted before the button's own handler runs. */
   document.addEventListener("click", function (e) {

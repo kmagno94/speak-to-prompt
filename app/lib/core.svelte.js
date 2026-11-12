@@ -10,6 +10,10 @@ const KEY = 'stp-core';
 /* "Show my dev tools" (More options): Your core and Improve this app only show
    when it's on. Off by default; turns itself on for a phone that already has a core. */
 const DEV_KEY = 'stp-dev';
+/* Writer (#53, v2.1.40, dev tools only): who writes the full prompt. 'flash' is the default for
+   everyone; 'cloud' and 'device' hand the Flash write to the STP Flash Backup shortcut (Apple's
+   Use Model). A setting, never your words. */
+const WRITER_KEY = 'stp-writer';
 const OLD_ASK = 'Ask before assuming';
 const NEW_ASK = 'Ask if something essential is missing';
 
@@ -23,6 +27,7 @@ class Core {
   identity = $state('');   // IDENTITY.md: what that role means for you
   on = $state(true);       // the "Use my core" switch
   dev = $state(false);     // the "Show my dev tools" switch
+  writer = $state('flash'); // dev tools: 'flash' | 'cloud' | 'device' (the Shortcut stand-in, #53)
 
   has = $derived(!!(this.user.trim() || this.soul.trim() || this.role || this.identity.trim()));
   active = $derived(this.dev && this.on && this.has);   // is the core added to prompts right now
@@ -51,6 +56,12 @@ class Core {
     try { d = localStorage.getItem(DEV_KEY); } catch (e) {}
     this.dev = d === '1' || (d === null && !!v);
     if (d === null && v) this.saveDev();
+    try { const w = localStorage.getItem(WRITER_KEY); if (w === 'cloud' || w === 'device') this.writer = w; } catch (e) {}
+  }
+
+  setWriter(w) {
+    this.writer = w === 'cloud' || w === 'device' ? w : 'flash';
+    try { if (this.writer === 'flash') localStorage.removeItem(WRITER_KEY); else localStorage.setItem(WRITER_KEY, this.writer); } catch (e) {}
   }
 
   save() {
