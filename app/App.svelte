@@ -166,6 +166,7 @@
   </form>
 
   <section class="card" id="qa" hidden>
+    <RoundBanner place="qa" />
     <ChatBuilder />
     <p id="qaStatus" class="buildstatus" role="status"></p>
   </section>

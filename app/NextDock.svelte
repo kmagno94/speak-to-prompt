@@ -123,6 +123,8 @@
     /* Deferred until app.js has finished putting things back (that fires its own box events). */
     const undone = () => queueMicrotask(() => { built = true; edited = false; read(); });
     window.addEventListener('stp-undo', undone);
+    /* v2.1.39: the tip's questions (Ask me, then rewrite) come up from a finished prompt, so Write my prompt is the next step, even after a Back. */
+    window.addEventListener('stp-asking', undone);
     /* Typing something new means you meant it: the Undo goes away. */
     const typed = () => { if (undo && box.value.trim()) { clearTimeout(undoTimer); undo = null; } };
     box.addEventListener('input', typed);

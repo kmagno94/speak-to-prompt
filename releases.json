@@ -2,6 +2,43 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.39",
+      "date": "2026-11-11",
+      "title": "The Quality check tip asks you what's missing, and Test lab links you can tap",
+      "items": [
+        "💬 Ask me, then rewrite: when a prompt lands under the bar, the Quality check tip no longer tells you to add something to your note and build again. One tap asks a short question for each weak spot (up to 3), with answers to tap. None fit? Type your own, or skip.",
+        "Your answers build the next round as a full rewrite, then it gets graded again, with the same Round 1 / Round 2 switcher and Compare rounds as Rework. Rework from this prompt and Edit first are still there.",
+        "The questions are written to fit your request by one small extra call. If that call fails or takes too long, the phone asks its own plain questions, so the button always works. Your answers stay in memory only and are never saved.",
+        "The tip now names every weak spot (up to 3), not only the first one.",
+        "Test lab: a check that sends you to a staging test link (like the one ending in #flashbusy-slowtest) now shows it as a 🔗 link. One tap turns the test on with no reload, the lab tucks away, and the 🧪 tab brings you back to the same check.",
+        "Staging only: a new #lowgrade test link makes the first Quality check of a prompt read under the bar, so Ask me, then rewrite can be tried any time. Live ignores it."
+      ],
+      "checks": [
+        {
+          "say": "On this check, tap 🔗 Open #lowgrade.",
+          "see": "The Test lab tucks away, a Low grade test is on note shows above the box, and the page did not reload. Tap the 🧪 tab: you are back on this same check."
+        },
+        {
+          "say": "With the low grade test on (tap #lowgrade again if you reloaded), turn on Show run stats and daily usage in More options, tap Normal, build this note, and look at the Quality check under the prompt.",
+          "see": "It reads 3.4 with Tip: It could say who the AI is and background. A 💬 Ask me, then rewrite button sits above Rework from this prompt, and the line under it says 2 quick questions.",
+          "paste": "ok so I want to start a little herb garden on my apartment balcony, it only gets morning sun and I've never grown anything, what should I plant first and how do I not kill it"
+        },
+        {
+          "say": "Tap 💬 Ask me, then rewrite. Tap an answer for the first question, type your own answer for the second, then tap Write my prompt.",
+          "see": "A 🔁 Round 2 banner with ← Back to round 1 sits over the questions. After Write my prompt, round 2 is written and graded for real, the card shows Round 1 and Round 2 with both scores, and what you answered is worked into the new prompt."
+        },
+        {
+          "say": "Tap New prompt, build the same note again with the #lowgrade test still on, tap 💬 Ask me, then rewrite, then tap ← Back to round 1.",
+          "see": "Your first prompt is back exactly as it was, with the Quality check and the Ask me button still there, and your words still in the box.",
+          "paste": "ok so I want to start a little herb garden on my apartment balcony, it only gets morning sun and I've never grown anything, what should I plant first and how do I not kill it"
+        },
+        {
+          "say": "Open the v2.1.37 check that mentions #flashbusy-slowtest (tap See all, then that check).",
+          "see": "A 🔗 Open #flashbusy-slowtest link sits under the Do line. Tapping it shows Busy Flash + 10x timing test is on above the box."
+        }
+      ]
+    },
+    {
       "version": "2.1.38",
       "date": "2026-11-11",
       "title": "New context picks itself, a 👍 Worked great tap, and a leave warning mid-build",

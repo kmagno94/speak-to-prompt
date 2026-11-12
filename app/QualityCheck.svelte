@@ -23,6 +23,12 @@
     </div>
     <p class="tip">{g.working ? 'Polishing a few lines…' : 'Tip: ' + g.tip}</p>
     {#if !g.pass && !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
+      <!-- v2.1.39 (idea mwct7axlrttc): the tip asks you about what was weak and rewrites from your
+           answers, so fixing it is a few taps and not "add that to your note and build again". -->
+      {#if g.ask}
+        <button type="button" class="askbtn" id="guideBtn" onclick={() => act('guide')}>💬 Ask me, then rewrite</button>
+        <p class="askhint" id="guideHint">{g.ask === 1 ? 'One quick question' : g.ask + ' quick questions'} about what was weak. Tap an answer or type your own.</p>
+      {/if}
       <div class="rwrow">
         <button type="button" class="rwbtn" id="reworkBtn" onclick={() => act('rework')}>🔁 Rework from this prompt</button>
         <button type="button" class="rwedit" id="reworkEditBtn" onclick={() => act('reworkedit')}>✏️ Edit first</button>
@@ -54,5 +60,7 @@
   /* Rework builds right away (#2); Edit first is the lighter way to change it before it builds. */
   .rwrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
   .rwedit { min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 0; background: transparent; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  .askbtn { justify-self: start; min-height: var(--tap); font-weight: 800; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); background: var(--accent); color: var(--accent-ink); border: 0; }
+  .askhint { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
   .rwbtn { justify-self: start; min-height: var(--tap); font-weight: 700; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); }
 </style>

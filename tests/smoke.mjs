@@ -129,6 +129,12 @@ async function page(opts = {}) {
       const out = opts.gapFillFn ? opts.gapFillFn(cur, p.fills.length) : cur;
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
     }
+    /* Ask me, then rewrite (v2.1.39): the tip's questions (opts.tipq: the questions array; opts.tipFail: 503) */
+    if (/^TIP QUESTIONS STEP\./.test(ask)) {
+      (p.tips = p.tips || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.tipFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ questions: opts.tipq || [] }) }] } }] }) });
+    }
     /* Prep crew clean step: echoes the raw thoughts unless opts.clean / cleanFn says otherwise */
     if (/^CLEAN STEP\./.test(ask)) {
       const raw = (ask.split('RAW THOUGHTS:\n\"\"\"\n')[1] || '').replace(/\n\"\"\"\s*$/, '');
@@ -3547,6 +3553,92 @@ await check('rework: tapping Rework builds round 2 right away from the weak line
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* v2.1.39 (idea mwct7axlrttc): the tip asks you about what was weak, then rewrites. */
+await check('ask me: the Quality check tip offers Ask me, then rewrite; it asks one fitted question per weak spot with answers to tap or type, and builds round 2 from them', async () => {
+  const low = { craft: 3.2, rearranged: false, invented: false, missing: ['role', 'context'] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const tipq = [{ id: 'role', question: 'Who should run the bake sale plan?', choices: ['A school event planner', 'A fundraising coach'] }, { id: 'context', question: 'How big is the robotics club?', choices: ['Under 10 kids', '10 to 25 kids'] }];
+  const asked2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT for about 18 kids, mostly 7th graders, with a planner role' : 'First prompt');
+  const p = await reworkPage({ writeFn: asked2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), tipq });
+  const tip = await p.textContent('#qualityCheck .tip');
+  expect(/Tip: It could say who the AI is and background\.$/.test(tip.trim()) && !/Add that to your note|build again/.test(tip), 'the tip should name every weak spot and stop sending you back to your note: ' + tip);
+  expect(/2 quick questions/.test(await p.textContent('#guideHint')) && await p.isVisible('#reworkBtn') && await p.isVisible('#reworkEditBtn'), 'Ask me sits with Rework and Edit first, and says how many questions');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#guideBtn');
+  await p.waitForSelector('#roundAsk');
+  await p.waitForSelector('#qaList .chips button >> text=A school event planner');
+  expect(await p.isHidden('#result'), 'the prompt card steps aside for the questions');
+  expect(p.tips.length === 1 && p.tips[0].json && /flash-lite/.test(p.tips[0].model), 'one small Flash-Lite call writes the questions');
+  expect(/- role: the prompt is weak on who the AI is/.test(p.tips[0].text) && /- context: /.test(p.tips[0].text) && p.tips[0].text.includes(RAW_BAKE) && /PROMPT:\n"""\nFirst prompt/.test(p.tips[0].text), 'the question call gets the weak spots, your words, and the prompt');
+  expect(!(await p.$('#qaNeed')) && /Round 2: your answers go into a rewrite/.test(await p.textContent('#qaPlan')), 'no goal line to redo, and it says where the answers go');
+  await p.click('#qaList .chips button >> text=A school event planner');
+  await p.waitForSelector('#qaList .q >> text=How big is the robotics club?');
+  expect(await p.isVisible('#qaOwn'), 'typing your own answer is always there');
+  await p.fill('#qaOwn', 'about 18 kids, mostly 7th graders'); await p.press('#qaOwn', 'Enter');
+  await p.waitForSelector('#qaGo.ready');
+  await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT for about 18 kids, mostly 7th graders, with a planner role', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && /Q: Who should run the bake sale plan\?\nA: A school event planner \(tapped from suggested options\)/.test(w.text) && /Q: How big is the robotics club\?\nA: about 18 kids, mostly 7th graders(?! \(tapped)/.test(w.text), 'both answers reach the writer, the tapped one marked as tapped');
+  expect(/EDITED PROMPT:[\s\S]*What was weak: It's missing who the AI is\. It's missing background\.[\s\S]*First prompt/.test(w.text) && w.text.includes(RAW_BAKE), 'round 2 writes from the weak line, the prompt, and your first words');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'no second Read: the questions come from the small call');
+  expect(/Round 2/.test(await p.textContent('#madeBy')) && await p.isHidden('#qa'), 'the card should say Round 2 and the questions step away');
+  await p.waitForSelector('#roundResult:has-text("3.0 → 5.0")', { timeout: 5000 });
+  const stored = await p.evaluate(() => JSON.stringify(Object.assign({}, localStorage)) + JSON.stringify(Object.assign({}, sessionStorage)));
+  expect(!/18 kids/.test(stored) && !/school event planner/.test(stored), 'the answers are never saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ask me: if the question call fails the phone asks its own questions; Back returns round 1 untouched; all skipped still rewrites; no button when the tip is about made-up facts', async () => {
+  const low = { craft: 3.4, rearranged: false, invented: false, missing: ['steps'] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), tipFail: true, labelFix: 'First prompt' });
+  await p.waitForSelector('#guideBtn', { timeout: 8000 });
+  expect(/Tip: It could say how-to steps\.$/.test((await p.textContent('#qualityCheck .tip')).trim()) && /One quick question/.test(await p.textContent('#guideHint')), 'one weak spot, one question');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .q >> text=Do you want how-to steps?');
+  expect((await p.$$('#qaList .chips button:not(.skip)')).length === 3, 'the phone question comes with answers to tap');
+  await p.click('#roundBackAsk');
+  expect(await p.isVisible('#result') && await p.isHidden('#qa') && await p.inputValue('#output') === 'First prompt' && await p.isVisible('#guideBtn'), 'Back brings round 1 back as it was');
+  expect(await p.inputValue('#thoughts') === RAW_BAKE, 'your words stay in the box');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .chips .skip');
+  await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaGo.ready'); await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT with a $40 budget', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && !/Do you want how-to steps/.test(w.text), 'a skipped question adds nothing to the writer');
+  const q = await reworkPage({ grade: { craft: 3, rearranged: false, invented: true, missing: [] } });
+  expect(/didn't add anything you didn't say/.test(await q.textContent('#qualityCheck .tip')) && !(await q.$('#guideBtn')) && await q.isVisible('#reworkBtn'), 'a made-up fact is yours to check, so no questions, only Rework');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('staging switches: #lowgrade makes the first Quality check read under the bar so Ask me, then rewrite can be tried, round 2 gets its real grade, and live ignores it (v2.1.39)', async () => {
+  const high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const again = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT, sharper this time' : 'First prompt');
+  const staging = process.env.APP_CHANNEL === 'staging';
+  const p = await page({ intake: { questions: [] }, write: 'First prompt', writeFn: again, grade: high, hash: '#lowgrade' });
+  await p.waitForTimeout(300);
+  expect(/Low grade test is on/.test(await p.evaluate(() => document.body.textContent)) === staging, 'the switch should say it is on, on staging only');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', RAW_BAKE); await p.click('#build'); await done(p);
+  await p.waitForSelector('#qualityCheck', { timeout: 5000 });
+  if (!staging) {
+    expect(!(await p.$('#guideBtn')) && /Ready to go/.test(await p.textContent('#qualityCheck')), 'live must ignore #lowgrade');
+    return;
+  }
+  expect(/3\.4/.test(await p.textContent('#qualityCheck')) && /who the AI is and background/.test(await p.textContent('#qualityCheck .tip')), 'round 1 should read under the bar');
+  expect(p.grades.length >= 1, 'the grader still runs');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .chips .skip'); await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaList .chips .skip'); await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaGo.ready'); await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT, sharper this time', null, { timeout: 15000 });
+  await p.waitForSelector('#roundResult:has-text("3.4 → 5.0")', { timeout: 8000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('rework: Edit first puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
@@ -5048,6 +5140,28 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(/All 7 work/.test(await p.textContent('#labVerdict')), 'one tap must not clear results');
     await p.click('#labReset');
     expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'second tap should clear every result');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
+  /* Test lab report 11/11 (v2.1.39): "just give me a hyperlink to click". */
+  await check('test lab: a check that names a staging test link shows it as a link to tap, which turns the test on without a reload and keeps the lab tab for the way back', async () => {
+    const p = await page();
+    await p.route(/releases\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ releases: [
+      { version: '9.0.1', title: 'One', items: ['x'], checks: [{ say: 'Open the staging link that ends in #flashbusy-slowtest, tap Normal, and build this note.', see: 'A note shows' }, { say: 'Check plain, backlog #51', see: 'shows' }] },
+      { version: '9.0.0', title: 'Live', items: ['x'], checks: [{ say: 'Old', see: 'old' }] }] }) }));
+    await p.goto(BASE + '?live=9.0.0#testlab');
+    await p.waitForSelector('#labVerdict'); await p.click('#labQuick');
+    const links = await p.$$eval('#labLinks a', els => els.map(e => e.getAttribute('href') + '|' + e.textContent.trim()));
+    expect(links.length === 1 && links[0] === '#flashbusy-slowtest|🔗 Open #flashbusy-slowtest', 'the test link should be one tappable link, got: ' + links.join(', '));
+    await p.evaluate(() => { window.__sameDoc = true; });
+    await p.click('#labLinks a');
+    await p.waitForSelector('#notice-form:has-text("Busy Flash + 10x timing test is on")');
+    expect(await p.evaluate(() => window.__sameDoc === true), 'the link must not reload the page');
+    await p.waitForSelector('#labPanel', { state: 'detached' });
+    expect(await p.isVisible('#labTab'), 'the lab tucks away so you can do the check, and its tab stays');
+    await p.click('#labTab');
+    expect(/flashbusy-slowtest/.test(await p.textContent('#labStep')), 'the tab brings you back to the same check');
+    await p.click('#labWorks');
+    expect(/Check plain/.test(await p.textContent('#labStep')) && !(await p.$('#labLinks')), 'a backlog number like #51 is not a link');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   });
 } else {

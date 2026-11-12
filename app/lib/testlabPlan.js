@@ -16,6 +16,12 @@ export const BEFORE_PROMOTE = [
    The Test lab shows it with a Copy test note button. */
 export const asksForNote = (say) => /\bpaste (a|this|the|any)\b|\bmessy note\b|\btype a note\b/i.test(String(say || ''));
 
+/* A check that sends you to a staging test link (like "the staging link that ends in
+   #flashbusy-slowtest") gets that link as a button to tap, so you never type it into the
+   address bar (Test lab report 11/11, v2.1.39). Each #word in the check's Do line, once, in
+   order. #testlab is where you already are, and a bare number like #5 is a backlog item. */
+export const stepLinks = (say) => [...new Set(String(say || '').match(/#[a-z][a-z0-9]*(?:-[a-z0-9]+)*/gi) || [])].filter((h) => h.toLowerCase() !== '#testlab');
+
 export const stepKey = (version, i) => `${version}#${i}`;
 
 export function labPlan(releases = [], live = '') {

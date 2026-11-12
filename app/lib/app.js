@@ -1,4 +1,4 @@
-import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
+import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -320,6 +320,7 @@ export function startApp() {
     else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
     else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
     else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
+    else if (act === "guide") startGuided();   /* v2.1.39: questions about what was weak, then the next round */
     else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
@@ -719,10 +720,20 @@ export function startApp() {
      - flashbusy: for 5 minutes every Flash model answers "busy" without anything being
        sent, to see the page keep cycling, Switch to quick at 2:00, and the quick model at 3:00.
      - slowtest: the timing runs 10x faster (next Flash every 3 seconds, Switch to quick
-       at 0:12, quick model at 0:18). A reload goes back to normal. */
-  var fakeBusyUntil = 0;
+       at 0:12, quick model at 0:18). A reload goes back to normal.
+     - lowgrade (v2.1.39): the first Quality check of each prompt comes back under the bar
+       (3.4, missing who the AI is and background), so Ask me, then rewrite can be tried
+       without waiting for a weak prompt. The grader still runs; only its answer is swapped,
+       and round 2 gets its real grade. Needs Show run stats on, like every Quality check. */
+  var fakeBusyUntil = 0, fakeLowGrade = false;
   function stagingSwitches() {
     var h = location.hash || "";
+    if (IS_STAGING && /lowgrade/.test(h)) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      fakeLowGrade = true;
+      notify("form", "info", "Low grade test is on", "Staging test. Turn on Show run stats in More options, then build any prompt: its first Quality check comes back under the bar, so you can try Ask me, then rewrite. Reload to go back to normal.");
+      return;
+    }
     if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var fb = /flashbusy/.test(h), st = /slowtest/.test(h);
@@ -2358,7 +2369,7 @@ export function startApp() {
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
     doneAway("questions");
   }
-  chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
+  chat.onFinish = function (answers, quick) { if (busy || !session) return; if (guide) guidedBuild(answers, quick); else writeFinal(answers, quick); };
 
   /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
   /* bare (Flow bench): leave out My context, your core, and memory, so only the flow differs. */
@@ -2878,7 +2889,7 @@ export function startApp() {
      picks up where you left off. All in memory only, never saved. */
   var ROUND_MAX = 3;
   var rounds = [], reworkFrom = 0, reworkSeed = "", reworkDraft = null;   /* reworkDraft: { from, text } */
-  function clearRounds() { rounds = []; reworkFrom = 0; reworkSeed = ""; reworkDraft = null; ui.round = null; ui.compare = null; }
+  function clearRounds() { rounds = []; reworkFrom = 0; reworkSeed = ""; reworkDraft = null; guide = null; ui.round = null; ui.compare = null; }
   var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
@@ -2981,6 +2992,66 @@ export function startApp() {
     notify("form");
     writeFinal(session.answers, false);
   }
+  /* Ask me, then rewrite (v2.1.39, idea mwct7axlrttc): the Quality check tip used to leave the
+     fixing to you ("add that to your note and build again"). Now one tap turns what was weak
+     into up to 3 short questions with answers to tap (or type your own, or skip), and your
+     answers build the next round as a full rewrite. One Flash-Lite call writes the questions
+     to fit your request; if it fails or runs past 8 seconds the phone's own questions are
+     used, so the button never dead-ends. Same rounds as Rework (max 3, Back, Compare), and
+     the answers stay in memory only, never saved. */
+  var guide = null;   /* { base, run } while the questions are being written or are on screen */
+  var guideRun = 0;
+  function tipWeak(g) {
+    if (!g || g.pass) return [];
+    var w = g.missing.slice();
+    if (g.rearranged && w.indexOf("task") === -1) w.unshift("task");
+    if (!w.length && !g.invented && !g.numCheck) w.push("detail");
+    return w.slice(0, TIP_MAX);
+  }
+  function startGuided() {
+    var g = lastGrade(), key = gemini.key || gkey.value.trim(), weak = tipWeak(g);
+    if (!weak.length || !session || !session.basePrompt || busy || !key || !gemini.plan) return;
+    if ((ui.round && ui.round.stage !== "built") || rounds.length >= ROUND_MAX) return;
+    var from = rounds.length ? viewingRound() - 1 : 0;
+    rounds[from] = Object.assign({}, rounds[from] || {}, roundSnap());
+    reworkFrom = from;
+    reworkSeed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
+    notify("result"); notify("form");
+    var base = session, run = ++guideRun, n = rounds.length + 1;
+    guide = { base: base, run: run };
+    ui.round = Object.assign({}, ui.round || {}, { n: n, stage: "ask", from: from + 1, count: rounds.length, max: ROUND_MAX });
+    result.hidden = true;
+    chat.reset();
+    chat.title = "Let's sharpen your prompt";
+    window.dispatchEvent(new Event("stp-asking"));   /* the dock: Write my prompt is next (NextDock.svelte) */
+    setBusy(true, "Writing your questions...");
+    qaStatus.textContent = "Writing " + (weak.length === 1 ? "a quick question" : weak.length + " quick questions") + " about what was weak...";
+    qa.hidden = false;
+    qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    askGemini(tipQuestionsPrompt(base.basePrompt, weak, base.raw, withMem(base.answers)), true, gemini.plan.intake, "low", null, 8000).then(function (r) { return r.text; }, function () { return ""; }).then(function (text) {
+      if (!guide || guide.run !== run) return;   /* Back, Start over, or a new build: leave it alone */
+      setBusy(false);
+      qaStatus.textContent = "";
+      var qs = tipQuestions(weak, text);
+      guide.asked = qs.length; guide.fromAi = qs.filter(function (q) { return q.from === "ai"; }).length;
+      chat.start({ title: "Let's sharpen your prompt", need: "", questions: qs.map(function (q) { return { question: q.question, choices: q.choices }; }) },
+        "Round " + n + ": your answers go into a rewrite of your prompt. Your first thoughts and answers are kept.");
+      qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  /* The answers join your earlier ones (so their numbers count as yours), and the round
+     writes from them plus the prompt with its weak line, like Rework. All skipped is fine:
+     it's a plain Rework then. */
+  function guidedBuild(answers, quick) {
+    var s1 = guide.base, n = rounds.length + 1, got = answers.filter(function (a) { return a.answer; });
+    session = Object.assign({}, s1, { answers: (s1.answers || []).concat(got), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
+      round: n, reworkOf: reworkFrom + 1, reworkText: reworkSeed.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n + " (asked)",
+      guided: { asked: guide.asked || 0, answered: got.length, ai: guide.fromAi || 0 } });
+    guide = null;
+    ui.round = Object.assign({}, ui.round, { stage: "writing" });
+    notify("form");
+    writeFinal(session.answers, !!quick);
+  }
   function roundBuilt(n) {
     rounds[n - 1] = roundSnap();
     ui.round = Object.assign({}, ui.round, { stage: "built", viewing: n, count: rounds.length, max: ROUND_MAX });
@@ -2990,8 +3061,13 @@ export function startApp() {
      and your edits wait for the next Rework. */
   function backToBase() {
     if (!ui.round || ui.round.stage === "built" || !rounds[reworkFrom]) return;
-    var text = ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
-    reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
+    /* From the questions (stage ask) or a round built from them, nothing was typed in the box:
+       any earlier Edit first draft stays as it was. */
+    var asked = ui.round.stage === "ask" || !!(session && session.guided);
+    var text = asked ? "" : ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
+    if (!asked) reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
+    guide = null; guideRun++;
+    qaStatus.textContent = "";
     writeRun++;
     setBusy(false);
     stopTicker();
@@ -3080,6 +3156,8 @@ export function startApp() {
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
     var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader, writer)).then(function (g) {
+      /* Staging #lowgrade test: round 1 reads as under the bar, whatever the grader said. */
+      if (IS_STAGING && fakeLowGrade && !(session && session.round >= 2)) g = { craft: 3.4, pass: false, rearranged: false, invented: false, missing: ["role", "context"], broke: [], model: g.model, history: g.history };
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -3107,10 +3185,10 @@ export function startApp() {
       : g.numCheck ? "Check the numbers and dates in the Heads up note before you paste it."
       : g.invented ? "Check it didn't add anything you didn't say."
       : g.rearranged ? "Say what you want done, not only what's on your mind."
-      : g.missing.length ? "It could say " + (LABEL_NAMES[g.missing[0]] || g.missing[0]) + ". Add that to your note and build again."
-      : "Add a detail or two about what you want, then build again.";
-    var score = Math.round(g.craft * 10) / 10;
-    return { score: score, pass: !!g.pass, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
+      : g.missing.length ? "It could say " + andList(g.missing.slice(0, TIP_MAX).map(function (m) { return LABEL_NAMES[m] || m; })) + "."
+      : "A detail or two about what you want would sharpen it.";
+    var score = Math.round(g.craft * 10) / 10, ask = tipWeak(g).length;
+    return { score: score, pass: !!g.pass, ask: ask, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
   }
   function gradeText(g, fields, extra) {
     ui.grade = gradeView(g, extra);

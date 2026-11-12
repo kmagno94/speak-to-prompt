@@ -346,3 +346,53 @@ export function goalText(goal) {
     ? "\n\nTHE PERSON'S GOAL, IN THEIR OWN WORDS (they corrected an earlier step's read of what they want, so this is what the prompt must aim at. Facts and details still come from the raw thoughts and answers; never add anything the goal doesn't say):\n" + t
     : "\n\nTHE GOAL THE PERSON CONFIRMED (an earlier step's one-line read of what they want; they saw it and left it as is. Aim the prompt at it, but their raw thoughts and answers win on every detail, and it never adds a fact):\n" + t;
 }
+
+/* Ask me, then rewrite (v2.1.39, idea mwct7axlrttc): the Quality check tip used to say "add
+   that to your note and build again". Now one Flash-Lite call turns each weak spot into one
+   short question with answers to tap (typing your own always works), and the answers build
+   the next Rework round. TIP_FALLBACK is the phone's own question per weak spot, used when
+   the call fails or leaves one out, so the button never dead-ends. */
+export const TIP_FALLBACK = {
+  role: { question: 'Who should the AI act as for this?', choices: ['An expert in this topic', 'A patient teacher', 'A straight-talking coach'] },
+  task: { question: 'What is the one thing you want the AI to do?', choices: ['Give me a plan', 'Write it for me', 'Help me decide', 'Explain it simply'] },
+  context: { question: 'What background should the AI know first?', choices: ["I'm new to this", "I've tried and got stuck", 'It is for someone else'] },
+  format: { question: 'How long should the answer be, and in what shape?', choices: ['Short bullets, one screen', 'Numbered steps', 'A table', 'A few short paragraphs'] },
+  success: { question: 'What would make the answer great for you?', choices: ['I can act on it today', 'Simple enough for a beginner', 'It covers every detail'] },
+  constraints: { question: 'Any limits the AI should stick to?', choices: ['Keep it cheap or free', 'Keep it quick', 'No limits'] },
+  steps: { question: 'Do you want how-to steps?', choices: ['Yes, numbered steps', 'Yes, with fixes if something goes wrong', 'No, just the answer'] },
+  ending: { question: 'Should the AI start right away or check with you first?', choices: ['Start right away', 'Ask me one question first'] },
+  detail: { question: 'What detail would make this fit you better?', choices: ['Who it is for', 'My deadline', 'What I have tried already'] }
+};
+export const TIP_MAX = 3;
+export function tipQuestionsPrompt(prompt, weak, raw, answers) {
+  const out = [
+    "TIP QUESTIONS STEP. A prompt-building tool wrote the prompt below from a beginner's raw thoughts, and a reviewer found weak spots. Write one short question for each weak spot, so the person's answers can fix it.",
+    "Each question is plain, friendly, about one thing, under 14 words, and fitted to this request (never generic). Give 2 to 4 short, likely answers to tap, fitted to this request, under 8 words each. Never ask about something the raw thoughts or answers already say. Never put a fact, number, or name in a choice unless the person said it.",
+    "",
+    "WEAK SPOTS (use these ids):"
+  ];
+  weak.forEach((w) => out.push("- " + w + ": " + (w === 'detail' ? 'the prompt could be sharper and more specific' : 'the prompt is weak on ' + (LABEL_NAMES[w] || w))));
+  out.push("", "Respond with JSON only, in exactly this shape:", '{"questions": [{"id": "the weak spot id", "question": "the question", "choices": ["a likely answer", "another"]}]}',
+    "", "RAW THOUGHTS:", '"""', raw, '"""');
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "THEIR ANSWERS SO FAR:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT:", '"""', prompt, '"""');
+  return out.join("\n");
+}
+/* One question per weak spot, in order: the model's when it gave a usable one, else the phone's. */
+export function tipQuestions(weak, text) {
+  let got = [];
+  try {
+    const t = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''), a = t.indexOf('{'), b = t.lastIndexOf('}');
+    const d = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
+    got = Array.isArray(d.questions) ? d.questions : [];
+  } catch (e) { got = []; }
+  const clean = (s, n) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);
+  return weak.slice(0, TIP_MAX).map((w) => {
+    const m = got.find((q) => q && String(q.id || '').toLowerCase().trim() === w);
+    const question = m ? clean(m.question, 160) : '';
+    const choices = m && Array.isArray(m.choices) ? m.choices.map((c) => clean(c, 60)).filter(Boolean).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, 4) : [];
+    const fb = TIP_FALLBACK[w] || TIP_FALLBACK.detail;
+    return question && choices.length >= 2 ? { question, choices, weak: w, from: 'ai' } : { question: fb.question, choices: fb.choices.slice(), weak: w, from: 'phone' };
+  });
+}

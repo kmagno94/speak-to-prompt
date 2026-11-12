@@ -11,7 +11,7 @@
   let { place } = $props();
   let open = $state(false);
   const r = $derived(ui.round);
-  const show = $derived(!!r && (place === 'form' ? r.stage === 'edit' : r.stage === 'built' && (r.count || 0) >= 2));
+  const show = $derived(!!r && (place === 'form' ? r.stage === 'edit' : place === 'qa' ? r.stage === 'ask' : r.stage === 'built' && (r.count || 0) >= 2));
   const count = $derived(r ? r.count || 0 : 0);
   const viewing = $derived(r ? r.viewing || count : 0);
   /* The round on screen reads its live Quality check; the others use their saved score. */
@@ -24,8 +24,13 @@
 </script>
 
 {#if show}
-  <div class="round" id={place === 'form' ? 'roundForm' : 'roundResult'} transition:slide={{ duration: ms(200) }}>
-    {#if place === 'form'}
+  <div class="round" id={place === 'form' ? 'roundForm' : place === 'qa' ? 'roundAsk' : 'roundResult'} transition:slide={{ duration: ms(200) }}>
+    {#if place === 'qa'}
+      <!-- v2.1.39: Ask me, then rewrite. The questions about what was weak, before round N builds. -->
+      <p class="head"><b>🔁 Round {r.n}</b></p>
+      <p class="say">A few questions about what was weak. Tap an answer, type your own, or skip. Then tap Write my prompt and round {r.n} is rewritten with your answers.</p>
+      <button type="button" class="link back" id="roundBackAsk" onclick={() => act('roundback')}>← Back to round {r.from}</button>
+    {:else if place === 'form'}
       <p class="head"><b>🔁 Round {r.n}</b></p>
       <p class="say">Your prompt is in the box with what was weak on top. Change anything, then tap Build my prompt. Your first thoughts and answers are kept for it.</p>
       <button type="button" class="link back" id="roundBackForm" onclick={() => act('roundback')}>← Back to round {r.from}</button>
