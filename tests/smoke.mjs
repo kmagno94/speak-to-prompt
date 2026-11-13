@@ -5459,7 +5459,8 @@ const scStored = (p) => p.evaluate(() => localStorage.getItem('stp-sc-wait'));
 
 await check('shortcut writer: with dev tools on and Write with set to Shortcut, the Flash write goes to STP Flash Backup, comes back in the link, and Polish and Check carry on (#53)', async () => {
   const p = await scPage('');
-  await p.click('#moreOpts summary');
+  /* Write with sits under Build my prompt (dev tools only), not in More options. */
+  expect(await p.isVisible('#writerSrc') && await p.evaluate(() => !document.getElementById('moreOpts').contains(document.getElementById('writerSrc')) && !!document.getElementById('form').contains(document.getElementById('writerSrc'))), 'Write with should be by Build my prompt');
   expect(await p.getAttribute('#writerFlash', 'aria-pressed') === 'true', 'Flash should be the default writer');
   await p.click('#writerCloud');
   expect(await p.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the Write with choice should be saved');
@@ -5500,7 +5501,7 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   await p.reload();
   /* ChatGPT (v2.1.41): its own link word, label, and made-by line; Cloud Pro is gone. */
   expect(!(await p.$('#writerPro')), 'Cloud Pro was taken out');
-  await p.click('#moreOpts summary'); await p.click('#writerGpt');
+  await p.click('#writerGpt');
   await p.evaluate(() => { document.getElementById('reset').click(); window.__scOpens = []; });
   await p.fill('#thoughts', SC_NOTE); await p.click('#build');
   await p.waitForSelector('#notice-result');
@@ -5515,6 +5516,7 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(/STP Flash Backup \(ChatGPT\)/.test(await p.textContent('#madeBy')), 'made-by line should name ChatGPT: ' + await p.textContent('#madeBy'));
   /* Dev tools off: the saved choice does nothing. */
   await p.evaluate(() => localStorage.setItem('stp-dev', '0')); await p.reload();
+  expect(!(await p.$('#writerSrc')), 'no Write with row with dev tools off');
   await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await done(p);
   expect(await p.inputValue('#output') === 'THE PROMPT' && p.calls.some(c => !c.intake && c.model === 'gemini-3.8-flash'), 'with dev tools off Flash writes as usual');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));

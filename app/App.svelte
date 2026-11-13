@@ -5,6 +5,7 @@
   import ChatBuilder from './ChatBuilder.svelte';
   import StartHelper from './StartHelper.svelte';
   import CoreToggle from './CoreToggle.svelte';
+  import WriterPicker from './WriterPicker.svelte';
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
   import StartHere from './StartHere.svelte';
@@ -146,6 +147,7 @@
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
+      <WriterPicker />
       <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
@@ -286,22 +288,11 @@
       <HearSpeed />
       <div class="stats">
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
-        <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
+        <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, the Use my core switch, and <b>Write with</b> under Build my prompt. For building the app, not for everyday users.</p>
       </div>
       <div class="stats">
         <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
         <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
-      </div>
-      <div class="stats gradersrc" id="writerSrc" hidden={!core.dev}>
-        <p class="srchead">Write with</p>
-        <div class="seg wide" role="group" aria-label="Who writes the prompt">
-          <button type="button" id="writerFlash" aria-pressed={core.writer === 'flash'} onclick={() => core.setWriter('flash')}>Flash</button>
-          <button type="button" id="writerCloud" aria-pressed={core.writer === 'cloud'} onclick={() => core.setWriter('cloud')}>Shortcut (Cloud)</button>
-          <button type="button" id="writerGpt" aria-pressed={core.writer === 'gpt'} onclick={() => core.setWriter('gpt')}>Shortcut (ChatGPT)</button>
-          <button type="button" id="writerDevice" aria-pressed={core.writer === 'device'} onclick={() => core.setWriter('device')}>Shortcut (On-Device)</button>
-        </div>
-        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (' + (core.writer === 'gpt' ? 'ChatGPT, through Apple\'s ChatGPT extension, so your words go to OpenAI' : 'Apple\'s ' + (core.writer === 'device' ? 'on-device' : 'cloud') + ' model') + ') and comes back on your clipboard: one Paste tap brings it in for Polish and Check. The shortcut gets a shorter set of writing rules than Flash, with your core, memory, lessons, and picked context still included. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
-        <p class="hint">While a build waits on the shortcut, its words are kept on this device so the shortcut can bring you back to it. They are deleted the moment it returns, when you start a new prompt, or after 30 minutes.</p>
       </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>

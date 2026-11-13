@@ -7,7 +7,7 @@
       "title": "Shortcut stand-in: answers come back whole, ChatGPT joins, and a shorter set of writing rules",
       "items": [
         "🔀 Fix: the shortcut's answer now comes back on your clipboard with one Paste tap. It used to ride in the link, and the link arrived cut at about 200 characters, so every shortcut prompt was a stub that the app then padded with stock lines.",
-        "Write with (dev tools) adds Shortcut (ChatGPT), which runs through Apple's ChatGPT extension, so with that choice your words go to OpenAI. Run stats tag it shortcut-chatgpt. Cloud Pro was tried and taken out: it answered too many requests every time.",
+        "Write with (dev tools) now sits right under Build my prompt instead of in More options, and adds ChatGPT, which runs through Apple's ChatGPT extension, so with that choice your words go to OpenAI. Run stats tag it shortcut-chatgpt. Cloud Pro was tried and taken out: it answered too many requests every time.",
         "The shortcut gets a shorter set of writing rules than Flash: six plain rules, numbers as digits, and the must-keep list last. Your core, memory, lessons, and picked My context still go along, each in a compact form. Flash is not changed.",
         "The page snaps to the hand-off card as soon as it shows, so you aren't left watching the pot.",
         "An answer that is very short or stops mid-sentence is held as cut off instead of being used, with Run shortcut again, another model, Use Flash instead, or Use it anyway.",
@@ -16,11 +16,11 @@
       ],
       "checks": [
         {
-          "say": "Open More options with Show my dev tools on and look at Write with.",
-          "see": "Four choices: Flash, Shortcut (Cloud), Shortcut (ChatGPT), and Shortcut (On-Device)."
+          "say": "With Show my dev tools on, look under Build my prompt.",
+          "see": "A Write with row with four choices: Flash, Cloud, ChatGPT, and On-Device. Turn dev tools off and the row is gone."
         },
         {
-          "say": "Pick Shortcut (ChatGPT), tap Normal, and build this note. Answer or skip any questions.",
+          "say": "Tap ChatGPT in Write with, tap Normal, and build this note. Answer or skip any questions.",
           "see": "The page moves to a card that says Hand this write to STP Flash Backup (ChatGPT), with Copy and run shortcut, Try Cloud, Try On-Device, and Use Flash instead.",
           "paste": "so um my coworker Imani is running her first 10k on the 23rd and I wanna make her a little race day kit, I've got like 40 bucks, she loves sour candy and can't stand anything mint, and it has to fit in her locker which is tiny, what should I put in it"
         },
