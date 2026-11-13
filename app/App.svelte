@@ -297,11 +297,10 @@
         <div class="seg wide" role="group" aria-label="Who writes the prompt">
           <button type="button" id="writerFlash" aria-pressed={core.writer === 'flash'} onclick={() => core.setWriter('flash')}>Flash</button>
           <button type="button" id="writerCloud" aria-pressed={core.writer === 'cloud'} onclick={() => core.setWriter('cloud')}>Shortcut (Cloud)</button>
-          <button type="button" id="writerPro" aria-pressed={core.writer === 'pro'} onclick={() => core.setWriter('pro')}>Shortcut (Cloud Pro)</button>
           <button type="button" id="writerGpt" aria-pressed={core.writer === 'gpt'} onclick={() => core.setWriter('gpt')}>Shortcut (ChatGPT)</button>
           <button type="button" id="writerDevice" aria-pressed={core.writer === 'device'} onclick={() => core.setWriter('device')}>Shortcut (On-Device)</button>
         </div>
-        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (' + (core.writer === 'gpt' ? 'ChatGPT, through Apple\'s ChatGPT extension, so your words go to OpenAI' : 'Apple\'s ' + (core.writer === 'device' ? 'on-device' : core.writer === 'pro' ? 'Cloud Pro' : 'cloud') + ' model') + ') and comes back here for Polish and Check. The shortcut gets a shorter set of writing rules than Flash, with your core, memory, lessons, and picked context still included. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
+        <p class="hint" id="writerInfo">{core.writer === 'flash' ? 'Using Flash, like everyone else.' : 'Proof of concept: the Flash write goes to the STP Flash Backup shortcut (' + (core.writer === 'gpt' ? 'ChatGPT, through Apple\'s ChatGPT extension, so your words go to OpenAI' : 'Apple\'s ' + (core.writer === 'device' ? 'on-device' : 'cloud') + ' model') + ') and comes back on your clipboard: one Paste tap brings it in for Polish and Check. The shortcut gets a shorter set of writing rules than Flash, with your core, memory, lessons, and picked context still included. Needs an Apple Intelligence device. Round 2 and Quick still use Gemini.'}</p>
         <p class="hint">While a build waits on the shortcut, its words are kept on this device so the shortcut can bring you back to it. They are deleted the moment it returns, when you start a new prompt, or after 30 minutes.</p>
       </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>

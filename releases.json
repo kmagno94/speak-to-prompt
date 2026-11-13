@@ -4,27 +4,33 @@
     {
       "version": "2.1.41",
       "date": "2026-11-12",
-      "title": "Shortcut stand-in: Cloud Pro, and a shorter set of writing rules for Apple's models",
+      "title": "Shortcut stand-in: answers come back whole, ChatGPT joins, and a shorter set of writing rules",
       "items": [
-        "🔀 Write with (dev tools) has two more choices: Shortcut (Cloud Pro), Apple's cloud model with more reasoning, and Shortcut (ChatGPT), which runs through Apple's ChatGPT extension, so with that choice your words go to OpenAI. Run stats tag them shortcut-cloud-pro and shortcut-chatgpt.",
-        "The shortcut now gets a shorter set of writing rules than Flash. On the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full rules. The short version has six plain rules, asks for numbers as digits, and puts the must-keep list last. Your core, memory, lessons, and picked My context still go along, each in a compact form, so it is one to one with what Flash gets. Flash is not changed.",
-        "The hand-off card offers two of the other models (like Try ChatGPT and Try Cloud Pro), plus Use Flash instead.",
-        "The STP Flash Backup shortcut needs a branch for each: input that contains cloudpro uses the Cloud Pro model, and input that contains chatgpt uses ChatGPT.",
+        "🔀 Fix: the shortcut's answer now comes back on your clipboard with one Paste tap. It used to ride in the link, and the link arrived cut at about 200 characters, so every shortcut prompt was a stub that the app then padded with stock lines.",
+        "Write with (dev tools) adds Shortcut (ChatGPT), which runs through Apple's ChatGPT extension, so with that choice your words go to OpenAI. Run stats tag it shortcut-chatgpt. Cloud Pro was tried and taken out: it answered too many requests every time.",
+        "The shortcut gets a shorter set of writing rules than Flash: six plain rules, numbers as digits, and the must-keep list last. Your core, memory, lessons, and picked My context still go along, each in a compact form. Flash is not changed.",
+        "The page snaps to the hand-off card as soon as it shows, so you aren't left watching the pot.",
+        "An answer that is very short or stops mid-sentence is held as cut off instead of being used, with Run shortcut again, another model, Use Flash instead, or Use it anyway.",
+        "The hand-off card offers the other two models (like Try ChatGPT and Try On-Device), plus Use Flash instead.",
         "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied."
       ],
       "checks": [
         {
           "say": "Open More options with Show my dev tools on and look at Write with.",
-          "see": "Five choices: Flash, Shortcut (Cloud), Shortcut (Cloud Pro), Shortcut (ChatGPT), and Shortcut (On-Device)."
+          "see": "Four choices: Flash, Shortcut (Cloud), Shortcut (ChatGPT), and Shortcut (On-Device)."
         },
         {
-          "say": "Pick Shortcut (Cloud Pro), tap Normal, and build this note. Answer or skip any questions.",
-          "see": "A card says Hand this write to STP Flash Backup (Cloud Pro), with Copy and run shortcut, Try ChatGPT, Try Cloud, and Use Flash instead.",
+          "say": "Pick Shortcut (ChatGPT), tap Normal, and build this note. Answer or skip any questions.",
+          "see": "The page moves to a card that says Hand this write to STP Flash Backup (ChatGPT), with Copy and run shortcut, Try Cloud, Try On-Device, and Use Flash instead.",
           "paste": "so um my coworker Imani is running her first 10k on the 23rd and I wanna make her a little race day kit, I've got like 40 bucks, she loves sour candy and can't stand anything mint, and it has to fit in her locker which is tiny, what should I put in it"
         },
         {
-          "say": "With the Cloud Pro branch added to the shortcut, tap Copy and run shortcut.",
-          "see": "The shortcut brings you back, Polish and Check finish, and the line under the prompt says STP Flash Backup (Cloud Pro). The prompt has the 23rd, $40 as digits, sour candy, no mint, and the tiny locker."
+          "say": "With the current STP Flash Backup shortcut on this device, tap Copy and run shortcut.",
+          "see": "The shortcut brings you back and the card says The shortcut is done. Tap Paste."
+        },
+        {
+          "say": "Tap Paste result.",
+          "see": "Polish and Check finish, and the line under the prompt says STP Flash Backup (ChatGPT). The prompt is whole: the 23rd, $40 as digits, sour candy, no mint, and the tiny locker."
         },
         {
           "say": "Build a prompt with Write with set to Flash, type one more word in the box, and scroll to the bottom.",

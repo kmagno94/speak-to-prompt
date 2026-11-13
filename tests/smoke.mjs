@@ -5498,18 +5498,21 @@ await check('shortcut writer: with dev tools on and Write with set to Shortcut, 
   expect(withCore.indexOf('ABOUT ME') < withCore.indexOf('MY NOTES:') && /Now write the prompt\.$/.test(withCore), 'core goes before the notes');
   await p.evaluate(() => { document.getElementById('reset').click(); localStorage.removeItem('stp-core'); });
   await p.reload();
-  /* Cloud Pro (v2.1.41): its own link word, label, and made-by line. */
-  await p.click('#moreOpts summary'); await p.click('#writerPro');
+  /* ChatGPT (v2.1.41): its own link word, label, and made-by line; Cloud Pro is gone. */
+  expect(!(await p.$('#writerPro')), 'Cloud Pro was taken out');
+  await p.click('#moreOpts summary'); await p.click('#writerGpt');
   await p.evaluate(() => { document.getElementById('reset').click(); window.__scOpens = []; });
   await p.fill('#thoughts', SC_NOTE); await p.click('#build');
   await p.waitForSelector('#notice-result');
-  expect(/STP Flash Backup \(Cloud Pro\)/.test(await scCardText(p)), 'card should name Cloud Pro: ' + await scCardText(p));
+  expect(/STP Flash Backup \(ChatGPT\)/.test(await scCardText(p)), 'card should name ChatGPT: ' + await scCardText(p));
+  await p.waitForTimeout(900);
+  expect(await p.evaluate(() => { const r = document.getElementById('notice-result').getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight - 80; }), 'the page should snap to the hand-off card');
   await scTap(p, 'Copy and run shortcut');
   await p.waitForFunction(() => window.__scOpens.length === 1);
-  expect(/stpback%3Dcloudpro\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use Cloud Pro');
-  await p.evaluate((t) => { location.hash = '#stpback=cloudpro.' + encodeURIComponent(t); }, SC_PROMPT);
+  expect(/stpback%3Dchatgpt\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use ChatGPT');
+  await p.evaluate((t) => { location.hash = '#stpback=chatgpt.' + encodeURIComponent(t); }, SC_PROMPT);
   await done(p);
-  expect(/STP Flash Backup \(Cloud Pro\)/.test(await p.textContent('#madeBy')), 'made-by line should name Cloud Pro: ' + await p.textContent('#madeBy'));
+  expect(/STP Flash Backup \(ChatGPT\)/.test(await p.textContent('#madeBy')), 'made-by line should name ChatGPT: ' + await p.textContent('#madeBy'));
   /* Dev tools off: the saved choice does nothing. */
   await p.evaluate(() => localStorage.setItem('stp-dev', '0')); await p.reload();
   await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await done(p);
@@ -5543,9 +5546,15 @@ await check('shortcut writer: a new tab picks the build up, a long result comes 
   await scTap(q, 'Copy and run shortcut');
   await q.waitForFunction(() => window.__scOpens.length === 1);
   await q.evaluate(() => { location.hash = '#stpback=cloud.STP-CLIPBOARD'; });
-  await q.waitForFunction(() => /Result was long, tap Paste/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  await q.waitForFunction(() => /The shortcut is done\. Tap Paste/.test((document.getElementById('notice-result') || {}).textContent || ''));
   await scTap(q, 'Paste result');   /* the clipboard still has what was sent: not an answer */
   await q.waitForFunction(() => /hasn't answered yet/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  /* A cut-off answer (stops mid-sentence) is held, not used and not padded by the label fix. */
+  const stub = 'Role: Coach Context: I want to plan a taco night for 6 people on Friday at 7 with a 60 dollar budget and my cousin is vegetarian so I want to make';
+  await q.evaluate((t) => navigator.clipboard.writeText(t), stub);
+  await scTap(q, 'Paste result');
+  await q.waitForFunction(() => /looks cut off/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  expect(!q.calls.some(c => !c.intake) && !q.fixes.length, 'a cut-off answer is not used');
   await q.evaluate((t) => navigator.clipboard.writeText(t), SC_PROMPT);
   await scTap(q, 'Paste result');
   await done(q);

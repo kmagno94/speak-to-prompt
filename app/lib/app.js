@@ -331,6 +331,7 @@ export function startApp() {
     else if (/^scother-/.test(act)) scOther(act.slice(8));
     else if (act === "scflash") scFlash();
     else if (act === "scpaste") scPaste();
+    else if (act === "scuse") scUse();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
@@ -2633,12 +2634,14 @@ export function startApp() {
      Apple's Use Model (Cloud or On-Device) on an iPhone, iPad, or Mac:
        1. A card offers one tap: it copies the job for the shortcut (scText) and opens
           shortcuts://run-shortcut with the address to come back to as the shortcut's input.
-          That address ends in #stpback=cloud., cloudpro., chatgpt. or ondevice., which is also how
+          That address ends in #stpback=cloud., chatgpt. or ondevice., which is also how
           the shortcut knows which model to use. What gets copied is the short writer text
           (scText, v2.1.41), since Apple's models dropped details under the full one.
-       2. The shortcut opens that address with the prompt after it (the part after # never
-          leaves the device). Over 8,000 characters it copies the prompt instead and sends the
-          word STP-CLIPBOARD, and the card asks for one Paste tap.
+       2. The shortcut copies the model's answer and opens that address with the word
+          STP-CLIPBOARD after it; the card then asks for one Paste tap. The answer used to ride
+          in the link itself, but the link arrived cut at about 200 characters on iPhone and
+          Mac (found 11/12 with a debug shortcut), so every answer was a stub. A prompt in the
+          link is still read, for an older copy of the shortcut.
        3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag
           the writer as shortcut-cloud or shortcut-on-device, so grades can be compared.
      Nothing switches models on its own: the card always has Run shortcut again, Try the other
@@ -2648,14 +2651,15 @@ export function startApp() {
      this build's session, your words included). That copy exists only while a build waits on
      the shortcut, and is deleted when the result is back, on Use Flash instead, on New prompt,
      and after 30 minutes. Dev tools only; everyone else never writes it. */
-  var SC_NAME = "STP Flash Backup", SC_KEY = "stp-sc-wait", SC_MAX_MS = 30 * 60000, SC_MIN_WORDS = 8, SC_LONG = "STP-CLIPBOARD";
+  var SC_NAME = "STP Flash Backup", SC_KEY = "stp-sc-wait", SC_MAX_MS = 30 * 60000, SC_MIN_WORDS = 8, SC_FULL_WORDS = 25, SC_LONG = "STP-CLIPBOARD";
   var scWait = null;   /* the write waiting on the shortcut: { run, text, model, t0, sent, swaps, resolve, reject } */
   var scBack = null;   /* a result that arrived in a tab the shortcut opened: { model, text, long, t0 } */
   var scLeaving = 0;   /* when the shortcut was last opened, so the leave warning stays quiet for it */
-  /* Four models in Use Model (Cloud Pro and ChatGPT added in v2.1.41; ChatGPT goes through
-     Apple's ChatGPT extension, so the words go to OpenAI): the name in the saved setting, the word the
+  /* Three models in Use Model (ChatGPT added in v2.1.41; it goes through Apple's ChatGPT
+     extension, so the words go to OpenAI. Cloud Pro was tried and taken out the same day: it
+     answered "too many requests" every time): the name in the saved setting, the word the
      shortcut matches in its input, the label on screen, and the tag in run stats. */
-  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, pro: { slug: "cloudpro", label: "Cloud Pro", tag: "shortcut-cloud-pro" }, gpt: { slug: "chatgpt", label: "ChatGPT", tag: "shortcut-chatgpt" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
+  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, gpt: { slug: "chatgpt", label: "ChatGPT", tag: "shortcut-chatgpt" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
   function scModel() { return core.dev && SC_MODELS[core.writer] ? core.writer : ""; }
   function scLabel(m) { return (SC_MODELS[m] || SC_MODELS.cloud).label; }
   function scOf(tagOrSlug) { for (var k in SC_MODELS) if (SC_MODELS[k].tag === tagOrSlug || SC_MODELS[k].slug === tagOrSlug) return k; return "cloud"; }
@@ -2716,18 +2720,22 @@ export function startApp() {
     var w = scWait;
     if (!w) return;
     var name = SC_NAME + " (" + scLabel(w.model) + ")";
-    var others = ["gpt", "pro", "cloud", "device"].filter(function (m) { return m !== w.model; });   /* the card offers the first two */
+    var others = ["gpt", "cloud", "device"].filter(function (m) { return m !== w.model; });
     var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
     var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use Flash instead", act: "scflash" };
     var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
     document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
-    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here with the prompt, then Polish and Check carry on like always.", [run, swap, swap2, flash]);
-    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it opens this page again with your prompt. Nothing came back? Run it again, try another model, or let Flash write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
-    else if (state === "long") notify("result", "info", "Result was long, tap Paste", "The shortcut copied the prompt instead of sending it in the link.", [paste, run, flash]);
+    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here, and one Paste tap brings the prompt in. Then Polish and Check carry on like always.", [run, swap, swap2, flash]);
+    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it brings you back here with the prompt on your clipboard. Then tap Paste result. Nothing came back? Run it again, try another model, or let Flash write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
+    else if (state === "long") notify("result", "success", "The shortcut is done. Tap Paste", "Its answer is on your clipboard. Paste brings it in, then Polish and Check carry on.", [paste, run, flash]);
+    else if (state === "cut") notify("result", "warn", "That answer looks cut off", "It stops partway or is very short, so it wasn't used. Run the shortcut again, try another model, or let Flash write it. Sure it's whole? Use it anyway.", [run, swap, flash, { label: "Use it anyway", act: "scuse" }, paste]);
     else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, swap2, flash, paste]);
     else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let Flash write it.", [run, flash]);
     else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let Flash write it.", [paste, run, flash]);
     else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try another model, or let Flash write it.", [run, swap, swap2, flash, paste]);
+    /* Snap to the card (Kevin, 11/12: "If I was not aware I'd just stare at it cooking and wonder
+       why it is not working"). After the tracker's own snap, so this one wins. */
+    setTimeout(function () { var n = document.getElementById("notice-result"); if (n && scWait === w) n.scrollIntoView({ behavior: "smooth", block: "center" }); }, 450);
   }
   /* Copy the job, keep the build for a new tab, open the shortcut. Needs a tap. */
   function scRun() {
@@ -2768,13 +2776,19 @@ export function startApp() {
     navigator.clipboard.readText().then(function (t) { if (scWait === w) scTake(t, true); }, function () { if (scWait === w) scCard("nopaste"); });
   }
   /* The shortcut's answer. Almost nothing, or the text that was sent out, is not a prompt:
-     the card comes back and nothing is lost. Otherwise it carries on like a Flash answer. */
-  function scTake(text, pasted) {
+     the card comes back and nothing is lost. Otherwise it carries on like a Flash answer.
+     Stub guard (v2.1.41): an answer that is very short or stops without ending a sentence
+     looks cut off (the 200 character link cut made every answer a stub, and the label fix
+     dressed the stubs up as prompts). It is held, not used, unless you tap Use it anyway. */
+  function scCutOff(out) { return words(out) < SC_FULL_WORDS || !/[.!?:)\]"'\u201d\u2019*`]$/.test(out); }
+  function scUse() { var w = scWait; if (w && w.held) scTake(w.held, false, true); }
+  function scTake(text, pasted, anyway) {
     var w = scWait;
     if (!w) return;
     var out = cleanPrompt(text);
     if (pasted && out === cleanPrompt(w.text)) return scCard("same");
     if (words(out) < SC_MIN_WORDS) return scCard("junk");
+    if (!anyway && scCutOff(out)) { w.held = out; return scCard("cut"); }
     scWait = null;
     scDrop();
     notify("result");
@@ -2782,7 +2796,7 @@ export function startApp() {
   }
   /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
   function scReturn() {
-    var mt = /^#stpback=(cloudpro|cloud|chatgpt|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
+    var mt = /^#stpback=(cloud|chatgpt|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
     if (!mt) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var model = scOf(mt[1]), text = mt[2];
