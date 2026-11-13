@@ -11,7 +11,7 @@ const KEY = 'stp-core';
    when it's on. Off by default; turns itself on for a phone that already has a core. */
 const DEV_KEY = 'stp-dev';
 /* Writer (#53, v2.1.40, dev tools only): who writes the full prompt. 'flash' is the default for
-   everyone; 'cloud', 'pro' (Cloud Pro, v2.1.41), and 'device' hand the Flash write to the STP Flash Backup shortcut (Apple's
+   everyone; 'cloud', 'pro' (Cloud Pro), 'gpt' (ChatGPT), and 'device' hand the Flash write to the STP Flash Backup shortcut (Apple's
    Use Model). A setting, never your words. */
 const WRITER_KEY = 'stp-writer';
 const OLD_ASK = 'Ask before assuming';
@@ -27,7 +27,7 @@ class Core {
   identity = $state('');   // IDENTITY.md: what that role means for you
   on = $state(true);       // the "Use my core" switch
   dev = $state(false);     // the "Show my dev tools" switch
-  writer = $state('flash'); // dev tools: 'flash' | 'cloud' | 'pro' | 'device' (the Shortcut stand-in, #53)
+  writer = $state('flash'); // dev tools: 'flash' | 'cloud' | 'pro' | 'gpt' | 'device' (the Shortcut stand-in, #53)
 
   has = $derived(!!(this.user.trim() || this.soul.trim() || this.role || this.identity.trim()));
   active = $derived(this.dev && this.on && this.has);   // is the core added to prompts right now
@@ -56,11 +56,11 @@ class Core {
     try { d = localStorage.getItem(DEV_KEY); } catch (e) {}
     this.dev = d === '1' || (d === null && !!v);
     if (d === null && v) this.saveDev();
-    try { const w = localStorage.getItem(WRITER_KEY); if (w === 'cloud' || w === 'pro' || w === 'device') this.writer = w; } catch (e) {}
+    try { const w = localStorage.getItem(WRITER_KEY); if (w === 'cloud' || w === 'pro' || w === 'gpt' || w === 'device') this.writer = w; } catch (e) {}
   }
 
   setWriter(w) {
-    this.writer = w === 'cloud' || w === 'pro' || w === 'device' ? w : 'flash';
+    this.writer = w === 'cloud' || w === 'pro' || w === 'gpt' || w === 'device' ? w : 'flash';
     try { if (this.writer === 'flash') localStorage.removeItem(WRITER_KEY); else localStorage.setItem(WRITER_KEY, this.writer); } catch (e) {}
   }
 

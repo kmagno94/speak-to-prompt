@@ -5560,9 +5560,10 @@ await check('shortcut writer: a new tab picks the build up, a long result comes 
   await r.waitForFunction(() => /didn't look like a prompt/.test((document.getElementById('notice-result') || {}).textContent || ''));
   expect(await r.inputValue('#thoughts') === SC_NOTE, 'your words stay put');
   expect(!r.calls.some(c => !c.intake), 'no model switch on its own');
-  await scTap(r, 'Try On-Device');
+  await scTap(r, 'Try ChatGPT');
   await r.waitForFunction(() => window.__scOpens.length === 2);
-  expect(/stpback%3Dondevice\./.test(await r.evaluate(() => window.__scOpens[1])), 'Try On-Device should run the shortcut with the other model');
+  expect(/stpback%3Dchatgpt\./.test(await r.evaluate(() => window.__scOpens[1])), 'Try ChatGPT should run the shortcut with that model');
+  expect(/Waiting for STP Flash Backup \(ChatGPT\)/.test(await scCardText(r)), 'the card should name ChatGPT now');
   expect(await r.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the saved Write with choice stays');
   await scTap(r, 'Use Flash instead');
   await done(r);

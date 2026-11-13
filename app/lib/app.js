@@ -1221,7 +1221,7 @@ export function startApp() {
      it from dropping details. A Flash backup stays light so it stays quick. */
   function quickLevel(model) { return /lite/.test(model) ? "medium" : "low"; }
   function depthWords(depth, model) {
-    if (/^shortcut-/.test(model)) return "Apple " + scLabel(scOf(model)) + " model";   /* #53 */
+    if (/^shortcut-/.test(model)) return model === "shortcut-chatgpt" ? "ChatGPT, through the shortcut" : "Apple " + scLabel(scOf(model)) + " model";   /* #53 */
     if (depth.level !== "quick") return depth.words;
     return quickLevel(model) === "medium" ? "balanced thinking" : "light thinking";
   }
@@ -2633,7 +2633,7 @@ export function startApp() {
      Apple's Use Model (Cloud or On-Device) on an iPhone, iPad, or Mac:
        1. A card offers one tap: it copies the job for the shortcut (scText) and opens
           shortcuts://run-shortcut with the address to come back to as the shortcut's input.
-          That address ends in #stpback=cloud., #stpback=cloudpro. or #stpback=ondevice., which is also how
+          That address ends in #stpback=cloud., cloudpro., chatgpt. or ondevice., which is also how
           the shortcut knows which model to use. What gets copied is the short writer text
           (scText, v2.1.41), since Apple's models dropped details under the full one.
        2. The shortcut opens that address with the prompt after it (the part after # never
@@ -2652,9 +2652,10 @@ export function startApp() {
   var scWait = null;   /* the write waiting on the shortcut: { run, text, model, t0, sent, swaps, resolve, reject } */
   var scBack = null;   /* a result that arrived in a tab the shortcut opened: { model, text, long, t0 } */
   var scLeaving = 0;   /* when the shortcut was last opened, so the leave warning stays quiet for it */
-  /* Three Apple models (Cloud Pro added in v2.1.41): the name in the saved setting, the word the
+  /* Four models in Use Model (Cloud Pro and ChatGPT added in v2.1.41; ChatGPT goes through
+     Apple's ChatGPT extension, so the words go to OpenAI): the name in the saved setting, the word the
      shortcut matches in its input, the label on screen, and the tag in run stats. */
-  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, pro: { slug: "cloudpro", label: "Cloud Pro", tag: "shortcut-cloud-pro" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
+  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, pro: { slug: "cloudpro", label: "Cloud Pro", tag: "shortcut-cloud-pro" }, gpt: { slug: "chatgpt", label: "ChatGPT", tag: "shortcut-chatgpt" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
   function scModel() { return core.dev && SC_MODELS[core.writer] ? core.writer : ""; }
   function scLabel(m) { return (SC_MODELS[m] || SC_MODELS.cloud).label; }
   function scOf(tagOrSlug) { for (var k in SC_MODELS) if (SC_MODELS[k].tag === tagOrSlug || SC_MODELS[k].slug === tagOrSlug) return k; return "cloud"; }
@@ -2715,7 +2716,7 @@ export function startApp() {
     var w = scWait;
     if (!w) return;
     var name = SC_NAME + " (" + scLabel(w.model) + ")";
-    var others = ["pro", "cloud", "device"].filter(function (m) { return m !== w.model; });
+    var others = ["gpt", "pro", "cloud", "device"].filter(function (m) { return m !== w.model; });   /* the card offers the first two */
     var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
     var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use Flash instead", act: "scflash" };
     var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
@@ -2781,7 +2782,7 @@ export function startApp() {
   }
   /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
   function scReturn() {
-    var mt = /^#stpback=(cloudpro|cloud|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
+    var mt = /^#stpback=(cloudpro|cloud|chatgpt|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
     if (!mt) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var model = scOf(mt[1]), text = mt[2];
