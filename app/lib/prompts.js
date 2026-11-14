@@ -88,8 +88,9 @@ export function interviewPrompt(title, source, turns) {
     "1. Decide which parts their words already cover well enough that an AI would not need to ask.",
     "2. If something important is still missing, ask ONE short, plain, friendly question about the most important missing thing, and say which part it belongs to. Never ask about something they already said, never repeat a question, and never ask again about something they skipped.",
     "3. If nothing important is missing, you are done. Do not ask a question just to fill a part: changes and leave can stay empty when nothing suggests they matter.",
+    "4. Suggest a short name for this context: 2 to 5 plain words from their own words, like a label on a folder (for example \"Saturday soccer team\"). No quotes, no emoji, no ending period. Use only what they said.",
     "",
-    'Respond with JSON only, in exactly this shape: {"covered": ["what", "facts"], "done": false, "part": "goals", "question": "the one short question"}. When done is true, question is an empty string.',
+    'Respond with JSON only, in exactly this shape: {"covered": ["what", "facts"], "done": false, "part": "goals", "question": "the one short question", "title": "short name"}. When done is true, question is an empty string.',
     ""
   ].concat(ctxSaid(title, source, turns)).join("\n");
 }

@@ -13,9 +13,15 @@
         "An answer that is very short or stops mid-sentence is held as cut off instead of being used, with Run shortcut again, another model, Use Flash instead, or Use it anyway.",
         "The hand-off card offers the other two models (like Try ChatGPT and Try On-Device), plus Use Flash instead.",
         "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied.",
-        "🏋️ Bench builder (dev tools, under the Flow bench): makes new grader bench cases with one copy out and one paste back. 6 notes get Read, Clean, and the fact ledger, one tap hands every write to the STP Bench Runner shortcut (2 each on ChatGPT, Cloud, and On-Device), Paste results runs Polish, the phone adds 2 seeded flaws, and Copy for answer key shows at 8 of 8. A missing or cut-off answer can be rerun on its own."
+        "🏋️ Bench builder (dev tools, under the Flow bench): makes new grader bench cases with one copy out and one paste back. 6 notes get Read, Clean, and the fact ledger, one tap hands every write to the STP Bench Runner shortcut (2 each on ChatGPT, Cloud, and On-Device), Paste results runs Polish, the phone adds 2 seeded flaws, and Copy for answer key shows at 8 of 8. A missing or cut-off answer can be rerun on its own.",
+        "🧱 Save as context names it for you (Test lab 11/14): right after your first answer, before the rest of the questions, the Name box fills with a suggestion from what you said, marked Suggested, so you can change it while you go. Once you type in it, it stays yours. With a key the name rides along on the interview call that already runs (no extra request); with no key it comes from your first answer."
       ],
       "checks": [
+        {
+          "say": "Open My context, tap Edit, then 🧱 Build one with questions. Answer the first question with this note and tap Next.",
+          "see": "Before the second question shows, the Name box fills with a short name like U10 Rockets or Saturday soccer team, with Suggested from what you said under it. Change the name, answer one more, then tap Save what we have: your name is kept.",
+          "paste": "um so it's the kids soccer team I coach, the U10 Rockets, we practice Saturday mornings at Elm Park and I always need help planning drills"
+        },
         {
           "say": "With Show my dev tools on, look under Build my prompt.",
           "see": "A Write with row with four choices: Flash, Cloud, ChatGPT, and On-Device. Turn dev tools off and the row is gone."

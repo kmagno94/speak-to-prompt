@@ -50,8 +50,9 @@
 
       {#if savectx.stage === 'ask' || working}
         <p class="intro">A few quick questions, one at a time. Then it's saved as a My context piece you can pick for any prompt, so you never explain it again.</p>
-        <label class="lbl" for="ctxTitleIn">Title</label>
-        <input id="ctxTitleIn" class="titlein" maxlength="60" placeholder="Like Bean N Bean roasting" bind:value={savectx.title}>
+        <label class="lbl" for="ctxTitleIn">Name</label>
+        <input id="ctxTitleIn" class="titlein" maxlength="60" placeholder={savectx.hasWords ? 'Give it a short name' : 'Suggested after your first answer'} value={savectx.title} oninput={(e) => savectx.editTitle(e.currentTarget.value)}>
+        {#if savectx.titleSuggested && savectx.title}<small class="hint" id="ctxTitleHint">Suggested from what you said. Tap it to change.</small>{/if}
         <div class="covered" id="ctxCovered" aria-label="Covered so far">
           <span class="chead">Covered so far</span>
           <ul>
@@ -82,8 +83,9 @@
 
       {:else if savectx.stage === 'review'}
         <p class="intro">{savectx.ironed === 'ai' ? 'Here it is, cleaned up from only what you said. Change anything, then save.' : 'Here it is, in your own words. Change anything, then save.'}</p>
-        <label class="lbl" for="ctxTitleIn">Title</label>
-        <input id="ctxTitleIn" class="titlein" maxlength="60" placeholder="Like Bean N Bean roasting" bind:value={savectx.title}>
+        <label class="lbl" for="ctxTitleIn">Name</label>
+        <input id="ctxTitleIn" class="titlein" maxlength="60" placeholder={savectx.hasWords ? 'Give it a short name' : 'Suggested after your first answer'} value={savectx.title} oninput={(e) => savectx.editTitle(e.currentTarget.value)}>
+        {#if savectx.titleSuggested && savectx.title}<small class="hint" id="ctxTitleHint">Suggested from what you said. Tap it to change.</small>{/if}
         <label class="lbl" for="ctxPiece">Your context</label>
         <textarea id="ctxPiece" class="piece" rows="12" maxlength="6000" bind:value={savectx.text}></textarea>
         <p class="size" class:over={savectx.text.trim().length > CAP} id="ctxPieceSize">{n(savectx.text.trim().length)} / {n(CAP)} characters</p>
@@ -135,6 +137,7 @@
   .lbl { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); font-family: var(--body); margin-bottom: -6px; }
   .titlein { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
   textarea { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); }
+  .hint { display: block; margin-top: var(--sp-1); color: var(--muted, var(--ink)); font-size: 13px; opacity: .8; }
   .titlein:focus-visible, textarea:focus-visible, .x:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .covered { display: grid; gap: 6px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--bg); }
   .chead { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }

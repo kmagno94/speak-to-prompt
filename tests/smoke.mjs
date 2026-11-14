@@ -5312,8 +5312,10 @@ await check('save as context: an ironed note with a number you never said falls 
   await p.waitForSelector('#saveCtx[open] #ctxPiece', { timeout: 8000 });
   const piece = await p.inputValue('#ctxPiece');
   expect(p.irons.length === 1 && !/40/.test(piece) && /^What this is:/.test(piece) && piece.includes('Tuesday and Friday'), 'a number you never said never gets saved: ' + piece);
+  expect((await p.inputValue('#ctxTitleIn')).length > 0 && await p.isVisible('#ctxTitleHint'), 'a name is suggested from your words when you gave none (11/14)');
+  await p.fill('#ctxTitleIn', '');
   await p.click('#ctxSave');
-  expect(/short title/.test(await p.textContent('#saveCtx .err')), 'a piece needs a title before it saves');
+  expect(/short name/.test(await p.textContent('#saveCtx .err')), 'a piece you emptied the name on needs one before it saves');
   await p.fill('#ctxTitleIn', 'Roaster');
   await p.click('#ctxSave');
   await p.waitForSelector('#ctxDoneLine');
@@ -5372,6 +5374,48 @@ await check('save as context: an ironed note with a number you never said falls 
   await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
   expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
   expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: suggests a name right after your first answer, before the rest of the questions, and never replaces a name you typed (Test lab 11/14)', async () => {
+  // 1. No key, from the My context editor: the name comes from your first answer, no call
+  const q = await page();
+  await q.click('#contextNew');
+  await q.click('#contextGuided');
+  await q.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  expect(await q.inputValue('#ctxTitleIn') === '' && /first answer/.test(await q.getAttribute('#ctxTitleIn', 'placeholder')) && !(await q.isVisible('#ctxTitleHint')), 'no name yet before the first answer, and the box says one is coming');
+  await q.fill('#ctxAnswer', 'um so it\'s the U10 Rockets, the team I coach'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("always know")');
+  expect(await q.inputValue('#ctxTitleIn') === 'U10 Rockets' && await q.isVisible('#ctxTitleHint'), 'after the first answer a name is suggested from your words: ' + await q.inputValue('#ctxTitleIn'));
+  await q.fill('#ctxTitleIn', 'Coaching');
+  expect(!(await q.isVisible('#ctxTitleHint')), 'once you type, the Suggested note goes away');
+  await q.fill('#ctxAnswer', 'Practice Saturday 9am at Elm Park'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("get done")');
+  await q.click('#ctxSaveNow');
+  await q.waitForSelector('#ctxPiece');
+  expect(await q.inputValue('#ctxTitleIn') === 'Coaching', 'your own name is kept to the end');
+  await q.click('#ctxSave');
+  await q.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  await q.click('#ctxDone');
+  await q.waitForSelector('#contextRow .ctxchip:has-text("Coaching")');
+  // 2. With a key: the interview call names it after the first answer, and a later turn never swaps it
+  const p = await page({ interview: [
+    { covered: ['what'], done: false, part: 'facts', question: 'Who is on the team and when do you practice?', title: 'Saturday soccer team.' },
+    { covered: ['what', 'facts'], done: false, part: 'goals', question: 'What do you usually need help with?', title: 'Rockets coaching notes' },
+    { covered: ['what', 'facts', 'goals'], done: true, part: '', question: '' }
+  ] });
+  await withKey(p);
+  await p.click('#contextNew');
+  await p.click('#contextGuided');
+  await p.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  await p.fill('#ctxAnswer', 'the kids soccer team I coach on weekends'); await p.click('#ctxNext');
+  await p.waitForSelector('#ctxQuestion:has-text("Who is on the team")');
+  expect(await p.inputValue('#ctxTitleIn') === 'Saturday soccer team' && await p.isVisible('#ctxTitleHint'), 'the AI name shows before the second question, cleaned: ' + await p.inputValue('#ctxTitleIn'));
+  expect(/"title"/.test(p.interviews[0].text), 'the interview call asks for a name, no extra call');
+  await p.fill('#ctxAnswer', 'Eight kids, practice Saturday 9am'); await p.click('#ctxNext');
+  await p.waitForSelector('#ctxQuestion:has-text("usually need help")');
+  expect(await p.inputValue('#ctxTitleIn') === 'Saturday soccer team', 'a later turn never swaps the name while you look at it');
+  expect(p.interviews.length === 2, 'still one call per answer: ' + p.interviews.length);
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [p, q].flatMap(x => x.errors).join('; '));
 });
 
 /* v2.1.38 Fix session: idea mw9q183odo7y, #5 Worked great, #37 leave warning. */

@@ -49,6 +49,16 @@ export function ironProblem(text, said) {
 export function partsIn(text) {
   return PARTS.filter((p) => new RegExp('^' + p.label + ':\\s*\\S', 'im').test(String(text || '')) || new RegExp('^' + p.label + ':\\s*\\n\\s*\\S', 'im').test(String(text || ''))).map((p) => p.key);
 }
+/* A name from their own words, no AI (#50 fix, 11/14): the first clause of what they said,
+   lead-ins dropped, at most 5 words. Used with no key, when the interview call fails, and
+   when it gives no name. "U10 Rockets, the team I coach" -> "U10 Rockets". */
+const LEAD = /^(?:(?:um+|uh+|so|ok(?:ay)?|well|basically|like|yeah)[\s,]+)*(?:(?:it'?s|it is|this is|that'?s|i'?m|i am|i)\s+)?(?:(?:a|an|the)\s+)?/i;
+export function nameFrom(text) {
+  const first = String(text || '').replace(/\s+/g, ' ').trim().replace(LEAD, '').split(/[.,;:!?\n]|\s(?:and|but|so|because)\s|\s[-–]\s/i)[0] || '';
+  const words = first.replace(LEAD, '').trim().split(' ').filter(Boolean).slice(0, 5).join(' ').replace(/[^\p{L}\p{N})]+$/u, '').replace(/(?:\s+(?:a|an|the|at|of|to|in|on|for|with|my|our|and|or|from))+$/i, '');
+  return words ? (words[0].toUpperCase() + words.slice(1)).slice(0, TITLE_MAX) : '';
+}
+function cleanTitle(t) { return String(t || '').replace(/["“”*#]/g, '').replace(/\s+/g, ' ').trim().replace(/[.!]+$/, '').slice(0, TITLE_MAX); }
 function parseTurn(text) {
   const t = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
@@ -57,7 +67,8 @@ function parseTurn(text) {
     covered: (Array.isArray(d.covered) ? d.covered : []).map((k) => String(k).toLowerCase()).filter((k) => KEYS.includes(k)),
     done: d.done === true,
     part: KEYS.includes(String(d.part || '').toLowerCase()) ? String(d.part).toLowerCase() : '',
-    question: String(d.question || '').trim().slice(0, 300)
+    question: String(d.question || '').trim().slice(0, 300),
+    title: cleanTitle(d.title)
   };
 }
 
@@ -78,6 +89,12 @@ class SaveCtx {
   stage = $state('');         // ask | thinking | ironing | review | overlap | done
   from = $state('');          // nudge | result | editor | bringin
   title = $state('');
+  /* The name (11/14): suggested for you right after your first answer, before the rest of the
+     questions, so you can change it while you go. Once you type in it, it's yours and never
+     gets replaced. */
+  titleMine = $state(false);
+  titleSuggested = $state(false);
+  titleAi = false;            // the name came from AI (Read's guess or the interview), so a later turn won't swap it
   source = $state('');        // the words they started with (their note and answers), memory only
   turns = $state([]);         // [{ part, q, a }]
   covered = $state([]);       // part keys
@@ -111,7 +128,7 @@ class SaveCtx {
 
   reset() {
     this.run++;
-    this.stage = ''; this.title = ''; this.source = ''; this.turns = []; this.covered = []; this.question = null;
+    this.stage = ''; this.title = ''; this.titleMine = false; this.titleSuggested = false; this.titleAi = false; this.source = ''; this.turns = []; this.covered = []; this.question = null;
     this.answer = ''; this.text = ''; this.ironed = ''; this.error = ''; this.conflicts = []; this.at = 0;
     this.tally = { added: 0, same: 0, updated: 0, both: 0, skipped: 0 }; this.savedId = ''; this.pickedNow = false;
   }
@@ -122,6 +139,7 @@ class SaveCtx {
     this.reset();
     this.from = from;
     this.title = String(title || '').slice(0, TITLE_MAX);
+    this.titleSuggested = this.titleAi = !!this.title;
     this.source = String(source || '').trim().slice(0, SOURCE_MAX);
     this.open = true;
     if (from === 'nudge') { this.nudgeOff = true; this.setStat('tapped'); }
@@ -138,6 +156,18 @@ class SaveCtx {
     this.open = true;
   }
 
+  /* You typed in the name: it stays yours. */
+  editTitle(v) { this.title = String(v || '').slice(0, TITLE_MAX); this.titleMine = true; this.titleSuggested = false; }
+  /* Fill or improve the name, only while it isn't yours. ai: a name from the interview call. */
+  suggestTitle(ai) {
+    if (this.titleMine) return;
+    const name = cleanTitle(ai);
+    if (name && !this.titleAi) { this.title = name; this.titleSuggested = this.titleAi = true; return; }
+    if (this.title.trim()) return;
+    const firstWords = (this.turns.find((t) => t.a && !NOTHING.test(t.a)) || {}).a || this.source;
+    const t = nameFrom(firstWords);
+    if (t) { this.title = t; this.titleSuggested = true; }
+  }
   mark(keys) { this.covered = KEYS.filter((k) => this.covered.includes(k) || keys.includes(k)); }
   /* The fixed questions: the first part not covered and not asked yet. */
   fixedNext() {
@@ -146,6 +176,7 @@ class SaveCtx {
     return p ? { part: p.key, text: p.ask } : null;
   }
   setQuestion(q) {
+    if (this.hasWords) this.suggestTitle('');
     if (!q) return this.finish();
     this.question = q; this.answer = ''; this.stage = 'ask';
   }
@@ -159,6 +190,7 @@ class SaveCtx {
       if (run !== this.run) return;
       const r = parseTurn(raw);
       this.mark(r.covered);
+      if (r.title) this.suggestTitle(r.title);
       const asked = this.turns.map((t) => t.q.toLowerCase());
       if (r.done || !r.question || asked.includes(r.question.toLowerCase())) return this.finish();
       this.setQuestion({ part: r.part || (this.fixedNext() || { part: 'facts' }).part, text: r.question });
@@ -181,6 +213,7 @@ class SaveCtx {
     const run = ++this.run;
     this.question = null;
     if (!this.hasWords) { this.error = 'Answer one question first, so there is something to save.'; return this.setQuestion(this.fixedNext() || { part: 'what', text: PARTS[0].ask }); }
+    this.suggestTitle('');
     const plain = () => { this.text = plainPiece(this.source, this.turns); this.ironed = 'plain'; this.show(); };
     if (!this.ask) return plain();
     this.stage = 'ironing';
@@ -196,7 +229,7 @@ class SaveCtx {
   /* Save: straight in, unless it overlaps a piece that's already here. */
   save() {
     const title = this.title.trim().slice(0, TITLE_MAX), text = this.text.trim();
-    if (!title) { this.error = 'Give it a short title first, so you can find it later.'; return; }
+    if (!title) { this.error = 'Give it a short name first, so you can find it later.'; return; }
     if (!text) { this.error = 'There is nothing in it yet.'; return; }
     this.error = '';
     const hit = findOverlap(context.list, { title, text });
