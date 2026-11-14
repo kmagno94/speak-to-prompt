@@ -12,7 +12,8 @@
         "The page snaps to the hand-off card as soon as it shows, so you aren't left watching the pot.",
         "An answer that is very short or stops mid-sentence is held as cut off instead of being used, with Run shortcut again, another model, Use Flash instead, or Use it anyway.",
         "The hand-off card offers the other two models (like Try ChatGPT and Try On-Device), plus Use Flash instead.",
-        "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied."
+        "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied.",
+        "🏋️ Bench builder (dev tools, under the Flow bench): makes new grader bench cases with one copy out and one paste back. 6 notes get Read, Clean, and the fact ledger, one tap hands every write to the STP Bench Runner shortcut (2 each on ChatGPT, Cloud, and On-Device), Paste results runs Polish, the phone adds 2 seeded flaws, and Copy for answer key shows at 8 of 8. A missing or cut-off answer can be rerun on its own."
       ],
       "checks": [
         {
@@ -35,6 +36,18 @@
         {
           "say": "Build a prompt with Write with set to Flash, type one more word in the box, and scroll to the bottom.",
           "see": "The pill at the bottom shows Copy prompt, Rebuild, and ⋯."
+        },
+        {
+          "say": "With dev tools on, open More options, find Bench builder, and tap Build bench cases.",
+          "see": "It counts through Prepping 1 of 6 to 6 of 6, then says 6 jobs ready and turns on Run bench shortcut."
+        },
+        {
+          "say": "Tap Run bench shortcut, let STP Bench Runner finish, then tap Paste results when it brings you back.",
+          "see": "Bench builder says it's back, Polish counts through the cases, and the table shows 8 of 8 ready (or which ones to rerun)."
+        },
+        {
+          "say": "Tap Copy for answer key and paste it into a chat with Claude.",
+          "see": "It starts with bench add and has 8 cases, B10 to B17, each tagged with its writer."
         }
       ]
     },

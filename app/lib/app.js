@@ -1851,6 +1851,248 @@ export function startApp() {
     if (!flowReveal || !navigator.clipboard) return;
     navigator.clipboard.writeText(flowReveal).then(function () { document.getElementById("flowInfo").textContent = "Copied the reveal (which is which, times, and checks)."; }, function () {});
   });
+  /* Bench builder (dev tools, #54, v2.1.41, SPEC LOCKED 11/13): makes new grader bench cases
+     with the fewest copy and pastes. benchbuild.json has 6 fictional notes, each tagged with a
+     writer (chatgpt, cloud, ondevice):
+       1. Build bench cases: each note gets Read, Clean, and the fact ledger on Flash-Lite (bare:
+          no core, My context, or memory, like the Flow bench), then the shortcut's job text.
+       2. Run bench shortcut (one tap, browsers only copy after a tap): every job goes on the
+          clipboard as blocks (a line @@@, a line like B10|chatgpt, then the job) and the STP
+          Bench Runner shortcut runs. It loops through them with the right Use Model choice,
+          copies the answers back in the same block shape after every case (so finished cases
+          survive a crash), and opens this page with #benchback.
+       3. Paste results: each answer goes through Polish like a real run. A missing, empty, or
+          cut-off answer is a failed case (Shortcuts can't catch a failed model call, so the app
+          spots it), and Rerun failed sends only those.
+       4. The phone makes the seeded flaws from another case's finished prompt, no AI call.
+       5. Copy for answer key (at 8 of 8): one block for Claude, headed "bench add".
+     The run is kept on this device ("stp-benchbuild": bench notes and prompts only) so the tab
+     the shortcut opens can pick it up. Cases join bench.json only after Kevin okays Claude's keys. */
+  var BB_KEY = "stp-benchbuild", BB_SC = "STP Bench Runner", BB_SLUG = { chatgpt: "chatgpt", cloud: "cloud", ondevice: "ondevice" };
+  var BB_TAG = { chatgpt: "shortcut-chatgpt", cloud: "shortcut-cloud", ondevice: "shortcut-on-device" };
+  var bbState = null;
+  try { bbState = JSON.parse(lsGet(BB_KEY) || "null"); } catch (e) { bbState = null; }
+  function bbSave() { lsSet(BB_KEY, JSON.stringify(bbState)); }
+  function bbOk(c) { return !!(c && c.prompt && !c.err); }
+  function bbAll() { return bbState ? bbState.cases.concat(bbState.seeded || []) : []; }
+  function bbFailed() { return bbState ? bbState.cases.filter(function (c) { return c.job && !bbOk(c); }) : []; }
+  /* What the shortcut's model reads: the same short writer text as the STP Flash Backup stand-in,
+     bare like the Flow bench, so only the writer differs between cases. */
+  function bbJob(c) {
+    var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
+    var sh0 = c._shape || {};
+    return shortWriteText({ raw: cleaned || c.raw, answers: session.answers, goal: "",
+      shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
+      context: "", today: c.today, items: session.ledger && session.ledger.items || [], lessons: lessons.list, core: "", memory: [] });
+  }
+  function bbSession(c) {
+    session = { raw: c.raw, known: "", today: c.today, memFacts: [], bench: true,
+      answers: (c.answers || []).map(function (a) { return { question: a.question, answer: a.answer }; }), questions: (c.answers || []).slice() };
+    return session;
+  }
+  function bbBuild() {
+    var info = document.getElementById("bbInfo"), btn = document.getElementById("bbBuild");
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
+    if (busy) { info.textContent = "Finish the build that's running first."; return; }
+    var saved = session;
+    btn.disabled = true; setBusy(true, "Bench builder running...");
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
+    ready.then(function () { return fetch("benchbuild.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("benchbuild.json"); return r.json(); }); })
+      .then(function (b) {
+        var cases = ((b && b.cases) || []).map(function (c) { return JSON.parse(JSON.stringify(c)); }), chain = Promise.resolve();
+        cases.forEach(function (c, i) {
+          chain = chain.then(function () {
+            var tag = "Prepping " + (i + 1) + " of " + cases.length + " (" + c.name + "): ";
+            info.textContent = tag + "reading...";
+            bbSession(c);
+            return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
+              var it = parseIntake(r.text); c._shape = it.shape || null;
+            }, function () { c._shape = null; }).then(function () {
+              info.textContent = tag + "cleaning and listing must-keeps...";
+              var s = bbSession(c);
+              return Promise.all([startClean(c.raw), startLedger(c.raw)]).then(function () {
+                c.job = bbJob(c);
+                c.clean = s.clean ? s.clean.status : "";
+                c.ledger = s.ledger && s.ledger.items ? s.ledger.items.length : 0;
+              });
+            });
+          });
+        });
+        return chain.then(function () {
+          bbState = { at: new Date().toISOString(), phase: "prepped", cases: cases, seededSpec: (b && b.seeded) || [], seeded: [] };
+          bbSave();
+          bbShow();
+          info.textContent = cases.length + " jobs ready. Tap Run bench shortcut: it copies them all and runs " + BB_SC + ". Run it from outside the Shortcuts editor, and keep the screen on.";
+        });
+      })
+      .catch(function (e) { info.textContent = "Couldn't build the bench cases: " + ((e && e.message) || "unknown"); })
+      .then(function () { session = saved; setBusy(false); btn.disabled = false; bbButtons(); });
+  }
+  /* The clipboard the shortcut reads: one block per job. only: case ids to send (Rerun failed). */
+  function bbJobsText(only) {
+    return bbState.cases.filter(function (c) { return c.job && (!only || only.indexOf(c.id) >= 0); }).map(function (c) {
+      return "@@@\n" + c.id + "|" + BB_SLUG[c.writer] + "\n" + c.job;
+    }).join("\n");
+  }
+  function bbRunSc(onlyFailed) {
+    var info = document.getElementById("bbInfo");
+    if (!bbState) return;
+    var only = onlyFailed === true ? bbFailed().map(function (c) { return c.id; }) : null;
+    if (only && !only.length) { info.textContent = "Nothing failed, so there's nothing to rerun."; return; }
+    if (!navigator.clipboard || !navigator.clipboard.writeText) { info.textContent = "This browser didn't allow the copy. Try Safari."; return; }
+    var text = bbJobsText(only);
+    navigator.clipboard.writeText(text).then(function () {
+      bbState.phase = "sent"; bbState.sentText = text; bbState.sentIds = only; bbSave();
+      bbButtons();
+      info.textContent = "Copied " + (only ? only.length : bbState.cases.length) + " jobs. When " + BB_SC + " brings you back, tap Paste results.";
+      scLeaving = Date.now();
+      (window.__scOpen || function (u) { location.href = u; })("shortcuts://run-shortcut?name=" + encodeURIComponent(BB_SC));
+    }, function () { info.textContent = "This browser didn't allow the copy. Tap Run bench shortcut again."; });
+  }
+  /* The shortcut's answers: blocks headed by a line like B10|chatgpt, split on @@@ lines. */
+  function bbParse(t) {
+    var out = {};
+    /* @@@ may land at the end of the previous answer's line (Shortcuts joins text without a
+       line break unless one is typed), so any @@@ followed by a line break starts a block. */
+    String(t || "").replace(/\r\n?/g, "\n").split(/@@@[ \t]*\n/).forEach(function (part) {
+      var m = /^\s*(B\d+)\s*\|\s*(chatgpt|cloud|ondevice)\s*\n([\s\S]*)$/i.exec(part);
+      if (m) out[m[1].toUpperCase()] = m[3].trim();
+    });
+    return out;
+  }
+  function bbPaste() {
+    var info = document.getElementById("bbInfo");
+    if (!bbState) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) { info.textContent = "Couldn't read the clipboard."; return; }
+    navigator.clipboard.readText().then(function (t) { bbTake(t); }, function () { info.textContent = "Couldn't read the clipboard. Tap Paste results again."; });
+  }
+  function bbTake(t) {
+    var info = document.getElementById("bbInfo");
+    if (bbState.sentText && String(t || "").trim() === bbState.sentText.trim()) { info.textContent = "Your clipboard still has the jobs, not the answers. Run the shortcut again, then Paste results."; return; }
+    var got = bbParse(t), ids = Object.keys(got);
+    if (!ids.length) { info.textContent = "That didn't look like " + BB_SC + " answers (blocks that start with @@@ and a line like B10|chatgpt). Run the shortcut again, then Paste results."; return; }
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first, so Polish can run."; return; }
+    if (busy) { info.textContent = "Finish the build that's running first."; return; }
+    var sent = bbState.sentIds, saved = session;
+    var todo = bbState.cases.filter(function (c) { return !sent || sent.indexOf(c.id) >= 0; });
+    setBusy(true, "Bench builder running...");
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key), chain = ready, done = 0;
+    todo.forEach(function (c) {
+      chain = chain.then(function () {
+        var out = cleanPrompt(got[c.id] || "");
+        c.writerTag = BB_TAG[c.writer];
+        if (!out) { c.prompt = ""; c.err = got[c.id] == null ? "no answer came back" : "empty answer"; return; }
+        if (words(out) < SC_MIN_WORDS || scCutOff(out)) { c.prompt = ""; c.err = "looks cut off (" + words(out) + " words)"; return; }
+        c.err = ""; c.prompt = out; c.repair = "none";
+        info.textContent = "Polishing " + (++done) + " of " + todo.length + " (" + c.id + ")...";
+        bbSession(c);
+        var before = qualityCheck(out);
+        if (!before.score) return;
+        return askGemini(repairPrompt(out, c.raw, withMem(session.answers), { dropped: before.dropped, stray: before.stray, missingNums: before.missingNums, strict: before.strict }), false, writeModels(true), "low", null, 60000).then(function (r2) {
+          var fixed = cleanPrompt(r2.text), after = qualityCheck(fixed);
+          if (isBetter(after, before, fixed, out)) { c.prompt = fixed; c.repair = "fixed"; } else c.repair = "kept original";
+        }, function () { c.repair = "failed"; });
+      });
+    });
+    chain.then(function () {
+      bbSeed();
+      bbState.phase = "back"; bbState.sentIds = null; bbSave();
+      bbShow();
+      var ok = bbAll().filter(bbOk).length, all = bbAll().length || bbState.cases.length + (bbState.seededSpec || []).length;
+      info.textContent = ok === all ? "All " + all + " ready. Tap Copy for answer key and paste it to Claude." : ok + " of " + all + " ready. Rerun failed sends only the ones that didn't come back.";
+    }).catch(function (e) { info.textContent = "Couldn't finish: " + ((e && e.message) || "unknown"); })
+      .then(function () { session = saved; setBusy(false); bbButtons(); });
+  }
+  /* Seeded flaws, made on the phone from a finished prompt. drop-format takes out the format and
+     length part (or the great-result line if there is none); invent adds a made-up line. */
+  function bbFlaw(prompt, spec) {
+    var paras = String(prompt).split(/\n\s*\n/);
+    if (spec.flaw === "drop-format") {
+      var i = -1;
+      paras.forEach(function (p, k) { if (i < 0 && /^\W*(format|length)\b/i.test(p.trim())) i = k; });
+      if (i < 0) paras.forEach(function (p, k) { if (i < 0 && /^\W*a great (answer|result)\b/i.test(p.trim())) i = k; });
+      if (i < 0) return null;
+      paras.splice(i, 1);
+      return paras.join("\n\n");
+    }
+    if (spec.flaw === "invent" && spec.line) {
+      var j = -1;
+      paras.forEach(function (p, k) { if (j < 0 && /^\W*context\b/i.test(p.trim())) j = k; });
+      if (j < 0) j = Math.min(1, paras.length - 1);
+      paras[j] = paras[j].replace(/\s*$/, "") + " " + spec.line;
+      return paras.join("\n\n");
+    }
+    return null;
+  }
+  function bbSeed() {
+    bbState.seeded = (bbState.seededSpec || []).map(function (sp) {
+      var src = bbState.cases.filter(function (c) { return c.id === sp.from; })[0];
+      var s = { id: sp.id, from: sp.from, flaw: sp.flaw, say: sp.say, name: (src ? src.name : sp.from) + " (seeded flaw)", writer: src ? src.writer : "", writerTag: (src ? BB_TAG[src.writer] : "") + "+seeded",
+        today: src ? src.today : "", raw: src ? src.raw : "", answers: src ? src.answers : [] };
+      if (!bbOk(src)) { s.err = "waiting on " + sp.from; return s; }
+      var p = bbFlaw(src.prompt, sp);
+      if (!p) { s.err = "couldn't find the part to change in " + sp.from; return s; }
+      s.prompt = p;
+      return s;
+    });
+  }
+  function bbShow() {
+    var el = document.getElementById("bbOut");
+    if (!bbState) { el.hidden = true; return; }
+    var all = bbAll().length ? bbAll() : bbState.cases;
+    var ok = all.filter(bbOk).length, total = bbState.cases.length + (bbState.seededSpec || []).length;
+    var rows = all.map(function (c) {
+      var state = bbOk(c) ? "✅<small>" + words(c.prompt) + " words" + (c.repair && c.repair !== "none" ? " · Polish " + esc(c.repair) : "") + "</small>" : c.err ? "⚠️<small>" + esc(c.err) + "</small>" : c.job ? "job ready" : "…";
+      return "<tr><td>" + esc(c.id) + "<small>" + esc(c.name) + "</small></td><td>" + esc(c.flaw ? "seeded" : (BB_TAG[c.writer] || "").replace("shortcut-", "")) + "</td><td>" + state + "</td></tr>";
+    }).join("");
+    el.innerHTML = "<p class=\"benchsum\">" + ok + " of " + total + " ready</p><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    el.hidden = false;
+  }
+  function bbButtons() {
+    var has = !!bbState, all = bbAll(), total = has ? bbState.cases.length + (bbState.seededSpec || []).length : 0;
+    document.getElementById("bbRunSc").disabled = !has || !bbState.cases.some(function (c) { return c.job; });
+    document.getElementById("bbPaste").disabled = !has || bbState.phase !== "sent";
+    document.getElementById("bbCopy").disabled = !has || all.length !== total || !all.every(bbOk);
+    document.getElementById("bbRetry").disabled = !has || bbState.phase === "prepped" || !bbFailed().length;
+  }
+  function bbCopyText() {
+    var ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+    var lines = ["bench add", "", "BENCH BUILDER · app " + ver + " · " + new Date(bbState.at).toLocaleString("en-US") + " · " + bbAll().length + " cases",
+      "Grade each prompt with the app's rubric, the writer lessons, and the grader rules (your answer key: score to the hundredth, missing labels, broke, invented, rearranged, and why). Seeded cases had a flaw put in on purpose; it's named so you can check the key catches it. Show one table, then wait for Kevin's keep before they join bench.json."];
+    bbAll().forEach(function (c) {
+      lines.push("", "== " + c.id + " · " + c.name + " · writer: " + c.writerTag + " ==");
+      if (c.flaw) lines.push("Seeded from " + c.from + ": " + c.say);
+      lines.push("Today: " + c.today, "Raw thoughts:", c.raw, "Answers: " + ((c.answers || []).map(function (a) { return a.question + " " + a.answer; }).join(" | ") || "none"));
+      if (!c.flaw) lines.push("Polish: " + (c.repair || "none") + " · clean " + (c.clean || "none") + " · ledger " + (c.ledger || 0) + " items");
+      lines.push("--- Prompt ---", c.prompt);
+    });
+    return lines.join("\n");
+  }
+  document.getElementById("bbBuild").addEventListener("click", bbBuild);
+  document.getElementById("bbRunSc").addEventListener("click", function () { bbRunSc(false); });
+  document.getElementById("bbRetry").addEventListener("click", function () { bbRunSc(true); });
+  document.getElementById("bbPaste").addEventListener("click", bbPaste);
+  document.getElementById("bbCopy").addEventListener("click", function () {
+    if (!bbState || !navigator.clipboard) return;
+    navigator.clipboard.writeText(bbCopyText()).then(function () { document.getElementById("bbInfo").textContent = "Copied all " + bbAll().length + " cases. Paste it to Claude."; }, function () {});
+  });
+  /* Back from the shortcut: #benchback opens More options at the Bench builder with Paste results ready. */
+  function bbReturn() {
+    if (!/^#benchback/.test(location.hash || "")) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    if (!bbState) return;
+    if (bbState.phase !== "sent") { bbState.phase = "sent"; bbSave(); }
+    bbButtons();
+    var more = document.getElementById("moreOpts"); if (more) more.open = true;
+    document.getElementById("bbInfo").textContent = BB_SC + " is back. Tap Paste results.";
+    setTimeout(function () { var p = document.getElementById("bbPaste"); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: "smooth", block: "center" }); }, 300);
+  }
+  window.addEventListener("hashchange", bbReturn);
+  if (bbState && bbState.cases) { try { bbShow(); } catch (e) { bbState = null; } }
+  bbButtons();
+  setTimeout(bbReturn, 0);
   document.getElementById("benchCopy").addEventListener("click", function () {
     if (!benchText || !navigator.clipboard) return;
     navigator.clipboard.writeText("bench results\n\n" + benchText).then(function () { document.getElementById("benchInfo").textContent = "Copied. Paste it to Claude."; }, function () {});

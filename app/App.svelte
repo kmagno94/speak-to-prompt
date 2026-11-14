@@ -323,6 +323,18 @@
         </div>
         <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
+        <p class="srchead">Bench builder</p>
+        <div class="row">
+          <button type="button" id="bbBuild">Build bench cases</button>
+          <button type="button" id="bbRunSc" disabled>Run bench shortcut</button>
+          <button type="button" id="bbPaste" disabled>Paste results</button>
+        </div>
+        <div class="row">
+          <button type="button" id="bbCopy" disabled>Copy for answer key</button>
+          <button type="button" id="bbRetry" class="linkish" disabled>Rerun failed</button>
+        </div>
+        <p class="hint" id="bbInfo">Makes new grader bench cases: 6 notes get Read, Clean, and the fact ledger here, then one tap hands every write to the STP Bench Runner shortcut (ChatGPT, Cloud, On-Device). Paste results brings them back for Polish, the phone adds 2 seeded flaws, and Copy for answer key shows up at 8 of 8.</p>
+        <div id="bbOut" class="benchout" hidden></div>
       </div>
       {#if core.dev && hasSpeech}<MicLog />{/if}
       <div class="stats" id="myShortcutsRow" hidden>

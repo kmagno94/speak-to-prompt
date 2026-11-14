@@ -5592,6 +5592,58 @@ await check('shortcut writer: a new tab picks the build up, a long result comes 
   for (const x of [p, q, r, n]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
+/* Bench builder (#54, v2.1.41): new grader bench cases through the STP Bench Runner shortcut, one copy out, one paste back. */
+await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every write to STP Bench Runner, Paste results brings them back, seeded flaws are made on the phone, and Copy for answer key shows at 8 of 8 (#54)', async () => {
+  const bb = JSON.parse(readFileSync(path.join(ROOT, 'benchbuild.json'), 'utf8'));
+  expect(bb.cases.length === 6 && bb.cases.every((c) => /^B\d+$/.test(c.id) && c.name && c.raw && c.today && Array.isArray(c.answers) && ['chatgpt', 'cloud', 'ondevice'].includes(c.writer)), 'benchbuild.json: 6 cases with id, raw, today, answers, and a writer');
+  expect(['chatgpt', 'cloud', 'ondevice'].every((w) => bb.cases.filter((c) => c.writer === w).length === 2), 'two cases per writer');
+  expect(bb.seeded.length === 2 && bb.seeded.every((s) => bb.cases.some((c) => c.id === s.from)), 'seeded flaws come from real cases');
+  expect(!/\u2014/.test(JSON.stringify(bb)), 'no em dashes in benchbuild.json');
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const p = await page({ cleanFn: unfill, writeFn: () => 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  expect(await p.isDisabled('#bbRunSc') && await p.isDisabled('#bbPaste') && await p.isDisabled('#bbCopy'), 'only Build bench cases is on at first');
+  await p.click('#bbBuild');
+  await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled, null, { timeout: 60000 });
+  await p.click('#bbRunSc');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/^shortcuts:\/\/run-shortcut\?name=STP%20Bench%20Runner$/.test(await p.evaluate(() => window.__scOpens[0])), 'runs STP Bench Runner');
+  const jobs = await p.evaluate(() => navigator.clipboard.readText());
+  const heads = jobs.match(/^B\d+\|(chatgpt|cloud|ondevice)$/gm) || [];
+  expect(heads.length === 6 && (jobs.match(/^@@@$/gm) || []).length === 6 && heads[0] === 'B10|chatgpt' && heads.includes('B14|ondevice') && heads.includes('B12|cloud'), 'six job blocks with case and model: ' + heads.join());
+  expect(/Lena/.test(jobs) && !/THE PERSON'S CORE|About me/.test(jobs), 'jobs carry the notes, bare (no core)');
+  const fake = (id) => `Role: You are a helpful planner.\n\nContext: These are the details for case ${id}, written out so the prompt reads like a real one.\n\nTask: Help me with case ${id} carefully and completely, using every detail above.\n\nFormat: A short list. Keep it to about one screen.\n\nStart right away.`;
+  // B12 never comes back (Cloud stopped the shortcut), and B11's @@@ lands on the end of B10's last line
+  const back = '@@@\nB10|chatgpt\n' + fake('B10') + '@@@\nB11|chatgpt\n' + fake('B11') + '\n@@@\nB13|cloud\n' + fake('B13') + '\n@@@\nB14|ondevice\n' + fake('B14') + '\n@@@\nB15|ondevice\nRole: You are';
+  await p.evaluate((t) => navigator.clipboard.writeText(t), back);
+  await p.evaluate(() => { location.hash = '#benchback'; });
+  await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /ready/.test(document.getElementById('bbInfo').textContent) && /of 8 ready/.test(document.getElementById('bbOut').textContent), null, { timeout: 30000 });
+  const out1 = await p.textContent('#bbOut');
+  expect(/6 of 8 ready/.test(out1) && /no answer came back/.test(out1) && /looks cut off/.test(out1), 'B12 missing and B15 cut off are failed cases: ' + out1.slice(0, 200));
+  expect(await p.isDisabled('#bbCopy') && await p.isEnabled('#bbRetry'), 'Copy waits for 8 of 8; Rerun failed is on');
+  await p.click('#bbRetry');
+  await p.waitForFunction(() => window.__scOpens.length === 2);
+  const rerun = await p.evaluate(() => navigator.clipboard.readText());
+  expect((rerun.match(/^B\d+\|/gm) || []).join() === 'B12|,B15|', 'Rerun failed sends only B12 and B15: ' + (rerun.match(/^B\d+\|\w+/gm) || []).join());
+  await p.evaluate((t) => navigator.clipboard.writeText(t), '@@@\nB12|cloud\n' + fake('B12') + '\n@@@\nB15|ondevice\n' + fake('B15'));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent), null, { timeout: 30000 });
+  expect(await p.isEnabled('#bbCopy') && await p.isDisabled('#bbRetry'), 'Copy for answer key is on at 8 of 8');
+  await p.click('#bbCopy');
+  const key = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^bench add\n/.test(key) && (key.match(/^== B\d+ /gm) || []).length === 8, 'answer key copy starts with bench add and has 8 cases');
+  const b16 = key.split('== B16')[1].split('\n== ')[0], b17 = key.split('== B17')[1].split('\n== ')[0];
+  expect(!/Format:/.test(b16.split('--- Prompt ---')[1]) && /seeded/i.test(b16), 'B16 lost its format part on purpose');
+  expect(/The exam is worth 40% of my final grade\./.test(b17) && /writer: shortcut-chatgpt\+seeded/.test(b17), 'B17 has the made-up line and its writer tag');
+  expect(/writer: shortcut-on-device/.test(key) && /writer: shortcut-cloud/.test(key), 'every case is tagged by writer');
+  expect(!(await p.isVisible('#result')) && await p.isEnabled('#build'), 'the builder leaves the page as it was');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
