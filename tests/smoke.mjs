@@ -41,7 +41,7 @@ const CORE = [
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
-  'quick chip:', 'save as context:'
+  'quick chip:', 'save as context:', 'bench builder: a Read answer'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -170,6 +170,8 @@ async function page(opts = {}) {
     if (opts.dropOnce === model && !p.droppedOnce) { p.droppedOnce = true; await new Promise(res => setTimeout(res, opts.dropDelay || 0)); return r.abort('failed'); }   // drops once, like leaving for another app
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
+    /* opts.intakeBad: how many Read answers come back as broken JSON first (a bare property name and a trailing comma, like Flash-Lite on a bad day) */
+    if (intake) { p.intakeN = (p.intakeN || 0) + 1; (p.intakeModels = p.intakeModels || []).push(model); if (opts.intakeBad && p.intakeN <= opts.intakeBad) return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 100 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{title: "T", "need": "N",}' }] } }] }) }); }
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : (opts.writeFn ? opts.writeFn(ask) : opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
@@ -5634,6 +5636,30 @@ await check('shortcut writer: a new tab picks the build up, a long result comes 
   await n.evaluate(() => document.getElementById('reset').click());
   expect(!(await scStored(n)), 'New prompt deletes the kept build');
   for (const x of [p, q, r, n]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+/* Test lab 11/14: one Read answer that wasn't clean JSON stopped the whole Bench builder ("JSON Parse error: Property name must be a string literal"). */
+await check('bench builder: a Read answer that is broken JSON gets one retry on another model, and if that is broken too the case still preps, so the run never stops (Test lab 11/14)', async () => {
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] };
+  const run = async (intakeBad) => {
+    const p = await page({ cleanFn: unfill, intake, intakeBad });
+    await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+    await p.click('#bbBuild');
+    await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled || /Couldn't build/.test(document.getElementById('bbInfo').textContent), null, { timeout: 60000 });
+    return p;
+  };
+  // 1. The first answer is broken: one retry, on a different model, and all 6 jobs are ready
+  const p = await run(1);
+  expect(/6 jobs ready/.test(await p.textContent('#bbInfo')), 'one broken Read answer no longer stops the run: ' + await p.textContent('#bbInfo'));
+  expect(p.intakeN === 7 && p.intakeModels[1] !== p.intakeModels[0], 'the broken answer gets one retry on another model: ' + p.intakeModels.join());
+  // 2. Every answer is broken: each case still preps (without the suggested shape) and the jobs are whole
+  const q = await run(99);
+  expect(/6 jobs ready/.test(await q.textContent('#bbInfo')) && !/JSON Parse|Couldn't build/.test(await q.textContent('#bbInfo')), 'broken answers all the way down still leave 6 jobs: ' + await q.textContent('#bbInfo'));
+  expect(q.intakeN === 12, 'one retry per case, never a loop: ' + q.intakeN);
+  const st = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-benchbuild')));
+  expect(st.cases.length === 6 && st.cases.every((c) => c.job && c.job.length > 200), 'every case has its job text');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [p, q].flatMap(x => x.errors).join('; '));
 });
 
 /* Bench builder (#54, v2.1.41): new grader bench cases through the STP Bench Runner shortcut, one copy out, one paste back. */

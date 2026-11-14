@@ -1764,9 +1764,9 @@ export function startApp() {
             if (had && had.c && had.c._complexity) { c._complexity = had.c._complexity; c._shape = had.c._shape; return; }
             info.textContent = tag + "reading...";
             session = { raw: c.raw, answers: [], today: c.today, known: "" };
-            return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
-              var it = parseIntake(r.text); c._complexity = it.complexity; c._shape = it.shape;
-            }, function () { c._complexity = "standard"; c._shape = null; });
+            return benchRead(c.raw).then(function (it) {
+              c._complexity = it ? it.complexity : "standard"; c._shape = it ? it.shape : null;
+            });
           }).then(function () {
             var res = { c: c }, order = i % 2 ? ["new", "old"] : ["old", "new"];
             if (had) { res.old = had.old; res.new = had.new; res.label = had.label; }   /* a rerun keeps the pair's A/B letters */
@@ -1851,6 +1851,21 @@ export function startApp() {
     if (!flowReveal || !navigator.clipboard) return;
     navigator.clipboard.writeText(flowReveal).then(function () { document.getElementById("flowInfo").textContent = "Copied the reveal (which is which, times, and checks)."; }, function () {});
   });
+  /* Read for a bench note (Flow bench and Bench builder, fix 11/14): the same Read call a real
+     build makes, with the same one retry on another model when the answer isn't clean JSON
+     (Flash-Lite sometimes drops a quote or leaves a trailing comma). If the retry is no good
+     either, the bench goes on without the suggested shape instead of the whole run stopping:
+     one bad answer used to end it with "JSON Parse error". Always resolves: intake or null. */
+  function benchRead(raw) {
+    var ask = ANALYZE + "\n" + raw + '\n"""';
+    return askGemini(ask, true, gemini.plan.intake, "auto", null).then(function (r) {
+      try { return parseIntake(r.text); } catch (e) {
+        var others = gemini.plan.intake.filter(function (m) { return m !== r.model; });
+        if (!others.length) others = gemini.plan.write.filter(function (m) { return m !== r.model; });
+        return askGemini(ask, true, others, "auto", null).then(function (r2) { return parseIntake(r2.text); });
+      }
+    }).catch(function () { return null; });
+  }
   /* Bench builder (dev tools, #54, v2.1.41, SPEC LOCKED 11/13): makes new grader bench cases
      with the fewest copy and pastes. benchbuild.json has 6 fictional notes, each tagged with a
      writer (chatgpt, cloud, ondevice):
@@ -1906,9 +1921,9 @@ export function startApp() {
             var tag = "Prepping " + (i + 1) + " of " + cases.length + " (" + c.name + "): ";
             info.textContent = tag + "reading...";
             bbSession(c);
-            return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
-              var it = parseIntake(r.text); c._shape = it.shape || null;
-            }, function () { c._shape = null; }).then(function () {
+            return benchRead(c.raw).then(function (it) {
+              c._shape = (it && it.shape) || null;
+            }).then(function () {
               info.textContent = tag + "cleaning and listing must-keeps...";
               var s = bbSession(c);
               return Promise.all([startClean(c.raw), startLedger(c.raw)]).then(function () {
