@@ -1829,6 +1829,8 @@ export function startApp() {
     var el = document.getElementById("flowOut");
     el.innerHTML = "<table><thead><tr><th>Note</th><th>Old flow</th><th>New flow</th></tr></thead><tbody>" + rows + "</tbody></table>";
     el.hidden = false;
+    var sum = document.getElementById("flowSum");
+    if (sum) sum.textContent = "Last run " + String(when).split(",")[0] + (flowFailed() ? ", some notes failed" : "") + ". Tap to open.";
     document.getElementById("flowInfo").textContent = restore
       ? "Your last run (" + when + ") is loaded" + (flowFailed() ? ". Some halves errored: untick any note you want to skip, then tap Rerun failed notes." : ". Copy reveal covers all " + results.length + " notes.")
       : ids

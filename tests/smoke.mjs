@@ -56,6 +56,8 @@ function expect(cond, msg) { if (!cond) throw new Error(msg); }
 /* Next step dock (#17): the ⋯ menu holds Open in, Quick version and New prompt. Opens it first when needed. */
 async function menuTap(p, sel) { if (!(await p.isVisible(sel))) await p.click('#dockMore'); await p.click(sel); }
 /* Gemini mock. opts: models, intake (object), write (string), fail (model -> status), finish (model -> reason) */
+/* The Flow bench is a closed row in dev tools (11/14): open it before tapping anything inside. */
+async function flowOpen(p) { if (!(await p.evaluate(() => document.getElementById('flowFold').open))) await p.click('#flowFold > summary'); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
 
 async function page(opts = {}) {
@@ -3111,6 +3113,8 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const p = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT for ' + (ask.match(/Today: |TODAY: ([A-Za-z]+)/) || [])[1] : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  expect(!(await p.evaluate(() => document.getElementById('flowFold').open)) && !(await p.isVisible('#flowRun')) && /Not in use/.test(await p.textContent('#flowSum')) && await p.isVisible('#bbBuild'), 'the Flow bench starts as one closed row, with the Bench builder right under it (11/14)');
+  await flowOpen(p);
   await p.check('#coreToggle').catch(() => {});
   await p.click('#flowRun');
   await p.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
@@ -3137,7 +3141,7 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const q = await page({ models, fail, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await q.addInitScript(() => { window.__flowRetryMs = 50; });
   await q.reload();
-  await devOn(q); await q.click('#moreOpts summary'); await withKey(q);
+  await devOn(q); await q.click('#moreOpts summary'); await withKey(q); await flowOpen(q);
   let busyLeft = 7;   // the first 7 Flash writes say busy: note 1 retries and recovers, note 2's first flow fails twice
   await q.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
     const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';
@@ -3153,7 +3157,8 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const mapBefore = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
   // A reload keeps the last run: Copy reveal still works without running anything again
   await q.reload();
-  await devOn(q); await q.click('#moreOpts summary');
+  await devOn(q); await q.click('#moreOpts summary'); await flowOpen(q);
+  expect(/^Last run \d/.test(await q.textContent('#flowSum')) && /Tap to open/.test(await q.textContent('#flowSum')), 'the closed row shows when it last ran: ' + await q.textContent('#flowSum'));
   expect(await q.isEnabled('#flowReveal') && await q.isEnabled('#flowRetry') && /last run/i.test(await q.textContent('#flowInfo')), 'after a reload the last run is loaded, with Copy reveal and Rerun failed notes on');
   await withKey(q);
   const before = q.calls.filter(c => !c.intake).length;
@@ -3176,7 +3181,7 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   // Every note errored (daily limit): untick T3, B9 and B2, and Rerun redoes only T4 and T2
   const w = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await w.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await devOn(w); await w.click('#moreOpts summary'); await withKey(w);
+  await devOn(w); await w.click('#moreOpts summary'); await withKey(w); await flowOpen(w);
   let allFail = true;
   await w.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
     const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';

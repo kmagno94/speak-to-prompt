@@ -215,6 +215,14 @@ footer { font-size: 13px; color: var(--muted); }
 .benchout .flowpick input { width: 20px; height: 20px; margin: 0; }
 .benchout tr.hold td:first-child::after { content: " \1F512"; }
 .srchead { margin: 0; font-weight: 700; }
+details.benchfold { border: 1px dashed var(--line); border-radius: 10px; padding: 0 14px; }
+details.benchfold > summary { cursor: pointer; min-height: var(--tap, 44px); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+details.benchfold > summary small { color: var(--muted); font-size: 13px; font-weight: 400; }
+details.benchfold > summary { list-style: none; padding: 0; margin: 0; }
+details.benchfold > summary::-webkit-details-marker { display: none; }
+details.benchfold > summary::before { content: '▸'; color: var(--muted); }
+details.benchfold[open] > summary::before { content: '▾'; }
+details.benchfold .benchbody { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }

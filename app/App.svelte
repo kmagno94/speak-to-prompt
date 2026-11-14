@@ -314,7 +314,10 @@
         </div>
         <p class="hint" id="benchInfo">Grades the same fixed prompts with the grader above and compares with Claude's answer key. Uses your Gemini key, a few small calls.</p>
         <div id="benchOut" class="benchout" hidden></div>
-        <p class="srchead">Flow bench</p>
+        <!-- Flow bench folds away (Kevin 11/14: "compress this since it isn't being actively used"). Closed on every load; the row shows the last run's date. -->
+        <details class="benchfold" id="flowFold">
+        <summary><span class="srchead">Flow bench</span> <small id="flowSum">Not in use. Tap to open.</small></summary>
+        <div class="benchbody">
         <div class="row">
           <button type="button" id="flowRun">Run flow bench</button>
           <button type="button" id="flowCopy" disabled>Copy for Claude</button>
@@ -323,6 +326,8 @@
         </div>
         <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
+        </div>
+        </details>
         <p class="srchead">Bench builder</p>
         <div class="row">
           <button type="button" id="bbBuild">Build bench cases</button>
