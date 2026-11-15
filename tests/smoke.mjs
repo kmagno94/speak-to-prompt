@@ -964,19 +964,23 @@ await check('everyone gets the new flow: with run stats and dev tools off, Norma
 });
 
 await check('#48 answer the stand-in: type an answer and Add to prompt fits it in with one Flash-Lite call, a bad fill falls back to a plain line, and Skip costs nothing (SPEC LOCKED 11/05)', async () => {
+  /* The weekday that really goes with "the 14th" today (the next 14th on or after today, New York time, the way
+     numcheck.js reads a date with no month). It was written as Saturday the 14th, true only until 11/14/2026: from
+     11/15 the phone rightly flagged it and this check went red (full staging run, 11/15). */
+  const DAY14 = (() => { const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()).split('-').map(Number); return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(y, d <= 14 ? m - 1 : m, 14).getDay()]; })();
   const LONG = 'ok so um I want to plan a small birthday dinner for my mom next month at home, nothing fancy. she likes italian food and hates anything too spicy. there will be maybe 6 of us, my two aunts, my cousin, my dad, me and mom. I have about $90 for groceries and I want to cook most of it the day before because I work that morning until noon.';
   const PROMPT = 'Context: ' + LONG + '\nTask: Plan the menu and a cooking schedule.\nStart right away, and ask at most one short question only if something essential is missing.';
   const intake = { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] };
   // 1. The fill fits it in: one more Flash-Lite call, the answer's number counts as theirs
-  const p = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : cur.replace('Task:', 'The dinner is on Saturday the 14th.\nTask:') });
+  const p = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : cur.replace('Task:', 'The dinner is on ' + DAY14 + ' the 14th.\nTask:') });
   await withKey(p); await p.fill('#thoughts', LONG); await p.click('#build'); await done(p);
   expect(await p.isVisible('#gapAsk .gaprow') && await p.isDisabled('#gapAsk .gapadd'), 'an answer box shows under the note, Add is off until you type');
-  await p.fill('#gapAsk .gapin', 'Saturday the 14th');
+  await p.fill('#gapAsk .gapin', DAY14 + ' the 14th');
   await p.click('#gapAsk .gapadd');
   await p.waitForFunction(() => document.querySelector('#gapAsk .gaprow.done'), null, { timeout: 15000 });
   const fill = (p.fills || [])[1];
-  expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && /Saturday the 14th/.test(fill.text), 'one Flash-Lite fill with the question and the answer');
-  expect(/The dinner is on Saturday the 14th\./.test(await p.inputValue('#output')) && /Added to your prompt/.test(await p.textContent('#gapAsk .done strong')) && (await p.textContent('#gapAsk .gapsaid')) === 'Saturday the 14th', 'the answer is in the prompt and the row says so');
+  expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && new RegExp(DAY14 + ' the 14th').test(fill.text), 'one Flash-Lite fill with the question and the answer');
+  expect(new RegExp('The dinner is on ' + DAY14 + ' the 14th\\.').test(await p.inputValue('#output')) && /Added to your prompt/.test(await p.textContent('#gapAsk .done strong')) && (await p.textContent('#gapAsk .gapsaid')) === DAY14 + ' the 14th', 'the answer is in the prompt and the row says so');
   expect(await p.isHidden('#numWarn'), 'the 14th is their number now, so no number warning');
   expect((p.standins || []).length === 1, 'no re-check after adding');
   // 2. The fill comes back wrong: the phone adds a plain line before the last line
