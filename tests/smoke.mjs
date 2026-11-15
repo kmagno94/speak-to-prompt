@@ -1453,8 +1453,10 @@ await check('calm first screen (#29): only the box and Build show, the Options c
   expect(chip.bottom <= build0.top, 'the chip should sit above Build my prompt');
   await p.click('#optionsChip');
   for (const id of ['#quickMode', '#normalMode', '#contextRow', '#opt-tune-detail', '#opt-tune-tone', '#opt-tune-level', '#opt-tune-creative']) expect(await p.isVisible(id), id + ' should show once Options is open');
-  const panel = await y('#optionsPanel'), build1 = await y('#build');
-  expect(await p.getAttribute('#optionsChip', 'aria-expanded') === 'true' && panel.top >= chip.bottom && panel.bottom <= build1.top && build1.top > build0.top, 'the options should open inline right under the chip, and Build my prompt should move down with them');
+  /* Measured fresh, after the open animation, and as gaps (not page positions), so a late layout shift above the chip can't fool it. */
+  await p.waitForTimeout(300);
+  const chip1 = await y('#optionsChip'), panel = await y('#optionsPanel'), build1 = await y('#build');
+  expect(await p.getAttribute('#optionsChip', 'aria-expanded') === 'true' && panel.top >= chip1.bottom - 1 && panel.bottom <= build1.top + 1 && build1.top - chip1.bottom > build0.top - chip.bottom + 100, 'the options should open inline right under the chip, and Build my prompt should move down with them: ' + JSON.stringify({ chip1, panel, build1, gap0: build0.top - chip.bottom }));
   await p.check('#normalMode');
   expect(/Options · Normal/.test(await p.textContent('#optionsChip')), 'the chip should follow the mode: ' + await p.textContent('#optionsChip'));
   await p.check('#quickMode');
