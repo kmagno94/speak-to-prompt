@@ -2027,9 +2027,22 @@ export function startApp() {
   function bbFlaw(prompt, spec) {
     var paras = String(prompt).split(/\n\s*\n/);
     if (spec.flaw === "drop-format") {
+      /* Fix 11/14: writers label it many ways (Format:, **Output format**, ## Response format,
+         Length:), often as a heading with bullets under it and no blank line before the next part.
+         Take out every format or length part: its label line plus the bullet or indented lines
+         right under it. Fall back to the great-result line when there is no such part. */
+      var lines = String(prompt).split("\n"), cut = false;
+      var LABEL = /^\W*(?:(?:output|response|answer|reply|preferred)\s+)?(?:format|length|structure|deliverable)s?\b(?!\s+(?:the|a|an|it|this|my|your)\b)/i;
+      var UNDER = /^\s*(?:[-*\u2022]|\d+[.)])\s+|^\s{2,}\S/;
+      for (var k = 0; k < lines.length; k++) {
+        if (!LABEL.test(lines[k])) continue;
+        var end = k + 1;
+        while (end < lines.length && UNDER.test(lines[end])) end++;
+        lines.splice(k, end - k); k--; cut = true;
+      }
+      if (cut) return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
       var i = -1;
-      paras.forEach(function (p, k) { if (i < 0 && /^\W*(format|length)\b/i.test(p.trim())) i = k; });
-      if (i < 0) paras.forEach(function (p, k) { if (i < 0 && /^\W*a great (answer|result)\b/i.test(p.trim())) i = k; });
+      paras.forEach(function (p, k) { if (i < 0 && /^\W*a great (answer|result)\b/i.test(p.trim())) i = k; });
       if (i < 0) return null;
       paras.splice(i, 1);
       return paras.join("\n\n");
@@ -3039,7 +3052,19 @@ export function startApp() {
      Stub guard (v2.1.41): an answer that is very short or stops without ending a sentence
      looks cut off (the 200 character link cut made every answer a stub, and the label fix
      dressed the stubs up as prompts). It is held, not used, unless you tap Use it anyway. */
-  function scCutOff(out) { return words(out) < SC_FULL_WORDS || !/[.!?:)\]"'\u201d\u2019*`]$/.test(out); }
+  /* Cut off: very short, or the last line stops without an ending. Fix 11/14 (bench B14): a
+     list item, heading, or short label line often ends with no period, so those count as finished
+     unless they stop on a small joining word ("to", "the", "and"), which is how a cut one ends. */
+  function scCutOff(out) {
+    out = String(out).trim();
+    if (words(out) < SC_FULL_WORDS) return true;
+    if (/(?:[.!?:)\]"'\u201d\u2019*`]|\p{Extended_Pictographic})$/u.test(out)) return false;
+    var last = out.split("\n").pop().trim();
+    /* a label line only counts when it's short ("Tone: friendly"); a long one is a sentence, where real cuts happen */
+    var listy = /^(?:[-*\u2022]|\d+[.)]|#+)\s+\S/.test(last) || (/^\W*[A-Za-z][A-Za-z ]{0,30}:\s*\S/.test(last) && words(last) <= 8);
+    if (!listy) return true;
+    return words(last) < 3 || /\b(?:a|an|the|to|of|and|or|but|with|for|in|on|at|by|my|your|our|is|are|was|that|which|from|as|so|if|when|than)$/i.test(last);
+  }
   function scUse() { var w = scWait; if (w && w.held) scTake(w.held, false, true); }
   function scTake(text, pasted, anyway) {
     var w = scWait;

@@ -41,7 +41,7 @@ const CORE = [
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
-  'quick chip:', 'save as context:', 'bench builder: a Read answer'
+  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -5665,6 +5665,36 @@ await check('bench builder: a Read answer that is broken JSON gets one retry on 
   const st = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-benchbuild')));
   expect(st.cases.length === 6 && st.cases.every((c) => c.job && c.job.length > 200), 'every case has its job text');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [p, q].flatMap(x => x.errors).join('; '));
+});
+
+/* Test lab 11/14, first real STP Bench Runner run: B16 said "couldn't find the part to change in B10" (ChatGPT labeled it differently), and B14 ended on a bullet with no period and was called cut off. */
+await check('bench builder: the seeded flaw finds a format part however it is labeled, and a last bullet with no period is not cut off, but one that stops on "to" is (Test lab 11/14)', async () => {
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const p = await page({ cleanFn: unfill, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  await p.click('#bbBuild');
+  await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled, null, { timeout: 60000 });
+  await p.click('#bbRunSc');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const body = (id) => `**Role**\nYou are a helpful planner for case ${id}.\n\n**Context**\nThese are the details for case ${id}, written out so the prompt reads like a real one with enough words.\n\n**Task**\nHelp me with case ${id} carefully and completely, using every detail above.`;
+  const b10 = body('B10') + '\n\n**Output format**\n- Three dinner options in a table\n- Keep it to about one screen\n\nStart right away.';
+  const b14 = body('B14') + '\n\n**Plan**\n- Practice the stop and wait drill daily\n- Reward loose leash walking right away';
+  const b15 = body('B15') + '\n\n**Plan**\n- Put 50 dollars a week into savings\n- Keep each transfer to';
+  const back = ['@@@\nB10|chatgpt\n' + b10, '@@@\nB11|chatgpt\n' + body('B11') + '\n\nFormat: a short list.', '@@@\nB12|cloud\n' + body('B12') + '.', '@@@\nB13|cloud\n' + body('B13') + '.', '@@@\nB14|ondevice\n' + b14, '@@@\nB15|ondevice\n' + b15].join('\n');
+  await p.evaluate((t) => navigator.clipboard.writeText(t), back);
+  await p.evaluate(() => { location.hash = '#benchback'; });
+  await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /ready\./.test(document.getElementById('bbInfo').textContent) && /of 8 ready/.test(document.getElementById('bbOut').textContent), null, { timeout: 30000 });
+  const st = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-benchbuild')));
+  const get = (id) => st.cases.concat(st.seeded).find((c) => c.id === id);
+  expect(!get('B14').err, 'a last bullet with no period is a finished answer: ' + get('B14').err);
+  expect(/cut off/.test(get('B15').err || ''), 'a last bullet that stops on "to" is still cut off: ' + JSON.stringify([get('B15').err, (get('B15').prompt || '').slice(-80)]));
+  const b16 = get('B16');
+  expect(!b16.err && !/Output format|one screen|in a table/.test(b16.prompt) && /Start right away\./.test(b16.prompt) && /\*\*Task\*\*/.test(b16.prompt), 'B16 drops the **Output format** heading and its bullets, and keeps the rest: ' + (b16.err || b16.prompt.slice(-160)));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 /* Bench builder (#54, v2.1.41): new grader bench cases through the STP Bench Runner shortcut, one copy out, one paste back. */
