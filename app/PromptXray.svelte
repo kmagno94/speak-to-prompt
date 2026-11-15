@@ -6,19 +6,14 @@
   import { xray } from './lib/xray.svelte.js';
   import { analyze, pieces, whyText } from './lib/xray.js';
   import { ms } from './lib/motion.js';
-  import GlowUp from './GlowUp.svelte';
-  import HearIt from './HearIt.svelte';
 
-  let on = $state(false);
-  /* AGT-21 (v2.1.30): a one-line hint says what Glow-Up and X-ray are, until you tap
-     either one once. Only a yes/no flag is saved, never anything you typed. */
-  const HINT_KEY = 'stp-xbar-hint';
-  let hint = $state((() => { try { return localStorage.getItem(HINT_KEY) !== '1'; } catch (e) { return true; } })());
-  function hintSeen() { if (!hint) return; hint = false; try { localStorage.setItem(HINT_KEY, '1'); } catch (e) {} }
+  /* #33 (v2.1.42): the X-ray button (with Hear it and Glow-Up) moved into More with this prompt
+     (XrayBar.svelte). It sets xray.show; the X-ray itself still opens here, in the prompt's place. */
+  const on = $derived(xray.show);
   let picked = $state(-1);      // tapped part of the prompt
   let source = $state(-1);      // tapped sentence of yours
 
-  $effect(() => { xray.run; on = false; picked = -1; source = -1; });
+  $effect(() => { xray.run; picked = -1; source = -1; });
 
   /* X-ray takes the prompt box's place while it's open. */
   $effect(() => { const out = document.getElementById('output'); if (out) out.style.display = on ? 'none' : ''; });
@@ -43,21 +38,10 @@
   });
   /* Done from anywhere: close, then bring the prompt back into view. */
   function close() {
-    on = false;
-    requestAnimationFrame(() => document.getElementById('xrayBar')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    xray.show = false;
+    requestAnimationFrame(() => document.getElementById('output')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
   }
 </script>
-
-{#if xray.prompt && !on}
-  <div class="xbar" id="xrayBar" onclickcapture={(e) => { if (e.target.closest && e.target.closest('#glowBtn, #xrayBtn')) hintSeen(); }}>
-    <HearIt />
-    <GlowUp />
-    <button type="button" id="xrayBtn" class="xbtn" aria-pressed="false" onclick={() => (on = true)}>🩻 X-ray</button>
-  </div>
-  {#if hint}
-    <p class="xhint" id="xbarHint">✨ Glow-Up shows your messy words turning into this prompt. 🩻 X-ray shows which parts came from you.</p>
-  {/if}
-{/if}
 
 {#if r}
   <div class="xray" id="xray" transition:slide={{ duration: ms(200) }}>
@@ -142,8 +126,6 @@
 {/if}
 
 <style>
-  .xbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; margin-bottom: 8px; scroll-margin-top: 12px; }
-  .xhint { margin: -2px 0 10px; font-size: 13px; line-height: 1.4; color: var(--muted); text-align: right; }
   .xbtn { min-height: 0; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
   .xray {
     --x0: #fde7b0; --x1: #cdeccf; --x2: #d6e4fb; --x3: #f6d3e4; --x4: #e3d9f7; --x5: #cfeeed;

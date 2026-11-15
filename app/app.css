@@ -343,7 +343,8 @@ button.getlink { color: var(--accent); font-weight: 700; text-decoration: underl
 /* Quick mode sits right beside Build as a switch, so it's chosen before you tap Build. */
 /* Build and the mode picker each keep their share of the row, so a longer busy label
    (Reading your thoughts...) wraps inside the button instead of crushing the picker. */
-.buildrow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(132px, 1fr); gap: 10px; align-items: stretch; }
+/* #29 (v2.1.42): one column. The Options chip, then (when open) Mode, the sliders and My context, then Build my prompt. */
+.buildrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: stretch; }
 .buildrow #build { padding: 10px 10px; line-height: 1.2; text-wrap: balance; min-height: 64px; }   /* room for a 2-line label, so the row never jumps */
 .buildrow:has(> #build[hidden]) { grid-template-columns: minmax(0, 1fr); }   /* questions or a finished prompt: the dock holds the next step (#17) */
 .buildrow .starterwrap { grid-column: 1 / -1; display: grid; gap: 10px; min-width: 0; }
@@ -379,6 +380,16 @@ details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color
 details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* #33 More with this prompt: one closed row under the Copy buttons; the extras open inside it. */
+.morewith { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; border-top: 1px solid var(--line); padding-top: 4px; }
+.morebtn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tap); padding: 8px 2px; background: none; border: none; box-shadow: none; border-radius: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); text-align: left; }
+.morebtn .chev { margin-left: auto; font-style: normal; font-size: 13px; color: var(--muted); transition: transform var(--dur-fast) var(--ease); }
+.morebtn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.moredot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.morebody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-bottom: 4px; animation: morein var(--dur-fast) var(--ease); }
+.morebody[hidden] { display: none; }
+@keyframes morein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .morebody { animation: none; } .morebtn .chev { transition: none; } }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
 /* Settings rows: quieter than the journey cards, with a chevron that turns when open. */
 details.key { background: transparent; border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }

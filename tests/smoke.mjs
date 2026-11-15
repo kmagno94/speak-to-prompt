@@ -38,7 +38,7 @@ const CORE = [
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
-  'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
+  'AI app links:', 'calm first screen (#29)', 'more with this prompt (#33)', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
   'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
@@ -64,6 +64,10 @@ async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
   if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
+  /* R4 (v2.1.42): the Options chip and More with this prompt start closed for real visitors. Checks written before
+     R4 tap Mode, My context, X-ray and the rest directly, so pages start with both rows open; opts.calm keeps them
+     closed, the way a real first screen is. */
+  if (!opts.calm) await ctx.addInitScript(() => { window.__openRows = true; });
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   /* v2.1.33: a returning visitor has also built a few prompts (the time strip shows) and had their first pro prompt.
      opts.newbie keeps Start here off but starts with neither, for the first-timer checks. */
@@ -1435,6 +1439,89 @@ await check('mode picker (Svelte component): hint follows the mode and the key',
   expect(/^Quick:/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
   await p.check('#normalMode'); await withKey(p);
   expect(!/Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'hint still asks for a key after one was typed');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* ---- R4 Calm screens (v2.1.42): #29 Calm first screen, #33 More with this prompt. These run with opts.calm, the real first screen. ---- */
+await check('calm first screen (#29): only the box and Build show, the Options chip says the mode and opens Mode, the sliders and My context inline, and Prompt strength waits for 5 words', async () => {
+  const p = await page({ calm: true });
+  expect(await p.isVisible('#thoughts') && await p.isVisible('#build'), 'the words box and Build my prompt should show on first load');
+  for (const id of ['#quickMode', '#normalMode', '#modeHint', '#contextRow', '#opt-tune-detail']) expect(!(await p.isVisible(id)), id + ' should be behind the Options chip on first load');
+  expect(await p.isVisible('#optionsChip') && /Options · Quick/.test(await p.textContent('#optionsChip')) && await p.getAttribute('#optionsChip', 'aria-expanded') === 'false', 'the closed chip should say Options · Quick: ' + await p.textContent('#optionsChip'));
+  const y = (sel) => p.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top + scrollY, bottom: r.bottom + scrollY, h: r.height }; }, sel);
+  const chip = await y('#optionsChip'), build0 = await y('#build');
+  expect(chip.h >= 44, 'the chip should be at least 44px tall, got ' + chip.h);
+  expect(chip.bottom <= build0.top, 'the chip should sit above Build my prompt');
+  await p.click('#optionsChip');
+  for (const id of ['#quickMode', '#normalMode', '#contextRow', '#opt-tune-detail', '#opt-tune-tone', '#opt-tune-level', '#opt-tune-creative']) expect(await p.isVisible(id), id + ' should show once Options is open');
+  const panel = await y('#optionsPanel'), build1 = await y('#build');
+  expect(await p.getAttribute('#optionsChip', 'aria-expanded') === 'true' && panel.top >= chip.bottom && panel.bottom <= build1.top && build1.top > build0.top, 'the options should open inline right under the chip, and Build my prompt should move down with them');
+  await p.check('#normalMode');
+  expect(/Options · Normal/.test(await p.textContent('#optionsChip')), 'the chip should follow the mode: ' + await p.textContent('#optionsChip'));
+  await p.check('#quickMode');
+  await p.click('#optionsChip');
+  expect(!(await p.isVisible('#quickMode')) && /Options · Quick/.test(await p.textContent('#optionsChip')), 'tapping the chip again should close it and keep showing the mode');
+  await p.click('#optionsChip'); await p.reload();
+  expect(!(await p.isVisible('#quickMode')) && await p.getAttribute('#optionsChip', 'aria-expanded') === 'false', 'Options should be closed again after a reload');
+  expect(await p.evaluate(() => Object.keys(localStorage).every((k) => !/option/i.test(k))), 'open or closed should never be saved');
+  /* Prompt strength (Ghost Coach) waits for 5 words, typed or pasted. */
+  await p.fill('#thoughts', 'plan my trip soon'); await p.waitForTimeout(350);
+  expect(!(await p.isVisible('#coach')), 'Prompt strength should stay away at 4 words');
+  await p.fill('#thoughts', 'plan my trip soon please'); await p.waitForSelector('#coach');
+  expect(await p.isVisible('#coachLevel'), 'Prompt strength and its notes should show at 5 words');
+  await p.fill('#thoughts', ''); await p.waitForTimeout(350);
+  expect(!(await p.isVisible('#coach')), 'Prompt strength should go away again when the box is emptied');
+  /* The sliders in Options shape the build: off the middle, one plain line goes in with your words; in the middle, nothing. */
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(!/Tone:/.test(await p.inputValue('#output')), 'sliders in the middle should add nothing: ' + await p.inputValue('#output'));
+  await menuTap(p, '#reset');
+  await p.click('#optionsChip');
+  await p.$eval('#opt-tune-tone', (el) => { el.value = '1'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(/Tone: very casual, like a friend\./.test(await p.textContent('#optTuneNote')), 'Options should say what the slider adds: ' + await p.textContent('#optTuneNote'));
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(/help me plan a 5k\nTone: very casual, like a friend\./.test(await p.inputValue('#output')), 'a slider off the middle should go in as one line with your words: ' + await p.inputValue('#output'));
+  expect(await p.inputValue('#thoughts') === 'help me plan a 5k', 'the words box itself should stay as typed');
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'help me plan a 5k\nTone: formal and professional.'); await p.click('#build'); await done(p);
+  expect(!/very casual/.test(await p.inputValue('#output')), 'words that already say the tone should not get the slider line too');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('more with this prompt (#33): X-ray, Glow-Up, Report, Remember and Save to Notes sit in one closed row under the Copy buttons, a dot shows when Remember is waiting, and it closes on every new prompt', async () => {
+  const intake = { title: 'Shortcut Help', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Which Mac do you use?', choices: ['MacBook Air', 'iMac'] }], use_memory: [], remember: ['I study at WGU for cybersecurity'] };
+  const p = await page({ calm: true, intake, write: 'Act as a Shortcuts expert. Build a shortcut that silences my phone at work.' });
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#output') && await p.isVisible('#copyNote'), 'the result should show the prompt and the Copy buttons');
+  expect(await p.isVisible('#moreBtn') && /More with this prompt/.test(await p.textContent('#moreBtn')) && await p.getAttribute('#moreBtn', 'aria-expanded') === 'false', 'More with this prompt should be one closed row');
+  for (const id of ['#xrayBtn', '#glowBtn', '#reportBtn', '#saveNote']) expect(!(await p.isVisible(id)), id + ' should be inside the closed row');
+  const order = await p.evaluate(() => document.getElementById('copyNote').getBoundingClientRect().bottom <= document.getElementById('moreBtn').getBoundingClientRect().top && document.getElementById('output').getBoundingClientRect().bottom <= document.getElementById('moreBtn').getBoundingClientRect().top);
+  expect(order, 'the row should sit under the prompt and the Copy buttons');
+  expect(!(await p.$('#moreDot')), 'no dot when nothing is waiting');
+  await p.click('#moreBtn');
+  for (const id of ['#xrayBtn', '#glowBtn', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should show once the row is open');
+  expect(await p.evaluate(() => ['xrayBtn', 'glowBtn', 'reportBtn', 'saveNote'].every((id) => !!document.getElementById(id).closest('#moreBody'))), 'all of them should live inside the row');
+  /* X-ray still opens in the prompt's place, and Done brings the prompt back. */
+  await p.click('#xrayBtn'); await p.waitForSelector('#xray');
+  expect(!(await p.isVisible('#output')), 'X-ray should take the prompt box\'s place');
+  await p.click('#xrayBtn'); await p.waitForTimeout(350);
+  expect(await p.isVisible('#output') && await p.getAttribute('#moreBtn', 'aria-expanded') === 'true', 'Done should bring the prompt back and leave the row open');
+  /* A new prompt closes the row again, and nothing about it is saved. */
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'help me plan a 10k'); await p.click('#build'); await done(p);
+  expect(await p.getAttribute('#moreBtn', 'aria-expanded') === 'false' && !(await p.isVisible('#xrayBtn')), 'the row should close again on a new prompt');
+  await p.click('#moreBtn');
+  expect(await p.evaluate(() => Object.keys(localStorage).every((k) => !/more/i.test(k))), 'open or closed should never be saved');
+  /* The dot: with memory on, Remember for next time? has something waiting, so the closed row shows a dot. */
+  await p.evaluate(() => { localStorage.setItem('stp-dev', '1'); localStorage.setItem('stp-memory', JSON.stringify({ on: true, facts: [] })); });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'make a shortcut to silence my phone at work'); await p.click('#build');
+  await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForSelector('#moreDot');
+  expect(await p.getAttribute('#moreBtn', 'aria-expanded') === 'false' && !(await p.isVisible('#memorySuggest')), 'the row should still be closed, with Remember for next time? inside it');
+  await p.click('#moreBtn');
+  expect(await p.isVisible('#memorySuggest') && !(await p.$('#moreDot')), 'opening the row should show Remember for next time? and drop the dot');
+  await p.click('#memoryDismiss'); await p.click('#moreBtn');
+  expect(!(await p.$('#moreDot')), 'no dot once Remember for next time? is answered');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

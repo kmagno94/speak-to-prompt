@@ -10,6 +10,9 @@ export function saveMode(m) {
   try { if (m === 'quick' || m === 'normal') localStorage.setItem(MODE_KEY, m); } catch (e) {}
 }
 const mode0 = savedMode();
+/* Test-only hook (like __checkMaxMs): the smoke tests written before R4 tap Mode, My context,
+   X-ray and the rest directly, so they start with both rows open. Nothing sets this on the real site. */
+export function rowsOpen() { return typeof window !== 'undefined' && !!window.__openRows; }
 
 export const ui = $state({
   mode: mode0 || 'quick',   // 'quick' or 'normal'. Quick until a key exists (ModePicker), unless picked
@@ -32,7 +35,10 @@ export const ui = $state({
   quickOn: false,     // this write is already the quick version (Quick mode), so there's nothing to switch to
   switched: false,    // the chip was tapped during Write: the quick model is writing it now
   slow: null,         // from 2:00 on a slow Flash write: { until, total }, the countdown shown on the chip
-  statsOn: false      // Show run stats and daily usage is on (the 👍 Worked great tap only shows then, #5)
+  statsOn: false,     // Show run stats and daily usage is on (the 👍 Worked great tap only shows then, #5)
+  /* R4 Calm screens (v2.1.42). Both start closed on every load and are never saved. */
+  optionsOpen: rowsOpen(),   // #29: the Options chip under the box is open (Mode, the sliders, My context)
+  moreOpen: rowsOpen()       // #33: the More with this prompt row under the Copy buttons is open; closes on every new prompt
 });
 
 /* kind: 'empty' | 'error' | 'warn' | 'success' | 'info'. actions: [{ label, act, primary }]

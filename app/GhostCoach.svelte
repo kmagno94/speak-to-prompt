@@ -12,7 +12,8 @@
   let box;
 
   const a = $derived(assess(text));
-  const show = $derived(a.words >= 3);
+  /* #29 (v2.1.42): a calm first screen. The meter and the notes wait for 5 words, typed or pasted. */
+  const show = $derived(a.words >= 5);
   const missing = $derived(a.checks.filter((c) => !c.hit).slice(0, 2));
   const covered = $derived(a.checks.filter((c) => c.hit).map((c) => c.label));
 

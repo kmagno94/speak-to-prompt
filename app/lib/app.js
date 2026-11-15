@@ -342,13 +342,17 @@ export function startApp() {
     if (busy) return;
     window.dispatchEvent(new Event("stp-build-start"));   /* calls off the full-version countdown (KeyCatcher, v2.1.25) */
     var key = gemini.key || gkey.value.trim();
-    if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(raw); return; }   /* Rework: the next round */
+    /* #29 (v2.1.42): the sliders sit in Options under the box now, so they shape any build. Each one
+       off the middle goes in as one plain line with your words (the same line a starting point
+       carries). In the middle they add nothing, so the words are sent as typed. */
+    var sent = starter.withTune(raw);
+    if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(sent); return; }   /* Rework: the next round */
     if (ui.round || rounds.length || reworkDraft) clearRounds();
     rememberUsed(raw);
     inputHint(raw);
-    if (key) { geminiFlow(raw, key); return; }
-    session = { raw: raw, quick: true, known: knownText() };
-    showQuick(raw, "");
+    if (key) { geminiFlow(sent, key); return; }
+    session = { raw: sent, quick: true, known: knownText() };
+    showQuick(sent, "");
     logRun({ outcome: "ok", words_out: words(output.value) });
   });
 
@@ -3848,12 +3852,12 @@ export function startApp() {
       if (added > 0) parts.push("added " + plural(added, "detail you said", "details you said"));
       if (removed > 0) parts.push("removed " + plural(removed, "made-up number", "made-up numbers"));
       if (eased > 0) parts.push("took out " + plural(eased, "word that made it stricter than you said", "words that made it stricter than you said"));
-      el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Tap X-ray to see.";
+      el.textContent = "\ud83d\udd27 Auto-fixed: " + (parts.join(" and ") || "tightened it up") + ". Open More with this prompt and tap X-ray to see.";
     } else {
       /* AGT-21 (v2.1.30): first-timers read "the fix wasn't better" as "something broke", so
          the line says it plainly. The reason why (Polish tried and kept the original) only
          shows with run stats or dev tools on. */
-      el.textContent = "\ud83d\udc40 Your prompt is ready. We spotted " + plural(rep.before.score, "thing", "things") + " worth a quick look before you paste: tap X-ray to see " + (rep.before.score === 1 ? "it" : "them") + "." +
+      el.textContent = "\ud83d\udc40 Your prompt is ready. We spotted " + plural(rep.before.score, "thing", "things") + " worth a quick look before you paste: open More with this prompt and tap X-ray to see " + (rep.before.score === 1 ? "it" : "them") + "." +
         (techOn() || core.dev ? " (Polish tried a fix, but " + (rep.status === "failed" ? "it didn't come through" : "it wasn't better") + ", so this is the original.)" : "");
     }
     el.hidden = false;

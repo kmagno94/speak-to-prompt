@@ -25,7 +25,7 @@
 
   const a = $derived(assess(text));
   const tip = $derived(a.checks.find((c) => !c.hit) || null);
-  const show = $derived(kb.open && kb.typing && (a.words >= 3 || stuck.show));
+  const show = $derived(kb.open && kb.typing && (a.words >= 5 || stuck.show));
   /* The bar keeps the cursor in the box: no focus change on press. */
   const keep = (e) => e.preventDefault();
   /* The floating 💡 / 🧪 buttons tuck away while the bar is up, so they never cover it. */

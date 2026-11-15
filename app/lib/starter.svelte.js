@@ -39,6 +39,10 @@ class StarterSession {
     return this.cat.dev ? q.choices.slice() : rotating(q.choices, this.cat.id + ':' + this.current, this.page);
   });
   tuned = $derived(SLIDERS.some((s) => Number(this.tune[s.key]) !== 3));
+  /* #29 (v2.1.42): the sliders also sit in Options under the box, so they shape any build, not
+     only a starting point. Each slider off the middle is one plain line, the same line the
+     starter writes. */
+  tuneLines = $derived(SLIDERS.map((s) => { const said = s.steps[this.tune[s.key] - 1]; return said ? { say: s.say, line: s.say + ': ' + said + '.' } : null; }).filter(Boolean));
   canRotate = $derived(!!this.cat && !this.cat.dev && (this.questions[this.current]?.choices.length || 0) > SHOW);
   /* The starting text, rebuilt as answers change. */
   text = $derived.by(() => {
@@ -73,6 +77,14 @@ class StarterSession {
       if (SLIDERS.every((s) => t[s.key] === 3)) localStorage.removeItem(TUNE_KEY);
       else localStorage.setItem(TUNE_KEY, JSON.stringify(t));
     } catch (e) {}
+  }
+
+  /* Your words plus one line per slider off the middle. A slider your words already speak to
+     (a starting point carries its own Detail: line) is left alone, so nothing is said twice. */
+  withTune(raw) {
+    const text = String(raw || '');
+    const add = this.tuneLines.filter((t) => !new RegExp('^\\s*' + t.say + ':', 'im').test(text)).map((t) => t.line);
+    return add.length ? text + '\n' + add.join('\n') : text;
   }
 
   resetTune() { SLIDERS.forEach((s) => { this.tune[s.key] = 3; }); }
