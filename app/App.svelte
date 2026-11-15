@@ -162,9 +162,10 @@
       <div class="timestrip" hidden></div>
       <QuickSwitch />
     </div>
+    <!-- Right under the tracker, where your eyes already are (Kevin 11/14: "very small and I almost missed it") -->
+    <p id="stayTip" class="staytip" role="note" hidden><span aria-hidden="true">✋</span> <b>Stay on this page until it's done.</b> Refreshing or leaving stops your prompt.</p>
     <p id="buildStatus" class="buildstatus" role="status"></p>
     <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
-    <p id="stayTip" class="hint" hidden>Stay on this page until it's done. Refreshing or leaving stops your prompt.</p>
     <ReportIssue place="front" />
   </form>
 

@@ -2295,6 +2295,7 @@ export function startApp() {
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
+    if (stayTip && track.parentNode && track.nextElementSibling !== stayTip) track.parentNode.insertBefore(stayTip, track.nextSibling);   /* the stay line follows whichever tracker is running */
     setProgress(bar, "pct", 2);
     cookStart(track.id === "buildTrack" ? "build" : "result", step === "write" ? "write" : "read", cookIngredients(step));
     function draw() {

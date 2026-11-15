@@ -5493,6 +5493,8 @@ await check('stay on screen: on iPhone and iPad, where Safari never asks before 
     await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
     for (let i = 0; i < 40 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
     const mid = await p.isVisible('#stayTip');
+    const look = mid ? await p.$eval('#stayTip', (el) => { const cs = getComputedStyle(el); const t = el.previousElementSibling.getBoundingClientRect(), r = el.getBoundingClientRect(); if (!el.previousElementSibling.classList.contains('tracker')) return { notUnderTracker: true }; return { size: parseFloat(cs.fontSize), bg: cs.backgroundColor, gap: r.top - t.bottom }; }) : null;
+    if (look) expect(look.size >= 16 && look.bg !== 'rgba(0, 0, 0, 0)' && look.gap >= 0 && look.gap < 40, 'the line is easy to see: 16px or bigger, its own colored box, right under the tracker (Kevin 11/14): ' + JSON.stringify(look));
     p.releaseSlow(); await done(p);
     const after = await p.isVisible('#stayTip');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
