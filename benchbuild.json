@@ -1,0 +1,58 @@
+{
+  "note": "Bench builder (#54): notes for new grader bench cases. Each case runs Read, Clean, and the fact ledger on Flash-Lite, then its write goes to the STP Bench Runner shortcut with the model named in writer (chatgpt, cloud, ondevice). seeded cases are made on the phone from another case's finished prompt with a flaw put in on purpose, no AI call. Claude grades every case into an answer key with Kevin's okay, and only then do they join bench.json. Fictional notes only.",
+  "updated": "2026-11-13",
+  "cases": [
+    {
+      "id": "B10",
+      "name": "Sister's birthday dinner",
+      "writer": "chatgpt",
+      "today": "Friday, November 13, 2026",
+      "raw": "ok so my sister Lena's birthday is next saturday, the 21st, and I wanna do a small dinner at my place, like 6 people, she's vegetarian and she hates mushrooms, budget is around 120 bucks for food, I'm not a great cook so nothing fancy, maybe something I can prep in the afternoon",
+      "answers": [{ "question": "What kind of help do you want most?", "answer": "A menu and a shopping list" }]
+    },
+    {
+      "id": "B11",
+      "name": "Stats exam study plan",
+      "writer": "chatgpt",
+      "today": "Friday, November 13, 2026",
+      "raw": "I have a stats exam on december 4th, it's mostly hypothesis testing and confidence intervals, I can study maybe an hour on weeknights and like 3 hours on sundays, I keep mixing up when to use a t test vs a z test, and I learn way better with examples than just reading",
+      "answers": []
+    },
+    {
+      "id": "B12",
+      "name": "Leaky sink message to landlord",
+      "writer": "cloud",
+      "today": "Friday, November 13, 2026",
+      "raw": "need to write a message to my landlord, the kitchen sink has been leaking since last tuesday, I put a bucket under it, I already texted once on the 8th and got no answer, I want to be polite but firm, and ask if someone can come before the weekend because I'm away the 20th through the 23rd",
+      "answers": []
+    },
+    {
+      "id": "B13",
+      "name": "Road trip to Montreal",
+      "writer": "cloud",
+      "today": "Friday, November 13, 2026",
+      "raw": "trying to plan a road trip from albany to montreal, leaving the morning of the 27th and coming back sunday, it's me and two friends, one of them gets carsick so not too many winding roads, we want one good food stop on the way up, and I think the border needs passports? not totally sure",
+      "answers": [{ "question": "What do you want the plan to cover?", "answer": "The route, the food stop, and what to bring for the border" }]
+    },
+    {
+      "id": "B14",
+      "name": "Beagle leash pulling",
+      "writer": "ondevice",
+      "today": "Friday, November 13, 2026",
+      "raw": "my dog Biscuit pulls on the leash like crazy, she's about 2, a beagle mix, we walk twice a day around 7am and 6pm, I've tried treats but she gets bored of them, I don't want to use a prong collar, maybe like a two week plan I can actually stick to",
+      "answers": []
+    },
+    {
+      "id": "B15",
+      "name": "First savings plan",
+      "writer": "ondevice",
+      "today": "Friday, November 13, 2026",
+      "raw": "I want to start a small savings plan, I get paid every two weeks and I can probably put away 75 a paycheck, I want an emergency fund first, maybe 1000 to start, then save up for a new laptop around 900, and I don't want anything complicated like investing yet",
+      "answers": []
+    }
+  ],
+  "seeded": [
+    { "id": "B16", "from": "B10", "flaw": "drop-format", "say": "The format and length part was removed on purpose." },
+    { "id": "B17", "from": "B11", "flaw": "invent", "line": "The exam is worth 40% of my final grade.", "say": "One made-up detail was added on purpose: the exam is worth 40% of the final grade." }
+  ]
+}

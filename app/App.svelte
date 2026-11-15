@@ -5,6 +5,7 @@
   import ChatBuilder from './ChatBuilder.svelte';
   import StartHelper from './StartHelper.svelte';
   import CoreToggle from './CoreToggle.svelte';
+  import WriterPicker from './WriterPicker.svelte';
   import ReportIssue from './ReportIssue.svelte';
   import GhostCoach from './GhostCoach.svelte';
   import StartHere from './StartHere.svelte';
@@ -36,6 +37,9 @@
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
   import QuickSwitch from './QuickSwitch.svelte';
+  import ContextNudge from './ContextNudge.svelte';
+  import SaveContext from './SaveContext.svelte';
+  import { ui } from './lib/ui.svelte.js';
   import HearSpeed from './HearSpeed.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
@@ -143,6 +147,7 @@
       <button type="submit" class="primary" id="build">Build my prompt</button>
       <ModePicker />
       <CoreToggle />
+      <WriterPicker />
       <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
@@ -157,12 +162,15 @@
       <div class="timestrip" hidden></div>
       <QuickSwitch />
     </div>
+    <!-- Right under the tracker, where your eyes already are (Kevin 11/14: "very small and I almost missed it") -->
+    <p id="stayTip" class="staytip" role="note" hidden><span aria-hidden="true">✋</span> <b>Stay on this page until it's done.</b> Refreshing or leaving stops your prompt.</p>
     <p id="buildStatus" class="buildstatus" role="status"></p>
     <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
     <ReportIssue place="front" />
   </form>
 
   <section class="card" id="qa" hidden>
+    <RoundBanner place="qa" />
     <ChatBuilder />
     <p id="qaStatus" class="buildstatus" role="status"></p>
   </section>
@@ -178,6 +186,10 @@
       <p class="detail"></p>
       <div class="timestrip" hidden></div>
     </div>
+    <!-- While the prompt is being written (#50, #51): the ⚡ Quick version chip, and next to it the
+         Save as context offer when Read spotted background worth keeping. Outside #resultTrack on
+         purpose: Rework rounds redraw that from saved HTML. -->
+    {#if ui.build}<div class="waitrow" id="waitRow"><QuickSwitch place="result" /><ContextNudge place="wait" /></div>{/if}
     <p id="madeBy" class="madeby"></p>
     <KeyNudge place="result" />
     <Notice where="result" />
@@ -202,6 +214,8 @@
       </div>
     </div>
     <p id="status" class="status openstatus" role="status"></p>
+    <!-- The prompt finished before the offer was answered: it waits here, under the result (#50). -->
+    <ContextNudge place="done" />
     <ReportIssue />
     <MemorySuggest />
     <div class="devrow" id="devRow" hidden={!core.dev}>
@@ -276,7 +290,7 @@
       <HearSpeed />
       <div class="stats">
         <label class="check"><input type="checkbox" id="devTools" bind:checked={core.dev} onchange={() => core.saveDev()}> Show my dev tools</label>
-        <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, and the Use my core switch. For building the app, not for everyday users.</p>
+        <p class="hint">Adds <b>Your core</b> and <b>Improve this app</b> to Not sure where to start?, the Use my core switch, and <b>Write with</b> under Build my prompt. For building the app, not for everyday users.</p>
       </div>
       <div class="stats">
         <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
@@ -302,7 +316,10 @@
         </div>
         <p class="hint" id="benchInfo">Grades the same fixed prompts with the grader above and compares with Claude's answer key. Uses your Gemini key, a few small calls.</p>
         <div id="benchOut" class="benchout" hidden></div>
-        <p class="srchead">Flow bench</p>
+        <!-- Flow bench folds away (Kevin 11/14: "compress this since it isn't being actively used"). Closed on every load; the row shows the last run's date. -->
+        <details class="benchfold" id="flowFold">
+        <summary><span class="srchead">Flow bench</span> <small id="flowSum">Not in use. Tap to open.</small></summary>
+        <div class="benchbody">
         <div class="row">
           <button type="button" id="flowRun">Run flow bench</button>
           <button type="button" id="flowCopy" disabled>Copy for Claude</button>
@@ -311,6 +328,20 @@
         </div>
         <p class="hint" id="flowInfo">Runs the 5 hardest notes through the old flow and the new flow, then gives Claude the pairs blind. About 10 Flash writes and 5 minutes; keep this screen open. Rerun failed notes redoes only the ticked notes.</p>
         <div id="flowOut" class="benchout" hidden></div>
+        </div>
+        </details>
+        <p class="srchead">Bench builder</p>
+        <div class="row">
+          <button type="button" id="bbBuild">Build bench cases</button>
+          <button type="button" id="bbRunSc" disabled>Run bench shortcut</button>
+          <button type="button" id="bbPaste" disabled>Paste results</button>
+        </div>
+        <div class="row">
+          <button type="button" id="bbCopy" disabled>Copy for answer key</button>
+          <button type="button" id="bbRetry" class="linkish" disabled>Rerun failed</button>
+        </div>
+        <p class="hint" id="bbInfo">Makes new grader bench cases: 6 notes get Read, Clean, and the fact ledger here, then one tap hands every write to the STP Bench Runner shortcut (ChatGPT, Cloud, On-Device). Paste results brings them back for Polish, the phone adds 2 seeded flaws, and Copy for answer key shows up at 8 of 8.</p>
+        <div id="bbOut" class="benchout" hidden></div>
       </div>
       {#if core.dev && hasSpeech}<MicLog />{/if}
       <div class="stats" id="myShortcutsRow" hidden>
@@ -341,6 +372,7 @@
   </details>
 
   <Tutorial bind:this={tutorial} />
+  <SaveContext />
   <IdeasTab />
   <TestLab />
   <Guide />

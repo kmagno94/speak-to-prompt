@@ -1,4 +1,4 @@
-import { buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
+import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, shortWriteText, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
@@ -16,6 +16,7 @@ import { xray } from './xray.svelte.js';
 import { starter } from './starter.svelte.js';
 import { SLIDERS } from './starters.js';
 import { IS_STAGING } from './channel.js';
+import { savectx } from './savectx.svelte.js';   /* Save as context (#50), see savectx.svelte.js */
 
 export function startApp() {
   /* What you copy is the prompt only. Nothing is tacked onto the end any more: the writer
@@ -92,6 +93,7 @@ export function startApp() {
         "  write " + (r.write_s != null ? r.write_s + "s on " + r.write_model + ", " + r.thinking + " (est " + r.est_s + "s), " + n(r.write_tokens) + " tokens (" + n(r.thinking_tokens) + " thinking)" : "-") + "\n" +
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
+        (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") + (r.worked ? "\n  \ud83d\udc4d worked great" : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -193,6 +195,7 @@ export function startApp() {
     }
     function setOn(v) {
       on = v;
+      ui.statsOn = !!v;
       store(TEST_FLAG, v ? "1" : null);
       if (!v) { store(TEST_LOG, null); store(TEST_USAGE, null); }
       render();
@@ -203,6 +206,14 @@ export function startApp() {
       r.when = (d.getMonth() + 1) + "/" + d.getDate() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
       var list = runs(); list.push(r);
       store(TEST_LOG, JSON.stringify(list.slice(-200)));
+      render();
+    }
+    /* Adds one field to the newest run on this device (the 👍 Worked great tap, #5). */
+    function mark(field, value) {
+      if (!on) return;
+      var list = runs(); if (!list.length) return;
+      list[list.length - 1][field] = value;
+      store(TEST_LOG, JSON.stringify(list));
       render();
     }
     /* Called for every request Gemini answers or refuses. A refusal for the daily
@@ -244,7 +255,7 @@ export function startApp() {
     }
     /* A new Gemini key starts today's count fresh (v2.1.28). Run history stays. */
     function newKey() { store(TEST_USAGE, null); if (on) render(); }
-    return { init: init, add: add, request: request, miss: miss, runs: runs, newKey: newKey, on: function () { return on; }, refresh: function () { if (on) render(); } };
+    return { init: init, add: add, mark: mark, request: request, miss: miss, runs: runs, newKey: newKey, on: function () { return on; }, refresh: function () { if (on) render(); } };
   })();
   function words(t) { return (t || "").trim() ? t.trim().split(/\s+/).length : 0; }
   /* One log entry per run, built from what the session already knows. */
@@ -262,7 +273,8 @@ export function startApp() {
       clean: session.clean ? session.clean.status + (session.clean.why ? " (" + session.clean.why + ")" : "") : null,   /* prep crew: status, model, time, word count only */
       clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null,
       ledger: session.ledger ? session.ledger.status : null, ledger_items: session.ledger && session.ledger.items ? session.ledger.items.length : null, ledger_model: session.ledger && session.ledger.model || null,
-      shape: session.shape ? !!(session.shape.success || session.shape.format) : null
+      shape: session.shape ? !!(session.shape.success || session.shape.format) : null,
+      ctx_nudge: savectx.stat || null   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -308,10 +320,18 @@ export function startApp() {
     else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
     else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
     else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
+    else if (act === "guide") startGuided();   /* v2.1.39: questions about what was weak, then the next round */
     else if (act === "slowquick") slowQuick(false);
     else if (act === "flashquick") { stopFlashWait(); notify("result"); if (session && !busy) writeFinal(session.answers, true); }
     else if (act === "roundback") backToBase();
     else if (act === "goquick") goQuick();
+    else if (act === "worked") workedGreat();   /* #5 */
+    else if (act === "savectx") saveAsContext(e.detail.where === "nudge" ? "nudge" : "result");   /* #50 */
+    else if (act === "scrun") scRun();   /* #53: the Shortcut stand-in's card */
+    else if (/^scother-/.test(act)) scOther(act.slice(8));
+    else if (act === "scflash") scFlash();
+    else if (act === "scpaste") scPaste();
+    else if (act === "scuse") scUse();
     else if (/^round[1-9]$/.test(act)) showRound(Number(act.slice(5)));
   });
 
@@ -392,6 +412,7 @@ export function startApp() {
   }
   function showResult(text, madeBy, title) {
     notify("result");
+    ui.build = ""; ui.slow = null; ui.switched = false;   /* #51: Ready, the chip steps away */
     ui.quickResult = false;   /* showQuick turns it back on; KeyNudge reads it */
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
@@ -542,10 +563,14 @@ export function startApp() {
     result.hidden = true;
     qa.hidden = true;
     chat.reset();
+    scStop();   /* #53: a build waiting on the shortcut is called off, and its kept words deleted */
     session = null;
     writeRun++;
     busy = false;
     setBusy(false);
+    ui.build = ""; ui.slow = null; ui.switched = false;
+    savectx.newBuild();
+    context.pickWaiting();   /* #50: a piece saved from the last prompt is picked for this one */
     stopTicker();
     setProgress(document.getElementById("resultProg"), "off");
     setReady(true);
@@ -701,10 +726,21 @@ export function startApp() {
      - flashbusy: for 5 minutes every Flash model answers "busy" without anything being
        sent, to see the page keep cycling, Switch to quick at 2:00, and the quick model at 3:00.
      - slowtest: the timing runs 10x faster (next Flash every 3 seconds, Switch to quick
-       at 0:12, quick model at 0:18). A reload goes back to normal. */
-  var fakeBusyUntil = 0;
+       at 0:12, quick model at 0:18). A reload goes back to normal.
+     - lowgrade (v2.1.39): the first Quality check of each prompt comes back under the bar
+       (3.4, missing who the AI is and background), so Ask me, then rewrite can be tried
+       without waiting for a weak prompt. The grader still runs; only its answer is swapped,
+       and round 2 gets its real grade. Needs Show run stats on, like every Quality check. */
+  var fakeBusyUntil = 0, fakeLowGrade = false;
   function stagingSwitches() {
     var h = location.hash || "";
+    if (/^#stpback=/.test(h)) return;   /* a shortcut result (#53) is never a test switch */
+    if (IS_STAGING && /lowgrade/.test(h)) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      fakeLowGrade = true;
+      notify("form", "info", "Low grade test is on", "Staging test. Turn on Show run stats in More options, then build any prompt: its first Quality check comes back under the bar, so you can try Ask me, then rewrite. Reload to go back to normal.");
+      return;
+    }
     if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var fb = /flashbusy/.test(h), st = /slowtest/.test(h);
@@ -712,7 +748,7 @@ export function startApp() {
     if (st) TIME_SCALE = 0.1;
     var at = st ? ["0:12", "0:18"] : ["2:00", "3:00"];
     notify("form", "info", fb && st ? "Busy Flash + 10x timing test is on" : fb ? "Flash models will say busy for 5 minutes" : "Slow-write test is on (10x faster)",
-      "Staging test. Tap Normal and build" + (fb ? ": every Flash model says busy, the page keeps trying them" : " something with a few details") + ", Switch to quick shows at " + at[0] + ", and the quick model writes it at " + at[1] + ". Reload to go back to normal.");
+      "Staging test. Tap Normal and build" + (fb ? ": every Flash model says busy, the page keeps trying them" : " something with a few details") + ", the \u26a1 Quick version chip under the timer grows a countdown at " + at[0] + ", and the quick model writes it at " + at[1] + ". Reload to go back to normal.");
   }
   window.addEventListener("hashchange", stagingSwitches);
   setTimeout(stagingSwitches, 0);
@@ -1144,7 +1180,12 @@ export function startApp() {
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
     if (!on) ui.reading = false;   /* Switch to Quick (QuickSwitch.svelte) only shows while Read runs */
     if (on) wakeOn(); else wakeOff();
+    if (stayTip) stayTip.hidden = !(on && appleTouchNow);
   }
+  /* iPhone and iPad (Test lab 11/14): Safari there never shows the Leave site? box (Apple
+     ignores it), so a refresh mid-build just stops it. A plain line says so while it works. */
+  var stayTip = document.getElementById("stayTip"), uaStay = navigator.userAgent || "";
+  var appleTouchNow = /iPhone|iPad|iPod/.test(uaStay) || (/Macintosh/.test(uaStay) && navigator.maxTouchPoints > 1);
   /* Keep the screen awake while Gemini works, so the phone doesn't lock mid-build.
      Only while busy: let go when it's done, fails, or the page is hidden; ask again if
      you come back mid-build. Phones without it get a one-line tip instead. */
@@ -1186,6 +1227,7 @@ export function startApp() {
      it from dropping details. A Flash backup stays light so it stays quick. */
   function quickLevel(model) { return /lite/.test(model) ? "medium" : "low"; }
   function depthWords(depth, model) {
+    if (/^shortcut-/.test(model)) return model === "shortcut-chatgpt" ? "ChatGPT, through the shortcut" : "Apple " + scLabel(scOf(model)) + " model";   /* #53 */
     if (depth.level !== "quick") return depth.words;
     return quickLevel(model) === "medium" ? "balanced thinking" : "light thinking";
   }
@@ -1575,7 +1617,8 @@ export function startApp() {
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
     ready.then(function () { return fetch("bench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("bench.json"); return r.json(); }); })
       .then(function (b) {
-        var cases = (b && b.cases) || [], items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
+        /* spare cases (#54, 11/14) stay in bench.json for reference but are never graded or scored */
+        var cases = ((b && b.cases) || []).filter(function (c) { return c && !c.spare; }), items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
         info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
         /* A busy server (503) or a full per-minute limit gets one retry after a short wait. */
         function ask(c, retried) {
@@ -1727,9 +1770,9 @@ export function startApp() {
             if (had && had.c && had.c._complexity) { c._complexity = had.c._complexity; c._shape = had.c._shape; return; }
             info.textContent = tag + "reading...";
             session = { raw: c.raw, answers: [], today: c.today, known: "" };
-            return askGemini(ANALYZE + "\n" + c.raw + '\n"""', true, gemini.plan.intake, "auto", null).then(function (r) {
-              var it = parseIntake(r.text); c._complexity = it.complexity; c._shape = it.shape;
-            }, function () { c._complexity = "standard"; c._shape = null; });
+            return benchRead(c.raw).then(function (it) {
+              c._complexity = it ? it.complexity : "standard"; c._shape = it ? it.shape : null;
+            });
           }).then(function () {
             var res = { c: c }, order = i % 2 ? ["new", "old"] : ["old", "new"];
             if (had) { res.old = had.old; res.new = had.new; res.label = had.label; }   /* a rerun keeps the pair's A/B letters */
@@ -1792,6 +1835,8 @@ export function startApp() {
     var el = document.getElementById("flowOut");
     el.innerHTML = "<table><thead><tr><th>Note</th><th>Old flow</th><th>New flow</th></tr></thead><tbody>" + rows + "</tbody></table>";
     el.hidden = false;
+    var sum = document.getElementById("flowSum");
+    if (sum) sum.textContent = "Last run " + String(when).split(",")[0] + (flowFailed() ? ", some notes failed" : "") + ". Tap to open.";
     document.getElementById("flowInfo").textContent = restore
       ? "Your last run (" + when + ") is loaded" + (flowFailed() ? ". Some halves errored: untick any note you want to skip, then tap Rerun failed notes." : ". Copy reveal covers all " + results.length + " notes.")
       : ids
@@ -1814,6 +1859,276 @@ export function startApp() {
     if (!flowReveal || !navigator.clipboard) return;
     navigator.clipboard.writeText(flowReveal).then(function () { document.getElementById("flowInfo").textContent = "Copied the reveal (which is which, times, and checks)."; }, function () {});
   });
+  /* Read for a bench note (Flow bench and Bench builder, fix 11/14): the same Read call a real
+     build makes, with the same one retry on another model when the answer isn't clean JSON
+     (Flash-Lite sometimes drops a quote or leaves a trailing comma). If the retry is no good
+     either, the bench goes on without the suggested shape instead of the whole run stopping:
+     one bad answer used to end it with "JSON Parse error". Always resolves: intake or null. */
+  function benchRead(raw) {
+    var ask = ANALYZE + "\n" + raw + '\n"""';
+    return askGemini(ask, true, gemini.plan.intake, "auto", null).then(function (r) {
+      try { return parseIntake(r.text); } catch (e) {
+        var others = gemini.plan.intake.filter(function (m) { return m !== r.model; });
+        if (!others.length) others = gemini.plan.write.filter(function (m) { return m !== r.model; });
+        return askGemini(ask, true, others, "auto", null).then(function (r2) { return parseIntake(r2.text); });
+      }
+    }).catch(function () { return null; });
+  }
+  /* Bench builder (dev tools, #54, v2.1.41, SPEC LOCKED 11/13): makes new grader bench cases
+     with the fewest copy and pastes. benchbuild.json has 6 fictional notes, each tagged with a
+     writer (chatgpt, cloud, ondevice):
+       1. Build bench cases: each note gets Read, Clean, and the fact ledger on Flash-Lite (bare:
+          no core, My context, or memory, like the Flow bench), then the shortcut's job text.
+       2. Run bench shortcut (one tap, browsers only copy after a tap): every job goes on the
+          clipboard as blocks (a line @@@, a line like B10|chatgpt, then the job) and the STP
+          Bench Runner shortcut runs. It loops through them with the right Use Model choice,
+          copies the answers back in the same block shape after every case (so finished cases
+          survive a crash), and opens this page with #benchback.
+       3. Paste results: each answer goes through Polish like a real run. A missing, empty, or
+          cut-off answer is a failed case (Shortcuts can't catch a failed model call, so the app
+          spots it), and Rerun failed sends only those.
+       4. The phone makes the seeded flaws from another case's finished prompt, no AI call.
+       5. Copy for answer key (at 8 of 8): one block for Claude, headed "bench add".
+     The run is kept on this device ("stp-benchbuild": bench notes and prompts only) so the tab
+     the shortcut opens can pick it up. Cases join bench.json only after Kevin okays Claude's keys. */
+  var BB_KEY = "stp-benchbuild", BB_SC = "STP Bench Runner", BB_SLUG = { chatgpt: "chatgpt", cloud: "cloud", ondevice: "ondevice" };
+  var BB_TAG = { chatgpt: "shortcut-chatgpt", cloud: "shortcut-cloud", ondevice: "shortcut-on-device" };
+  var bbState = null;
+  try { bbState = JSON.parse(lsGet(BB_KEY) || "null"); } catch (e) { bbState = null; }
+  function bbSave() { lsSet(BB_KEY, JSON.stringify(bbState)); }
+  function bbOk(c) { return !!(c && c.prompt && !c.err); }
+  function bbAll() { return bbState ? bbState.cases.concat(bbState.seeded || []) : []; }
+  function bbFailed() { return bbState ? bbState.cases.filter(function (c) { return c.job && !bbOk(c); }) : []; }
+  /* What the shortcut's model reads: the same short writer text as the STP Flash Backup stand-in,
+     bare like the Flow bench, so only the writer differs between cases. */
+  function bbJob(c) {
+    var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
+    var sh0 = c._shape || {};
+    return shortWriteText({ raw: cleaned || c.raw, answers: session.answers, goal: "",
+      shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
+      context: "", today: c.today, items: session.ledger && session.ledger.items || [], lessons: lessons.list, core: "", memory: [] });
+  }
+  function bbSession(c) {
+    session = { raw: c.raw, known: "", today: c.today, memFacts: [], bench: true,
+      answers: (c.answers || []).map(function (a) { return { question: a.question, answer: a.answer }; }), questions: (c.answers || []).slice() };
+    return session;
+  }
+  function bbBuild() {
+    var info = document.getElementById("bbInfo"), btn = document.getElementById("bbBuild");
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first (Unlock smarter prompts, at the bottom)."; return; }
+    if (busy) { info.textContent = "Finish the build that's running first."; return; }
+    var saved = session;
+    btn.disabled = true; setBusy(true, "Bench builder running...");
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
+    ready.then(function () { return fetch("benchbuild.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("benchbuild.json"); return r.json(); }); })
+      .then(function (b) {
+        var cases = ((b && b.cases) || []).map(function (c) { return JSON.parse(JSON.stringify(c)); }), chain = Promise.resolve();
+        cases.forEach(function (c, i) {
+          chain = chain.then(function () {
+            var tag = "Prepping " + (i + 1) + " of " + cases.length + " (" + c.name + "): ";
+            info.textContent = tag + "reading...";
+            bbSession(c);
+            return benchRead(c.raw).then(function (it) {
+              c._shape = (it && it.shape) || null;
+            }).then(function () {
+              info.textContent = tag + "cleaning and listing must-keeps...";
+              var s = bbSession(c);
+              return Promise.all([startClean(c.raw), startLedger(c.raw)]).then(function () {
+                c.job = bbJob(c);
+                c.clean = s.clean ? s.clean.status : "";
+                c.ledger = s.ledger && s.ledger.items ? s.ledger.items.length : 0;
+              });
+            });
+          });
+        });
+        return chain.then(function () {
+          bbState = { at: new Date().toISOString(), phase: "prepped", cases: cases, seededSpec: (b && b.seeded) || [], seeded: [] };
+          bbSave();
+          bbShow();
+          info.textContent = cases.length + " jobs ready. Tap Run bench shortcut: it copies them all and runs " + BB_SC + ". Run it from outside the Shortcuts editor, and keep the screen on.";
+        });
+      })
+      .catch(function (e) { info.textContent = "Couldn't build the bench cases: " + ((e && e.message) || "unknown"); })
+      .then(function () { session = saved; setBusy(false); btn.disabled = false; bbButtons(); });
+  }
+  /* The clipboard the shortcut reads: one block per job. only: case ids to send (Rerun failed). */
+  function bbJobsText(only) {
+    return bbState.cases.filter(function (c) { return c.job && (!only || only.indexOf(c.id) >= 0); }).map(function (c) {
+      return "@@@\n" + c.id + "|" + BB_SLUG[c.writer] + "\n" + c.job;
+    }).join("\n");
+  }
+  function bbRunSc(onlyFailed) {
+    var info = document.getElementById("bbInfo");
+    if (!bbState) return;
+    var only = onlyFailed === true ? bbFailed().map(function (c) { return c.id; }) : null;
+    if (only && !only.length) { info.textContent = "Nothing failed, so there's nothing to rerun."; return; }
+    if (!navigator.clipboard || !navigator.clipboard.writeText) { info.textContent = "This browser didn't allow the copy. Try Safari."; return; }
+    var text = bbJobsText(only);
+    navigator.clipboard.writeText(text).then(function () {
+      bbState.phase = "sent"; bbState.sentText = text; bbState.sentIds = only; bbSave();
+      bbButtons();
+      info.textContent = "Copied " + (only ? only.length : bbState.cases.length) + " jobs. When " + BB_SC + " brings you back, tap Paste results.";
+      scLeaving = Date.now();
+      (window.__scOpen || function (u) { location.href = u; })("shortcuts://run-shortcut?name=" + encodeURIComponent(BB_SC));
+    }, function () { info.textContent = "This browser didn't allow the copy. Tap Run bench shortcut again."; });
+  }
+  /* The shortcut's answers: blocks headed by a line like B10|chatgpt, split on @@@ lines. */
+  function bbParse(t) {
+    var out = {};
+    /* @@@ may land at the end of the previous answer's line (Shortcuts joins text without a
+       line break unless one is typed), so any @@@ followed by a line break starts a block. */
+    String(t || "").replace(/\r\n?/g, "\n").split(/@@@[ \t]*\n/).forEach(function (part) {
+      var m = /^\s*(B\d+)\s*\|\s*(chatgpt|cloud|ondevice)\s*\n([\s\S]*)$/i.exec(part);
+      if (m) out[m[1].toUpperCase()] = m[3].trim();
+    });
+    return out;
+  }
+  function bbPaste() {
+    var info = document.getElementById("bbInfo");
+    if (!bbState) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) { info.textContent = "Couldn't read the clipboard."; return; }
+    navigator.clipboard.readText().then(function (t) { bbTake(t); }, function () { info.textContent = "Couldn't read the clipboard. Tap Paste results again."; });
+  }
+  function bbTake(t) {
+    var info = document.getElementById("bbInfo");
+    if (bbState.sentText && String(t || "").trim() === bbState.sentText.trim()) { info.textContent = "Your clipboard still has the jobs, not the answers. Run the shortcut again, then Paste results."; return; }
+    var got = bbParse(t), ids = Object.keys(got);
+    if (!ids.length) { info.textContent = "That didn't look like " + BB_SC + " answers (blocks that start with @@@ and a line like B10|chatgpt). Run the shortcut again, then Paste results."; return; }
+    var key = gemini.key || gkey.value.trim();
+    if (!key) { info.textContent = "Add your Gemini key first, so Polish can run."; return; }
+    if (busy) { info.textContent = "Finish the build that's running first."; return; }
+    var sent = bbState.sentIds, saved = session;
+    var todo = bbState.cases.filter(function (c) { return !sent || sent.indexOf(c.id) >= 0; });
+    setBusy(true, "Bench builder running...");
+    var ready = gemini.plan ? Promise.resolve() : verifyKey(key), chain = ready, done = 0;
+    todo.forEach(function (c) {
+      chain = chain.then(function () {
+        var out = cleanPrompt(got[c.id] || "");
+        c.writerTag = BB_TAG[c.writer];
+        if (!out) { c.prompt = ""; c.err = got[c.id] == null ? "no answer came back" : "empty answer"; return; }
+        if (words(out) < SC_MIN_WORDS || scCutOff(out)) { c.prompt = ""; c.err = "looks cut off (" + words(out) + " words)"; return; }
+        c.err = ""; c.prompt = out; c.repair = "none";
+        info.textContent = "Polishing " + (++done) + " of " + todo.length + " (" + c.id + ")...";
+        bbSession(c);
+        var before = qualityCheck(out);
+        if (!before.score) return;
+        return askGemini(repairPrompt(out, c.raw, withMem(session.answers), { dropped: before.dropped, stray: before.stray, missingNums: before.missingNums, strict: before.strict }), false, writeModels(true), "low", null, 60000).then(function (r2) {
+          var fixed = cleanPrompt(r2.text), after = qualityCheck(fixed);
+          if (isBetter(after, before, fixed, out)) { c.prompt = fixed; c.repair = "fixed"; } else c.repair = "kept original";
+        }, function () { c.repair = "failed"; });
+      });
+    });
+    chain.then(function () {
+      bbSeed();
+      bbState.phase = "back"; bbState.sentIds = null; bbSave();
+      bbShow();
+      var ok = bbAll().filter(bbOk).length, all = bbAll().length || bbState.cases.length + (bbState.seededSpec || []).length;
+      info.textContent = ok === all ? "All " + all + " ready. Tap Copy for answer key and paste it to Claude." : ok + " of " + all + " ready. Rerun failed sends only the ones that didn't come back.";
+    }).catch(function (e) { info.textContent = "Couldn't finish: " + ((e && e.message) || "unknown"); })
+      .then(function () { session = saved; setBusy(false); bbButtons(); });
+  }
+  /* Seeded flaws, made on the phone from a finished prompt. drop-format takes out the format and
+     length part (or the great-result line if there is none); invent adds a made-up line. */
+  function bbFlaw(prompt, spec) {
+    var paras = String(prompt).split(/\n\s*\n/);
+    if (spec.flaw === "drop-format") {
+      /* Fix 11/14: writers label it many ways (Format:, **Output format**, ## Response format,
+         Length:), often as a heading with bullets under it and no blank line before the next part.
+         Take out every format or length part: its label line plus the bullet or indented lines
+         right under it. Fall back to the great-result line when there is no such part. */
+      var lines = String(prompt).split("\n"), cut = false;
+      var LABEL = /^\W*(?:(?:output|response|answer|reply|preferred)\s+)?(?:format|length|structure|deliverable)s?\b(?!\s+(?:the|a|an|it|this|my|your)\b)/i;
+      var UNDER = /^\s*(?:[-*\u2022]|\d+[.)])\s+|^\s{2,}\S/;
+      for (var k = 0; k < lines.length; k++) {
+        if (!LABEL.test(lines[k])) continue;
+        var end = k + 1;
+        while (end < lines.length && UNDER.test(lines[end])) end++;
+        lines.splice(k, end - k); k--; cut = true;
+      }
+      if (cut) return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+      var i = -1;
+      paras.forEach(function (p, k) { if (i < 0 && /^\W*a great (answer|result)\b/i.test(p.trim())) i = k; });
+      if (i < 0) return null;
+      paras.splice(i, 1);
+      return paras.join("\n\n");
+    }
+    if (spec.flaw === "invent" && spec.line) {
+      var j = -1;
+      paras.forEach(function (p, k) { if (j < 0 && /^\W*context\b/i.test(p.trim())) j = k; });
+      if (j < 0) j = Math.min(1, paras.length - 1);
+      paras[j] = paras[j].replace(/\s*$/, "") + " " + spec.line;
+      return paras.join("\n\n");
+    }
+    return null;
+  }
+  function bbSeed() {
+    bbState.seeded = (bbState.seededSpec || []).map(function (sp) {
+      var src = bbState.cases.filter(function (c) { return c.id === sp.from; })[0];
+      var s = { id: sp.id, from: sp.from, flaw: sp.flaw, say: sp.say, name: (src ? src.name : sp.from) + " (seeded flaw)", writer: src ? src.writer : "", writerTag: (src ? BB_TAG[src.writer] : "") + "+seeded",
+        today: src ? src.today : "", raw: src ? src.raw : "", answers: src ? src.answers : [] };
+      if (!bbOk(src)) { s.err = "waiting on " + sp.from; return s; }
+      var p = bbFlaw(src.prompt, sp);
+      if (!p) { s.err = "couldn't find the part to change in " + sp.from; return s; }
+      s.prompt = p;
+      return s;
+    });
+  }
+  function bbShow() {
+    var el = document.getElementById("bbOut");
+    if (!bbState) { el.hidden = true; return; }
+    var all = bbAll().length ? bbAll() : bbState.cases;
+    var ok = all.filter(bbOk).length, total = bbState.cases.length + (bbState.seededSpec || []).length;
+    var rows = all.map(function (c) {
+      var state = bbOk(c) ? "✅<small>" + words(c.prompt) + " words" + (c.repair && c.repair !== "none" ? " · Polish " + esc(c.repair) : "") + "</small>" : c.err ? "⚠️<small>" + esc(c.err) + "</small>" : c.job ? "job ready" : "…";
+      return "<tr><td>" + esc(c.id) + "<small>" + esc(c.name) + "</small></td><td>" + esc(c.flaw ? "seeded" : (BB_TAG[c.writer] || "").replace("shortcut-", "")) + "</td><td>" + state + "</td></tr>";
+    }).join("");
+    el.innerHTML = "<p class=\"benchsum\">" + ok + " of " + total + " ready</p><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    el.hidden = false;
+  }
+  function bbButtons() {
+    var has = !!bbState, all = bbAll(), total = has ? bbState.cases.length + (bbState.seededSpec || []).length : 0;
+    document.getElementById("bbRunSc").disabled = !has || !bbState.cases.some(function (c) { return c.job; });
+    document.getElementById("bbPaste").disabled = !has || bbState.phase !== "sent";
+    document.getElementById("bbCopy").disabled = !has || all.length !== total || !all.every(bbOk);
+    document.getElementById("bbRetry").disabled = !has || bbState.phase === "prepped" || !bbFailed().length;
+  }
+  function bbCopyText() {
+    var ver = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+    var lines = ["bench add", "", "BENCH BUILDER · app " + ver + " · " + new Date(bbState.at).toLocaleString("en-US") + " · " + bbAll().length + " cases",
+      "Grade each prompt with the app's rubric, the writer lessons, and the grader rules (your answer key: score to the hundredth, missing labels, broke, invented, rearranged, and why). Seeded cases had a flaw put in on purpose; it's named so you can check the key catches it. Show one table, then wait for Kevin's keep before they join bench.json."];
+    bbAll().forEach(function (c) {
+      lines.push("", "== " + c.id + " · " + c.name + " · writer: " + c.writerTag + " ==");
+      if (c.flaw) lines.push("Seeded from " + c.from + ": " + c.say);
+      lines.push("Today: " + c.today, "Raw thoughts:", c.raw, "Answers: " + ((c.answers || []).map(function (a) { return a.question + " " + a.answer; }).join(" | ") || "none"));
+      if (!c.flaw) lines.push("Polish: " + (c.repair || "none") + " · clean " + (c.clean || "none") + " · ledger " + (c.ledger || 0) + " items");
+      lines.push("--- Prompt ---", c.prompt);
+    });
+    return lines.join("\n");
+  }
+  document.getElementById("bbBuild").addEventListener("click", bbBuild);
+  document.getElementById("bbRunSc").addEventListener("click", function () { bbRunSc(false); });
+  document.getElementById("bbRetry").addEventListener("click", function () { bbRunSc(true); });
+  document.getElementById("bbPaste").addEventListener("click", bbPaste);
+  document.getElementById("bbCopy").addEventListener("click", function () {
+    if (!bbState || !navigator.clipboard) return;
+    navigator.clipboard.writeText(bbCopyText()).then(function () { document.getElementById("bbInfo").textContent = "Copied all " + bbAll().length + " cases. Paste it to Claude."; }, function () {});
+  });
+  /* Back from the shortcut: #benchback opens More options at the Bench builder with Paste results ready. */
+  function bbReturn() {
+    if (!/^#benchback/.test(location.hash || "")) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    if (!bbState) return;
+    if (bbState.phase !== "sent") { bbState.phase = "sent"; bbSave(); }
+    bbButtons();
+    var more = document.getElementById("moreOpts"); if (more) more.open = true;
+    document.getElementById("bbInfo").textContent = BB_SC + " is back. Tap Paste results.";
+    setTimeout(function () { var p = document.getElementById("bbPaste"); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: "smooth", block: "center" }); }, 300);
+  }
+  window.addEventListener("hashchange", bbReturn);
+  if (bbState && bbState.cases) { try { bbShow(); } catch (e) { bbState = null; } }
+  bbButtons();
+  setTimeout(bbReturn, 0);
   document.getElementById("benchCopy").addEventListener("click", function () {
     if (!benchText || !navigator.clipboard) return;
     navigator.clipboard.writeText("bench results\n\n" + benchText).then(function () { document.getElementById("benchInfo").textContent = "Copied. Paste it to Claude."; }, function () {});
@@ -1980,6 +2295,7 @@ export function startApp() {
     var elEl = track.querySelector(".el"), leftEl = track.querySelector(".left"), leftLbl = track.querySelector(".leftlbl"), right = track.querySelector(".right"), detail = track.querySelector(".detail");
     var t0 = Date.now(), tModel = Date.now(), model = "";
     setSteps(track, step, skipAsk);
+    if (stayTip && track.parentNode && track.nextElementSibling !== stayTip) track.parentNode.insertBefore(stayTip, track.nextSibling);   /* the stay line follows whichever tracker is running */
     setProgress(bar, "pct", 2);
     cookStart(track.id === "buildTrack" ? "build" : "result", step === "write" ? "write" : "read", cookIngredients(step));
     function draw() {
@@ -2063,6 +2379,8 @@ export function startApp() {
       shape: (function (sh) { sh = sh && typeof sh === "object" ? sh : {}; return { success: String(sh.success || "").trim().slice(0, 240), format: String(sh.format || "").trim().slice(0, 240) }; })(data.shape),
       memUse: Array.isArray(data.use_memory) ? data.use_memory : [],
       memRemember: (Array.isArray(data.remember) ? data.remember : []).map(function (x) { return String(x || "").trim(); }).filter(Boolean).slice(0, 2),
+      /* Save as context (#50): background worth keeping, spotted by this same call. */
+      candidate: (function (c) { return c && typeof c === "object" && String(c.title || "").trim() ? { title: String(c.title), why: String(c.why || "") } : null; })(data.context_candidate),
       questions: qs.slice(0, 5).map(function (q) {
         return {
           question: String((q && q.question) || "").trim(),
@@ -2201,10 +2519,13 @@ export function startApp() {
     session.t0 = Date.now();
     ui.goQuick = false;
     ui.reading = currentMode() !== "quick";
+    ui.build = "read"; ui.switched = false; ui.slow = null; ui.quickOn = currentMode() === "quick";   /* #51: the chip stays from here to Ready */
+    savectx.newBuild();   /* #50: last build's Save as context offer never carries over */
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     snapTo(document.getElementById("buildTrack"));
     var base = core.dev ? withStackHint(ANALYZE, STACK) : ANALYZE;
     if (memory.active) base = withMemory(base, memory.numbered());   /* memory */
+    base = withCandidate(base);   /* #50: the same Read call also spots background worth saving, no extra call */
     memory.suggestions = [];
     var intakeText = "";
     ensureModel(key).then(function () {
@@ -2236,8 +2557,10 @@ export function startApp() {
       session.complexity = intake.complexity;
       session.category = intake.category;
       session.need = intake.need;
+      savectx.setCandidate(intake.candidate);   /* #50: the nudge shows under the tracker while it writes, or under the result */
       session.readSecs = (Date.now() - session.t0) / 1000;   /* the Write clock picks up from here */
       setBusy(false);
+      ui.build = "";
       var mode = currentMode();
       if (mode === "quick" || session.goQuick) { session.mode = "Quick mode"; if (session.goQuick) session.switchedQuick = "during Prep"; setBuild(""); return writeFinal([], true); }
       if (!intake.questions.length) { session.mode = "Full (no questions)"; setBuild(""); return writeFinal([]); }
@@ -2253,6 +2576,7 @@ export function startApp() {
       setBusy(false);
       setBuild("");
       cookStop();
+      ui.build = "";
       signal("gemini-failed", "Before questions");
       showQuick(raw, "Gemini wasn't available, so this is the quick version. " + (e && e.message ? e.message : ""));
       failNotice(e);
@@ -2290,10 +2614,41 @@ export function startApp() {
      way the clock picks up where it was, never from 0. This build only: the saved Quick or
      Normal setting doesn't change. */
   function goQuick() {
-    if (!session || session.round >= 2) return;
-    if (ui.reading) { session.goQuick = true; ui.goQuick = true; return; }
-    if (!qa.hidden && !busy) { session.switchedQuick = "on the questions"; chat.finish(true); }
+    if (!session) return;
+    if (ui.reading) { if (session.round >= 2) return; session.goQuick = true; ui.goQuick = true; return; }
+    if (!qa.hidden && !busy) { session.switchedQuick = "on the questions"; chat.finish(true); return; }
+    /* #51 (v2.1.37): during Write, the chip stops the Flash race and the quick model writes from
+       your words and any answers so far. Still waiting on the cleanup: it writes quick when that ends. */
+    if (ui.build !== "write" || ui.quickOn || ui.switched) return;
+    if (session.waitingClean) { session.quickAfterClean = true; ui.switched = true; return; }
+    /* #53: waiting on the shortcut, the chip calls it off and the quick model writes now. */
+    if (scWait) { scStop(); notify("result"); session.slowSwitch = "tapped while waiting on the shortcut"; ui.switched = true; setBusy(false); writeFinal(session.answers, true); return; }
+    slowQuick(false);
   }
+
+  /* Save as context (#50, v2.1.37): opens the guided interview (SaveContext.svelte) from the nudge
+     or from the result's ⋯. It starts from the words of this prompt (your note and your answers),
+     held in memory only. Its Flash-Lite calls go through here so they use the same key, model
+     plan, and usage count as everything else; with no key it asks its five fixed questions. */
+  function saveAsContext(from) {
+    var s = session, said = s ? s.raw : thoughts.value.trim();
+    var ans = (s && s.answers || []).filter(function (a) { return a.answer && !a.tapped; }).map(function (a) { return a.question + " " + a.answer; });
+    var title = savectx.candidate ? savectx.candidate.title : "";
+    savectx.start(from, title, [said].concat(ans).filter(Boolean).join("\n"));
+  }
+  savectx.hasResult = function () { return !result.hidden; };
+  /* Run stats: the run record waits for what you do next, so a tap or a save after Ready still makes it in. */
+  savectx.onStat = function (v) { if (pendingRun) pendingRun.ctx_nudge = v; };
+  savectx.asker = function () {
+    var key = gemini.key || gkey.value.trim();
+    if (!key) return null;
+    return function (text, asJson) {
+      return ensureModel(key).then(function () {
+        var lites = route("squeeze");
+        return askGemini(text, asJson, lites.length ? lites : gemini.plan.intake, "auto", null, 30000);
+      }).then(function (r) { return r.text; });
+    };
+  };
 
   /* The questions are a chat now (ChatBuilder.svelte + chat.svelte.js). */
   function renderQuestions(intake) {
@@ -2303,7 +2658,7 @@ export function startApp() {
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
     doneAway("questions");
   }
-  chat.onFinish = function (answers, quick) { if (!busy && session) writeFinal(answers, quick); };
+  chat.onFinish = function (answers, quick) { if (busy || !session) return; if (guide) guidedBuild(answers, quick); else writeFinal(answers, quick); };
 
   /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
   /* bare (Flow bench): leave out My context, your core, and memory, so only the flow differs. */
@@ -2487,7 +2842,7 @@ export function startApp() {
      and at 3:00 the quick model takes over by itself. The 3 minutes count from the first
      Write tap of this round (at least 20 seconds more for a write that starts late). Memory only. */
   var slowWrite = null;
-  function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } }
+  function stopSlowWrite() { if (slowWrite) { clearInterval(slowWrite.tick); clearTimeout(slowWrite.offer); clearTimeout(slowWrite.auto); slowWrite = null; } ui.slow = null; }
   function watchSlowWrite(run, handle) {
     stopSlowWrite();
     var key = session.round || 1, now = Date.now();
@@ -2501,9 +2856,11 @@ export function startApp() {
       offer: setTimeout(function () {
         if (!slowWrite || run !== writeRun || !busy) return;
         slowWrite.offered = true;
+        /* #51 (SPEC 11/08, round 5): the note says why, and its countdown joins the one steady
+           ⚡ Quick version chip under the tracker instead of bringing a second button. */
+        ui.slow = { until: autoAt, total: autoAt - Date.now() };
         notify("result", "info", "Taking longer than usual",
-          "Flash is still writing and may finish any second. If it isn't done at 0:00, the quick model takes over, so you'll have a prompt by then. Or switch now: faster, but not as strong.",
-          [{ label: "Switch to quick", act: "slowquick" }], { until: autoAt, total: autoAt - Date.now(), label: "until the quick model takes over", done: "Switching to quick..." });
+          "Flash is still writing and may finish any second. If it isn't done when the countdown on \u26a1 Quick version hits 0:00, the quick model takes over, so you'll have a prompt by then. Or tap it now: faster, but not as strong.");
       }, offerAt - now),
       auto: setTimeout(function () { slowQuick(true); }, autoAt - now)
     };
@@ -2514,11 +2871,13 @@ export function startApp() {
     var s = slowWrite;
     if (!s || s.run !== writeRun || !session) return;
     if (!s.handle.stop || !s.handle.stop()) return;
+    var early = !auto && !s.offered;   /* #51: tapped the chip before the 2:00 note */
     stopSlowWrite();
     notify("result");
     session.autoQuick = !!auto;
-    session.slowSwitch = auto ? "auto at 3:00" : "tapped";
-    logRun({ outcome: auto ? "flash slow 3 min, quick model wrote it" : "flash slow, switched to quick", round: session.round || null });
+    session.slowSwitch = auto ? "auto at 3:00" : early ? "tapped early" : "tapped";
+    if (!auto) ui.switched = true;
+    logRun({ outcome: auto ? "flash slow 3 min, quick model wrote it" : early ? "switched to quick during write" : "flash slow, switched to quick", round: session.round || null });
     setBusy(false);
     writeFinal(session.answers, true);
   }
@@ -2532,6 +2891,7 @@ export function startApp() {
     setProgress(document.getElementById("resultProg"), "off");
     setBusy(false);
     setBuild("");
+    ui.build = "";
     qaStatus.textContent = "";
     session.flashAsked = (session.flashAsked || 0) + 1;
     logRun({ outcome: "flash used up, asked: " + why, round: session.round || null });
@@ -2547,9 +2907,235 @@ export function startApp() {
     notify("result");
     writeFinal(session.answers, true);
   }
+  /* Shortcut stand-in for the Flash write (#53, v2.1.40, dev tools only, SPEC LOCKED 11/11).
+     Busy hours make Flash unreliable, so with Write with set to Shortcut (More options, dev
+     tools) the full write is handed to the Apple Shortcut "STP Flash Backup", which runs
+     Apple's Use Model (Cloud or On-Device) on an iPhone, iPad, or Mac:
+       1. A card offers one tap: it copies the job for the shortcut (scText) and opens
+          shortcuts://run-shortcut with the address to come back to as the shortcut's input.
+          That address ends in #stpback=cloud., chatgpt. or ondevice., which is also how
+          the shortcut knows which model to use. What gets copied is the short writer text
+          (scText, v2.1.41), since Apple's models dropped details under the full one.
+       2. The shortcut copies the model's answer and opens that address with the word
+          STP-CLIPBOARD after it; the card then asks for one Paste tap. The answer used to ride
+          in the link itself, but the link arrived cut at about 200 characters on iPhone and
+          Mac (found 11/12 with a debug shortcut), so every answer was a stub. A prompt in the
+          link is still read, for an older copy of the shortcut.
+       3. The answer goes through the same Polish and Check as a Flash answer. Run stats tag
+          the writer as shortcut-cloud or shortcut-on-device, so grades can be compared.
+     Nothing switches models on its own: the card always has Run shortcut again, Try the other
+     model, and Use Flash instead, and your words and answers stay put.
+     Safari often reuses the open tab (hashchange); when the shortcut opens a new tab instead,
+     the build is picked up there from a copy kept on this device (localStorage "stp-sc-wait":
+     this build's session, your words included). That copy exists only while a build waits on
+     the shortcut, and is deleted when the result is back, on Use Flash instead, on New prompt,
+     and after 30 minutes. Dev tools only; everyone else never writes it. */
+  var SC_NAME = "STP Flash Backup", SC_KEY = "stp-sc-wait", SC_MAX_MS = 30 * 60000, SC_MIN_WORDS = 8, SC_FULL_WORDS = 25, SC_LONG = "STP-CLIPBOARD";
+  var scWait = null;   /* the write waiting on the shortcut: { run, text, model, t0, sent, swaps, resolve, reject } */
+  var scBack = null;   /* a result that arrived in a tab the shortcut opened: { model, text, long, t0 } */
+  var scLeaving = 0;   /* when the shortcut was last opened, so the leave warning stays quiet for it */
+  /* Three models in Use Model (ChatGPT added in v2.1.41; it goes through Apple's ChatGPT
+     extension, so the words go to OpenAI. Cloud Pro was tried and taken out the same day: it
+     answered "too many requests" every time): the name in the saved setting, the word the
+     shortcut matches in its input, the label on screen, and the tag in run stats. */
+  var SC_MODELS = { cloud: { slug: "cloud", label: "Cloud", tag: "shortcut-cloud" }, gpt: { slug: "chatgpt", label: "ChatGPT", tag: "shortcut-chatgpt" }, device: { slug: "ondevice", label: "On-Device", tag: "shortcut-on-device" } };
+  function scModel() { return core.dev && SC_MODELS[core.writer] ? core.writer : ""; }
+  function scLabel(m) { return (SC_MODELS[m] || SC_MODELS.cloud).label; }
+  function scOf(tagOrSlug) { for (var k in SC_MODELS) if (SC_MODELS[k].tag === tagOrSlug || SC_MODELS[k].slug === tagOrSlug) return k; return "cloud"; }
+  /* What the shortcut's model reads (v2.1.41): the short rules, not the full WRITE text. Apple's
+     models dropped details under the long one. Everything else Flash gets rides along in a
+     compact form: lessons, your core, the memory facts Read picked, and picked My context. */
+  function scText() {
+    var cleaned = session.clean && session.clean.status === "ok" ? session.clean.text : "";
+    var sh0 = session.shape || {};
+    return shortWriteText({ raw: cleaned || session.raw, answers: session.answers, goal: session.goal && session.goal.text || "",
+      shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
+      context: context.active ? context.block : "", today: session.today, items: session.ledger && session.ledger.items || [],
+      lessons: lessons.list, core: core.active ? core.facts : "", memory: session.memFacts || [] });
+  }
+  function scLink(m) {
+    var back = location.origin + location.pathname + "#stpback=" + (SC_MODELS[m] || SC_MODELS.cloud).slug + ".";
+    return "shortcuts://run-shortcut?name=" + encodeURIComponent(SC_NAME) + "&input=text&text=" + encodeURIComponent(back);
+  }
+  function scDrop() { try { localStorage.removeItem(SC_KEY); } catch (e) {} }
+  function scRead() {
+    try {
+      var d = JSON.parse(localStorage.getItem(SC_KEY) || "null");
+      if (d && Date.now() - d.at > SC_MAX_MS) { scDrop(); return null; }
+      return d && d.session && typeof d.session.raw === "string" ? d : null;
+    } catch (e) { return null; }
+  }
+  /* The copy a new tab picks the build up from: the session without anything that can't be saved. */
+  function scKeep() {
+    if (!scWait || !session) return;
+    var s = {};
+    for (var k in session) { var v = session[k]; if (typeof v !== "function" && !(v && typeof v.then === "function")) s[k] = v; }
+    try { localStorage.setItem(SC_KEY, JSON.stringify({ at: Date.now(), t0: scWait.t0, model: scWait.model, session: s })); } catch (e) {}
+  }
+  function scStop() {
+    var w = scWait;
+    scWait = null; scBack = null;
+    if (!w) return;
+    scDrop();
+    var s = new Error("The shortcut write was called off."); s.status = "stopped";
+    w.reject(s);
+  }
+  function askShortcut(text, run, onModel) {
+    return new Promise(function (resolve, reject) {
+      var m = (session && session.scModel) || scModel() || "cloud";
+      scWait = { run: run, text: text, model: m, t0: Date.now(), sent: false, swaps: [], resolve: resolve, reject: reject };
+      if (scBack) {   /* back in a new tab: the answer (or the Paste card) is already here */
+        var b = scBack; scBack = null;
+        scWait.model = b.model; scWait.t0 = b.t0 || scWait.t0; scWait.sent = true;
+        if (onModel) onModel(SC_NAME + " (" + scLabel(b.model) + ")");
+        if (b.long) scCard("long"); else scTake(b.text);
+        return;
+      }
+      if (onModel) onModel(SC_NAME + " (" + scLabel(m) + ")");
+      scCard("ready");
+    });
+  }
+  function scCard(state) {
+    var w = scWait;
+    if (!w) return;
+    var name = SC_NAME + " (" + scLabel(w.model) + ")";
+    var others = ["gpt", "cloud", "device"].filter(function (m) { return m !== w.model; });
+    var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
+    var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use Flash instead", act: "scflash" };
+    var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
+    document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
+    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here, and one Paste tap brings the prompt in. Then Polish and Check carry on like always.", [run, swap, swap2, flash]);
+    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it brings you back here with the prompt on your clipboard. Then tap Paste result. Nothing came back? Run it again, try another model, or let Flash write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
+    else if (state === "long") notify("result", "success", "The shortcut is done. Tap Paste", "Its answer is on your clipboard. Paste brings it in, then Polish and Check carry on.", [paste, run, flash]);
+    else if (state === "cut") notify("result", "warn", "That answer looks cut off", "It stops partway or is very short, so it wasn't used. Run the shortcut again, try another model, or let Flash write it. Sure it's whole? Use it anyway.", [run, swap, flash, { label: "Use it anyway", act: "scuse" }, paste]);
+    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, swap2, flash, paste]);
+    else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let Flash write it.", [run, flash]);
+    else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let Flash write it.", [paste, run, flash]);
+    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try another model, or let Flash write it.", [run, swap, swap2, flash, paste]);
+    /* Snap to the card (Kevin, 11/12: "If I was not aware I'd just stare at it cooking and wonder
+       why it is not working"). After the tracker's own snap, so this one wins. */
+    setTimeout(function () { var n = document.getElementById("notice-result"); if (n && scWait === w) n.scrollIntoView({ behavior: "smooth", block: "center" }); }, 450);
+  }
+  /* Copy the job, keep the build for a new tab, open the shortcut. Needs a tap. */
+  function scRun() {
+    var w = scWait;
+    if (!w || !session) return;
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return scCard("nocopy");
+    navigator.clipboard.writeText(w.text).then(function () {
+      if (scWait !== w) return;
+      if (!w.sent) w.t0 = Date.now();
+      w.sent = true;
+      scKeep();
+      scCard("wait");
+      scLeaving = Date.now();
+      (window.__scOpen || function (u) { location.href = u; })(scLink(w.model));
+    }, function () { if (scWait === w) scCard("nocopy"); });
+  }
+  /* Try another Apple model for this build only; the saved Write with setting stays. */
+  function scOther(m) {
+    var w = scWait;
+    if (!w || !session || !SC_MODELS[m]) return;
+    w.model = m;
+    session.scModel = w.model;
+    w.swaps.push("switched to the " + scLabel(w.model) + " model");
+    scRun();
+  }
+  function scFlash() {
+    if (!scWait || !session) return;
+    scStop();
+    notify("result");
+    session.noShortcut = true;
+    setBusy(false);
+    writeFinal(session.answers, false);
+  }
+  function scPaste() {
+    var w = scWait;
+    if (!w) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) return scCard("nopaste");
+    navigator.clipboard.readText().then(function (t) { if (scWait === w) scTake(t, true); }, function () { if (scWait === w) scCard("nopaste"); });
+  }
+  /* The shortcut's answer. Almost nothing, or the text that was sent out, is not a prompt:
+     the card comes back and nothing is lost. Otherwise it carries on like a Flash answer.
+     Stub guard (v2.1.41): an answer that is very short or stops without ending a sentence
+     looks cut off (the 200 character link cut made every answer a stub, and the label fix
+     dressed the stubs up as prompts). It is held, not used, unless you tap Use it anyway. */
+  /* Cut off: very short, or the last line stops without an ending. Fix 11/14 (bench B14): a
+     list item, heading, or short label line often ends with no period, so those count as finished
+     unless they stop on a small joining word ("to", "the", "and"), which is how a cut one ends. */
+  function scCutOff(out) {
+    out = String(out).trim();
+    if (words(out) < SC_FULL_WORDS) return true;
+    if (/(?:[.!?:)\]"'\u201d\u2019*`]|\p{Extended_Pictographic})$/u.test(out)) return false;
+    var last = out.split("\n").pop().trim();
+    /* a label line only counts when it's short ("Tone: friendly"); a long one is a sentence, where real cuts happen */
+    var listy = /^(?:[-*\u2022]|\d+[.)]|#+)\s+\S/.test(last) || (/^\W*[A-Za-z][A-Za-z ]{0,30}:\s*\S/.test(last) && words(last) <= 8);
+    if (!listy) return true;
+    return words(last) < 3 || /\b(?:a|an|the|to|of|and|or|but|with|for|in|on|at|by|my|your|our|is|are|was|that|which|from|as|so|if|when|than)$/i.test(last);
+  }
+  function scUse() { var w = scWait; if (w && w.held) scTake(w.held, false, true); }
+  function scTake(text, pasted, anyway) {
+    var w = scWait;
+    if (!w) return;
+    var out = cleanPrompt(text);
+    if (pasted && out === cleanPrompt(w.text)) return scCard("same");
+    if (words(out) < SC_MIN_WORDS) return scCard("junk");
+    if (!anyway && scCutOff(out)) { w.held = out; return scCard("cut"); }
+    scWait = null;
+    scDrop();
+    notify("result");
+    w.resolve({ text: out, model: SC_MODELS[w.model].tag, ms: Math.max(0, Date.now() - w.t0), away: 0, history: w.swaps, tokens: null, thinkingTokens: 0 });
+  }
+  /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
+  function scReturn() {
+    var mt = /^#stpback=(cloud|chatgpt|ondevice)\.([\s\S]*)$/.exec(location.hash || "");
+    if (!mt) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    var model = scOf(mt[1]), text = mt[2];
+    try { text = decodeURIComponent(text); } catch (e) { try { text = decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, "%25")); } catch (e2) {} }
+    text = text.trim();
+    var long = text === SC_LONG;
+    /* Same tab: the build is still here, waiting. */
+    if (scWait && session) { scWait.model = model; if (long) scCard("long"); else scTake(text); return; }
+    /* A new tab: pick the build up from the kept copy, then delete it. */
+    var snap = scRead();
+    if (!snap || busy || session) return notify("form", "info", "No build was waiting for the shortcut", "The shortcut came back, but there's no build here for its answer. It may have finished in another tab, or more than 30 minutes passed. Build again to send a new one.");
+    scDrop();
+    session = snap.session;
+    session.cleanP = null; session.scModel = model;
+    thoughts.value = session.raw;
+    thoughts.dispatchEvent(new Event("stp:changed"));
+    var key = gemini.key || gkey.value.trim();
+    var plain = function () {   /* no saved key in this tab: the prompt still shows, without Polish and Check */
+      if (long) return notify("form", "info", "The prompt is on your clipboard", "The shortcut copied it because it was long. This tab has no Gemini key, so Polish and Check can't run: paste it straight into your AI.");
+      var out = cleanPrompt(text);
+      session.basePrompt = out;
+      showResult(extras(out), "Written by " + SC_NAME + " (" + scLabel(model) + "). Polish and Check were skipped: this tab has no Gemini key.", session.title);
+    };
+    if (!key) return plain();
+    scBack = { model: model, text: text, long: long, t0: snap.t0 };
+    ensureModel(key).then(function () { writeFinal(session.answers || [], false); }, plain);
+  }
+  window.addEventListener("hashchange", scReturn);
+  setTimeout(scReturn, 0);
+  /* Back on a tab whose build was picked up by the tab the shortcut opened (or sat past 30
+     minutes): the wait ends here and the words stay in the box. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible" || !scWait || !scWait.sent || /^#stpback=/.test(location.hash || "") || scRead()) return;
+    scStop();
+    stopTicker();
+    cookStop();
+    setProgress(document.getElementById("resultProg"), "off");
+    setBusy(false);
+    setBuild("");
+    ui.build = "";
+    result.hidden = true;
+    notify("form", "info", "The shortcut hand-off ended here", "It finished in the tab the shortcut opened, or 30 minutes passed. Your words are still in the box: tap Build my prompt to go again.");
+  });
+
   function writeFinal(answers, quick) {
     stopFlashWait();
     stopSlowWrite();
+    if (scWait) scStop();   /* #53: a new write replaces one that was waiting on the shortcut */
     /* The clean step is still going (rare, it started with the questions): wait for it. */
     if (session.cleanP && prepRunning()) {
       setBusy(true, "Finishing the cleanup...");
@@ -2557,14 +3143,16 @@ export function startApp() {
       setSteps(document.getElementById("resultTrack"), "clean", session.mode === "Quick mode" || !(session.questions && session.questions.length));
       document.getElementById("resultTrack").hidden = false;
       var waitRun = ++writeRun, waitT0 = Date.now();
+      ui.build = "write"; ui.quickOn = !!quick; session.waitingClean = true;   /* #51: the chip works here too */
       return session.cleanP.then(function () {
-        session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick); } });
+        session.waitingClean = false;
+        session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick || !!session.quickAfterClean); } });
     }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
        the person's own words; one left as is was seen and kept. Rework rounds keep it. */
-    if (!(session.round >= 2)) {
+    if (!(session.round >= 2) && !scBack) {   /* #53: back from the shortcut in a new tab, the goal line is the one that was sent */
       var askedHere = session.questions && session.questions.length && chat.readGoal && chat.readGoal === session.need;
       session.goal = askedHere && chat.need ? { text: chat.need, edited: !!chat.goalEdited } : null;
     }
@@ -2574,6 +3162,12 @@ export function startApp() {
     session.today = todayText();
     var text = writerText();
     setBusy(true, "Writing your prompt...");
+    /* #51: the ⚡ Quick version chip stays under the tracker for the whole write. A quick write
+       that came from a tap on it says so; Quick mode shows no chip (it's already quick). */
+    ui.build = "write"; ui.slow = null;
+    if (!quick) ui.switched = false;
+    ui.quickOn = !!quick && !ui.switched;
+    session.quickAfterClean = false;
     hideGrade();
     setBuild("");
     qaStatus.textContent = "";
@@ -2601,13 +3195,15 @@ export function startApp() {
        and the first good prompt wins. Busy hours can start the backup sooner. */
     var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
+    /* Shortcut stand-in (#53, dev tools): the first full write goes to the STP Flash Backup
+       shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini. */
+    var viaSc = !quick && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
     /* Every Flash model is used up for today: say so before anything is sent (#35). */
-    if (!quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
+    if (!viaSc && !quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
     var handle = { cycle: !quick && flashOnly() };
-    if (!quick) watchSlowWrite(run, handle);
-    return askGemini(text, false, models, depth.level, function (m) {
-      if (run === writeRun) eta(m);
-    }, WRITE_LIMIT, hedgeAfter, handle).then(function (r) {
+    if (!quick && !viaSc) watchSlowWrite(run, handle);
+    var onWriter = function (m) { if (run === writeRun) eta(m); };
+    return (viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
@@ -2615,6 +3211,7 @@ export function startApp() {
       var before = fullCheck(draft);
       if (!before.score) return showWritten(draft, r, { status: "none" }, before);
       session.polished = true;
+      ui.build = "finish";   /* #51: written, only the finishing checks are left */
       setSteps(resultProg.closest(".tracker"), "polish", skipAsk);
       eta.phase("Polish \u00b7 fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found", POLISH_SECS, techOn() ? writeModels(true)[0] : "");
       setBusy(true, "\ud83d\udd27 Fixing " + before.score + (before.score === 1 ? " thing" : " things") + " the check found...");
@@ -2654,6 +3251,7 @@ export function startApp() {
         var doStand = !quick && words(session.raw) >= STANDIN_MIN_WORDS, grading = testLog.on();
         if (!doStand && !grading) return reveal(0);
         session.checked = true;
+        ui.build = "finish";
         setSteps(resultProg.closest(".tracker"), "check", skipAsk);
         setBusy(true, "\ud83c\udfaf Checking it like your AI would...");
         document.getElementById("resultHead").textContent = "\ud83c\udfaf Checking it like your AI would...";
@@ -2695,7 +3293,7 @@ export function startApp() {
             var a = (session.answers || []).length, tapped = (session.answers || []).filter(function (x) { return x.tapped; }).length;
             rows.push({ name: "Ask", who: "You", secs: null, skip: !q, what: q ? plural(a, "answer", "answers") + " of " + q + (tapped ? " (" + tapped + " tapped)" : "") + (session.goal && session.goal.edited ? "; you fixed the goal line" : "") : session.strongSkip ? "Skipped: your note had everything" : "No questions this time" });
           }
-          rows.push({ name: "Write", who: /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
+          rows.push({ name: "Write", who: /^shortcut-/.test(r.model) ? "Shortcut" : /lite/.test(r.model) ? "Flash-Lite (quick)" : "Flash", model: r.model, secs: r.ms / 1000,
             what: (r.history && r.history.length ? plural(r.history.length, "hand-off", "hand-offs") + " before it wrote" : "Written on the first try") + ((session.ledger && session.ledger.items && session.ledger.items.length) ? ", with the must-keep list" : "") });
           if (session.polished) rows.push({ name: "Polish", who: "Flash-Lite", model: rep.model, secs: rep.secs || 0,
             what: rep.status === "fixed" ? "Fixed what the checks found" + ((rep.before && rep.before.facts && rep.before.facts.length) ? ", including " + plural(rep.before.facts.length, "missed must-keep item", "missed must-keep items") : "") : rep.status === "kept original" ? "Tried a fix, but it wasn't better, kept the original" : "The fix didn't come through, kept the original" });
@@ -2735,9 +3333,10 @@ export function startApp() {
           };
           if (more >= 0.5) { resultProg.closest(".tracker").querySelector(".leftlbl").textContent = "includes " + Math.max(1, Math.round(more)) + "s " + (rep.secs && checkSecs ? "polish and check" : rep.secs ? "polish" : "check"); cookClock(resultProg.closest(".tracker")); }
           var total = offset ? " (" + Math.max(1, Math.round(session.workSecs + (checkSecs || 0))) + "s total, " + (session.round > 2 ? "all rounds" : "both rounds") + ")" : "";
+          var bySc = /^shortcut-/.test(r.model) ? SC_NAME + " (" + scLabel(scOf(r.model)) + ")" : "";   /* #53 */
           showResult(extras(finalPrompt), techOn()   /* core */
-            ? (offset ? "Round " + session.round + " built" : "Built") + " with Gemini (" + r.model + ", " + depthWords(depth, r.model) + ") in " + secs + total + detour + ". Your AI can start working right away."
-            : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + ". Your AI can start working right away.", session.title);
+            ? (offset ? "Round " + session.round + " built" : "Built") + " with " + (bySc || "Gemini (" + r.model + ", " + depthWords(depth, r.model) + ")") + " in " + secs + total + detour + ". Your AI can start working right away."
+            : (offset ? "Round " + session.round + " ready in " : "Ready in ") + secs + total + (bySc ? ", written by " + bySc : "") + ". Your AI can start working right away.", session.title);
           if (session.round >= 2 && ui.round) roundBuilt(session.round);
           /* Left mid-build and came back before it finished: say it picked back up. */
           if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
@@ -2767,6 +3366,7 @@ export function startApp() {
       setProgress(resultProg, "off");
       setBusy(false);
       setBuild("");
+      ui.build = "";
       qaStatus.textContent = "";
       signal("gemini-failed", "While writing");
       /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).
@@ -2807,7 +3407,7 @@ export function startApp() {
      picks up where you left off. All in memory only, never saved. */
   var ROUND_MAX = 3;
   var rounds = [], reworkFrom = 0, reworkSeed = "", reworkDraft = null;   /* reworkDraft: { from, text } */
-  function clearRounds() { rounds = []; reworkFrom = 0; reworkSeed = ""; reworkDraft = null; ui.round = null; ui.compare = null; }
+  function clearRounds() { rounds = []; reworkFrom = 0; reworkSeed = ""; reworkDraft = null; guide = null; ui.round = null; ui.compare = null; }
   var ROUND_IDS = ["resultHead", "resultTrack", "madeBy", "chatName", "categoryLine", "repairNote", "numWarn", "gradeNote"];
   function lastGrade() { return session && session.grades && session.grades.length ? session.grades[session.grades.length - 1] : null; }
   function reworkNotes(g) {
@@ -2910,6 +3510,66 @@ export function startApp() {
     notify("form");
     writeFinal(session.answers, false);
   }
+  /* Ask me, then rewrite (v2.1.39, idea mwct7axlrttc): the Quality check tip used to leave the
+     fixing to you ("add that to your note and build again"). Now one tap turns what was weak
+     into up to 3 short questions with answers to tap (or type your own, or skip), and your
+     answers build the next round as a full rewrite. One Flash-Lite call writes the questions
+     to fit your request; if it fails or runs past 8 seconds the phone's own questions are
+     used, so the button never dead-ends. Same rounds as Rework (max 3, Back, Compare), and
+     the answers stay in memory only, never saved. */
+  var guide = null;   /* { base, run } while the questions are being written or are on screen */
+  var guideRun = 0;
+  function tipWeak(g) {
+    if (!g || g.pass) return [];
+    var w = g.missing.slice();
+    if (g.rearranged && w.indexOf("task") === -1) w.unshift("task");
+    if (!w.length && !g.invented && !g.numCheck) w.push("detail");
+    return w.slice(0, TIP_MAX);
+  }
+  function startGuided() {
+    var g = lastGrade(), key = gemini.key || gkey.value.trim(), weak = tipWeak(g);
+    if (!weak.length || !session || !session.basePrompt || busy || !key || !gemini.plan) return;
+    if ((ui.round && ui.round.stage !== "built") || rounds.length >= ROUND_MAX) return;
+    var from = rounds.length ? viewingRound() - 1 : 0;
+    rounds[from] = Object.assign({}, rounds[from] || {}, roundSnap());
+    reworkFrom = from;
+    reworkSeed = "What was weak: " + reworkNotes(g).join(" ") + "\n\n" + session.basePrompt;
+    notify("result"); notify("form");
+    var base = session, run = ++guideRun, n = rounds.length + 1;
+    guide = { base: base, run: run };
+    ui.round = Object.assign({}, ui.round || {}, { n: n, stage: "ask", from: from + 1, count: rounds.length, max: ROUND_MAX });
+    result.hidden = true;
+    chat.reset();
+    chat.title = "Let's sharpen your prompt";
+    window.dispatchEvent(new Event("stp-asking"));   /* the dock: Write my prompt is next (NextDock.svelte) */
+    setBusy(true, "Writing your questions...");
+    qaStatus.textContent = "Writing " + (weak.length === 1 ? "a quick question" : weak.length + " quick questions") + " about what was weak...";
+    qa.hidden = false;
+    qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    askGemini(tipQuestionsPrompt(base.basePrompt, weak, base.raw, withMem(base.answers)), true, gemini.plan.intake, "low", null, 8000).then(function (r) { return r.text; }, function () { return ""; }).then(function (text) {
+      if (!guide || guide.run !== run) return;   /* Back, Start over, or a new build: leave it alone */
+      setBusy(false);
+      qaStatus.textContent = "";
+      var qs = tipQuestions(weak, text);
+      guide.asked = qs.length; guide.fromAi = qs.filter(function (q) { return q.from === "ai"; }).length;
+      chat.start({ title: "Let's sharpen your prompt", need: "", questions: qs.map(function (q) { return { question: q.question, choices: q.choices }; }) },
+        "Round " + n + ": your answers go into a rewrite of your prompt. Your first thoughts and answers are kept.");
+      qa.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  /* The answers join your earlier ones (so their numbers count as yours), and the round
+     writes from them plus the prompt with its weak line, like Rework. All skipped is fine:
+     it's a plain Rework then. */
+  function guidedBuild(answers, quick) {
+    var s1 = guide.base, n = rounds.length + 1, got = answers.filter(function (a) { return a.answer; });
+    session = Object.assign({}, s1, { answers: (s1.answers || []).concat(got), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
+      round: n, reworkOf: reworkFrom + 1, reworkText: reworkSeed.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n + " (asked)",
+      guided: { asked: guide.asked || 0, answered: got.length, ai: guide.fromAi || 0 } });
+    guide = null;
+    ui.round = Object.assign({}, ui.round, { stage: "writing" });
+    notify("form");
+    writeFinal(session.answers, !!quick);
+  }
   function roundBuilt(n) {
     rounds[n - 1] = roundSnap();
     ui.round = Object.assign({}, ui.round, { stage: "built", viewing: n, count: rounds.length, max: ROUND_MAX });
@@ -2919,8 +3579,13 @@ export function startApp() {
      and your edits wait for the next Rework. */
   function backToBase() {
     if (!ui.round || ui.round.stage === "built" || !rounds[reworkFrom]) return;
-    var text = ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
-    reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
+    /* From the questions (stage ask) or a round built from them, nothing was typed in the box:
+       any earlier Edit first draft stays as it was. */
+    var asked = ui.round.stage === "ask" || !!(session && session.guided);
+    var text = asked ? "" : ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
+    if (!asked) reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
+    guide = null; guideRun++;
+    qaStatus.textContent = "";
     writeRun++;
     setBusy(false);
     stopTicker();
@@ -3009,6 +3674,8 @@ export function startApp() {
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
     var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader, writer)).then(function (g) {
+      /* Staging #lowgrade test: round 1 reads as under the bar, whatever the grader said. */
+      if (IS_STAGING && fakeLowGrade && !(session && session.round >= 2)) g = { craft: 3.4, pass: false, rearranged: false, invented: false, missing: ["role", "context"], broke: [], model: g.model, history: g.history };
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -3036,10 +3703,10 @@ export function startApp() {
       : g.numCheck ? "Check the numbers and dates in the Heads up note before you paste it."
       : g.invented ? "Check it didn't add anything you didn't say."
       : g.rearranged ? "Say what you want done, not only what's on your mind."
-      : g.missing.length ? "It could say " + (LABEL_NAMES[g.missing[0]] || g.missing[0]) + ". Add that to your note and build again."
-      : "Add a detail or two about what you want, then build again.";
-    var score = Math.round(g.craft * 10) / 10;
-    return { score: score, pass: !!g.pass, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
+      : g.missing.length ? "It could say " + andList(g.missing.slice(0, TIP_MAX).map(function (m) { return LABEL_NAMES[m] || m; })) + "."
+      : "A detail or two about what you want would sharpen it.";
+    var score = Math.round(g.craft * 10) / 10, ask = tipWeak(g).length;
+    return { score: score, pass: !!g.pass, ask: ask, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
   }
   function gradeText(g, fields, extra) {
     ui.grade = gradeView(g, extra);
@@ -3384,11 +4051,31 @@ export function startApp() {
     postRun(run);
   }
   function postRun(run) {
+    if (run.outcome === "ok") lastSent = run;
     try {
       fetch(RELAY.replace(/\/+$/, "") + "/run", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run: run }), keepalive: true }).catch(function () {});
     } catch (e) {}
   }
+  /* 👍 Worked great (#5, v2.1.38): one tap under a finished prompt, only with run stats on, so
+     reviews learn what works and not just what breaks. A yes on the run record, never words.
+     Still waiting to be sent: it rides along. Already sent (you copied first): a tiny follow-up
+     record goes out with the mode and the yes, marked so it never counts as a second run. */
+  var lastSent = null;
+  function workedGreat() {
+    if (!testLog.on() || !session) return;
+    testLog.mark("worked", true);
+    if (pendingRun) { pendingRun.worked = true; return; }
+    if (!RELAY || !lastSent) return;
+    postRun({ app: lastSent.app, device: lastSent.device, mode: lastSent.mode, depth: lastSent.depth || null, write_model: lastSent.write_model || null, outcome: "thumbs up", worked: true });
+    lastSent = null;
+  }
+  /* Stay-on-screen guard (#37, v2.1.38): closing or refreshing while a prompt is being written
+     asks first (the browser's own Leave site? box). Only while it works, never when idle.
+     Computers only: Safari on iPhone and iPad never shows the box (Apple ignores it, checked
+     on an iPad 11/14), so there the stayTip line under the tracker says it instead. */
+  window.addEventListener("beforeunload", function (e) { if (busy && Date.now() - scLeaving > 3000) { e.preventDefault(); e.returnValue = ""; } });   /* #53: opening the shortcut is not leaving */
+
   /* Capture phase: noted before the button's own handler runs. */
   document.addEventListener("click", function (e) {
     if (!pendingRun || !e.target || !e.target.closest) return;

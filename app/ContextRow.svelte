@@ -9,6 +9,7 @@
   import { context, BUDGET, CAP } from './lib/context.svelte.js';
   import { ui } from './lib/ui.svelte.js';
   import { pack, unpack } from './lib/contextsync.js';
+  import { savectx } from './lib/savectx.svelte.js';
 
   const n = (x) => x.toLocaleString('en-US');
   /* The budget chip: size and % of the 1,500 token budget. Past 100% with a key it says a
@@ -91,8 +92,12 @@
     if (!pieces.length) return say('That note has no pieces in it.', true);
     const r = context.bringIn(pieces);
     pasteOpen = false; pasteText = '';
-    const bits = [r.added && r.added + ' added', r.updated && r.updated + ' updated', r.same && r.same + ' already here'].filter(Boolean).join(', ');
+    /* v2.1.37 (#50): a title that's already here with different words is never overwritten
+       without asking. Those open the overlap screen (old vs new: Update, Keep both, Skip). */
+    const clash = r.conflicts.length;
+    const bits = [r.added && r.added + ' added', r.same && r.same + ' already here', clash && clash + (clash === 1 ? ' needs your pick' : ' need your pick')].filter(Boolean).join(', ');
     say('Brought in: ' + bits + '.' + (context.keep ? '' : ' Turn on Save on this phone to keep them after you close the tab.'));
+    if (clash) savectx.review(r.conflicts, r);
   }
   async function bringIn() {
     if (!context.open) await openAt('');
@@ -150,6 +155,7 @@
         {/if}
         {#if syncMsg}<p class="syncmsg" class:bad={syncBad} id="contextSyncMsg" role="status">{syncMsg}</p>{/if}
       </div>
+      <button type="button" class="guided" id="contextGuided" onclick={() => savectx.start('editor', '', '')}>🧱 Build one with questions<small>Answer a few questions and it writes the piece for you</small></button>
       <p class="hint">Tap a chip above to use that piece for this prompt: the facts this request needs get worked into the prompt, nothing tacked on. Keep each piece under {n(CAP)} characters.</p>
       {#each context.list as c, i (c.id)}
         <div class="ctxitem" data-id={c.id}>
@@ -206,6 +212,8 @@
   .capflag { color: var(--warn); font-weight: 700; }
   .del { justify-self: start; color: var(--danger); min-height: 40px; }
   .ctxin { min-height: var(--tap); font-size: var(--fs-sm); }
+  .guided { display: grid; gap: 2px; justify-items: start; text-align: left; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; border-radius: var(--r-md); }
+  .guided small { font-weight: 500; font-size: var(--fs-xs); color: var(--muted); }
   .sync { display: grid; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); border: 1px solid var(--line); }
   .sync small { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
   .sync, .syncbtns > * { min-width: 0; }

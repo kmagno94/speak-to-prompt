@@ -8,7 +8,7 @@
   import { lab } from './lib/testlab.svelte.js';
   import { SEMVER } from './lib/channel.js';
   import { releaseStatus } from './lib/releases.js';
-  import { unchecked, nextOnRail } from './lib/testlabPlan.js';
+  import { unchecked, nextOnRail, stepLinks } from './lib/testlabPlan.js';
 
   /* While walking: { mode, key, hist, skip, title } (+ steps, i for a Re-check), else null.
      'rail' walks the checks not marked yet, from wherever you start; 'recheck' walks the broken
@@ -73,6 +73,11 @@
     try { await navigator.clipboard.writeText(lab.verdict.promote); copied = 'Copied. Paste it into your Claude chat.'; }
     catch (e) { copied = 'Couldn’t copy. Type it: ' + lab.verdict.promote; }
   }
+  /* A test link named in the check: one tap sets it on this page (the app picks it up right
+     away, no reload) and tucks the lab away so you can do the check. The 🧪 tab brings you
+     back to this same step. */
+  const links = $derived(step ? stepLinks(step.say) : []);
+  function openLink() { lab.fromHash = true; lab.open = false; resetArmed = false; }
   const icon = (s) => (lab.results[s.key]?.s === 'pass' ? '✓' : lab.results[s.key]?.s === 'fail' ? '✗' : '○');
 </script>
 
@@ -103,6 +108,12 @@
       <section class="card" id="labStep">
         <p class="lbl">{step.version ? `v${step.version} · ${step.title}` : step.title} · {walk.mode === 'recheck' ? `fix ${walk.i + 1} of ${walk.steps.length}` : `${left} not checked`}</p>
         <p class="do"><b>Do:</b> {step.say}</p>
+        {#if links.length}
+          <p class="golinks" id="labLinks">
+            {#each links as h (h)}<a class="golink" href={h} onclick={openLink}>🔗 Open {h}</a>{/each}
+            <span class="sub">Tap it to turn the test on. The 🧪 tab brings you back here.</span>
+          </p>
+        {/if}
         <p class="see"><b>You should see:</b> {step.see}</p>
         {#if step.paste}
           <div class="paste" id="labPaste">
@@ -176,6 +187,9 @@
     box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--ink) 55%, transparent); transition: transform 0.15s ease-out;
   }
   .labtab:active { transform: scale(0.96); }
+  .golinks { margin: 0; display: grid; gap: 6px; justify-items: start; }
+  .golink { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); border: 1.5px solid var(--accent); font-weight: 800; text-decoration: none; overflow-wrap: anywhere; }
+  .golink:active { transform: scale(0.97); }
   .labtab.bad { color: var(--danger); border-color: var(--danger); }
   .labtab.good { color: var(--ok); border-color: var(--ok); }
   .labtab[aria-expanded='true'] { opacity: 0; pointer-events: none; }

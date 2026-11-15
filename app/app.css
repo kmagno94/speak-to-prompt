@@ -108,6 +108,9 @@ label { font-family: var(--display); font-weight: 600; font-size: var(--fs-lg); 
 .hero .voice .pastewrap.banner { flex: 1 1 100%; }
 .helpers { margin: calc(var(--sp-2) * -1) 0 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
 .hint { margin: 0; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }
+.staytip { margin: 0; padding: 12px 14px; font-size: 16px; line-height: 1.4; color: var(--ink); background: var(--warn-soft); border: 1px solid var(--warn); border-left-width: 5px; border-radius: 10px; }
+.staytip b { font-weight: 700; }
+.staytip[hidden] { display: none; }
 textarea { font: inherit; color: var(--ink); width: 100%; border-radius: 10px; border: 1px solid var(--line); resize: vertical; }
 /* The words box fits what you type (#32, lib/grow.js), so it has no drag handle. */
 textarea#thoughts { resize: none; }
@@ -215,6 +218,14 @@ footer { font-size: 13px; color: var(--muted); }
 .benchout .flowpick input { width: 20px; height: 20px; margin: 0; }
 .benchout tr.hold td:first-child::after { content: " \1F512"; }
 .srchead { margin: 0; font-weight: 700; }
+details.benchfold { border: 1px dashed var(--line); border-radius: 10px; padding: 0 14px; }
+details.benchfold > summary { cursor: pointer; min-height: var(--tap, 44px); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+details.benchfold > summary small { color: var(--muted); font-size: 13px; font-weight: 400; }
+details.benchfold > summary { list-style: none; padding: 0; margin: 0; }
+details.benchfold > summary::-webkit-details-marker { display: none; }
+details.benchfold > summary::before { content: '▸'; color: var(--muted); }
+details.benchfold[open] > summary::before { content: '▾'; }
+details.benchfold .benchbody { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
@@ -288,7 +299,10 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .ts-check { background: var(--ok); } .tslegend .ts-check::before { background: var(--ok); }
 .tslegend span[class^="ts-"] { background: none; }
 /* Cooking (v2.1.19): the prompt card shows only its heading, the tracker, round banner, and messages until the prompt is ready. */
-#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round) { display: none !important; }
+#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round):not(.waitrow):not(#stayTip) { display: none !important; }
+.waitrow { display: grid; gap: var(--sp-2); }
+.waitrow > :first-child { margin-top: 0; }
+.waitrow:not(:has(*)) { display: none; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }
 .tracker li::before { content: ""; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); box-sizing: border-box; }
 .tracker li.done { color: var(--ink); }
@@ -518,7 +532,7 @@ details.key[open] summary { margin-bottom: 10px; }
 
 /* The floating 💡 Ideas and 🧪 Test lab buttons tuck away while a bottom bar needs the space:
    the My context Done bar (ContextRow.svelte) and the keyboard coach bar (KeyboardCoach.svelte). */
-body:is(.fabs-away, .fabs-away-kb, .fabs-away-mic) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
+body:is(.fabs-away, .fabs-away-kb, .fabs-away-mic, .fabs-away-ctx) :is(#ideaTab, #labTab) { opacity: 0; pointer-events: none; translate: 0 16px; }
 @media (prefers-reduced-motion: no-preference) { #ideaTab, #labTab { transition: opacity 0.2s ease, translate 0.2s ease, transform 0.15s ease-out; } }
 
 /* Next step dock (#17): while it shows, the page ends above it, and the floating buttons and

@@ -55,6 +55,60 @@ export function withContext(analyze, block) {
   return analyze.replace('RAW THOUGHTS:', 'CONTEXT THE PERSON PICKED FOR THIS REQUEST (already known; never ask a question it answers, and never ask them to repeat it):\n' + block + '\n\nRAW THOUGHTS:');
 }
 
+/* Save as context (#50, v2.1.37): the Read call also says whether the raw thoughts hold
+   reusable background worth saving as a My context piece. It rides the same call as one more
+   JSON field (context_candidate), so the nudge costs no extra request. */
+export function withCandidate(analyze) {
+  return analyze.replace('RAW THOUGHTS:',
+    'Also add "context_candidate" to your JSON. If the raw thoughts spend real effort explaining lasting background the person would otherwise have to explain again in a later request (who they are, their job or business, an ongoing project, their setup, tools, or a standing situation), set it to {"title": "a 2 to 5 word name for that background, like Bean N Bean roasting or My home network", "why": "one short plain line naming what they explained, written to them (for example: You explained how your roasting schedule works)"}. ' +
+    'Set it to null when the request is a one-off (a single message, a quick question, a one-time event), when the background is only a sentence or two, or when the context they picked above already covers it.\n\nRAW THOUGHTS:');
+}
+
+/* Save as context, the guided interview (#50): after each answer one Flash-Lite call says
+   which labeled parts are covered and asks the next question, or says it's done. No cap on
+   questions (SPEC 11/08); Save what we have is always on screen. */
+export const CTX_PARTS = [
+  { key: 'what', label: 'What this is', ask: 'In a sentence or two, what is this? A project, your job, a setup, a routine, anything you keep explaining.' },
+  { key: 'facts', label: 'Key facts', ask: 'What should an AI always know about it? Names, numbers, tools, how it works.' },
+  { key: 'goals', label: 'Goals', ask: 'What are you usually trying to get done with it, or what does a good result look like?' },
+  { key: 'changes', label: 'What changes often', ask: 'What changes often, so an AI should ask you instead of assuming? Say "nothing" if it stays the same.' },
+  { key: 'leave', label: 'Leave out', ask: 'Anything an AI should leave out or never do here? Say "nothing" if not.' }
+];
+function ctxSaid(title, source, turns) {
+  const out = ["TITLE: " + (title || "(none yet)"), "", "WHAT THEY SAID FIRST:", '"""', source || "(nothing yet)", '"""'];
+  const t = (turns || []).filter((x) => x && x.q);
+  out.push("", "QUESTIONS ASKED SO FAR, WITH THEIR ANSWERS:");
+  out.push(t.length ? t.map((x) => "Q (" + x.part + "): " + x.q + "\nA: " + (x.a ? x.a : "(skipped, do not ask again)")).join("\n\n") : "None yet.");
+  return out;
+}
+export function interviewPrompt(title, source, turns) {
+  return [
+    "CONTEXT INTERVIEW STEP. A person is saving reusable background (a \"context\") about one thing in their life or work, so they never have to explain it to an AI again. You interview them, one short question at a time.",
+    "The saved context has five parts: what (what this is), facts (key facts: names, numbers, tools, how it works), goals (what they want from it or what good looks like), changes (what changes often, so an AI should ask instead of assuming), leave (what an AI should leave out or never do).",
+    "1. Decide which parts their words already cover well enough that an AI would not need to ask.",
+    "2. If something important is still missing, ask ONE short, plain, friendly question about the most important missing thing, and say which part it belongs to. Never ask about something they already said, never repeat a question, and never ask again about something they skipped.",
+    "3. If nothing important is missing, you are done. Do not ask a question just to fill a part: changes and leave can stay empty when nothing suggests they matter.",
+    "4. Suggest a short name for this context: 2 to 5 plain words from their own words, like a label on a folder (for example \"Saturday soccer team\"). No quotes, no emoji, no ending period. Use only what they said.",
+    "",
+    'Respond with JSON only, in exactly this shape: {"covered": ["what", "facts"], "done": false, "part": "goals", "question": "the one short question", "title": "short name"}. When done is true, question is an empty string.',
+    ""
+  ].concat(ctxSaid(title, source, turns)).join("\n");
+}
+/* The iron pass (#50): one Flash-Lite call turns everything they said into the labeled note.
+   The phone checks it (no new numbers, under the cap, has its first label) and falls back to
+   their own words under the same labels if it fails. */
+export function ironPrompt(title, source, turns) {
+  return [
+    "CONTEXT IRON STEP. Turn what a person said below into one saved context note an AI can read before helping them.",
+    "Use only facts they said. Never add a fact, a guess, advice, or a number they did not say. Keep every name, number, version, date, and amount exactly as they wrote it, and keep their hedges (maybe, around, I think).",
+    "Write in first person, as them (I, my). Plain words, no filler, nothing said twice. Under 3,000 characters.",
+    "Use exactly these labels, each starting its own line, in this order: What this is: / Key facts: / Goals: / What changes often: / Leave out:",
+    "Key facts is a short list, one fact per line starting with \"- \". Leave a label out entirely when they said nothing for it (an answer like \"nothing\" or a skipped question means leave it out).",
+    "Output only the note: no title line, no intro, no closing line, and no code fences.",
+    ""
+  ].concat(ctxSaid(title, source, turns)).join("\n");
+}
+
 /* My context squeeze: past the 1,500 token budget, one Flash-Lite call makes the picked
    pieces shorter for this build only. Facts stay, filler goes, nothing new comes in. */
 export const SQUEEZE = [
@@ -155,6 +209,44 @@ export const WRITE = [
   "Before you finish, check once that every key fact is kept, the task is unmistakable, the format is stated, and what a great result looks like is stated. Do not show this check.",
   "Output only the prompt itself. No title, no preamble, no commentary, and no code fences. Simple labels such as Context: and Task: are fine."
 ].join("\n");
+
+/* Short writer text for the Shortcut stand-in (#53, v2.1.41, dev tools only). Apple's models
+   lost details under the full WRITE rules (first test 11/12: Cloud dropped the date, the budget,
+   and three preferences), so the shortcut gets a short version: six plain rules, the notes, the
+   answers, and the must-keep list last, where a small model reads it right before writing.
+   One to one with what Flash gets (Kevin, 11/12: "I wanted everything to be a one to one fit"):
+   lessons, your core, memory, and picked My context all ride along, each in a compact form.
+   Only Rework is left out (round 2 stays on Gemini). Flash never gets this text. */
+export function shortWriteText(o) {
+  const out = [
+    "Rewrite my notes below into one clear prompt that I can paste into an AI assistant such as ChatGPT, Claude, or Gemini.",
+    "",
+    "Rules:",
+    "1. Write it as me, in first person.",
+    "2. Use these labels, each on its own line, in this order: Role: (the expert the AI should be), Context: (my situation), Task: (exactly what I want), Limits: (every limit, like, and dislike I gave), A great answer: (how I will judge it), Format: (the shape and length of the answer).",
+    "3. Keep every name, number, date, limit, like, and dislike from my notes and answers. Write numbers as digits, exactly as I gave them (like $75 or the 14th). Keep words like maybe and around.",
+    "4. Add nothing I did not say: no new facts, people, devices, or rules.",
+    "5. End with this line: Start right away, and ask at most one short question only if something essential is missing.",
+    "6. Output only the prompt. No title, no intro, no closing words, no code fences."
+  ];
+  const ls = (o.lessons || []).filter(Boolean);
+  if (ls.length) out.push("", "Extra rules learned from earlier prompts (follow them when they fit; what I said always wins):", ...ls.map((l) => "- " + l));
+  if (o.core) out.push("", "ABOUT ME (my standing background: who I am, how I like answers, and the role I want the AI to take. Use it to shape the prompt where it fits this request, in plain words. Never paste it in as a block, and never let it push out a detail from my notes):", o.core);
+  const mem = (o.memory || []).filter(Boolean);
+  if (mem.length) out.push("", "FACTS I SAVED ABOUT MYSELF (they matter for this request; work them in where they help):", ...mem.map((m) => "- " + m));
+  out.push("", "MY NOTES:", '"""', o.raw || "", '"""');
+  const a = (o.answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "MY ANSWERS TO FOLLOW-UP QUESTIONS:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n"));
+  if (o.goal) out.push("", "MY GOAL IN ONE LINE (aim the prompt at it; it adds no facts): " + o.goal);
+  const sh = o.shape || {};
+  if (sh.success || sh.format) out.push("", "ONLY IF I DID NOT SAY (suggestions, my own words win):" + (sh.success ? "\nA great answer: " + sh.success : "") + (sh.format ? "\nFormat: " + sh.format : ""));
+  if (o.context) out.push("", "BACKGROUND I PICKED (use only the facts this request needs, in plain words; never paste it in as a block):", o.context);
+  if (o.today) out.push("", "TODAY IS " + o.today + ". Use it only to count days. Never add a year, weekday, or month to a date I gave.");
+  const items = o.items || [];
+  if (items.length) out.push("", "MUST KEEP (every item below has to be in the prompt, in a clean sentence):", ...items.map((i) => "- " + i));
+  out.push("", "Now write the prompt.");
+  return out.join("\n");
+}
 
 /* Lessons learned: short, general rules the twice-daily review writes into
    lessons.json from graded runs and stress tests. They never hold anyone's words,
@@ -292,4 +384,54 @@ export function goalText(goal) {
   return goal.edited
     ? "\n\nTHE PERSON'S GOAL, IN THEIR OWN WORDS (they corrected an earlier step's read of what they want, so this is what the prompt must aim at. Facts and details still come from the raw thoughts and answers; never add anything the goal doesn't say):\n" + t
     : "\n\nTHE GOAL THE PERSON CONFIRMED (an earlier step's one-line read of what they want; they saw it and left it as is. Aim the prompt at it, but their raw thoughts and answers win on every detail, and it never adds a fact):\n" + t;
+}
+
+/* Ask me, then rewrite (v2.1.39, idea mwct7axlrttc): the Quality check tip used to say "add
+   that to your note and build again". Now one Flash-Lite call turns each weak spot into one
+   short question with answers to tap (typing your own always works), and the answers build
+   the next Rework round. TIP_FALLBACK is the phone's own question per weak spot, used when
+   the call fails or leaves one out, so the button never dead-ends. */
+export const TIP_FALLBACK = {
+  role: { question: 'Who should the AI act as for this?', choices: ['An expert in this topic', 'A patient teacher', 'A straight-talking coach'] },
+  task: { question: 'What is the one thing you want the AI to do?', choices: ['Give me a plan', 'Write it for me', 'Help me decide', 'Explain it simply'] },
+  context: { question: 'What background should the AI know first?', choices: ["I'm new to this", "I've tried and got stuck", 'It is for someone else'] },
+  format: { question: 'How long should the answer be, and in what shape?', choices: ['Short bullets, one screen', 'Numbered steps', 'A table', 'A few short paragraphs'] },
+  success: { question: 'What would make the answer great for you?', choices: ['I can act on it today', 'Simple enough for a beginner', 'It covers every detail'] },
+  constraints: { question: 'Any limits the AI should stick to?', choices: ['Keep it cheap or free', 'Keep it quick', 'No limits'] },
+  steps: { question: 'Do you want how-to steps?', choices: ['Yes, numbered steps', 'Yes, with fixes if something goes wrong', 'No, just the answer'] },
+  ending: { question: 'Should the AI start right away or check with you first?', choices: ['Start right away', 'Ask me one question first'] },
+  detail: { question: 'What detail would make this fit you better?', choices: ['Who it is for', 'My deadline', 'What I have tried already'] }
+};
+export const TIP_MAX = 3;
+export function tipQuestionsPrompt(prompt, weak, raw, answers) {
+  const out = [
+    "TIP QUESTIONS STEP. A prompt-building tool wrote the prompt below from a beginner's raw thoughts, and a reviewer found weak spots. Write one short question for each weak spot, so the person's answers can fix it.",
+    "Each question is plain, friendly, about one thing, under 14 words, and fitted to this request (never generic). Give 2 to 4 short, likely answers to tap, fitted to this request, under 8 words each. Never ask about something the raw thoughts or answers already say. Never put a fact, number, or name in a choice unless the person said it.",
+    "",
+    "WEAK SPOTS (use these ids):"
+  ];
+  weak.forEach((w) => out.push("- " + w + ": " + (w === 'detail' ? 'the prompt could be sharper and more specific' : 'the prompt is weak on ' + (LABEL_NAMES[w] || w))));
+  out.push("", "Respond with JSON only, in exactly this shape:", '{"questions": [{"id": "the weak spot id", "question": "the question", "choices": ["a likely answer", "another"]}]}',
+    "", "RAW THOUGHTS:", '"""', raw, '"""');
+  const a = (answers || []).filter((x) => x && x.answer);
+  if (a.length) out.push("", "THEIR ANSWERS SO FAR:", a.map((x) => "Q: " + x.question + "\nA: " + x.answer).join("\n\n"));
+  out.push("", "PROMPT:", '"""', prompt, '"""');
+  return out.join("\n");
+}
+/* One question per weak spot, in order: the model's when it gave a usable one, else the phone's. */
+export function tipQuestions(weak, text) {
+  let got = [];
+  try {
+    const t = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, ''), a = t.indexOf('{'), b = t.lastIndexOf('}');
+    const d = JSON.parse(a >= 0 && b > a ? t.slice(a, b + 1) : t);
+    got = Array.isArray(d.questions) ? d.questions : [];
+  } catch (e) { got = []; }
+  const clean = (s, n) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);
+  return weak.slice(0, TIP_MAX).map((w) => {
+    const m = got.find((q) => q && String(q.id || '').toLowerCase().trim() === w);
+    const question = m ? clean(m.question, 160) : '';
+    const choices = m && Array.isArray(m.choices) ? m.choices.map((c) => clean(c, 60)).filter(Boolean).filter((c, i, arr) => arr.indexOf(c) === i).slice(0, 4) : [];
+    const fb = TIP_FALLBACK[w] || TIP_FALLBACK.detail;
+    return question && choices.length >= 2 ? { question, choices, weak: w, from: 'ai' } : { question: fb.question, choices: fb.choices.slice(), weak: w, from: 'phone' };
+  });
 }

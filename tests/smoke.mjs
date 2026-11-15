@@ -40,7 +40,8 @@ const CORE = [
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
-  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:'
+  'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
+  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -55,6 +56,8 @@ function expect(cond, msg) { if (!cond) throw new Error(msg); }
 /* Next step dock (#17): the ⋯ menu holds Open in, Quick version and New prompt. Opens it first when needed. */
 async function menuTap(p, sel) { if (!(await p.isVisible(sel))) await p.click('#dockMore'); await p.click(sel); }
 /* Gemini mock. opts: models, intake (object), write (string), fail (model -> status), finish (model -> reason) */
+/* The Flow bench is a closed row in dev tools (11/14): open it before tapping anything inside. */
+async function flowOpen(p) { if (!(await p.evaluate(() => document.getElementById('flowFold').open))) await p.click('#flowFold > summary'); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
 
 async function page(opts = {}) {
@@ -128,6 +131,12 @@ async function page(opts = {}) {
       const out = opts.gapFillFn ? opts.gapFillFn(cur, p.fills.length) : cur;
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
     }
+    /* Ask me, then rewrite (v2.1.39): the tip's questions (opts.tipq: the questions array; opts.tipFail: 503) */
+    if (/^TIP QUESTIONS STEP\./.test(ask)) {
+      (p.tips = p.tips || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.tipFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ questions: opts.tipq || [] }) }] } }] }) });
+    }
     /* Prep crew clean step: echoes the raw thoughts unless opts.clean / cleanFn says otherwise */
     if (/^CLEAN STEP\./.test(ask)) {
       const raw = (ask.split('RAW THOUGHTS:\n\"\"\"\n')[1] || '').replace(/\n\"\"\"\s*$/, '');
@@ -136,6 +145,19 @@ async function page(opts = {}) {
       if (opts.cleanFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       const out = opts.cleanFn ? opts.cleanFn(raw) : opts.clean != null ? opts.clean : raw;
       return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: out }] } }] }) });
+    }
+    /* Save as context (#50): the interview turns (opts.interview: one reply per call, the last repeats) and the iron pass (opts.iron) */
+    if (/^CONTEXT INTERVIEW STEP\./.test(ask)) {
+      (p.interviews = p.interviews || []).push({ model, text: ask, json: !!(body.generationConfig && body.generationConfig.responseMimeType) });
+      if (opts.interviewFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      const turns = opts.interview || [];
+      const turn = turns[Math.min(p.interviews.length - 1, turns.length - 1)] || { covered: [], done: true, part: '', question: '' };
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 150 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(turn) }] } }] }) });
+    }
+    if (/^CONTEXT IRON STEP\./.test(ask)) {
+      (p.irons = p.irons || []).push({ model, text: ask });
+      if (opts.ironFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
+      return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 200 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: opts.iron != null ? opts.iron : 'What this is: MOCK NOTE' }] } }] }) });
     }
     if (/CONTEXT SQUEEZE STEP/.test(ask)) {
       (p.squeezes = p.squeezes || []).push({ model, text: ask });
@@ -150,6 +172,8 @@ async function page(opts = {}) {
     if (opts.dropOnce === model && !p.droppedOnce) { p.droppedOnce = true; await new Promise(res => setTimeout(res, opts.dropDelay || 0)); return r.abort('failed'); }   // drops once, like leaving for another app
     if (opts.drop && opts.drop[model]) return r.abort('failed');   // no answer at all, like Safari dropping the request
     if (opts.fail && opts.fail[model]) return r.fulfill({ status: opts.fail[model], headers: h, body: JSON.stringify({ error: { code: opts.fail[model], message: 'mock', details: (opts.failDetails && opts.failDetails[model]) || [] } }) });
+    /* opts.intakeBad: how many Read answers come back as broken JSON first (a bare property name and a trailing comma, like Flash-Lite on a bad day) */
+    if (intake) { p.intakeN = (p.intakeN || 0) + 1; (p.intakeModels = p.intakeModels || []).push(model); if (opts.intakeBad && p.intakeN <= opts.intakeBad) return r.fulfill({ status: 200, headers: h, body: JSON.stringify({ usageMetadata: { totalTokenCount: 100 }, candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{title: "T", "need": "N",}' }] } }] }) }); }
     const text = intake ? JSON.stringify(opts.intake || { title: 'Pre-Sleep Focus Setup', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Devices?', choices: ['iPhone'] }] })
       : (opts.writeFn ? opts.writeFn(ask) : opts.write || 'THE PROMPT');
     const finishReason = (opts.finish && opts.finish[model]) || 'STOP';
@@ -1047,12 +1071,15 @@ await check('slow write: each Flash gets 30s, Switch to quick shows at 2:00, the
   // 2. At 2:00: Switch to quick, with a live countdown to the quick model
   await t(p, 61000);
   const note = await p.textContent('#notice-result');
-  expect(/Taking longer than usual/.test(note) && /until the quick model takes over/.test(note), 'the 2:00 note should show: ' + note);
-  const c = (await p.textContent('#notice-result .mclock')).trim();
-  expect(/^(1:00|0:5\d)$/.test(c), 'countdown should start near 1:00, got ' + c);
-  expect(!(await p.getAttribute('#notice-result button:has-text("Switch to quick")', 'class') || '').includes('primary'), 'waiting is still the default');
+  expect(/Taking longer than usual/.test(note) && /the quick model takes over/.test(note), 'the 2:00 note should show: ' + note);
+  /* v2.1.37 (#51): the countdown lives on the one ⚡ Quick version chip under the tracker; the note has no button of its own. */
+  expect(!(await p.$('#notice-result button')) && !(await p.$('#notice-result .mclock')), 'the 2:00 note brings no second button or clock');
+  const c = (await p.textContent('#quickChip #quickCount b')).trim();
+  expect(/^(1:00|0:5\d)$/.test(c), 'countdown on the chip should start near 1:00, got ' + c);
+  expect(/Quick version/.test(await p.textContent('#quickChip')) && /faster, lighter/.test(await p.textContent('#quickChip')), 'the chip keeps its honest label: ' + await p.textContent('#quickChip'));
+  expect(!(await p.getAttribute('#quickChip', 'class') || '').includes('primary'), 'waiting is still the default');
   // 3. Tap it: the Flash writers stop and the quick model writes now, with no 3-minute note
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) await t(p, 500);
   expect(/lite/.test(writers(p).pop()) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it: ' + writers(p).join());
   const noteText = async (pg) => pg.evaluate(() => (document.getElementById('notice-result') || {}).textContent || '');
@@ -1170,7 +1197,7 @@ await check('model routing: the grade note and Step by step say who graded and a
 });
 
 await check('model routing: the grader bench names the grader on every case and how many are far from the key (Test lab #4, v2.1.25)', async () => {
-  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8')); bench.cases = bench.cases.filter((c) => !c.spare);
   const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); return c ? { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke } : null; };
   const p = await page({ models: TWO_LITES, gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
@@ -1215,7 +1242,7 @@ await check('model switching: Flash-Lite never writes a Normal prompt on its own
   await withKey(p); await p.fill('#thoughts', 'it goes pretty fast and wow 13 14 94'); await p.click('#build');
   for (let i = 0; i < 130 && !(await p.isVisible('#notice-result:has-text("Taking longer")')); i++) { await p.clock.runFor(1000); await p.waitForTimeout(20); }
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write without asking: ' + p.calls.map(c => c.model).join());
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
   expect(/lite/.test(p.calls.filter(c => !c.intake).pop().model) && await p.inputValue('#output') === 'THE PROMPT', 'a tap uses the quick model');
   // 2. Flash used up for the day: no wait offered, only the quick model
@@ -2043,9 +2070,14 @@ await check('starter answers: 5 at a time, same all window, new set every 3 hour
   const visible = () => p.$$eval('#starter .chips button', l => l.filter(b => !b.classList.contains('skip') && b.id !== 'rotateMore').map(b => b.textContent.trim()));
   async function openMoney(time) {
     await p.clock.setFixedTime(new Date(time));
-    await p.reload(); await p.waitForTimeout(150);
-    await p.click('#starterBtn'); await p.click('#starter .cats button >> text=Money and budgeting');
-    await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
+    await p.reload(); await p.waitForSelector('#starterBtn'); await p.waitForTimeout(150);
+    /* One more try if the tap landed before the page was ready (promote check 11/14, slow runner) */
+    for (let tries = 0; ; tries++) {
+      if (!(await p.isVisible('#starter .cats button >> text=Money and budgeting'))) await p.click('#starterBtn');
+      await p.click('#starter .cats button >> text=Money and budgeting');
+      try { await p.waitForSelector("#starter .msg.ai >> text=What's the goal?", { timeout: 8000 }); break; }
+      catch (e) { if (tries) throw e; await p.reload(); await p.waitForSelector('#starterBtn'); await p.waitForTimeout(300); }
+    }
     return visible();
   }
   const t0 = new Date('2026-10-20T09:10:00-04:00').getTime();   // 9:10 AM Eastern (the test page runs on New York time), inside the 9 to 12 window
@@ -2573,7 +2605,7 @@ await check('limits: per-minute and busy are tried again, daily is used up (and 
   expect(!p.calls.some(c => !c.intake && /lite/.test(c.model)), 'Flash-Lite must not write a Normal prompt without asking (#35)');
   const tries = (m) => p.calls.filter(c => !c.intake && c.model === m).length;
   expect(tries('gemini-3.7-flash') === 1 && tries('gemini-3.6-flash') >= 3, 'used up drops out of the cycle, busy keeps getting tried: 3.7 x' + tries('gemini-3.7-flash') + ', 3.6 x' + tries('gemini-3.6-flash'));
-  await p.click('#notice-result button:has-text("Switch to quick")');
+  await p.click('#quickChip');
   for (let i = 0; i < 40 && !(await p.evaluate(() => document.getElementById('madeBy').textContent.length > 0)); i++) { await p.clock.runFor(500); await p.waitForTimeout(20); }
   expect(await p.inputValue('#output') === 'THE PROMPT' && /lite/.test(p.calls.filter(c => !c.intake).pop().model), 'after Switch to quick, Flash-Lite writes it');
   await p.clock.resume();
@@ -3086,6 +3118,8 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const p = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT for ' + (ask.match(/Today: |TODAY: ([A-Za-z]+)/) || [])[1] : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  expect(!(await p.evaluate(() => document.getElementById('flowFold').open)) && !(await p.isVisible('#flowRun')) && /Not in use/.test(await p.textContent('#flowSum')) && await p.isVisible('#bbBuild'), 'the Flow bench starts as one closed row, with the Bench builder right under it (11/14)');
+  await flowOpen(p);
   await p.check('#coreToggle').catch(() => {});
   await p.click('#flowRun');
   await p.waitForSelector('#flowOut:not([hidden])', { timeout: 60000 });
@@ -3112,7 +3146,7 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const q = await page({ models, fail, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await q.addInitScript(() => { window.__flowRetryMs = 50; });
   await q.reload();
-  await devOn(q); await q.click('#moreOpts summary'); await withKey(q);
+  await devOn(q); await q.click('#moreOpts summary'); await withKey(q); await flowOpen(q);
   let busyLeft = 7;   // the first 7 Flash writes say busy: note 1 retries and recovers, note 2's first flow fails twice
   await q.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
     const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';
@@ -3128,7 +3162,8 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   const mapBefore = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-flowbench') || '{}').map || {});
   // A reload keeps the last run: Copy reveal still works without running anything again
   await q.reload();
-  await devOn(q); await q.click('#moreOpts summary');
+  await devOn(q); await q.click('#moreOpts summary'); await flowOpen(q);
+  expect(/^Last run \d/.test(await q.textContent('#flowSum')) && /Tap to open/.test(await q.textContent('#flowSum')), 'the closed row shows when it last ran: ' + await q.textContent('#flowSum'));
   expect(await q.isEnabled('#flowReveal') && await q.isEnabled('#flowRetry') && /last run/i.test(await q.textContent('#flowInfo')), 'after a reload the last run is loaded, with Copy reveal and Rerun failed notes on');
   await withKey(q);
   const before = q.calls.filter(c => !c.intake).length;
@@ -3151,7 +3186,7 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
   // Every note errored (daily limit): untick T3, B9 and B2, and Rerun redoes only T4 and T2
   const w = await page({ models, cleanFn: unfill, writeFn: (ask) => /lightly cleaned by an earlier step/.test(ask) ? 'NEW PROMPT' : 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
   await w.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await devOn(w); await w.click('#moreOpts summary'); await withKey(w);
+  await devOn(w); await w.click('#moreOpts summary'); await withKey(w); await flowOpen(w);
   let allFail = true;
   await w.route(/generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3\.[0-9]-flash:/, async (r) => {
     const ask = JSON.parse(r.request().postData() || '{}').contents?.[0]?.parts?.[0]?.text || '';
@@ -3184,15 +3219,18 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
 });
 
 await check('grader bench: one tap grades every bench.json case with the current grader and compares with the answer key', async () => {
-  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
-  expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');
+  const all = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  expect(all.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing) && c.writer), 'bench.json cases need id, raw, prompt, today, a writer, and a key');
+  const bench = { cases: all.cases.filter((c) => !c.spare) };
+  expect(bench.cases.length === 12 && all.cases.filter((c) => c.spare).length === 5, '12 scored cases and 5 spares (#54 round 2)');
+  const writers = ['flash', 'shortcut-chatgpt', 'shortcut-cloud', 'shortcut-on-device'];
+  expect(writers.every((w) => bench.cases.some((c) => c.holdout && c.writer.split('+')[0] === w)) && bench.cases.filter((c) => c.holdout).length === 4 && !all.cases.some((c) => c.spare && c.holdout), 'one holdout per writer, none among the spares');
   expect(bench.cases.some((c) => c.key.score >= 4.5) && bench.cases.some((c) => c.key.score < 4.5) && bench.cases.some((c) => c.holdout), 'bench needs passes, fails, and holdouts');
   expect(!/\u2014/.test(JSON.stringify(bench)), 'no em dashes in bench.json');
-  // The grader agrees with the key on every case except the second, which it overrates.
-  // (The first, the Saturday case, is overrated too, but the number check docks it below the bar.)
+  // The grader agrees with the key on every case except the second, which it overrates. Spares are never sent.
   const first = bench.cases[1], sat = bench.cases[0];
-  const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
-    return c === first || c === sat ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
+  const gradeFn = (ask) => { const c = all.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
+    return c === first ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
   const p = await page({ gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
@@ -3202,6 +3240,7 @@ await check('grader bench: one tap grades every bench.json case with the current
   expect(p.grades.length === n + passes, 'one grade per case plus a second look for each pass: ' + p.grades.length + ' vs ' + (n + passes));
   expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
   expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(sat.today), 'each case is graded with its own date');
+  expect(!p.grades.some((g) => all.cases.some((c) => c.spare && g.text.includes(c.prompt))), 'spare cases are never graded');
   expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
   expect(/\u274c/.test(await p.textContent('.benchout tbody tr:nth-child(2)')), 'the overrated case shows a miss');
   await p.click('#benchCopy'); await p.waitForTimeout(200);
@@ -3530,6 +3569,92 @@ await check('rework: tapping Rework builds round 2 right away from the weak line
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* v2.1.39 (idea mwct7axlrttc): the tip asks you about what was weak, then rewrites. */
+await check('ask me: the Quality check tip offers Ask me, then rewrite; it asks one fitted question per weak spot with answers to tap or type, and builds round 2 from them', async () => {
+  const low = { craft: 3.2, rearranged: false, invented: false, missing: ['role', 'context'] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const tipq = [{ id: 'role', question: 'Who should run the bake sale plan?', choices: ['A school event planner', 'A fundraising coach'] }, { id: 'context', question: 'How big is the robotics club?', choices: ['Under 10 kids', '10 to 25 kids'] }];
+  const asked2 = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT for about 18 kids, mostly 7th graders, with a planner role' : 'First prompt');
+  const p = await reworkPage({ writeFn: asked2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), tipq });
+  const tip = await p.textContent('#qualityCheck .tip');
+  expect(/Tip: It could say who the AI is and background\.$/.test(tip.trim()) && !/Add that to your note|build again/.test(tip), 'the tip should name every weak spot and stop sending you back to your note: ' + tip);
+  expect(/2 quick questions/.test(await p.textContent('#guideHint')) && await p.isVisible('#reworkBtn') && await p.isVisible('#reworkEditBtn'), 'Ask me sits with Rework and Edit first, and says how many questions');
+  const intakes = p.calls.filter((c) => c.intake).length;
+  await p.click('#guideBtn');
+  await p.waitForSelector('#roundAsk');
+  await p.waitForSelector('#qaList .chips button >> text=A school event planner');
+  expect(await p.isHidden('#result'), 'the prompt card steps aside for the questions');
+  expect(p.tips.length === 1 && p.tips[0].json && /flash-lite/.test(p.tips[0].model), 'one small Flash-Lite call writes the questions');
+  expect(/- role: the prompt is weak on who the AI is/.test(p.tips[0].text) && /- context: /.test(p.tips[0].text) && p.tips[0].text.includes(RAW_BAKE) && /PROMPT:\n"""\nFirst prompt/.test(p.tips[0].text), 'the question call gets the weak spots, your words, and the prompt');
+  expect(!(await p.$('#qaNeed')) && /Round 2: your answers go into a rewrite/.test(await p.textContent('#qaPlan')), 'no goal line to redo, and it says where the answers go');
+  await p.click('#qaList .chips button >> text=A school event planner');
+  await p.waitForSelector('#qaList .q >> text=How big is the robotics club?');
+  expect(await p.isVisible('#qaOwn'), 'typing your own answer is always there');
+  await p.fill('#qaOwn', 'about 18 kids, mostly 7th graders'); await p.press('#qaOwn', 'Enter');
+  await p.waitForSelector('#qaGo.ready');
+  await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT for about 18 kids, mostly 7th graders, with a planner role', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && /Q: Who should run the bake sale plan\?\nA: A school event planner \(tapped from suggested options\)/.test(w.text) && /Q: How big is the robotics club\?\nA: about 18 kids, mostly 7th graders(?! \(tapped)/.test(w.text), 'both answers reach the writer, the tapped one marked as tapped');
+  expect(/EDITED PROMPT:[\s\S]*What was weak: It's missing who the AI is\. It's missing background\.[\s\S]*First prompt/.test(w.text) && w.text.includes(RAW_BAKE), 'round 2 writes from the weak line, the prompt, and your first words');
+  expect(p.calls.filter((c) => c.intake).length === intakes, 'no second Read: the questions come from the small call');
+  expect(/Round 2/.test(await p.textContent('#madeBy')) && await p.isHidden('#qa'), 'the card should say Round 2 and the questions step away');
+  await p.waitForSelector('#roundResult:has-text("3.0 → 5.0")', { timeout: 5000 });
+  const stored = await p.evaluate(() => JSON.stringify(Object.assign({}, localStorage)) + JSON.stringify(Object.assign({}, sessionStorage)));
+  expect(!/18 kids/.test(stored) && !/school event planner/.test(stored), 'the answers are never saved');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ask me: if the question call fails the phone asks its own questions; Back returns round 1 untouched; all skipped still rewrites; no button when the tip is about made-up facts', async () => {
+  const low = { craft: 3.4, rearranged: false, invented: false, missing: ['steps'] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low), tipFail: true, labelFix: 'First prompt' });
+  await p.waitForSelector('#guideBtn', { timeout: 8000 });
+  expect(/Tip: It could say how-to steps\.$/.test((await p.textContent('#qualityCheck .tip')).trim()) && /One quick question/.test(await p.textContent('#guideHint')), 'one weak spot, one question');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .q >> text=Do you want how-to steps?');
+  expect((await p.$$('#qaList .chips button:not(.skip)')).length === 3, 'the phone question comes with answers to tap');
+  await p.click('#roundBackAsk');
+  expect(await p.isVisible('#result') && await p.isHidden('#qa') && await p.inputValue('#output') === 'First prompt' && await p.isVisible('#guideBtn'), 'Back brings round 1 back as it was');
+  expect(await p.inputValue('#thoughts') === RAW_BAKE, 'your words stay in the box');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .chips .skip');
+  await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaGo.ready'); await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT with a $40 budget', null, { timeout: 15000 });
+  await done(p);
+  const w = p.calls.filter((c) => !c.intake).find((c) => /ROUND 2: THE PERSON REWORKED/.test(c.text));
+  expect(w && !/Do you want how-to steps/.test(w.text), 'a skipped question adds nothing to the writer');
+  const q = await reworkPage({ grade: { craft: 3, rearranged: false, invented: true, missing: [] } });
+  expect(/didn't add anything you didn't say/.test(await q.textContent('#qualityCheck .tip')) && !(await q.$('#guideBtn')) && await q.isVisible('#reworkBtn'), 'a made-up fact is yours to check, so no questions, only Rework');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('staging switches: #lowgrade makes the first Quality check read under the bar so Ask me, then rewrite can be tried, round 2 gets its real grade, and live ignores it (v2.1.39)', async () => {
+  const high = { craft: 5, rearranged: false, invented: false, missing: [] };
+  const again = (ask) => (/ROUND 2: THE PERSON REWORKED|PROMPT TO FIX:[\s\S]*REWORKED PROMPT/.test(ask) ? 'REWORKED PROMPT, sharper this time' : 'First prompt');
+  const staging = process.env.APP_CHANNEL === 'staging';
+  const p = await page({ intake: { questions: [] }, write: 'First prompt', writeFn: again, grade: high, hash: '#lowgrade' });
+  await p.waitForTimeout(300);
+  expect(/Low grade test is on/.test(await p.evaluate(() => document.body.textContent)) === staging, 'the switch should say it is on, on staging only');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await withKey(p); await p.dispatchEvent('#gkey', 'input');
+  await p.fill('#thoughts', RAW_BAKE); await p.click('#build'); await done(p);
+  await p.waitForSelector('#qualityCheck', { timeout: 5000 });
+  if (!staging) {
+    expect(!(await p.$('#guideBtn')) && /Ready to go/.test(await p.textContent('#qualityCheck')), 'live must ignore #lowgrade');
+    return;
+  }
+  expect(/3\.4/.test(await p.textContent('#qualityCheck')) && /who the AI is and background/.test(await p.textContent('#qualityCheck .tip')), 'round 1 should read under the bar');
+  expect(p.grades.length >= 1, 'the grader still runs');
+  await p.click('#guideBtn');
+  await p.waitForSelector('#qaList .chips .skip'); await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaList .chips .skip'); await p.click('#qaList .chips .skip');
+  await p.waitForSelector('#qaGo.ready'); await p.click('#qaGo');
+  await p.waitForFunction(() => document.getElementById('output').value === 'REWORKED PROMPT, sharper this time', null, { timeout: 15000 });
+  await p.waitForSelector('#roundResult:has-text("3.4 → 5.0")', { timeout: 8000 });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('rework: Edit first puts the prompt in the box with one weak line, builds from your first words and answers plus your edits, and shows Round 2 with a running total', async () => {
   const low = { craft: 2, rearranged: true, invented: false, missing: [] }, high = { craft: 5, rearranged: false, invented: false, missing: [] };
   const p = await reworkPage({ writeFn: round2, gradeFn: (ask) => (/REWORKED PROMPT/.test(ask) ? high : low) });
@@ -3606,7 +3731,7 @@ await check('rework: Back to round 1 from the box, and a failed round 2 brings r
   await q.clock.install();
   await q.click('#build');
   for (let i = 0; i < 130 && !(await q.isVisible('#notice-result:has-text("Taking longer")')); i++) { await q.clock.runFor(1000); await q.waitForTimeout(20); }
-  await q.click('#notice-result button:has-text("Switch to quick")');
+  await q.click('#quickChip');
   for (let i = 0; i < 40 && !(await q.isVisible('#notice-result:has-text("Round 2 didn")')); i++) { await q.clock.runFor(500); await q.waitForTimeout(20); }
   expect(await q.inputValue('#output') === 'First prompt' && await q.inputValue('#thoughts') === RAW_BAKE, 'a failed round 2 should keep round 1');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
@@ -3740,14 +3865,23 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
   expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
   expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
-  // Again, with one piece changed on the first device: 1 updated, 1 already here, no duplicates
+  // Again, with one piece changed on the first device: 1 already here, and the changed one is never overwritten without asking (v2.1.37, #50)
   await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'U10 Rockets, practice moved to Sunday 10am at Elm Park.');
   await p.click('#contextSend');
   await q.evaluate((n) => navigator.clipboard.writeText(n), await p.evaluate(() => navigator.clipboard.readText()));
   await q.check('#contextKeep');
   await q.click('#contextIn');
-  await q.waitForSelector('#contextSyncMsg:has-text("1 updated")');
-  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')) && (await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
+  await q.waitForSelector('#contextSyncMsg:has-text("1 needs your pick")');
+  await q.waitForSelector('#saveCtx[open] #ctxOverlapLine');
+  expect(/1 already here/.test(await q.textContent('#contextSyncMsg')), 'the unchanged piece is just counted: ' + await q.textContent('#contextSyncMsg'));
+  expect(/Saturday/.test(await q.textContent('#ctxOld')) && /Sunday 10am/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
+  expect(!(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)) && !(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
+  await q.click('#ctxUpdate');
+  await q.waitForSelector('#ctxDoneLine:has-text("1 updated")');
+  expect(/1 already here/.test(await q.textContent('#ctxDoneLine')), 'the summary counts both: ' + await q.textContent('#ctxDoneLine'));
+  await q.click('#ctxDone');
+  await q.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
   expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
   expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
   // A clipboard without the code: the paste box opens, and junk says what to do
@@ -3813,6 +3947,9 @@ await check('my context compact (v2.1.28): recently used pieces go first, only 3
   }
   await p.click('#contextEditor button:text-is("Done")');
   const chips = () => p.$$eval('#contextRow .ctxchip', (l) => l.map((b) => b.title.replace(/ · over.*$/, '')));
+  /* v2.1.38: pieces you just wrote pick themselves (and a picked piece always shows). Picks are per visit, so a reload starts unpicked. */
+  expect((await chips()).length === 5, 'the five pieces just written are all picked, so all show');
+  await p.reload();
   let c = await chips();
   expect(c.length === 3 && await p.isVisible('#contextMore') && /\+2 more/.test(await p.textContent('#contextMore')), 'only 3 chips plus +2 more, got ' + JSON.stringify(c));
   expect(c[0].startsWith('# Corner bakery'), 'never-used pieces show newest first, got ' + JSON.stringify(c));
@@ -4650,12 +4787,12 @@ await check('quality grade: docked below the bar when the number check flags', a
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
-await check('grader bench: the Saturday example runs first, and the number check docks it like a live run', async () => {
+await check('grader bench: the Saturday example (a spare, sent on its own) gets docked by the number check like a live run', async () => {
   const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
-  const sat = bench.cases[0];
-  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
+  const sat = bench.cases.find((c) => c.id === 'B9');   /* a spare since 11/14, still the number check's example */
+  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'B9 should be the Saturday example');
   const p = await page({ gradeFn: (ask) => (ask.includes(sat.prompt) ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : null) });
-  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [sat] }) }));
+  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [{ ...sat, spare: false }] }) }));
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
   await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
@@ -4749,7 +4886,8 @@ await check('stuck nudge: a quiet box gets one sentence to finish; tap starts th
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'it should come back after another quiet stretch');
   expect(!(await p.$('#stuckClose')), 'no ✕: a stray tap must not switch the nudges off');
-  await p.type('#thoughts', ' more'); await p.waitForTimeout(300);
+  await p.type('#thoughts', ' more');
+  await p.waitForSelector('#stuck', { state: 'hidden', timeout: 2000 }).catch(() => {});   /* same fade as above: the 11/11 staging run read it mid-fade */
   expect(!(await p.isVisible('#stuck')), 'typing should tuck it away');
   await p.waitForTimeout(6600);
   expect(await p.isVisible('#stuck'), 'nudges stay: it comes back after every quiet stretch');
@@ -4847,11 +4985,13 @@ await check('snap to cooking: Build closes the keyboard and brings the cooking r
   await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
   await p.evaluate(() => scrollTo(0, 0)); await p.focus('#thoughts');
   await p.evaluate(() => document.getElementById('form').requestSubmit());
-  await p.waitForTimeout(900);
+  /* Polls instead of one fixed wait (promote check 11/14: a slow runner read the scroll before it landed) */
+  const seen = (sel) => inView(p, sel).catch(() => false);
+  const soon = async (sel, ms) => { for (let t = 0; t < ms; t += 150) { if (await seen(sel)) return true; await p.waitForTimeout(150); } return seen(sel); };
+  await p.waitForTimeout(300);
   expect(await p.evaluate(() => document.activeElement.id !== 'thoughts'), 'Build should close the keyboard');
-  expect(await inView(p, '#buildTrack'), 'while it reads, the cooking ring under Build should be on screen');
-  await p.waitForTimeout(1600);
-  expect(await inView(p, '#resultTrack .cook'), 'while it writes, the prompt card cooking ring should be on screen');
+  expect(await soon('#buildTrack', 1200), 'while it reads, the cooking ring under Build should be on screen');
+  expect(await soon('#resultTrack .cook', 4000), 'while it writes, the prompt card cooking ring should be on screen');
   p.release(); await done(p);
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -5021,6 +5161,28 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(/0 of 7 checked/.test(await p.textContent('#labVerdict')), 'second tap should clear every result');
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   });
+  /* Test lab report 11/11 (v2.1.39): "just give me a hyperlink to click". */
+  await check('test lab: a check that names a staging test link shows it as a link to tap, which turns the test on without a reload and keeps the lab tab for the way back', async () => {
+    const p = await page();
+    await p.route(/releases\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ releases: [
+      { version: '9.0.1', title: 'One', items: ['x'], checks: [{ say: 'Open the staging link that ends in #flashbusy-slowtest, tap Normal, and build this note.', see: 'A note shows' }, { say: 'Check plain, backlog #51', see: 'shows' }] },
+      { version: '9.0.0', title: 'Live', items: ['x'], checks: [{ say: 'Old', see: 'old' }] }] }) }));
+    await p.goto(BASE + '?live=9.0.0#testlab');
+    await p.waitForSelector('#labVerdict'); await p.click('#labQuick');
+    const links = await p.$$eval('#labLinks a', els => els.map(e => e.getAttribute('href') + '|' + e.textContent.trim()));
+    expect(links.length === 1 && links[0] === '#flashbusy-slowtest|🔗 Open #flashbusy-slowtest', 'the test link should be one tappable link, got: ' + links.join(', '));
+    await p.evaluate(() => { window.__sameDoc = true; });
+    await p.click('#labLinks a');
+    await p.waitForSelector('#notice-form:has-text("Busy Flash + 10x timing test is on")');
+    expect(await p.evaluate(() => window.__sameDoc === true), 'the link must not reload the page');
+    await p.waitForSelector('#labPanel', { state: 'detached' });
+    expect(await p.isVisible('#labTab'), 'the lab tucks away so you can do the check, and its tab stays');
+    await p.click('#labTab');
+    expect(/flashbusy-slowtest/.test(await p.textContent('#labStep')), 'the tab brings you back to the same check');
+    await p.click('#labWorks');
+    expect(/Check plain/.test(await p.textContent('#labStep')) && !(await p.$('#labLinks')), 'a backlog number like #51 is not a link');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  });
 } else {
   await check('live build: no Test lab, even with #testlab and the Ideas tab on', async () => {
     const p = await page();
@@ -5037,6 +5199,589 @@ if (process.env.APP_CHANNEL === 'staging') {
     expect(raw.includes('stp-probe') && !raw.some(k => k.startsWith('stg:')), 'live keys should be unprefixed, got: ' + raw.join(', '));
   });
 }
+
+
+/* v2.1.37: #51 Quick version all through the build, #50 Save as context. */
+await check('quick chip: ⚡ Quick version stays under the tracker for the whole build, a tap during Write stops Flash and the quick model writes, and it steps aside for the finishing checks (#51)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const writers = (pg) => pg.calls.filter(c => !c.intake).map(c => c.model);
+  // 1. During Write: the chip is there from the start (no waiting for 2:00), and a tap hands the write to the quick model
+  const p = await page({ intake, slow });
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  await p.waitForSelector('#waitRow #quickChip', { timeout: 6000 });
+  const label = await p.textContent('#quickChip');
+  expect(/Quick version/.test(label) && /\(faster, lighter\)/.test(label), 'the chip keeps its honest label: ' + label);
+  expect(!(await p.$('#quickCount')), 'no countdown before 2:00');
+  expect(!(await p.getAttribute('#quickChip', 'class') || '').includes('primary'), 'never the main button');
+  expect(await p.evaluate(() => { const r = document.getElementById('waitRow'), t = document.getElementById('resultTrack'); return !!(t.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING) && r.getBoundingClientRect().height > 0; }), 'the chip sits right under the tracker, in view while it cooks');
+  expect(writers(p).length >= 1 && !writers(p).some(m => /lite/.test(m)), 'Flash is writing first: ' + writers(p).join());
+  await p.click('#quickChip');
+  await done(p);
+  expect(/lite/.test(writers(p).pop()) && await p.inputValue('#output') === 'THE PROMPT', 'the quick model writes it after the tap: ' + writers(p).join());
+  expect(!(await p.$('#waitRow')) && !(await p.$('#quickChip')), 'the chip steps away at Ready');
+  expect(!/The quick model wrote this one/.test(await p.evaluate(() => (document.getElementById('notice-result') || {}).textContent || '')), 'a tap needs no explaining');
+  if (p.releaseSlow) p.releaseSlow();
+  await p.waitForTimeout(400);
+  expect(await p.inputValue('#output') === 'THE PROMPT', 'a late Flash answer must not replace the quick prompt');
+  // 2. Written, with Polish still going: nothing left to speed up, so the chip becomes a quiet line
+  const RAW = 'ok so I want to plan a trip to Tokyo with my sister next spring. We have about 5 days and maybe $2,000 total. She loves anime and I love ramen. Also I get motion sick on long bus rides.';
+  const BAD = 'You are an experienced Japan travel planner.\nContext: My sister and I are planning a 5-day trip to Tokyo next spring with a total budget of $2,000. She loves anime and I love ramen.\nTask: Create a day-by-day itinerary that balances anime spots and ramen shops, with a rough daily budget of $450.\nStart right away.';
+  const q = await page({ intake, write: BAD, repairDelay: 1500 });
+  await withKey(q); await q.fill('#thoughts', RAW); await q.click('#build');
+  await q.waitForSelector('#quickPast', { timeout: 8000 });
+  expect(!(await q.$('#quickChip')), 'no Quick version button once the prompt is written');
+  await done(q);
+  expect(!(await q.$('#quickPast')), 'the line goes away at Ready');
+  // 3. Quick mode is already the quick version: no chip
+  const r = await page({ intake, slow: ['gemini-3.5-flash-lite'] });
+  await withKey(r); await r.check('#quickMode');
+  await r.fill('#thoughts', 'plan my roast week'); await r.click('#build');
+  for (let i = 0; i < 40 && !r.calls.some(c => !c.intake); i++) await r.waitForTimeout(100);
+  await r.waitForTimeout(200);
+  expect(!(await r.$('#quickChip')) && !(await r.$('#quickSwitch')), 'no Quick version chip in Quick mode');
+  if (r.releaseSlow) r.releaseSlow();
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: Read spots background with no extra call, the nudge shows under the tracker while it writes and under the result after, and the interview saves a piece (#50)', async () => {
+  const cand = { title: 'Bean roasting', why: 'You explained how your roast week works.' };
+  const intake = { title: 'Roast Week Plan', need: 'Plan my roast week', category: 'Work', complexity: 'simple', questions: [], context_candidate: cand };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const RAW = 'ok so I run the roaster at a small coffee shop, we roast on Tuesday and Friday, two blends, and I need a plan for this week';
+  const interview = [{ covered: ['what', 'facts'], done: false, part: 'goals', question: 'What do you usually want help with?' }, { covered: ['what', 'facts', 'goals'], done: true, part: '', question: '' }];
+  const IRON = 'What this is: I run the roaster at a small coffee shop.\nKey facts:\n- We roast on Tuesday and Friday\n- Two blends\nGoals: A weekly roast plan I can follow.';
+  const p = await page({ intake, slow, interview, iron: IRON });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build');
+  // 1. While it writes: the offer sits under the tracker, next to the Quick version chip
+  await p.waitForSelector('#waitRow #ctxNudgeWait', { timeout: 6000 });
+  expect(/Bean roasting/.test(await p.textContent('#ctxNudgeWait')) && /roast week/.test(await p.textContent('#ctxNudgeWait')), 'the card names what it spotted: ' + await p.textContent('#ctxNudgeWait'));
+  expect(await p.isVisible('#waitRow #quickChip'), 'the Quick version chip is right there with it');
+  const reads = p.calls.filter(c => c.intake);
+  expect(reads.length === 1 && /context_candidate/.test(reads[0].text) && !p.interviews && !p.irons, 'spotting it rides the Read call: no extra request');
+  // 2. The prompt finishes first: the offer moves under the result
+  p.releaseSlow();
+  await done(p);
+  expect(!(await p.$('#ctxNudgeWait')) && await p.isVisible('#ctxNudge'), 'the offer moves under the result');
+  expect(await p.evaluate(() => !!(document.getElementById('output').compareDocumentPosition(document.getElementById('ctxNudge')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'it sits below the prompt');
+  // 3. The interview: one question at a time, a Covered so far checklist, Save what we have always there
+  await p.click('#ctxNudgeGo');
+  await p.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("What do you usually want help with?")', { timeout: 8000 });
+  expect(await p.inputValue('#ctxTitleIn') === 'Bean roasting', 'the title starts as what Read called it');
+  expect((await p.$$eval('#ctxCovered li', (l) => l.length)) === 5 && (await p.$$eval('#ctxCovered li.on', (l) => l.map((x) => x.dataset.part).join())) === 'what,facts', 'the checklist is the five parts, with what your words cover ticked');
+  expect(await p.isVisible('#ctxSaveNow') && await p.isEnabled('#ctxSaveNow'), 'Save what we have is on screen from the first question');
+  expect(p.interviews.length === 1 && p.interviews[0].text.includes('Tuesday and Friday') && p.interviews[0].json && /lite/.test(p.interviews[0].model), 'the interview reads your words on Flash-Lite');
+  await p.fill('#ctxAnswer', 'a weekly plan I can follow');
+  await p.click('#ctxNext');
+  await p.waitForSelector('#ctxPiece', { timeout: 8000 });
+  expect(p.interviews.length === 2 && /a weekly plan I can follow/.test(p.interviews[1].text), 'it checks again after each answer and stops when nothing important is missing');
+  expect(p.irons.length === 1 && /a weekly plan I can follow/.test(p.irons[0].text) && await p.inputValue('#ctxPiece') === IRON, 'one iron pass writes the labeled note');
+  // 4. Save: a normal piece, following Save on this phone; picked for the next prompt, not this one
+  await p.click('#ctxSave');
+  await p.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /stp-context/.test(k))), 'with Save on this phone off, nothing is written to the phone');
+  await p.check('#ctxKeepHere');
+  expect(await p.evaluate(() => /Tuesday and Friday/.test(localStorage.getItem('stp-context') || '')), 'turning Save on this phone on keeps it, like any piece');
+  await p.click('#ctxDone');
+  await p.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect(!(await p.$('#ctxNudge')), 'the offer is done once it is saved');
+  expect(await p.isHidden('#dockBuild') && await p.isVisible('#copy'), 'saving never turns a finished prompt into build again');
+  await menuTap(p, '#reset');
+  await p.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Bean roasting")', { timeout: 3000 });
+  // 5. Quick mode gets the offer too, and Not now saves nothing
+  const q = await page({ intake });
+  await withKey(q); await q.check('#quickMode');
+  await q.fill('#thoughts', RAW); await q.click('#build'); await done(q);
+  await q.waitForSelector('#ctxNudge', { timeout: 3000 });
+  await q.click('#ctxNudgeLater');
+  await q.waitForFunction(() => !document.getElementById('ctxNudge'));
+  expect(!q.interviews && await q.evaluate(() => !Object.keys(localStorage).some((k) => /stp-context/.test(k))) && !(await q.$('#contextRow .ctxchip')), 'Not now: no call, nothing saved');
+  // 7 (below) checks run stats. 6. No candidate from Read: no card
+  const r = await page({ intake: { ...intake, context_candidate: null } });
+  await withKey(r); await r.fill('#thoughts', RAW); await r.click('#build'); await done(r);
+  expect(!(await r.$('#ctxNudge')) && !(await r.$('#ctxNudgeWait')), 'no offer when Read found nothing worth saving');
+  // 7. Run stats: how far the offer got rides the run record as one fixed label, never words
+  const runsOf = async (pg) => { const sent = []; await pg.route('https://relay.test/report/run', async (rt) => { const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' }; if (rt.request().method() === 'OPTIONS') return rt.fulfill({ status: 204, headers: h }); sent.push(JSON.parse(rt.request().postData()).run); return rt.fulfill({ status: 201, headers: h, body: '{"ok":true}' }); }); return sent; };
+  const s1 = await page({ intake, interview: [{ covered: ['what'], done: true, part: '', question: '' }], iron: IRON });
+  const sent1 = await runsOf(s1);
+  await s1.click('#moreOpts summary'); await s1.check('#statsToggle');
+  await withKey(s1); await s1.check('#quickMode'); await s1.fill('#thoughts', RAW); await s1.click('#build'); await done(s1);
+  await s1.click('#ctxNudgeGo'); await s1.waitForSelector('#ctxPiece', { timeout: 8000 }); await s1.click('#ctxSave'); await s1.waitForSelector('#ctxDoneLine'); await s1.click('#ctxDone');
+  await s1.click('#copy'); await s1.waitForTimeout(400);
+  expect(sent1.length === 1 && sent1[0].ctx_nudge === 'saved' && !/roaster|Tuesday|Bean/.test(JSON.stringify(sent1[0])), 'a saved offer is logged as a label only: ' + JSON.stringify(sent1[0] && sent1[0].ctx_nudge));
+  const s2 = await page({ intake });
+  const sent2 = await runsOf(s2);
+  await s2.click('#moreOpts summary'); await s2.check('#statsToggle');
+  await withKey(s2); await s2.check('#quickMode'); await s2.fill('#thoughts', RAW); await s2.click('#build'); await done(s2);
+  await s2.click('#ctxNudgeLater'); await s2.click('#copy'); await s2.waitForTimeout(400);
+  expect(sent2.length === 1 && sent2[0].ctx_nudge === 'not now', 'Not now is logged: ' + JSON.stringify(sent2[0] && sent2[0].ctx_nudge));
+  expect(await q.evaluate(() => !localStorage.getItem('stp-testlog')), 'with run stats off nothing about the offer is kept');
+  expect(!s1.errors.length && !s2.errors.length, 'page errors: ' + [s1, s2].flatMap(x => x.errors).join('; '));
+  expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors: ' + [p, q, r].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: an ironed note with a number you never said falls back to your own words, no key uses the five fixed questions, and an overlap asks Update, Keep both, or Skip (#50)', async () => {
+  const RAW = 'ok so I run the roaster at a small coffee shop, we roast on Tuesday and Friday, two blends, and I need a plan for this week';
+  const intake = { title: 'Roast Week Plan', need: 'Plan my roast week', category: 'Work', complexity: 'simple', questions: [] };
+  // 1. From the result's ⋯ (no nudge needed). The iron pass invents a number: the phone throws it out and uses your words
+  const p = await page({ intake, interview: [{ covered: ['what'], done: true, part: '', question: '' }], iron: 'What this is: I run the roaster.\nKey facts:\n- We roast 40 batches a week' });
+  await withKey(p); await p.fill('#thoughts', RAW); await p.click('#build'); await done(p);
+  await menuTap(p, '#dockSaveCtx');
+  await p.waitForSelector('#saveCtx[open] #ctxPiece', { timeout: 8000 });
+  const piece = await p.inputValue('#ctxPiece');
+  expect(p.irons.length === 1 && !/40/.test(piece) && /^What this is:/.test(piece) && piece.includes('Tuesday and Friday'), 'a number you never said never gets saved: ' + piece);
+  expect((await p.inputValue('#ctxTitleIn')).length > 0 && await p.isVisible('#ctxTitleHint'), 'a name is suggested from your words when you gave none (11/14)');
+  await p.fill('#ctxTitleIn', '');
+  await p.click('#ctxSave');
+  expect(/short name/.test(await p.textContent('#saveCtx .err')), 'a piece you emptied the name on needs one before it saves');
+  await p.fill('#ctxTitleIn', 'Roaster');
+  await p.click('#ctxSave');
+  await p.waitForSelector('#ctxDoneLine');
+  await p.click('#ctxDone');
+  // 2. A Flash-Lite call that fails: the fixed questions take over
+  const f = await page({ intake, interviewFail: true });
+  await withKey(f); await f.fill('#thoughts', RAW); await f.click('#build'); await done(f);
+  await menuTap(f, '#dockSaveCtx');
+  await f.waitForSelector('#ctxQuestion:has-text("what is this")', { timeout: 20000 });
+  // 3. No key, from the My context editor: five fixed questions, your own words under the labels
+  const q = await page();
+  await q.click('#contextNew');
+  await q.click('#contextGuided');
+  await q.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  expect(await q.isDisabled('#ctxSaveNow'), 'nothing to save before the first answer');
+  await q.fill('#ctxTitleIn', 'Soccer team');
+  await q.fill('#ctxAnswer', 'U10 Rockets, the team I coach'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("always know")');
+  expect((await q.$$eval('#ctxCovered li.on', (l) => l.map((x) => x.dataset.part).join())) === 'what' && await q.isEnabled('#ctxSaveNow'), 'each answer ticks its part');
+  await q.fill('#ctxAnswer', 'Practice Saturday 9am at Elm Park'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("get done")'); await q.click('#ctxSkip');
+  await q.waitForSelector('#ctxQuestion:has-text("changes often")'); await q.fill('#ctxAnswer', 'nothing'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("leave out")'); await q.click('#ctxSkip');
+  await q.waitForSelector('#ctxPiece');
+  const own = await q.inputValue('#ctxPiece');
+  expect(own === 'What this is:\nU10 Rockets, the team I coach\n\nKey facts:\nPractice Saturday 9am at Elm Park', 'your words under the labels, skipped and "nothing" parts left out: ' + JSON.stringify(own));
+  expect(!q.calls.length && !q.interviews && !q.irons, 'no key, no calls');
+  await q.click('#ctxSave');
+  await q.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  expect(/picked for your next prompt\./.test(await q.textContent('#saveCtx')), 'with no prompt on screen it is picked right away');
+  await q.click('#ctxDone');
+  await q.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Soccer team")');
+  // 4. The same title again with different words: old vs new, and nothing changes until you pick
+  const again = async (words) => {
+    await q.click('#contextGuided');
+    await q.waitForSelector('#saveCtx[open] #ctxQuestion');
+    await q.fill('#ctxTitleIn', 'soccer team');
+    await q.fill('#ctxAnswer', words); await q.click('#ctxNext');
+    await q.waitForSelector('#ctxQuestion:has-text("always know")');
+    await q.click('#ctxSaveNow');
+    await q.waitForSelector('#ctxPiece'); await q.click('#ctxSave');
+    await q.waitForSelector('#ctxOverlapLine');
+  };
+  await again('U10 Rockets moved to Sunday');
+  expect(/Saturday 9am/.test(await q.textContent('#ctxOld')) && /moved to Sunday/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 1, 'nothing changes until you pick');
+  await q.click('#ctxBoth');
+  await q.waitForSelector('#ctxDoneLine'); await q.click('#ctxDone');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.map((c) => c.textContent.replace('✓ ', '').trim()).sort().join('|'))) === 'Soccer team|soccer team (new)', 'Keep both saves the new one under its own title');
+  await again('U10 Rockets, now at Oak Field');
+  await q.click('#ctxSkipOverlap');
+  await q.waitForFunction(() => !document.getElementById('saveCtx').open);
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
+  await again('U10 Rockets, now at Oak Field');
+  await q.click('#ctxUpdate');
+  await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
+  expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
+});
+
+await check('save as context: suggests a name right after your first answer, before the rest of the questions, and never replaces a name you typed (Test lab 11/14)', async () => {
+  // 1. No key, from the My context editor: the name comes from your first answer, no call
+  const q = await page();
+  await q.click('#contextNew');
+  await q.click('#contextGuided');
+  await q.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  expect(await q.inputValue('#ctxTitleIn') === '' && /first answer/.test(await q.getAttribute('#ctxTitleIn', 'placeholder')) && !(await q.isVisible('#ctxTitleHint')), 'no name yet before the first answer, and the box says one is coming');
+  await q.fill('#ctxAnswer', 'um so it\'s the U10 Rockets, the team I coach'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("always know")');
+  expect(await q.inputValue('#ctxTitleIn') === 'U10 Rockets' && await q.isVisible('#ctxTitleHint'), 'after the first answer a name is suggested from your words: ' + await q.inputValue('#ctxTitleIn'));
+  await q.fill('#ctxTitleIn', 'Coaching');
+  expect(!(await q.isVisible('#ctxTitleHint')), 'once you type, the Suggested note goes away');
+  await q.fill('#ctxAnswer', 'Practice Saturday 9am at Elm Park'); await q.click('#ctxNext');
+  await q.waitForSelector('#ctxQuestion:has-text("get done")');
+  await q.click('#ctxSaveNow');
+  await q.waitForSelector('#ctxPiece');
+  expect(await q.inputValue('#ctxTitleIn') === 'Coaching', 'your own name is kept to the end');
+  await q.click('#ctxSave');
+  await q.waitForSelector('#ctxDoneLine:has-text("Saved to My context")');
+  await q.click('#ctxDone');
+  await q.waitForSelector('#contextRow .ctxchip:has-text("Coaching")');
+  // 2. With a key: the interview call names it after the first answer, and a later turn never swaps it
+  const p = await page({ interview: [
+    { covered: ['what'], done: false, part: 'facts', question: 'Who is on the team and when do you practice?', title: 'Saturday soccer team.' },
+    { covered: ['what', 'facts'], done: false, part: 'goals', question: 'What do you usually need help with?', title: 'Rockets coaching notes' },
+    { covered: ['what', 'facts', 'goals'], done: true, part: '', question: '' }
+  ] });
+  await withKey(p);
+  await p.click('#contextNew');
+  await p.click('#contextGuided');
+  await p.waitForSelector('#saveCtx[open] #ctxQuestion:has-text("what is this")');
+  await p.fill('#ctxAnswer', 'the kids soccer team I coach on weekends'); await p.click('#ctxNext');
+  await p.waitForSelector('#ctxQuestion:has-text("Who is on the team")');
+  expect(await p.inputValue('#ctxTitleIn') === 'Saturday soccer team' && await p.isVisible('#ctxTitleHint'), 'the AI name shows before the second question, cleaned: ' + await p.inputValue('#ctxTitleIn'));
+  expect(/"title"/.test(p.interviews[0].text), 'the interview call asks for a name, no extra call');
+  await p.fill('#ctxAnswer', 'Eight kids, practice Saturday 9am'); await p.click('#ctxNext');
+  await p.waitForSelector('#ctxQuestion:has-text("usually need help")');
+  expect(await p.inputValue('#ctxTitleIn') === 'Saturday soccer team', 'a later turn never swaps the name while you look at it');
+  expect(p.interviews.length === 2, 'still one call per answer: ' + p.interviews.length);
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [p, q].flatMap(x => x.errors).join('; '));
+});
+
+/* v2.1.38 Fix session: idea mw9q183odo7y, #5 Worked great, #37 leave warning. */
+await check('my context: a piece you just added picks itself once it has words, once only, and brought-in pieces stay unpicked (v2.1.38)', async () => {
+  const p = await page();
+  await p.click('#contextNew');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtitle', 'Pottery class');
+  expect(!(await p.$('#contextRow .ctxchip')), 'a title alone is not a piece yet, nothing picked');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Thursday nights at Kiln House, wheel throwing, 8 students.');
+  await p.waitForSelector('#contextRow .ctxchip[aria-pressed="true"]:has-text("Pottery class")');
+  expect(/1 added to this prompt/.test(await p.textContent('#contextCount')), 'it counts as added to this prompt: ' + await p.textContent('#contextCount'));
+  await p.click('#contextEditor button:text-is("Done")');
+  await p.fill('#thoughts', 'help me write a welcome note'); await p.click('#build'); await done(p);
+  expect(/Kiln House/.test(await p.inputValue('#output')), 'the new piece goes into the prompt without tapping its chip');
+  // Untick it, then edit it: it stays unticked (it only picks itself once)
+  await p.click('#contextRow .ctxchip:has-text("Pottery class")');
+  await p.click('#contextEdit');
+  await p.fill('#contextEditor [data-id] >> nth=0 >> .ctxtext', 'Thursday nights at Kiln House, wheel throwing, 9 students.');
+  expect(await p.getAttribute('#contextRow .ctxchip:has-text("Pottery class")', 'aria-pressed') === 'false', 'unticked stays unticked when you edit it');
+  // Bring in: pieces from a note are never picked for you
+  const note = 'Speak to Prompt · My context · 1 piece · 11/11\nhow\n\n## Run club\nSaturday 7am at the pier\n\n~ end of My context ~';
+  await p.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await p.click('#contextIn');
+  await p.waitForSelector('#contextRow .ctxchip:has-text("Run club")');
+  expect(await p.getAttribute('#contextRow .ctxchip:has-text("Run club")', 'aria-pressed') === 'false', 'a brought-in piece is not picked for you');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('run stats: 👍 Worked great shows only with run stats on, adds a yes to the run (or a follow-up when the run already went), and never words (#5)', async () => {
+  const hook = async (pg) => { const sent = []; await pg.route('https://relay.test/report/run', async (rt) => { const h = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type', 'access-control-allow-methods': 'POST, OPTIONS', 'content-type': 'application/json' }; if (rt.request().method() === 'OPTIONS') return rt.fulfill({ status: 204, headers: h }); sent.push(JSON.parse(rt.request().postData()).run); return rt.fulfill({ status: 201, headers: h, body: '{"ok":true}' }); }); return sent; };
+  // Run stats off: no button
+  const o = await page();
+  await o.fill('#thoughts', 'my secret memo'); await o.click('#build'); await done(o);
+  expect(!(await o.$('#workedBtn')), 'no Worked great button while run stats is off');
+  // On: tap it before copying, and the yes rides the run
+  const p = await page();
+  const sent = await hook(p);
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', 'my secret memo'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#workedBtn') && await p.isVisible('#reportBtn'), 'Worked great sits next to Something went wrong?');
+  await p.click('#workedBtn');
+  await p.waitForSelector('#workedDone');
+  expect(!(await p.$('#workedBtn')) && sent.length === 0, 'one tap per prompt, and the run still waits for what happens next');
+  expect(/worked great/.test(await p.textContent('#testRuns')), 'the run on this device shows it: ' + await p.textContent('#testRuns'));
+  await p.click('#copy'); await p.waitForTimeout(400);
+  expect(sent.length === 1 && sent[0].worked === true && sent[0].action === 'copied' && !/secret/.test(JSON.stringify(sent[0])), 'the yes rides the run, no words: ' + JSON.stringify(sent[0]));
+  // Copy first, then tap: a small follow-up that is not a second run
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'my secret memo'); await p.click('#build'); await done(p);
+  expect(await p.isVisible('#workedBtn'), 'a new prompt gets a fresh button');
+  await p.click('#copy'); await p.waitForTimeout(400);
+  await p.click('#workedBtn'); await p.waitForTimeout(400);
+  expect(sent.length === 3 && sent[1].outcome === 'ok' && !sent[1].worked && sent[2].outcome === 'thumbs up' && sent[2].worked === true && sent[2].mode && !/secret/.test(JSON.stringify(sent[2])), 'a tap after the run went sends a follow-up: ' + JSON.stringify(sent[2]));
+  expect(!o.errors.length && !p.errors.length, 'page errors: ' + [o, p].flatMap(x => x.errors).join('; '));
+});
+
+await check('stay on screen: on iPhone and iPad, where Safari never asks before a refresh, a line says to stay on the page while it works, and computers never see it (Test lab 11/14)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const run = async (ipad) => {
+    const p = await page({ intake, slow });
+    if (ipad) { await p.addInitScript(() => { Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15' }); Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 }); }); await p.reload(); }
+    expect(!(await p.isVisible('#stayTip')), 'no line while idle');
+    await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+    for (let i = 0; i < 40 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
+    const mid = await p.isVisible('#stayTip');
+    const look = mid ? await p.$eval('#stayTip', (el) => { const cs = getComputedStyle(el); const t = el.previousElementSibling.getBoundingClientRect(), r = el.getBoundingClientRect(); if (!el.previousElementSibling.classList.contains('tracker')) return { notUnderTracker: true }; return { size: parseFloat(cs.fontSize), bg: cs.backgroundColor, gap: r.top - t.bottom }; }) : null;
+    if (look) expect(look.size >= 16 && look.bg !== 'rgba(0, 0, 0, 0)' && look.gap >= 0 && look.gap < 40, 'the line is easy to see: 16px or bigger, its own colored box, right under the tracker (Kevin 11/14): ' + JSON.stringify(look));
+    p.releaseSlow(); await done(p);
+    const after = await p.isVisible('#stayTip');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    return { mid, after, text: await p.textContent('#stayTip') };
+  };
+  const pad = await run(true);
+  expect(pad.mid && !pad.after && /Refreshing or leaving stops your prompt/.test(pad.text), 'an iPad (desktop-style Safari, touch screen) sees the line mid-build and not after: ' + JSON.stringify(pad));
+  const mac = await run(false);
+  expect(!mac.mid && !mac.after, 'a computer never sees it (it gets the Leave site? box instead)');
+});
+
+await check('stay on screen: closing or refreshing asks first only while a prompt is being written (#37)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const p = await page({ intake, slow: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'] });
+  const asks = () => p.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; });
+  expect(!(await asks()), 'no warning while idle');
+  await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+  for (let i = 0; i < 40 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
+  expect(await asks(), 'leaving mid-write asks first');
+  p.releaseSlow();
+  await done(p);
+  expect(!(await asks()), 'no warning once the prompt is ready');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Shortcut stand-in (#53, v2.1.40): dev tools can hand the Flash write to the STP Flash Backup shortcut. */
+const SC_INTAKE = { title: 'Taco night', need: 'Plan a taco night', category: 'Ideas', complexity: 'simple', questions: [] };
+const SC_NOTE = 'plan a taco night for 6 people on friday at 7 with a 60 dollar budget and my cousin is vegetarian';
+const SC_PROMPT = 'Role: You are a friendly party planner. Task: plan a taco night for 6 people on Friday at 7 with a 60 dollar budget. My cousin is vegetarian, so include a vegetarian option.';
+async function scPage(writer, opts = {}) {
+  const p = await page({ intake: SC_INTAKE, ...opts });
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await p.evaluate((w) => { localStorage.setItem('stp-dev', '1'); if (w) localStorage.setItem('stp-writer', w); localStorage.setItem('stp-gemini-key', 'FAKE'); }, writer);
+  await p.reload();
+  return p;
+}
+const scCardText = (p) => p.evaluate(() => { const n = document.getElementById('notice-result'); return n ? n.textContent : ''; });
+const scTap = (p, label) => p.click(`#notice-result button:text-is("${label}")`);
+const scStored = (p) => p.evaluate(() => localStorage.getItem('stp-sc-wait'));
+
+await check('shortcut writer: with dev tools on and Write with set to Shortcut, the Flash write goes to STP Flash Backup, comes back in the link, and Polish and Check carry on (#53)', async () => {
+  const p = await scPage('');
+  /* Write with sits under Build my prompt (dev tools only), not in More options. */
+  expect(await p.isVisible('#writerSrc') && await p.evaluate(() => !document.getElementById('moreOpts').contains(document.getElementById('writerSrc')) && !!document.getElementById('form').contains(document.getElementById('writerSrc'))), 'Write with should be by Build my prompt');
+  expect(await p.getAttribute('#writerFlash', 'aria-pressed') === 'true', 'Flash should be the default writer');
+  await p.click('#writerCloud');
+  expect(await p.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the Write with choice should be saved');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/Hand this write to STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'hand-off card missing: ' + await scCardText(p));
+  expect(!p.calls.some(c => !c.intake), 'nothing should be sent to a Flash writer');
+  expect(!(await scStored(p)), 'nothing is kept before the hand-off tap');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const link = await p.evaluate(() => window.__scOpens[0]);
+  expect(link.startsWith('shortcuts://run-shortcut?name=STP%20Flash%20Backup&input=text&text='), 'run link wrong: ' + link);
+  expect(decodeURIComponent(link.split('&text=')[1]) === BASE + '#stpback=cloud.', 'the link should carry where to come back to: ' + link);
+  const sent = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/MY NOTES:/.test(sent) && /taco night/.test(sent) && /Now write the prompt\.$/.test(sent), 'the clipboard should hold the short writer text');
+  expect(!/world-class prompt engineer|LESSONS FROM REVIEWS/.test(sent), 'the shortcut gets the short rules, not the full WRITE text');
+  expect(/Waiting for STP Flash Backup \(Cloud\)/.test(await scCardText(p)), 'waiting card missing');
+  expect(/taco night/.test(await scStored(p)), 'the build is kept for a new tab while it waits');
+  /* The shortcut is back in the same tab. */
+  await p.evaluate((t) => { location.hash = '#stpback=cloud.' + encodeURIComponent(t); }, SC_PROMPT);
+  await done(p);
+  expect(await p.inputValue('#output') === SC_PROMPT, 'the shortcut\'s prompt should show, got: ' + await p.inputValue('#output'));
+  expect(/STP Flash Backup \(Cloud\)/.test(await p.textContent('#madeBy')), 'made-by line should name the shortcut: ' + await p.textContent('#madeBy'));
+  expect(await p.evaluate(() => location.hash) === '', 'the link should be cleared');
+  expect(!(await scStored(p)), 'the kept build is deleted once the result is back');
+  expect(!p.calls.some(c => !c.intake), 'still nothing sent to a Flash writer');
+  /* One to one (v2.1.41): your core rides along in the short text, before the notes, with the must-keep list still last. */
+  await p.evaluate(() => { localStorage.setItem('stp-core', JSON.stringify({ user: 'I roast coffee for a living', soul: '- Be direct', role: 'Coach', identity: '', on: true })); });
+  await p.reload();
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const withCore = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/ABOUT ME/.test(withCore) && /I roast coffee for a living/.test(withCore) && /Coach/.test(withCore), 'your core should ride along in the short text');
+  expect(withCore.indexOf('ABOUT ME') < withCore.indexOf('MY NOTES:') && /Now write the prompt\.$/.test(withCore), 'core goes before the notes');
+  await p.evaluate(() => { document.getElementById('reset').click(); localStorage.removeItem('stp-core'); });
+  await p.reload();
+  /* ChatGPT (v2.1.41): its own link word, label, and made-by line; Cloud Pro is gone. */
+  expect(!(await p.$('#writerPro')), 'Cloud Pro was taken out');
+  await p.click('#writerGpt');
+  await p.evaluate(() => { document.getElementById('reset').click(); window.__scOpens = []; });
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/STP Flash Backup \(ChatGPT\)/.test(await scCardText(p)), 'card should name ChatGPT: ' + await scCardText(p));
+  await p.waitForTimeout(900);
+  expect(await p.evaluate(() => { const r = document.getElementById('notice-result').getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight - 80; }), 'the page should snap to the hand-off card');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/stpback%3Dchatgpt\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use ChatGPT');
+  await p.evaluate((t) => { location.hash = '#stpback=chatgpt.' + encodeURIComponent(t); }, SC_PROMPT);
+  await done(p);
+  expect(/STP Flash Backup \(ChatGPT\)/.test(await p.textContent('#madeBy')), 'made-by line should name ChatGPT: ' + await p.textContent('#madeBy'));
+  /* Dev tools off: the saved choice does nothing. */
+  await p.evaluate(() => localStorage.setItem('stp-dev', '0')); await p.reload();
+  expect(!(await p.$('#writerSrc')), 'no Write with row with dev tools off');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await done(p);
+  expect(await p.inputValue('#output') === 'THE PROMPT' && p.calls.some(c => !c.intake && c.model === 'gemini-3.8-flash'), 'with dev tools off Flash writes as usual');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('shortcut writer: a new tab picks the build up, a long result comes back by Paste, run stats tag the model, and junk offers Run again, the other model, or Flash (#53)', async () => {
+  /* 1. The shortcut opens a new tab: the build is picked up from the kept copy and deleted. */
+  const p = await scPage('device');
+  await p.click('#moreOpts summary'); await p.check('#statsToggle');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await p.waitForSelector('#notice-result');
+  expect(/STP Flash Backup \(On-Device\)/.test(await scCardText(p)), 'card should name the On-Device model');
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/stpback%3Dondevice\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link should tell the shortcut to use On-Device');
+  await p.goto(BASE + '?tab=2#stpback=ondevice.' + encodeURIComponent(SC_PROMPT));
+  await done(p);
+  expect(await p.inputValue('#output') === SC_PROMPT, 'new tab should show the shortcut\'s prompt, got: ' + await p.inputValue('#output'));
+  expect(await p.inputValue('#thoughts') === SC_NOTE, 'your words should be back in the box');
+  expect(!(await scStored(p)), 'the kept build is deleted after the new tab picks it up');
+  expect(!p.calls.some(c => !c.intake), 'no Flash write in either tab');
+  const log = await p.evaluate(() => localStorage.getItem('stp-test-log') || '');
+  expect(/shortcut-on-device/.test(log), 'run stats should tag the writer as shortcut-on-device: ' + log.slice(0, 300));
+  expect(!/taco/.test(log), 'run stats never hold words');
+  /* 2. A long result: the shortcut copies it and the card asks for one Paste tap. */
+  const q = await scPage('cloud');
+  await q.fill('#thoughts', SC_NOTE); await q.click('#build');
+  await q.waitForSelector('#notice-result');
+  await scTap(q, 'Copy and run shortcut');
+  await q.waitForFunction(() => window.__scOpens.length === 1);
+  await q.evaluate(() => { location.hash = '#stpback=cloud.STP-CLIPBOARD'; });
+  await q.waitForFunction(() => /The shortcut is done\. Tap Paste/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  await scTap(q, 'Paste result');   /* the clipboard still has what was sent: not an answer */
+  await q.waitForFunction(() => /hasn't answered yet/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  /* A cut-off answer (stops mid-sentence) is held, not used and not padded by the label fix. */
+  const stub = 'Role: Coach Context: I want to plan a taco night for 6 people on Friday at 7 with a 60 dollar budget and my cousin is vegetarian so I want to make';
+  await q.evaluate((t) => navigator.clipboard.writeText(t), stub);
+  await scTap(q, 'Paste result');
+  await q.waitForFunction(() => /looks cut off/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  expect(!q.calls.some(c => !c.intake) && !q.fixes.length, 'a cut-off answer is not used');
+  await q.evaluate((t) => navigator.clipboard.writeText(t), SC_PROMPT);
+  await scTap(q, 'Paste result');
+  await done(q);
+  expect(await q.inputValue('#output') === SC_PROMPT, 'pasted result should show');
+  /* 3. Junk comes back: nothing switches on its own, and Use Flash instead lets Flash write it. */
+  const r = await scPage('cloud');
+  await r.fill('#thoughts', SC_NOTE); await r.click('#build');
+  await r.waitForSelector('#notice-result');
+  await scTap(r, 'Copy and run shortcut');
+  await r.waitForFunction(() => window.__scOpens.length === 1);
+  await r.evaluate(() => { location.hash = '#stpback=cloud.' + encodeURIComponent('Sorry, no.'); });
+  await r.waitForFunction(() => /didn't look like a prompt/.test((document.getElementById('notice-result') || {}).textContent || ''));
+  expect(await r.inputValue('#thoughts') === SC_NOTE, 'your words stay put');
+  expect(!r.calls.some(c => !c.intake), 'no model switch on its own');
+  await scTap(r, 'Try ChatGPT');
+  await r.waitForFunction(() => window.__scOpens.length === 2);
+  expect(/stpback%3Dchatgpt\./.test(await r.evaluate(() => window.__scOpens[1])), 'Try ChatGPT should run the shortcut with that model');
+  expect(/Waiting for STP Flash Backup \(ChatGPT\)/.test(await scCardText(r)), 'the card should name ChatGPT now');
+  expect(await r.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the saved Write with choice stays');
+  await scTap(r, 'Use Flash instead');
+  await done(r);
+  expect(await r.inputValue('#output') === 'THE PROMPT' && r.calls.some(c => !c.intake && c.model === 'gemini-3.8-flash'), 'Use Flash instead should let Flash write it');
+  expect(!(await scStored(r)), 'the kept build is deleted on Use Flash instead');
+  /* 4. New prompt while waiting deletes the kept build too. */
+  const n = await scPage('cloud');
+  await n.fill('#thoughts', SC_NOTE); await n.click('#build');
+  await n.waitForSelector('#notice-result');
+  await scTap(n, 'Copy and run shortcut');
+  await n.waitForFunction(() => window.__scOpens.length === 1);
+  expect(await scStored(n), 'kept while waiting');
+  await n.evaluate(() => document.getElementById('reset').click());
+  expect(!(await scStored(n)), 'New prompt deletes the kept build');
+  for (const x of [p, q, r, n]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+/* Test lab 11/14: one Read answer that wasn't clean JSON stopped the whole Bench builder ("JSON Parse error: Property name must be a string literal"). */
+await check('bench builder: a Read answer that is broken JSON gets one retry on another model, and if that is broken too the case still preps, so the run never stops (Test lab 11/14)', async () => {
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] };
+  const run = async (intakeBad) => {
+    const p = await page({ cleanFn: unfill, intake, intakeBad });
+    await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+    await p.click('#bbBuild');
+    await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled || /Couldn't build/.test(document.getElementById('bbInfo').textContent), null, { timeout: 60000 });
+    return p;
+  };
+  // 1. The first answer is broken: one retry, on a different model, and all 6 jobs are ready
+  const p = await run(1);
+  expect(/6 jobs ready/.test(await p.textContent('#bbInfo')), 'one broken Read answer no longer stops the run: ' + await p.textContent('#bbInfo'));
+  expect(p.intakeN === 7 && p.intakeModels[1] !== p.intakeModels[0], 'the broken answer gets one retry on another model: ' + p.intakeModels.join());
+  // 2. Every answer is broken: each case still preps (without the suggested shape) and the jobs are whole
+  const q = await run(99);
+  expect(/6 jobs ready/.test(await q.textContent('#bbInfo')) && !/JSON Parse|Couldn't build/.test(await q.textContent('#bbInfo')), 'broken answers all the way down still leave 6 jobs: ' + await q.textContent('#bbInfo'));
+  expect(q.intakeN === 12, 'one retry per case, never a loop: ' + q.intakeN);
+  const st = await q.evaluate(() => JSON.parse(localStorage.getItem('stp-benchbuild')));
+  expect(st.cases.length === 6 && st.cases.every((c) => c.job && c.job.length > 200), 'every case has its job text');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [p, q].flatMap(x => x.errors).join('; '));
+});
+
+/* Test lab 11/14, first real STP Bench Runner run: B16 said "couldn't find the part to change in B10" (ChatGPT labeled it differently), and B14 ended on a bullet with no period and was called cut off. */
+await check('bench builder: the seeded flaw finds a format part however it is labeled, and a last bullet with no period is not cut off, but one that stops on "to" is (Test lab 11/14)', async () => {
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const p = await page({ cleanFn: unfill, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  await p.click('#bbBuild');
+  await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled, null, { timeout: 60000 });
+  await p.click('#bbRunSc');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  const body = (id) => `**Role**\nYou are a helpful planner for case ${id}.\n\n**Context**\nThese are the details for case ${id}, written out so the prompt reads like a real one with enough words.\n\n**Task**\nHelp me with case ${id} carefully and completely, using every detail above.`;
+  const b10 = body('B10') + '\n\n**Output format**\n- Three dinner options in a table\n- Keep it to about one screen\n\nStart right away.';
+  const b14 = body('B14') + '\n\n**Plan**\n- Practice the stop and wait drill daily\n- Reward loose leash walking right away';
+  const b15 = body('B15') + '\n\n**Plan**\n- Put 50 dollars a week into savings\n- Keep each transfer to';
+  const back = ['@@@\nB10|chatgpt\n' + b10, '@@@\nB11|chatgpt\n' + body('B11') + '\n\nFormat: a short list.', '@@@\nB12|cloud\n' + body('B12') + '.', '@@@\nB13|cloud\n' + body('B13') + '.', '@@@\nB14|ondevice\n' + b14, '@@@\nB15|ondevice\n' + b15].join('\n');
+  await p.evaluate((t) => navigator.clipboard.writeText(t), back);
+  await p.evaluate(() => { location.hash = '#benchback'; });
+  await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /ready\./.test(document.getElementById('bbInfo').textContent) && /of 8 ready/.test(document.getElementById('bbOut').textContent), null, { timeout: 30000 });
+  const st = await p.evaluate(() => JSON.parse(localStorage.getItem('stp-benchbuild')));
+  const get = (id) => st.cases.concat(st.seeded).find((c) => c.id === id);
+  expect(!get('B14').err, 'a last bullet with no period is a finished answer: ' + get('B14').err);
+  expect(/cut off/.test(get('B15').err || ''), 'a last bullet that stops on "to" is still cut off: ' + JSON.stringify([get('B15').err, (get('B15').prompt || '').slice(-80)]));
+  const b16 = get('B16');
+  expect(!b16.err && !/Output format|one screen|in a table/.test(b16.prompt) && /Start right away\./.test(b16.prompt) && /\*\*Task\*\*/.test(b16.prompt), 'B16 drops the **Output format** heading and its bullets, and keeps the rest: ' + (b16.err || b16.prompt.slice(-160)));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* Bench builder (#54, v2.1.41): new grader bench cases through the STP Bench Runner shortcut, one copy out, one paste back. */
+await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every write to STP Bench Runner, Paste results brings them back, seeded flaws are made on the phone, and Copy for answer key shows at 8 of 8 (#54)', async () => {
+  const bb = JSON.parse(readFileSync(path.join(ROOT, 'benchbuild.json'), 'utf8'));
+  expect(bb.cases.length === 6 && bb.cases.every((c) => /^B\d+$/.test(c.id) && c.name && c.raw && c.today && Array.isArray(c.answers) && ['chatgpt', 'cloud', 'ondevice'].includes(c.writer)), 'benchbuild.json: 6 cases with id, raw, today, answers, and a writer');
+  expect(['chatgpt', 'cloud', 'ondevice'].every((w) => bb.cases.filter((c) => c.writer === w).length === 2), 'two cases per writer');
+  expect(bb.seeded.length === 2 && bb.seeded.every((s) => bb.cases.some((c) => c.id === s.from)), 'seeded flaws come from real cases');
+  expect(!/\u2014/.test(JSON.stringify(bb)), 'no em dashes in benchbuild.json');
+  const unfill = (raw) => raw.replace(/\b(um|uh|lol)\b\s*/gi, '').replace(/\s+/g, ' ').trim();
+  const p = await page({ cleanFn: unfill, writeFn: () => 'OLD PROMPT', intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'standard', questions: [] } });
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await p.addInitScript(() => { window.__scOpens = []; window.__scOpen = (u) => window.__scOpens.push(u); });
+  await devOn(p); await p.click('#moreOpts summary'); await withKey(p);
+  expect(await p.isDisabled('#bbRunSc') && await p.isDisabled('#bbPaste') && await p.isDisabled('#bbCopy'), 'only Build bench cases is on at first');
+  await p.click('#bbBuild');
+  await p.waitForFunction(() => !document.getElementById('bbRunSc').disabled, null, { timeout: 60000 });
+  await p.click('#bbRunSc');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/^shortcuts:\/\/run-shortcut\?name=STP%20Bench%20Runner$/.test(await p.evaluate(() => window.__scOpens[0])), 'runs STP Bench Runner');
+  const jobs = await p.evaluate(() => navigator.clipboard.readText());
+  const heads = jobs.match(/^B\d+\|(chatgpt|cloud|ondevice)$/gm) || [];
+  expect(heads.length === 6 && (jobs.match(/^@@@$/gm) || []).length === 6 && heads[0] === 'B10|chatgpt' && heads.includes('B14|ondevice') && heads.includes('B12|cloud'), 'six job blocks with case and model: ' + heads.join());
+  expect(/Lena/.test(jobs) && !/THE PERSON'S CORE|About me/.test(jobs), 'jobs carry the notes, bare (no core)');
+  const fake = (id) => `Role: You are a helpful planner.\n\nContext: These are the details for case ${id}, written out so the prompt reads like a real one.\n\nTask: Help me with case ${id} carefully and completely, using every detail above.\n\nFormat: A short list. Keep it to about one screen.\n\nStart right away.`;
+  // B12 never comes back (Cloud stopped the shortcut), and B11's @@@ lands on the end of B10's last line
+  const back = '@@@\nB10|chatgpt\n' + fake('B10') + '@@@\nB11|chatgpt\n' + fake('B11') + '\n@@@\nB13|cloud\n' + fake('B13') + '\n@@@\nB14|ondevice\n' + fake('B14') + '\n@@@\nB15|ondevice\nRole: You are';
+  await p.evaluate((t) => navigator.clipboard.writeText(t), back);
+  await p.evaluate(() => { location.hash = '#benchback'; });
+  await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /ready/.test(document.getElementById('bbInfo').textContent) && /of 8 ready/.test(document.getElementById('bbOut').textContent), null, { timeout: 30000 });
+  const out1 = await p.textContent('#bbOut');
+  expect(/6 of 8 ready/.test(out1) && /no answer came back/.test(out1) && /looks cut off/.test(out1), 'B12 missing and B15 cut off are failed cases: ' + out1.slice(0, 200));
+  expect(await p.isDisabled('#bbCopy') && await p.isEnabled('#bbRetry'), 'Copy waits for 8 of 8; Rerun failed is on');
+  await p.click('#bbRetry');
+  await p.waitForFunction(() => window.__scOpens.length === 2);
+  const rerun = await p.evaluate(() => navigator.clipboard.readText());
+  expect((rerun.match(/^B\d+\|/gm) || []).join() === 'B12|,B15|', 'Rerun failed sends only B12 and B15: ' + (rerun.match(/^B\d+\|\w+/gm) || []).join());
+  await p.evaluate((t) => navigator.clipboard.writeText(t), '@@@\nB12|cloud\n' + fake('B12') + '\n@@@\nB15|ondevice\n' + fake('B15'));
+  await p.click('#bbPaste');
+  await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent), null, { timeout: 30000 });
+  expect(await p.isEnabled('#bbCopy') && await p.isDisabled('#bbRetry'), 'Copy for answer key is on at 8 of 8');
+  await p.click('#bbCopy');
+  const key = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/^bench add\n/.test(key) && (key.match(/^== B\d+ /gm) || []).length === 8, 'answer key copy starts with bench add and has 8 cases');
+  const b16 = key.split('== B16')[1].split('\n== ')[0], b17 = key.split('== B17')[1].split('\n== ')[0];
+  expect(!/Format:/.test(b16.split('--- Prompt ---')[1]) && /seeded/i.test(b16), 'B16 lost its format part on purpose');
+  expect(/The exam is worth 40% of my final grade\./.test(b17) && /writer: shortcut-chatgpt\+seeded/.test(b17), 'B17 has the made-up line and its writer tag');
+  expect(/writer: shortcut-on-device/.test(key) && /writer: shortcut-cloud/.test(key), 'every case is tagged by writer');
+  expect(!(await p.isVisible('#result')) && await p.isEnabled('#build'), 'the builder leaves the page as it was');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
 
 await browser.close();
 server.kill();

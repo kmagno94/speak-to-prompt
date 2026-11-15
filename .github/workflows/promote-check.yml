@@ -40,6 +40,6 @@ jobs:
         run: |
           git fetch --depth 1 origin main
           node scripts/check-release.mjs
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium || npx playwright install chromium
       - name: Full smoke tests (live build)
         run: env -u GITHUB_SHA npm test

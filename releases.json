@@ -2,6 +2,258 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.41",
+      "date": "2026-11-12",
+      "title": "Shortcut stand-in: answers come back whole, ChatGPT joins, and a shorter set of writing rules",
+      "items": [
+        "🔀 Fix: the shortcut's answer now comes back on your clipboard with one Paste tap. It used to ride in the link, and the link arrived cut at about 200 characters, so every shortcut prompt was a stub that the app then padded with stock lines.",
+        "Write with (dev tools) now sits right under Build my prompt instead of in More options, and adds ChatGPT, which runs through Apple's ChatGPT extension, so with that choice your words go to OpenAI. Run stats tag it shortcut-chatgpt. Cloud Pro was tried and taken out: it answered too many requests every time.",
+        "The shortcut gets a shorter set of writing rules than Flash: six plain rules, numbers as digits, and the must-keep list last. Your core, memory, lessons, and picked My context still go along, each in a compact form. Flash is not changed.",
+        "The page snaps to the hand-off card as soon as it shows, so you aren't left watching the pot.",
+        "An answer that is very short or stops mid-sentence is held as cut off instead of being used, with Run shortcut again, another model, Use Flash instead, or Use it anyway.",
+        "The hand-off card offers the other two models (like Try ChatGPT and Try On-Device), plus Use Flash instead.",
+        "Fix: the dock now re-measures on scroll, so Rebuild shows next to Copy prompt after you change your words and scroll down, even on a slow device. Two test checks that failed on the 11/11 staging runs were steadied.",
+        "🏋️ Bench builder (dev tools, under the Flow bench): makes new grader bench cases with one copy out and one paste back. 6 notes get Read, Clean, and the fact ledger, one tap hands every write to the STP Bench Runner shortcut (2 each on ChatGPT, Cloud, and On-Device), Paste results runs Polish, the phone adds 2 seeded flaws, and Copy for answer key shows at 8 of 8. A missing or cut-off answer can be rerun on its own.",
+        "🧱 Save as context names it for you (Test lab 11/14): right after your first answer, before the rest of the questions, the Name box fills with a suggestion from what you said, marked Suggested, so you can change it while you go. Once you type in it, it stays yours. With a key the name rides along on the interview call that already runs (no extra request); with no key it comes from your first answer.",
+        "🏋️ Fix (Test lab 11/14): Build bench cases no longer stops with JSON Parse error. When one Read answer came back as broken JSON, the whole run ended. Now that answer gets one retry on another model, like a real build, and if it's still broken the case preps without the suggested shape. The Flow bench got the same fix.",
+        "Dev tools: the Flow bench folds into one closed row, since it isn't in active use. The row shows when it last ran; tap it to open. Nothing about how it runs changed.",
+        "🏋️ Fixes from the first real STP Bench Runner run (11/14): the seeded flaw that drops the format part now finds it however the writer labels it (Format:, **Output format** with bullets under it, Length:), so B16 no longer says it couldn't find the part. And an answer whose last line is a bullet or short label with no period is no longer called cut off; one that stops on a small word like \"to\" or \"the\" still is. That check is shared with the STP Flash Backup stand-in.",
+        "Fix (Test lab 11/14): the leave warning works on computers only. Safari on iPhone and iPad never shows the Leave site? box (Apple ignores it), so there a bold, colored box right under the tracker says ✋ Stay on this page until it's done while a prompt is being written. 🏋️ The grader bench now scores 12 cases (Flash 4, ChatGPT 4 with 2 seeded flaws, Cloud 2, On-Device 2) with one holdout per writer, and keeps 5 spare cases that are never graded."
+      ],
+      "checks": [
+        {
+          "say": "On iPad, open the staging link that ends in #flashbusy, tap Normal, and build this note.",
+          "see": "While it says Writing your prompt, a bold amber box right under the tracker says ✋ Stay on this page until it's done. Refreshing or leaving stops your prompt. It's hard to miss, and it goes away when the prompt is ready.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        },
+        {
+          "say": "With dev tools on, More options, then Run grader bench.",
+          "see": "It grades 12 cases (not 17), and 4 rows are marked as holdouts: B7, B13, B15, and B17."
+        },
+        {
+          "say": "Bench builder: Build bench cases, Run bench shortcut, then Paste results.",
+          "see": "B16 (seeded) shows a check mark instead of couldn't find the part to change, and an On-Device answer that ends on a bullet isn't marked looks cut off. With all 6 back, it says All 8 ready."
+        },
+        {
+          "say": "With Show my dev tools on, open More options and scroll to the benches.",
+          "see": "Flow bench is one closed row that says Last run with a date and Tap to open, and Bench builder sits right under it. Tap the row: the buttons and your last run's table open up."
+        },
+        {
+          "say": "With Show my dev tools on, open More options, scroll to Bench builder, and tap Build bench cases.",
+          "see": "It counts Prepping 1 of 6 up to 6 of 6, then says 6 jobs ready. Tap Run bench shortcut. No JSON Parse error, and Run bench shortcut lights up."
+        },
+        {
+          "say": "Open My context, tap Edit, then 🧱 Build one with questions. Answer the first question with this note and tap Next.",
+          "see": "Before the second question shows, the Name box fills with a short name like U10 Rockets or Saturday soccer team, with Suggested from what you said under it. Change the name, answer one more, then tap Save what we have: your name is kept.",
+          "paste": "um so it's the kids soccer team I coach, the U10 Rockets, we practice Saturday mornings at Elm Park and I always need help planning drills"
+        },
+        {
+          "say": "With Show my dev tools on, look under Build my prompt.",
+          "see": "A Write with row with four choices: Flash, Cloud, ChatGPT, and On-Device. Turn dev tools off and the row is gone."
+        },
+        {
+          "say": "Tap ChatGPT in Write with, tap Normal, and build this note. Answer or skip any questions.",
+          "see": "The page moves to a card that says Hand this write to STP Flash Backup (ChatGPT), with Copy and run shortcut, Try Cloud, Try On-Device, and Use Flash instead.",
+          "paste": "so um my coworker Imani is running her first 10k on the 23rd and I wanna make her a little race day kit, I've got like 40 bucks, she loves sour candy and can't stand anything mint, and it has to fit in her locker which is tiny, what should I put in it"
+        },
+        {
+          "say": "With the current STP Flash Backup shortcut on this device, tap Copy and run shortcut.",
+          "see": "The shortcut brings you back and the card says The shortcut is done. Tap Paste."
+        },
+        {
+          "say": "Tap Paste result.",
+          "see": "Polish and Check finish, and the line under the prompt says STP Flash Backup (ChatGPT). The prompt is whole: the 23rd, $40 as digits, sour candy, no mint, and the tiny locker."
+        },
+        {
+          "say": "Build a prompt with Write with set to Flash, type one more word in the box, and scroll to the bottom.",
+          "see": "The pill at the bottom shows Copy prompt, Rebuild, and ⋯."
+        },
+        {
+          "say": "With dev tools on, open More options, find Bench builder, and tap Build bench cases.",
+          "see": "It counts through Prepping 1 of 6 to 6 of 6, then says 6 jobs ready and turns on Run bench shortcut."
+        },
+        {
+          "say": "Tap Run bench shortcut, let STP Bench Runner finish, then tap Paste results when it brings you back.",
+          "see": "Bench builder says it's back, Polish counts through the cases, and the table shows 8 of 8 ready (or which ones to rerun)."
+        },
+        {
+          "say": "Tap Copy for answer key and paste it into a chat with Claude.",
+          "see": "It starts with bench add and has 8 cases, B10 to B17, each tagged with its writer."
+        }
+      ]
+    },
+    {
+      "version": "2.1.40",
+      "date": "2026-11-11",
+      "title": "Dev tools: hand the Flash write to the STP Flash Backup shortcut",
+      "items": [
+        "🔀 Shortcut stand-in (#53, proof of concept, dev tools only): More options has a new Write with choice: Flash, Shortcut (Cloud), or Shortcut (On-Device). Flash stays the default, and nothing changes for anyone with dev tools off.",
+        "With a Shortcut choice picked, the full write shows a card instead of calling Flash. One tap copies exactly what Flash would get and runs the STP Flash Backup shortcut, which uses Apple's cloud or on-device model on an iPhone, iPad, or Mac.",
+        "The shortcut brings you back with the prompt in the link (the part after the # never leaves the device), and Polish and Check carry on like always. A result over 8,000 characters comes back on the clipboard instead, with one Paste tap.",
+        "Nothing switches models on its own. The card always offers Run shortcut again, Try the other model, and Use Flash instead, and your words and answers stay put.",
+        "Run stats tag the writer as shortcut-cloud or shortcut-on-device, so grades can be compared with Flash.",
+        "While a build waits on the shortcut, it is kept on this device so a new tab can pick it up. It is deleted when the result is back, on Use Flash instead, on New prompt, and after 30 minutes. Quick writes and round 2 still use Gemini."
+      ],
+      "checks": [
+        {
+          "say": "Open More options and turn on Show my dev tools. Look for Write with.",
+          "see": "Three choices: Flash, Shortcut (Cloud), and Shortcut (On-Device). Flash is picked."
+        },
+        {
+          "say": "Pick Shortcut (Cloud), tap Normal, and build this note. Answer or skip any questions.",
+          "see": "After Prep, a card says Hand this write to STP Flash Backup (Cloud), with Copy and run shortcut, Try On-Device, and Use Flash instead.",
+          "paste": "ok so my friend Dario is turning 30 and I want to do a surprise game night at my place, like 8 people, saturday the 21st around 6, budget is maybe 120 bucks, he loves ramen and old racing games, help me plan it"
+        },
+        {
+          "say": "With the STP Flash Backup shortcut on this device, tap Copy and run shortcut and allow Shortcuts to open.",
+          "see": "The shortcut runs and brings you back here. Polish and Check finish, the prompt shows, and the line under it says STP Flash Backup (Cloud)."
+        },
+        {
+          "say": "Tap New prompt, build the same note again, and on the card tap Use Flash instead.",
+          "see": "Flash writes it like normal, and the line under the prompt names a Gemini model (with run stats on) or just says Ready in.",
+          "paste": "ok so my friend Dario is turning 30 and I want to do a surprise game night at my place, like 8 people, saturday the 21st around 6, budget is maybe 120 bucks, he loves ramen and old racing games, help me plan it"
+        },
+        {
+          "say": "In More options, set Write with back to Flash, tap New prompt, and build any note.",
+          "see": "No shortcut card. Flash writes it like before."
+        }
+      ]
+    },
+    {
+      "version": "2.1.39",
+      "date": "2026-11-11",
+      "title": "The Quality check tip asks you what's missing, and Test lab links you can tap",
+      "items": [
+        "💬 Ask me, then rewrite: when a prompt lands under the bar, the Quality check tip no longer tells you to add something to your note and build again. One tap asks a short question for each weak spot (up to 3), with answers to tap. None fit? Type your own, or skip.",
+        "Your answers build the next round as a full rewrite, then it gets graded again, with the same Round 1 / Round 2 switcher and Compare rounds as Rework. Rework from this prompt and Edit first are still there.",
+        "The questions are written to fit your request by one small extra call. If that call fails or takes too long, the phone asks its own plain questions, so the button always works. Your answers stay in memory only and are never saved.",
+        "The tip now names every weak spot (up to 3), not only the first one.",
+        "Test lab: a check that sends you to a staging test link (like the one ending in #flashbusy-slowtest) now shows it as a 🔗 link. One tap turns the test on with no reload, the lab tucks away, and the 🧪 tab brings you back to the same check.",
+        "Staging only: a new #lowgrade test link makes the first Quality check of a prompt read under the bar, so Ask me, then rewrite can be tried any time. Live ignores it."
+      ],
+      "checks": [
+        {
+          "say": "On this check, tap 🔗 Open #lowgrade.",
+          "see": "The Test lab tucks away, a Low grade test is on note shows above the box, and the page did not reload. Tap the 🧪 tab: you are back on this same check."
+        },
+        {
+          "say": "With the low grade test on (tap #lowgrade again if you reloaded), turn on Show run stats and daily usage in More options, tap Normal, build this note, and look at the Quality check under the prompt.",
+          "see": "It reads 3.4 with Tip: It could say who the AI is and background. A 💬 Ask me, then rewrite button sits above Rework from this prompt, and the line under it says 2 quick questions.",
+          "paste": "ok so I want to start a little herb garden on my apartment balcony, it only gets morning sun and I've never grown anything, what should I plant first and how do I not kill it"
+        },
+        {
+          "say": "Tap 💬 Ask me, then rewrite. Tap an answer for the first question, type your own answer for the second, then tap Write my prompt.",
+          "see": "A 🔁 Round 2 banner with ← Back to round 1 sits over the questions. After Write my prompt, round 2 is written and graded for real, the card shows Round 1 and Round 2 with both scores, and what you answered is worked into the new prompt."
+        },
+        {
+          "say": "Tap New prompt, build the same note again with the #lowgrade test still on, tap 💬 Ask me, then rewrite, then tap ← Back to round 1.",
+          "see": "Your first prompt is back exactly as it was, with the Quality check and the Ask me button still there, and your words still in the box.",
+          "paste": "ok so I want to start a little herb garden on my apartment balcony, it only gets morning sun and I've never grown anything, what should I plant first and how do I not kill it"
+        },
+        {
+          "say": "Open the v2.1.37 check that mentions #flashbusy-slowtest (tap See all, then that check).",
+          "see": "A 🔗 Open #flashbusy-slowtest link sits under the Do line. Tapping it shows Busy Flash + 10x timing test is on above the box."
+        }
+      ]
+    },
+    {
+      "version": "2.1.38",
+      "date": "2026-11-11",
+      "title": "New context picks itself, a 👍 Worked great tap, and a leave warning mid-build",
+      "items": [
+        "A My context piece you just wrote is picked for this prompt by itself as soon as it has words, so you don't have to find and tap its chip. It only does this once: untick it and it stays unticked. Pieces from Bring in are not picked for you.",
+        "👍 Worked great: with Show run stats on, a thumbs-up sits next to Something went wrong? under a finished prompt. One tap adds a yes to that run's numbers (never your words), so reviews learn what works and not just what breaks.",
+        "If you try to close or refresh the page while a prompt is being written, the browser asks first. Only while it's working, never when idle. Phones can't catch an app switch, so this mostly helps on iPad keyboards and computers.",
+        "Behind the scenes: if GitHub can't reach Ubuntu's servers while setting up the tests, the deploy now carries on with the browser alone instead of failing before a single test runs."
+      ],
+      "checks": [
+        {
+          "say": "In My context, tap + New (or + Add context you can reuse). Type a title, then type a sentence in the big box, and look at the chips above.",
+          "see": "The moment the big box has words, the new piece shows as a chip with a check, and the line says 1 added to this prompt. You never tapped the chip."
+        },
+        {
+          "say": "Tap that chip to untick it, then tap Edit and change a word in the piece.",
+          "see": "It stays unticked. It only picks itself the first time."
+        },
+        {
+          "say": "Turn on Show run stats and daily usage in More options. Build this note, then look under the prompt next to Something went wrong? and tap 👍 Worked great.",
+          "see": "The button turns into 👍 Thanks, counted. Open Run stats at the bottom: the newest run has a 👍 worked great line and none of your words.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        },
+        {
+          "say": "Turn Show run stats off and build any prompt.",
+          "see": "No 👍 Worked great button, only Something went wrong?."
+        },
+        {
+          "say": "On a Mac or PC (Safari on iPad and iPhone never shows this box): open the staging link that ends in #flashbusy, tap Normal, build this note, and press refresh (⌘R) while it says Writing your prompt.",
+          "see": "The browser asks if you want to leave or reload. Cancel and the build keeps going. Refresh when nothing is building: no question.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        }
+      ]
+    },
+    {
+      "version": "2.1.37",
+      "date": "2026-11-11",
+      "title": "Save as context, and a Quick version button that stays for the whole build",
+      "items": [
+        "🧱 Save as context: when your words hold background you'd otherwise retype (your job, a project, a setup), a card offers to save it as a My context piece. It shows under the timer while your prompt is written, and moves under the result if the prompt finishes first. It works in Quick mode too. Spotting it costs nothing extra: it rides the Read step that already runs.",
+        "The interview asks one question at a time, with no limit. A Covered so far checklist ticks off What this is, Key facts, Goals, What changes often, and Leave out. It stops when nothing important is missing, and Save what we have is always on screen.",
+        "The finished piece is a clean labeled note built only from what you said. If the cleanup adds a number you never said, your own words are used instead. It saves like any My context piece (so it follows Save on this phone) and gets picked for your next prompt.",
+        "You can also start it yourself: 🧱 Save as context in the ⋯ menu on a finished prompt, or Build one with questions in the My context editor (that one works with no key).",
+        "If a piece overlaps one you already have, you see old vs new with Update, Keep both, or Skip. Bring in uses the same screen now, so it never overwrites a piece without asking.",
+        "⚡ Quick version (faster, lighter) is now one steady chip under the timer for the whole build, not just the first few seconds. Tap it while the prompt is being written and the quick model takes over right away. At 2:00 the countdown shows on that same chip instead of a second button.",
+        "Run stats (only when Show run stats is on) now count how far the Save as context offer got: shown, tapped, saved, or not now. A label only, never your words, so reviews can tell if the offer earns its spot."
+      ],
+      "checks": [
+        {
+          "say": "With your Gemini key, tap Normal and build this note. While it says Writing your prompt, look right under the timer.",
+          "see": "A ⚡ Quick version (faster, lighter) chip is there the whole time it writes, and it is not the big main button. When the prompt is ready, the chip is gone.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Build this note again in Normal, and tap ⚡ Quick version as soon as the timer says Write.",
+          "see": "It says Quick version it is, and a prompt shows up within a few seconds. No questions get asked again and the clock does not restart at 0:00.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Open the staging link that ends in #flashbusy-slowtest, tap Normal, and build this note. Watch the chip under the timer for about 20 seconds.",
+          "see": "At about 0:12 a Taking longer than usual note shows with no button of its own, and the ⚡ Quick version chip grows a countdown. At about 0:18 the quick model writes it by itself and a note says so.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "Build this note in Normal. Look for a 🧱 Save as context card under the timer while it writes, or under the prompt when it is done. Tap Save as context and answer the questions.",
+          "see": "The card names the background it spotted. The sheet asks one question at a time, shows Covered so far with five parts, and Save what we have is always there. At the end you see a labeled note made from only what you said. Tap Save to My context: it says Saved, and that it gets picked when you tap New prompt.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "After saving, tap ⋯ then New prompt and look at My context.",
+          "see": "The new piece is there as a chip with a check, already picked for this prompt."
+        },
+        {
+          "say": "Switch to Quick and build this note.",
+          "see": "The 🧱 Save as context card shows under the result in Quick mode too. Tap Not now: it goes away and nothing is saved.",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        },
+        {
+          "say": "On a finished prompt, tap ⋯ and then 🧱 Save as context. Give it the same title as the piece you saved before, change a few words in the note, and tap Save to My context.",
+          "see": "A You already have this one screen shows Already here and New side by side, with Update, Keep both, and Skip. Nothing changes until you pick. Keep both adds a second piece with (new) in its title."
+        },
+        {
+          "say": "Open My context, tap Edit, then 🧱 Build one with questions. Answer two questions and tap Save what we have.",
+          "see": "It starts with a plain question about what this is, each answer ticks a part in Covered so far, and the note at the end has your answers under labels like What this is and Key facts."
+        },
+        {
+          "say": "In My context, tap Copy for Notes. Change the words in one piece, then tap Bring in.",
+          "see": "It does not overwrite your changed piece. A screen shows old vs new and asks Update, Keep both, or Skip."
+        },
+        {
+          "say": "Turn on Show run stats and daily usage in More options. Build this note, wait for the 🧱 Save as context card, then open Run stats at the bottom of the page.",
+          "see": "The newest run has a line that says save as context offer: shown, and none of your words. (What you tap after that reaches the Run log issue on GitHub once this build is live.)",
+          "paste": "ok so um I manage the front desk at a small climbing gym called Granite Loft, we have like 3 staff on weekdays and 5 on weekends, we use Square for check ins and a shared Google calendar for shifts, members always ask about the day pass which is $22, and party bookings need a 2 week heads up. anyway I need help writing a friendly sign for the front desk about the new waiver rule that starts March 3"
+        }
+      ]
+    },
+    {
       "version": "2.1.36",
       "date": "2026-11-08",
       "title": "Pick your Hear it speed, and a pro prompt button you can't miss",

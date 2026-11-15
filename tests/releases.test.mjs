@@ -71,7 +71,7 @@ test('test lab checks match the pro prompt button (Test lab report, folded into 
 });
 
 /* Test lab plan (app/lib/testlabPlan.js) */
-import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE, asksForNote } from '../app/lib/testlabPlan.js';
+import { labPlan, runSteps, verdict, labReport, unchecked, nextOnRail, BEFORE_PROMOTE, asksForNote, stepLinks } from '../app/lib/testlabPlan.js';
 
 test('test lab plan: builds newer than live, oldest first, then Before you promote', () => {
   const list = [rel('2.1.2', { checks: [{ say: 'a', see: 'b' }, { say: 'c', see: 'd' }] }), rel('2.1.1'), rel('2.1.0')];
@@ -162,4 +162,11 @@ test('deploy tags main after a green live deploy, never on staging, never moves 
   assert.match(job, /contents: write/);
   assert.match(job, /already tagged, left alone/, 'an existing tag is never moved');
   assert.doesNotMatch(job, /push -f|--force/, 'no force pushes');
+});
+
+test('test lab links (Test lab report 11/11, v2.1.39): a check that names a staging test link gets it as a link, once each, never #testlab or a backlog number', () => {
+  assert.deepEqual(stepLinks('Open the staging link that ends in #flashbusy-slowtest, tap Normal.'), ['#flashbusy-slowtest']);
+  assert.deepEqual(stepLinks('Open #flashbusy, then #slowtest, then #flashbusy again.'), ['#flashbusy', '#slowtest']);
+  assert.deepEqual(stepLinks('Open the Test lab (#testlab) and tap Start. See backlog #51.'), []);
+  assert.deepEqual(stepLinks(''), []);
 });

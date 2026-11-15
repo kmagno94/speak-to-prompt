@@ -28,6 +28,7 @@
   import { ideas } from './lib/ideas.svelte.js';
   import { lab } from './lib/testlab.svelte.js';
   import { context } from './lib/context.svelte.js';
+  import { savectx } from './lib/savectx.svelte.js';
 
   let moment = $state('input');   // 'input' | 'qa' | 'result' | 'redo' (words changed on a finished prompt)
   let inlineSeen = $state(true);  // the Build my prompt under the box isn't scrolled past yet
@@ -39,7 +40,7 @@
   let undoTimer = 0;
   const UNDO_MS = 6000;
 
-  const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open);
+  const away = $derived(kb.open || xray.open || tutorial || ideas.open || lab.open || context.open || savectx.open);
   const building = $derived(moment === 'input' || moment === 'redo');   // the next step is Build
   const showBuild = $derived(building && !inlineSeen);
   const showCopy = $derived(moment === 'result' || moment === 'redo');
@@ -101,6 +102,11 @@
     const seen = new IntersectionObserver(([e]) => { const r = e.boundingClientRect; inlineSeen = !(r.height && r.top + r.height / 2 < (e.rootBounds?.top || 0)); }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
     seen.observe(inline);
     inlineEl = inline;
+    /* v2.1.41: the observer still missed it on slow runs (the 11/11 staging runs read the pill
+       without Rebuild while Build was far above), so a scroll re-measures too, once per frame. */
+    let scrollRaf = 0;
+    const onScroll = () => { if (scrollRaf) return; scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; if (building) measure(); }); };
+    window.addEventListener('scroll', onScroll, { passive: true });
     const mirror = () => { busy = inline.disabled; busyLabel = inline.textContent.trim(); };
     const mo = new MutationObserver(mirror);
     mo.observe(inline, { attributes: true, attributeFilter: ['disabled'], childList: true, characterData: true, subtree: true });
@@ -122,6 +128,8 @@
     /* Deferred until app.js has finished putting things back (that fires its own box events). */
     const undone = () => queueMicrotask(() => { built = true; edited = false; read(); });
     window.addEventListener('stp-undo', undone);
+    /* v2.1.39: the tip's questions (Ask me, then rewrite) come up from a finished prompt, so Write my prompt is the next step, even after a Back. */
+    window.addEventListener('stp-asking', undone);
     /* Typing something new means you meant it: the Undo goes away. */
     const typed = () => { if (undo && box.value.trim()) { clearTimeout(undoTimer); undo = null; } };
     box.addEventListener('input', typed);
@@ -133,6 +141,7 @@
     };
     document.addEventListener('keydown', keys);
     return () => {
+      window.removeEventListener('scroll', onScroll); cancelAnimationFrame(scrollRaf);
       seen.disconnect(); mo.disconnect(); revealWatch.disconnect(); clearTimeout(pulseTimer);
       copyBtn.removeEventListener('animationend', endPulse); window.removeEventListener('stp-ready', ran);
       reset.removeEventListener('click', snap, true); window.removeEventListener('stp-undo', undone); box.removeEventListener('input', typed); document.removeEventListener('keydown', keys);
@@ -190,6 +199,7 @@
   const openList = $derived([...AIS.filter((a) => a.name === lastAI), ...AIS.filter((a) => a.name !== lastAI)]);
   const openedIn = (name) => setTimeout(() => { lastAI = name; menu = false; }, 0);
   function quick() { menu = false; chat.finish(true); }
+  function saveCtx() { menu = false; window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'savectx', where: 'result' } })); }
 
   /* Undo: app.js puts back your words and whatever was on screen (questions or the prompt). */
   function undoReset() {
@@ -225,6 +235,11 @@
       {#each openList as ai (ai.name)}
         <a class="openai" id={ai.id} href={ai.href} target="_blank" rel="noopener" role="menuitem" onclick={() => openedIn(ai.name)}>{ai.name}</a>
       {/each}
+    </div>
+    <!-- Save as context (#50): turn this prompt's background into a My context piece. -->
+    <div class="grp" hidden={!showCopy}>
+      <span class="ghead">Keep for later</span>
+      <button type="button" id="dockSaveCtx" role="menuitem" onclick={saveCtx}>🧱 Save as context</button>
     </div>
     <div class="grp">
       <span class="ghead">Start again</span>
