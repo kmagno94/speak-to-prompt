@@ -4980,11 +4980,13 @@ await check('snap to cooking: Build closes the keyboard and brings the cooking r
   await withKey(p); await p.fill('#thoughts', 'plan a yard sale saturday');
   await p.evaluate(() => scrollTo(0, 0)); await p.focus('#thoughts');
   await p.evaluate(() => document.getElementById('form').requestSubmit());
-  await p.waitForTimeout(900);
+  /* Polls instead of one fixed wait (promote check 11/14: a slow runner read the scroll before it landed) */
+  const seen = (sel) => inView(p, sel).catch(() => false);
+  const soon = async (sel, ms) => { for (let t = 0; t < ms; t += 150) { if (await seen(sel)) return true; await p.waitForTimeout(150); } return seen(sel); };
+  await p.waitForTimeout(300);
   expect(await p.evaluate(() => document.activeElement.id !== 'thoughts'), 'Build should close the keyboard');
-  expect(await inView(p, '#buildTrack'), 'while it reads, the cooking ring under Build should be on screen');
-  await p.waitForTimeout(1600);
-  expect(await inView(p, '#resultTrack .cook'), 'while it writes, the prompt card cooking ring should be on screen');
+  expect(await soon('#buildTrack', 1200), 'while it reads, the cooking ring under Build should be on screen');
+  expect(await soon('#resultTrack .cook', 4000), 'while it writes, the prompt card cooking ring should be on screen');
   p.release(); await done(p);
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
