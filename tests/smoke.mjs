@@ -38,7 +38,7 @@ const CORE = [
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
-  'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
+  'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
   'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
@@ -64,6 +64,9 @@ async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
   if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
+  /* R4 (v2.1.42): the Options chip starts closed for real visitors. Checks written before R4 tap Mode and
+     My context directly, so pages start with Options open; opts.calm keeps it closed, the way a real first screen is. */
+  if (!opts.calm) await ctx.addInitScript(() => { window.__openRows = true; });
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   /* v2.1.33: a returning visitor has also built a few prompts (the time strip shows) and had their first pro prompt.
      opts.newbie keeps Start here off but starts with neither, for the first-timer checks. */
@@ -961,19 +964,23 @@ await check('everyone gets the new flow: with run stats and dev tools off, Norma
 });
 
 await check('#48 answer the stand-in: type an answer and Add to prompt fits it in with one Flash-Lite call, a bad fill falls back to a plain line, and Skip costs nothing (SPEC LOCKED 11/05)', async () => {
+  /* The weekday that really goes with "the 14th" today (the next 14th on or after today, New York time, the way
+     numcheck.js reads a date with no month). It was written as Saturday the 14th, true only until 11/14/2026: from
+     11/15 the phone rightly flagged it and this check went red (full staging run, 11/15). */
+  const DAY14 = (() => { const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()).split('-').map(Number); return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(y, d <= 14 ? m - 1 : m, 14).getDay()]; })();
   const LONG = 'ok so um I want to plan a small birthday dinner for my mom next month at home, nothing fancy. she likes italian food and hates anything too spicy. there will be maybe 6 of us, my two aunts, my cousin, my dad, me and mom. I have about $90 for groceries and I want to cook most of it the day before because I work that morning until noon.';
   const PROMPT = 'Context: ' + LONG + '\nTask: Plan the menu and a cooking schedule.\nStart right away, and ask at most one short question only if something essential is missing.';
   const intake = { title: 'Dinner', need: 'N', category: 'Food', complexity: 'standard', questions: [] };
   // 1. The fill fits it in: one more Flash-Lite call, the answer's number counts as theirs
-  const p = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : cur.replace('Task:', 'The dinner is on Saturday the 14th.\nTask:') });
+  const p = await page({ intake, write: PROMPT, gaps: ['Which day is the dinner?'], gapFillFn: (cur, n) => n === 1 ? cur : cur.replace('Task:', 'The dinner is on ' + DAY14 + ' the 14th.\nTask:') });
   await withKey(p); await p.fill('#thoughts', LONG); await p.click('#build'); await done(p);
   expect(await p.isVisible('#gapAsk .gaprow') && await p.isDisabled('#gapAsk .gapadd'), 'an answer box shows under the note, Add is off until you type');
-  await p.fill('#gapAsk .gapin', 'Saturday the 14th');
+  await p.fill('#gapAsk .gapin', DAY14 + ' the 14th');
   await p.click('#gapAsk .gapadd');
   await p.waitForFunction(() => document.querySelector('#gapAsk .gaprow.done'), null, { timeout: 15000 });
   const fill = (p.fills || [])[1];
-  expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && /Saturday the 14th/.test(fill.text), 'one Flash-Lite fill with the question and the answer');
-  expect(/The dinner is on Saturday the 14th\./.test(await p.inputValue('#output')) && /Added to your prompt/.test(await p.textContent('#gapAsk .done strong')) && (await p.textContent('#gapAsk .gapsaid')) === 'Saturday the 14th', 'the answer is in the prompt and the row says so');
+  expect((p.fills || []).length === 2 && /lite/.test(fill.model) && /Which day is the dinner\?/.test(fill.text) && new RegExp(DAY14 + ' the 14th').test(fill.text), 'one Flash-Lite fill with the question and the answer');
+  expect(new RegExp('The dinner is on ' + DAY14 + ' the 14th\\.').test(await p.inputValue('#output')) && /Added to your prompt/.test(await p.textContent('#gapAsk .done strong')) && (await p.textContent('#gapAsk .gapsaid')) === DAY14 + ' the 14th', 'the answer is in the prompt and the row says so');
   expect(await p.isHidden('#numWarn'), 'the 14th is their number now, so no number warning');
   expect((p.standins || []).length === 1, 'no re-check after adding');
   // 2. The fill comes back wrong: the phone adds a plain line before the last line
@@ -1435,6 +1442,93 @@ await check('mode picker (Svelte component): hint follows the mode and the key',
   expect(/^Quick:/.test(await p.textContent('#modeHint')), 'hint did not switch to Quick');
   await p.check('#normalMode'); await withKey(p);
   expect(!/Needs a free Gemini key/.test(await p.textContent('#modeHint')), 'hint still asks for a key after one was typed');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* ---- R4 Calm first screen (#29, v2.1.42). These run with opts.calm, the real first screen. ---- */
+await check('calm first screen (#29): only the box and Build show, the Options chip says the mode and opens Mode, the sliders and My context inline, and Prompt strength waits for 5 words', async () => {
+  const p = await page({ calm: true });
+  expect(await p.isVisible('#thoughts') && await p.isVisible('#build'), 'the words box and Build my prompt should show on first load');
+  for (const id of ['#quickMode', '#normalMode', '#modeHint', '#contextRow', '#opt-tune-detail']) expect(!(await p.isVisible(id)), id + ' should be behind the Options chip on first load');
+  expect(await p.isVisible('#optionsChip') && /Options · Quick/.test(await p.textContent('#optionsChip')) && await p.getAttribute('#optionsChip', 'aria-expanded') === 'false', 'the closed chip should say Options · Quick: ' + await p.textContent('#optionsChip'));
+  const y = (sel) => p.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top + scrollY, bottom: r.bottom + scrollY, h: r.height }; }, sel);
+  const chip = await y('#optionsChip'), build0 = await y('#build');
+  expect(chip.h >= 44, 'the chip should be at least 44px tall, got ' + chip.h);
+  expect(chip.bottom <= build0.top, 'the chip should sit above Build my prompt');
+  await p.click('#optionsChip');
+  for (const id of ['#quickMode', '#normalMode', '#contextRow', '#opt-tune-detail', '#opt-tune-tone', '#opt-tune-level', '#opt-tune-creative']) expect(await p.isVisible(id), id + ' should show once Options is open');
+  /* Measured fresh, after the open animation, and as gaps (not page positions), so a late layout shift above the chip can't fool it. */
+  await p.waitForTimeout(300);
+  const chip1 = await y('#optionsChip'), panel = await y('#optionsPanel'), build1 = await y('#build');
+  expect(await p.getAttribute('#optionsChip', 'aria-expanded') === 'true' && panel.top >= chip1.bottom - 1 && panel.bottom <= build1.top + 1 && build1.top - chip1.bottom > build0.top - chip.bottom + 100, 'the options should open inline right under the chip, and Build my prompt should move down with them: ' + JSON.stringify({ chip1, panel, build1, gap0: build0.top - chip.bottom }));
+  await p.check('#normalMode');
+  expect(/Options · Normal/.test(await p.textContent('#optionsChip')), 'the chip should follow the mode: ' + await p.textContent('#optionsChip'));
+  await p.check('#quickMode');
+  await p.click('#optionsChip');
+  expect(!(await p.isVisible('#quickMode')) && /Options · Quick/.test(await p.textContent('#optionsChip')), 'tapping the chip again should close it and keep showing the mode');
+  await p.click('#optionsChip'); await p.reload();
+  expect(!(await p.isVisible('#quickMode')) && await p.getAttribute('#optionsChip', 'aria-expanded') === 'false', 'Options should be closed again after a reload');
+  expect(await p.evaluate(() => Object.keys(localStorage).every((k) => !/option/i.test(k))), 'open or closed should never be saved');
+  /* Prompt strength (Ghost Coach) waits for 5 words, typed or pasted. */
+  await p.fill('#thoughts', 'plan my trip soon'); await p.waitForTimeout(350);
+  expect(!(await p.isVisible('#coach')), 'Prompt strength should stay away at 4 words');
+  await p.fill('#thoughts', 'plan my trip soon please'); await p.waitForSelector('#coach');
+  expect(await p.isVisible('#coachLevel'), 'Prompt strength and its notes should show at 5 words');
+  await p.fill('#thoughts', ''); await p.waitForTimeout(350);
+  expect(!(await p.isVisible('#coach')), 'Prompt strength should go away again when the box is emptied');
+  /* The sliders in Options shape the build: off the middle, one plain line goes in with your words; in the middle, nothing. */
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(!/Tone:/.test(await p.inputValue('#output')), 'sliders in the middle should add nothing: ' + await p.inputValue('#output'));
+  await menuTap(p, '#reset');
+  await p.click('#optionsChip');
+  await p.$eval('#opt-tune-tone', (el) => { el.value = '1'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(/Tone: very casual, like a friend\./.test(await p.textContent('#optTuneNote')), 'Options should say what the slider adds: ' + await p.textContent('#optTuneNote'));
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(/help me plan a 5k\nTone: very casual, like a friend\./.test(await p.inputValue('#output')), 'a slider off the middle should go in as one line with your words: ' + await p.inputValue('#output'));
+  expect(await p.inputValue('#thoughts') === 'help me plan a 5k', 'the words box itself should stay as typed');
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'help me plan a 5k\nTone: formal and professional.'); await p.click('#build'); await done(p);
+  expect(!/very casual/.test(await p.inputValue('#output')), 'words that already say the tone should not get the slider line too');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* #33 More with this prompt was built in v2.1.42 and rolled back the same night: Kevin's Test lab check (11/15) said
+   a closed row "will never be looked at". These two checks keep the extras out in plain view. */
+await check('result extras stay in view (Test lab 11/15): Hear it, Glow-Up and X-ray sit right on top of the prompt, Something went wrong? and Save to Notes under it, with no More with this prompt row to open', async () => {
+  const p = await page({ calm: true });
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(!(await p.$('#moreBtn')) && !(await p.$('#moreWith')) && !/More with this prompt/.test(await p.textContent('#result')), 'there should be no More with this prompt row');
+  for (const id of ['#glowBtn', '#xrayBtn', '#output', '#copyNote', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should show on the result without tapping anything');
+  const place = await p.evaluate(() => {
+    const top = (id) => document.getElementById(id).getBoundingClientRect().top, bottom = (id) => document.getElementById(id).getBoundingClientRect().bottom;
+    const have = (ids) => ids.filter((id) => document.getElementById(id));   /* Hear it only shows where the browser can speak */
+    return { above: have(['hearBtn', 'glowBtn', 'xrayBtn']).every((id) => bottom(id) <= top('output')), below: ['reportBtn', 'saveNote'].every((id) => top(id) >= bottom('copyNote')), folded: have(['hearBtn', 'glowBtn', 'xrayBtn', 'reportBtn', 'saveNote']).some((id) => !!document.getElementById(id).closest('details, [hidden], #moreBody')) };
+  });
+  expect(place.above, 'Hear it, Glow-Up and X-ray should sit on top of the prompt');
+  expect(place.below, 'Something went wrong? and Save to Notes should sit under the Copy buttons');
+  expect(!place.folded, 'none of them should be inside something that folds');
+  expect(/tap X-ray to see|^$/.test(await p.textContent('#repairNote')), 'notes should point straight at X-ray');
+  await p.click('#xrayBtn'); await p.waitForSelector('#xray');
+  await p.click('#xrayBtn'); await p.waitForSelector('#xrayBar');
+  expect(await p.isVisible('#output') && await p.isVisible('#glowBtn'), 'Done should bring back the prompt with the buttons on top');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('result extras stay in view (Test lab 11/15): they are all still showing on the next prompt after New prompt, and Remember for next time? shows by itself when it has something', async () => {
+  const intake = { title: 'Shortcut Help', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Which Mac do you use?', choices: ['MacBook Air', 'iMac'] }], use_memory: [], remember: ['I study at WGU for cybersecurity'] };
+  const p = await page({ calm: true, intake, write: 'Act as a Shortcuts expert. Build a shortcut that silences my phone at work.' });
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  await p.click('#xrayBtn'); await p.waitForSelector('#xray'); await p.click('#xrayBtn'); await p.waitForSelector('#xrayBar');
+  await menuTap(p, '#reset');
+  await p.fill('#thoughts', 'help me plan a 10k'); await p.click('#build'); await done(p);
+  for (const id of ['#glowBtn', '#xrayBtn', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should still show on the next prompt, with nothing to open first');
+  expect(!(await p.$('#moreBtn')), 'no More with this prompt row on the next prompt either');
+  await p.evaluate(() => { localStorage.setItem('stp-dev', '1'); localStorage.setItem('stp-memory', JSON.stringify({ on: true, facts: [] })); });
+  await p.reload();
+  await withKey(p); await p.fill('#thoughts', 'make a shortcut to silence my phone at work'); await p.click('#build');
+  await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForSelector('#memorySuggest');
+  expect(await p.isVisible('#memorySuggest') && !(await p.$('#moreDot')), 'Remember for next time? should show on the result by itself, with no dot or row in front of it');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2341,13 +2435,15 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
 await check('ghost coach: meter and notes follow what you write; tap a note to add its phrase', async () => {
   const p = await page();
   expect(!(await p.$('#coach')), 'coach should wait until there are a few words');
-  await p.fill('#thoughts', 'meal prep ideas');
+  await p.fill('#thoughts', 'meal prep ideas'); await p.waitForTimeout(300);
+  expect(!(await p.$('#coach')), 'coach should still wait at 3 words (5 since #29, v2.1.42)');
+  await p.fill('#thoughts', 'meal prep ideas and stuff');
   await p.waitForSelector('#coach');
   const seg = () => p.$$eval('#coach .meter span.on', l => l.length);
   const notes = () => p.$$eval('#coach .note', l => l.map(b => b.dataset.key));
   expect(await seg() === 0 && (await notes()).join() === 'goal,who', 'bare thoughts: 0 of 5, notes for goal and who: ' + (await notes()));
   await p.click('#coach .note[data-key="goal"]');
-  expect(await p.inputValue('#thoughts') === 'meal prep ideas\nWhat I want: ', 'tapping a note should add its phrase on a new line');
+  expect(await p.inputValue('#thoughts') === 'meal prep ideas and stuff\nWhat I want: ', 'tapping a note should add its phrase on a new line');
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'cursor should be in the box after a note');
   await p.type('#thoughts', 'help me plan a week of lunches');
   expect(await seg() >= 1 && (await notes())[0] === 'who', 'goal covered, next note is who');

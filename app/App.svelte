@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { startApp } from './lib/app.js';
-  import ModePicker from './ModePicker.svelte';
+  import OptionsChip from './OptionsChip.svelte';
+  import XrayBar from './XrayBar.svelte';
   import ChatBuilder from './ChatBuilder.svelte';
   import StartHelper from './StartHelper.svelte';
   import CoreToggle from './CoreToggle.svelte';
@@ -32,7 +33,6 @@
   import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
-  import ContextRow from './ContextRow.svelte';
   import { context } from './lib/context.svelte.js';
   import { ideas } from './lib/ideas.svelte.js';
   import NextDock from './NextDock.svelte';
@@ -143,12 +143,12 @@
     <p id="handoff" class="handoff" hidden>Your transcript came in from the shortcut. Check it, then tap Build my prompt.</p>
     <Notice where="form" />
     <div class="row buildrow">
+      <!-- #29 Calm first screen: Mode, the sliders and My context sit behind the Options chip (OptionsChip.svelte). They open inline, and Build my prompt moves down with them. -->
+      <OptionsChip />
       <!-- Build my prompt sits right under the box; the Next step dock (NextDock.svelte, #17) shows its own copy only once this one is out of view. -->
       <button type="submit" class="primary" id="build">Build my prompt</button>
-      <ModePicker />
       <CoreToggle />
       <WriterPicker />
-      <ContextRow />
       <div class="starterwrap"><StartHelper /></div>
     </div>
     <KeyNudge place="form" />
@@ -202,6 +202,8 @@
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
+    <!-- Hear it, Glow-Up and X-ray sit right on top of the prompt, in plain view (Kevin, Test lab 11/15: #33's closed row "will never be looked at"). -->
+    <XrayBar />
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />

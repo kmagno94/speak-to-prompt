@@ -342,13 +342,17 @@ export function startApp() {
     if (busy) return;
     window.dispatchEvent(new Event("stp-build-start"));   /* calls off the full-version countdown (KeyCatcher, v2.1.25) */
     var key = gemini.key || gkey.value.trim();
-    if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(raw); return; }   /* Rework: the next round */
+    /* #29 (v2.1.42): the sliders sit in Options under the box now, so they shape any build. Each one
+       off the middle goes in as one plain line with your words (the same line a starting point
+       carries). In the middle they add nothing, so the words are sent as typed. */
+    var sent = starter.withTune(raw);
+    if (ui.round && ui.round.stage === "edit" && rounds.length && key) { roundNext(sent); return; }   /* Rework: the next round */
     if (ui.round || rounds.length || reworkDraft) clearRounds();
     rememberUsed(raw);
     inputHint(raw);
-    if (key) { geminiFlow(raw, key); return; }
-    session = { raw: raw, quick: true, known: knownText() };
-    showQuick(raw, "");
+    if (key) { geminiFlow(sent, key); return; }
+    session = { raw: sent, quick: true, known: knownText() };
+    showQuick(sent, "");
     logRun({ outcome: "ok", words_out: words(output.value) });
   });
 

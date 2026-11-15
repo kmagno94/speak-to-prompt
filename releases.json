@@ -2,6 +2,51 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.42",
+      "date": "2026-11-14",
+      "title": "R4 Calm first screen: one box and one button to start, with the result extras kept in plain view",
+      "items": [
+        "🌿 Calm first screen (#29): on first load you see the words box and Build my prompt. Quick or Normal, the four sliders, and My context now sit behind one Options chip under the box.",
+        "The closed chip always says your mode, like Options · Quick, so you never build in a mode you can't see.",
+        "Tapping the chip opens Mode, the sliders, and My context inline right under it, and Build my prompt moves down with them. It is closed again on every visit; open or closed is never saved.",
+        "Prompt strength (the 👻 meter and its notes) now waits until you've typed or pasted 5 words, so an empty or barely started box stays quiet.",
+        "The sliders used to live only inside Not sure where to start?. Now that they're in Options, a slider you move off the middle goes in as one plain line with your words when you build (like Tone: relaxed and friendly.). In the middle they add nothing, and Options shows exactly what will be added.",
+        "Dev tools: Use my core and Write with stay right under Build my prompt, outside Options.",
+        "↩️ More with this prompt (#33) was built and then taken back out the same night (Test lab 11/15): folding Hear it, Glow-Up, X-ray, Something went wrong?, Remember for next time?, and Save to Notes into one closed row meant they would never be looked at. They are back where they were: Hear it, Glow-Up, and X-ray on top of the prompt, the rest under the Copy buttons, nothing to open first."
+      ],
+      "checks": [
+        {
+          "say": "Open staging fresh (pull down to refresh first).",
+          "see": "Under the words box there is one small chip that says Options · Quick or Options · Normal, then Build my prompt. Quick and Normal, the sliders, and My context are not on screen."
+        },
+        {
+          "say": "Tap the Options chip.",
+          "see": "Quick and Normal, four sliders (Detail, Tone, My level, Ideas), and My context open right under the chip, and Build my prompt moves down below them. Tap the chip again and they fold away."
+        },
+        {
+          "say": "Open Options, tap the mode you are not on, then close Options.",
+          "see": "The closed chip now names the mode you picked, like Options · Normal. Switch it back when you're done."
+        },
+        {
+          "say": "With the box empty, type four words, then a fifth.",
+          "see": "Nothing shows under the box at four words. At the fifth word the 👻 Prompt strength meter and its notes slide in. Clear the box and they go away."
+        },
+        {
+          "say": "Open Options, drag Tone all the way to Casual, tap Quick, then paste this note and build.",
+          "see": "Under the sliders, Options says Goes in with your words when you build: Tone: very casual, like a friend. The finished prompt reads casual. Tap Reset to middle after, and the line says the sliders add nothing.",
+          "paste": "ok so um my sister Maren turns 30 next month and I want to throw her a surprise dinner at my place, maybe 12 people, I can spend about $200, she loves Thai food and hates cake, I need a plan and a shopping list"
+        },
+        {
+          "say": "Build any prompt and look at the result before tapping anything.",
+          "see": "Hear it, Glow-Up, and X-ray sit right on top of the prompt, like before. Under the prompt you see Copy prompt + my note, then Something went wrong? and Save to Notes. There is no More with this prompt row."
+        },
+        {
+          "say": "Tap ⋯ in the dock, tap New prompt, and build another prompt.",
+          "see": "On the new result, Hear it, Glow-Up, X-ray, Something went wrong?, and Save to Notes are all showing again, with nothing to open first."
+        }
+      ]
+    },
+    {
       "version": "2.1.41",
       "date": "2026-11-12",
       "title": "Shortcut stand-in: answers come back whole, ChatGPT joins, and a shorter set of writing rules",
