@@ -1180,7 +1180,12 @@ export function startApp() {
     buildBtn.textContent = on ? (label || "Working...") : "Build my prompt";
     if (!on) ui.reading = false;   /* Switch to Quick (QuickSwitch.svelte) only shows while Read runs */
     if (on) wakeOn(); else wakeOff();
+    if (stayTip) stayTip.hidden = !(on && appleTouchNow);
   }
+  /* iPhone and iPad (Test lab 11/14): Safari there never shows the Leave site? box (Apple
+     ignores it), so a refresh mid-build just stops it. A plain line says so while it works. */
+  var stayTip = document.getElementById("stayTip"), uaStay = navigator.userAgent || "";
+  var appleTouchNow = /iPhone|iPad|iPod/.test(uaStay) || (/Macintosh/.test(uaStay) && navigator.maxTouchPoints > 1);
   /* Keep the screen awake while Gemini works, so the phone doesn't lock mid-build.
      Only while busy: let go when it's done, fails, or the page is hidden; ask again if
      you come back mid-build. Phones without it get a one-line tip instead. */
@@ -1612,7 +1617,8 @@ export function startApp() {
     var ready = gemini.plan ? Promise.resolve() : verifyKey(key);
     ready.then(function () { return fetch("bench.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("bench.json"); return r.json(); }); })
       .then(function (b) {
-        var cases = (b && b.cases) || [], items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
+        /* spare cases (#54, 11/14) stay in bench.json for reference but are never graded or scored */
+        var cases = ((b && b.cases) || []).filter(function (c) { return c && !c.spare; }), items = lessons.items, grader = lessons.grader, label = benchLabel(), done = 0, out = [];
         info.textContent = "Grading 0 of " + cases.length + " with " + label + "...";
         /* A busy server (503) or a full per-minute limit gets one retry after a short wait. */
         function ask(c, retried) {
@@ -4065,7 +4071,8 @@ export function startApp() {
   }
   /* Stay-on-screen guard (#37, v2.1.38): closing or refreshing while a prompt is being written
      asks first (the browser's own Leave site? box). Only while it works, never when idle.
-     Phones can't catch an app switch, so this mostly helps iPad keyboards and computers. */
+     Computers only: Safari on iPhone and iPad never shows the box (Apple ignores it, checked
+     on an iPad 11/14), so there the stayTip line under the tracker says it instead. */
   window.addEventListener("beforeunload", function (e) { if (busy && Date.now() - scLeaving > 3000) { e.preventDefault(); e.returnValue = ""; } });   /* #53: opening the shortcut is not leaving */
 
   /* Capture phase: noted before the button's own handler runs. */

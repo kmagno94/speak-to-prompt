@@ -17,9 +17,19 @@
         "🧱 Save as context names it for you (Test lab 11/14): right after your first answer, before the rest of the questions, the Name box fills with a suggestion from what you said, marked Suggested, so you can change it while you go. Once you type in it, it stays yours. With a key the name rides along on the interview call that already runs (no extra request); with no key it comes from your first answer.",
         "🏋️ Fix (Test lab 11/14): Build bench cases no longer stops with JSON Parse error. When one Read answer came back as broken JSON, the whole run ended. Now that answer gets one retry on another model, like a real build, and if it's still broken the case preps without the suggested shape. The Flow bench got the same fix.",
         "Dev tools: the Flow bench folds into one closed row, since it isn't in active use. The row shows when it last ran; tap it to open. Nothing about how it runs changed.",
-        "🏋️ Fixes from the first real STP Bench Runner run (11/14): the seeded flaw that drops the format part now finds it however the writer labels it (Format:, **Output format** with bullets under it, Length:), so B16 no longer says it couldn't find the part. And an answer whose last line is a bullet or short label with no period is no longer called cut off; one that stops on a small word like \"to\" or \"the\" still is. That check is shared with the STP Flash Backup stand-in."
+        "🏋️ Fixes from the first real STP Bench Runner run (11/14): the seeded flaw that drops the format part now finds it however the writer labels it (Format:, **Output format** with bullets under it, Length:), so B16 no longer says it couldn't find the part. And an answer whose last line is a bullet or short label with no period is no longer called cut off; one that stops on a small word like \"to\" or \"the\" still is. That check is shared with the STP Flash Backup stand-in.",
+        "Fix (Test lab 11/14): the leave warning works on computers only. Safari on iPhone and iPad never shows the Leave site? box (Apple ignores it), so there a line under the tracker says Stay on this page until it's done while a prompt is being written. 🏋️ The grader bench now scores 12 cases (Flash 4, ChatGPT 4 with 2 seeded flaws, Cloud 2, On-Device 2) with one holdout per writer, and keeps 5 spare cases that are never graded."
       ],
       "checks": [
+        {
+          "say": "On iPad, open the staging link that ends in #flashbusy, tap Normal, and build this note.",
+          "see": "While it says Writing your prompt, a line under the tracker says Stay on this page until it's done. Refreshing or leaving stops your prompt. It goes away when the prompt is ready.",
+          "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
+        },
+        {
+          "say": "With dev tools on, More options, then Run grader bench.",
+          "see": "It grades 12 cases (not 17), and 4 rows are marked as holdouts: B7, B13, B15, and B17."
+        },
         {
           "say": "Bench builder: Build bench cases, Run bench shortcut, then Paste results.",
           "see": "B16 (seeded) shows a check mark instead of couldn't find the part to change, and an On-Device answer that ends on a bullet isn't marked looks cut off. With all 6 back, it says All 8 ready."
@@ -175,7 +185,7 @@
           "see": "No 👍 Worked great button, only Something went wrong?."
         },
         {
-          "say": "On a Mac or an iPad with a keyboard: open the staging link that ends in #flashbusy, tap Normal, build this note, and press refresh (⌘R) while it says Writing your prompt.",
+          "say": "On a Mac or PC (Safari on iPad and iPhone never shows this box): open the staging link that ends in #flashbusy, tap Normal, build this note, and press refresh (⌘R) while it says Writing your prompt.",
           "see": "The browser asks if you want to leave or reload. Cancel and the build keeps going. Refresh when nothing is building: no question.",
           "paste": "ok so um my neighbor Priya is watching my two cats this weekend, I need a short friendly note for her with the feeding times which are 7am and 6pm, where the treats are, and my vet's name which is Dr. Okafor"
         }

@@ -41,7 +41,7 @@ const CORE = [
   'AI app links:', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
-  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw'
+  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -1197,7 +1197,7 @@ await check('model routing: the grade note and Step by step say who graded and a
 });
 
 await check('model routing: the grader bench names the grader on every case and how many are far from the key (Test lab #4, v2.1.25)', async () => {
-  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8')); bench.cases = bench.cases.filter((c) => !c.spare);
   const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); return c ? { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke } : null; };
   const p = await page({ models: TWO_LITES, gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
@@ -3214,15 +3214,18 @@ await check('flow bench: the 5 hardest notes run through the old and new flow, w
 });
 
 await check('grader bench: one tap grades every bench.json case with the current grader and compares with the answer key', async () => {
-  const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
-  expect(bench.cases.length >= 6 && bench.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing)), 'bench.json cases need id, raw, prompt, today, and a key');
+  const all = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
+  expect(all.cases.every((c) => c.id && c.raw && c.prompt && c.today && c.key && typeof c.key.score === 'number' && Array.isArray(c.key.missing) && c.writer), 'bench.json cases need id, raw, prompt, today, a writer, and a key');
+  const bench = { cases: all.cases.filter((c) => !c.spare) };
+  expect(bench.cases.length === 12 && all.cases.filter((c) => c.spare).length === 5, '12 scored cases and 5 spares (#54 round 2)');
+  const writers = ['flash', 'shortcut-chatgpt', 'shortcut-cloud', 'shortcut-on-device'];
+  expect(writers.every((w) => bench.cases.some((c) => c.holdout && c.writer.split('+')[0] === w)) && bench.cases.filter((c) => c.holdout).length === 4 && !all.cases.some((c) => c.spare && c.holdout), 'one holdout per writer, none among the spares');
   expect(bench.cases.some((c) => c.key.score >= 4.5) && bench.cases.some((c) => c.key.score < 4.5) && bench.cases.some((c) => c.holdout), 'bench needs passes, fails, and holdouts');
   expect(!/\u2014/.test(JSON.stringify(bench)), 'no em dashes in bench.json');
-  // The grader agrees with the key on every case except the second, which it overrates.
-  // (The first, the Saturday case, is overrated too, but the number check docks it below the bar.)
+  // The grader agrees with the key on every case except the second, which it overrates. Spares are never sent.
   const first = bench.cases[1], sat = bench.cases[0];
-  const gradeFn = (ask) => { const c = bench.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
-    return c === first || c === sat ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
+  const gradeFn = (ask) => { const c = all.cases.find((x) => ask.includes(x.prompt)); if (!c) return null;
+    return c === first ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : { craft: c.key.score, missing: c.key.missing, invented: c.key.invented, rearranged: c.key.rearranged, broke: c.key.broke }; };
   const p = await page({ gradeFn });
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
@@ -3232,6 +3235,7 @@ await check('grader bench: one tap grades every bench.json case with the current
   expect(p.grades.length === n + passes, 'one grade per case plus a second look for each pass: ' + p.grades.length + ' vs ' + (n + passes));
   expect(new RegExp('^Live g\\d+: ' + (n - 1) + ' of ' + n + ' pass/fail agree').test(sum) && new RegExp('labels exact ' + (n - 1) + '/' + n).test(sum), 'summary wrong: ' + sum);
   expect(p.grades.every((g) => /TODAY'S DATE/.test(g.text)) && p.grades[0].text.includes(sat.today), 'each case is graded with its own date');
+  expect(!p.grades.some((g) => all.cases.some((c) => c.spare && g.text.includes(c.prompt))), 'spare cases are never graded');
   expect(await p.$$eval('.benchout tbody tr', (r) => r.length) === n && await p.$$eval('.benchout tr.hold', (r) => r.length) === bench.cases.filter((c) => c.holdout).length, 'one row per case, holdouts marked');
   expect(/\u274c/.test(await p.textContent('.benchout tbody tr:nth-child(2)')), 'the overrated case shows a miss');
   await p.click('#benchCopy'); await p.waitForTimeout(200);
@@ -4778,12 +4782,12 @@ await check('quality grade: docked below the bar when the number check flags', a
   expect(!p.errors.length && !q.errors.length, 'page errors');
 });
 
-await check('grader bench: the Saturday example runs first, and the number check docks it like a live run', async () => {
+await check('grader bench: the Saturday example (a spare, sent on its own) gets docked by the number check like a live run', async () => {
   const bench = JSON.parse(readFileSync(path.join(ROOT, 'bench.json'), 'utf8'));
-  const sat = bench.cases[0];
-  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'the first bench case should be the Saturday example');
+  const sat = bench.cases.find((c) => c.id === 'B9');   /* a spare since 11/14, still the number check's example */
+  expect(/a saturday I think/i.test(sat.raw) && /Saturday, November 15, 2026/.test(sat.prompt) && sat.key.invented === true && sat.key.score < 4.5, 'B9 should be the Saturday example');
   const p = await page({ gradeFn: (ask) => (ask.includes(sat.prompt) ? { craft: 4.8, missing: [], invented: false, rearranged: false, broke: [] } : null) });
-  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [sat] }) }));
+  await p.route(/\/bench\.json/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ cases: [{ ...sat, spare: false }] }) }));
   await devOn(p); await withKey(p); await p.click('#moreOpts summary');
   await p.click('#benchRun');
   await p.waitForSelector('#benchOut:not([hidden])', { timeout: 15000 });
@@ -5477,6 +5481,27 @@ await check('run stats: 👍 Worked great shows only with run stats on, adds a y
   await p.click('#workedBtn'); await p.waitForTimeout(400);
   expect(sent.length === 3 && sent[1].outcome === 'ok' && !sent[1].worked && sent[2].outcome === 'thumbs up' && sent[2].worked === true && sent[2].mode && !/secret/.test(JSON.stringify(sent[2])), 'a tap after the run went sends a follow-up: ' + JSON.stringify(sent[2]));
   expect(!o.errors.length && !p.errors.length, 'page errors: ' + [o, p].flatMap(x => x.errors).join('; '));
+});
+
+await check('stay on screen: on iPhone and iPad, where Safari never asks before a refresh, a line says to stay on the page while it works, and computers never see it (Test lab 11/14)', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const slow = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const run = async (ipad) => {
+    const p = await page({ intake, slow });
+    if (ipad) { await p.addInitScript(() => { Object.defineProperty(navigator, 'userAgent', { get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Safari/605.1.15' }); Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 }); }); await p.reload(); }
+    expect(!(await p.isVisible('#stayTip')), 'no line while idle');
+    await withKey(p); await p.fill('#thoughts', 'plan my roast week'); await p.click('#build');
+    for (let i = 0; i < 40 && !p.calls.some(c => !c.intake); i++) await p.waitForTimeout(100);
+    const mid = await p.isVisible('#stayTip');
+    p.releaseSlow(); await done(p);
+    const after = await p.isVisible('#stayTip');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    return { mid, after, text: await p.textContent('#stayTip') };
+  };
+  const pad = await run(true);
+  expect(pad.mid && !pad.after && /Refreshing or leaving stops your prompt/.test(pad.text), 'an iPad (desktop-style Safari, touch screen) sees the line mid-build and not after: ' + JSON.stringify(pad));
+  const mac = await run(false);
+  expect(!mac.mid && !mac.after, 'a computer never sees it (it gets the Leave site? box instead)');
 });
 
 await check('stay on screen: closing or refreshing asks first only while a prompt is being written (#37)', async () => {

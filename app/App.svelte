@@ -164,6 +164,7 @@
     </div>
     <p id="buildStatus" class="buildstatus" role="status"></p>
     <p id="wakeTip" class="hint" hidden>Keep this tab open while it works, so your phone doesn't lock and pause it.</p>
+    <p id="stayTip" class="hint" hidden>Stay on this page until it's done. Refreshing or leaving stops your prompt.</p>
     <ReportIssue place="front" />
   </form>
 
