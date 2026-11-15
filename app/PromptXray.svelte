@@ -7,8 +7,8 @@
   import { analyze, pieces, whyText } from './lib/xray.js';
   import { ms } from './lib/motion.js';
 
-  /* #33 (v2.1.42): the X-ray button (with Hear it and Glow-Up) moved into More with this prompt
-     (XrayBar.svelte). It sets xray.show; the X-ray itself still opens here, in the prompt's place. */
+  /* The X-ray button (with Hear it and Glow-Up) lives in XrayBar.svelte, right above this.
+     It sets xray.show; the X-ray itself opens here, in the prompt's place. */
   const on = $derived(xray.show);
   let picked = $state(-1);      // tapped part of the prompt
   let source = $state(-1);      // tapped sentence of yours
@@ -39,7 +39,7 @@
   /* Done from anywhere: close, then bring the prompt back into view. */
   function close() {
     xray.show = false;
-    requestAnimationFrame(() => document.getElementById('output')?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    requestAnimationFrame(() => document.getElementById('xrayBar')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   }
 </script>
 

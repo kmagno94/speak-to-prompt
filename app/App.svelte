@@ -39,8 +39,7 @@
   import QuickSwitch from './QuickSwitch.svelte';
   import ContextNudge from './ContextNudge.svelte';
   import SaveContext from './SaveContext.svelte';
-  import { ui, rowsOpen } from './lib/ui.svelte.js';
-  import { xray } from './lib/xray.svelte.js';
+  import { ui } from './lib/ui.svelte.js';
   import HearSpeed from './HearSpeed.svelte';
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
@@ -50,10 +49,6 @@
   import { watchDraft } from './lib/draft.svelte.js';
   import { hasSpeech } from './lib/voice.js';
   let tutorial;
-  /* #33: the More with this prompt row closes again on every new prompt (a build starting, or the
-     prompt being cleared). Memory only. The dot says Remember for next time? has something waiting. */
-  const memoryWaiting = $derived(memory.active && memory.suggestions.length > 0);
-  $effect(() => { if (!xray.prompt) ui.moreOpen = rowsOpen(); });
   /* v2.1.27: where the browser has speech-to-text, Talk it out is the mic and the shortcut hides
      unless Show my dev tools is on (kept for anyone who still likes the Voice Memos way). */
   const shortcutAway = $derived(hasSpeech && !core.dev);
@@ -73,9 +68,7 @@
     const demo = () => { if (IS_STAGING && location.hash === '#cookdemo') cookDemo(); };
     demo();
     window.addEventListener('hashchange', demo);
-    const closeMore = () => { ui.moreOpen = rowsOpen(); };
-    window.addEventListener('stp-build-start', closeMore);
-    return () => { stopGrow(); stopDraft(); window.removeEventListener('hashchange', demo); window.removeEventListener('stp-build-start', closeMore); };
+    return () => { stopGrow(); stopDraft(); window.removeEventListener('hashchange', demo); };
   });
 </script>
 
@@ -209,6 +202,8 @@
     <p id="gradeNote" class="gradenote" role="status" hidden></p>
     <p id="chatName" class="chatname" hidden></p>
     <p id="categoryLine" class="chatname" hidden>Category: <b id="categoryName"></b></p>
+    <!-- Hear it, Glow-Up and X-ray sit right on top of the prompt, in plain view (Kevin, Test lab 11/15: #33's closed row "will never be looked at"). -->
+    <XrayBar />
     <PromptXray />
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
@@ -223,36 +218,23 @@
     <p id="status" class="status openstatus" role="status"></p>
     <!-- The prompt finished before the offer was answered: it waits here, under the result (#50). -->
     <ContextNudge place="done" />
-    <!-- #33 More with this prompt: the extras sit in one closed row under the Copy buttons, so the
-         result shows the prompt and Copy first. Hear it, Glow-Up and X-ray, Report, Remember for
-         next time? and Save to Notes are all inside. A dot shows when Remember has something waiting. -->
-    <div class="morewith" id="moreWith">
-      <button type="button" class="morebtn" id="moreBtn" aria-expanded={ui.moreOpen} aria-controls="moreBody" onclick={() => (ui.moreOpen = !ui.moreOpen)}>
-        <span><span aria-hidden="true">🧰</span> More with this prompt</span>
-        {#if memoryWaiting && !ui.moreOpen}<i class="moredot" id="moreDot" role="img" aria-label="Something to remember is waiting"></i>{/if}
-        <i class="chev" aria-hidden="true">▾</i>
-      </button>
-      <div class="morebody" id="moreBody" hidden={!ui.moreOpen}>
-        <XrayBar />
-        <ReportIssue />
-        <MemorySuggest />
-        <div class="keep">
-          <p class="keephead">Want a record of this?</p>
-          <div class="row">
-            <button type="button" id="saveNote">Save to Notes</button>
-            <button type="button" id="saveShare" class="linkish" hidden>Share instead</button>
-            <a id="shortcutLink" href="shortcuts://" hidden aria-hidden="true" tabindex="-1">Run shortcut</a>
-          </div>
-          <p id="keepStatus" class="status"></p>
-        </div>
-      </div>
-    </div>
+    <ReportIssue />
+    <MemorySuggest />
     <div class="devrow" id="devRow" hidden={!core.dev}>
       <p class="devhead">🛠️ Dev tools <span>only you see these</span></p>
       <div class="row">
         <button type="button" id="copyGrader">Copy for grader check</button>
         <button type="button" id="copyAll">Copy full result</button>
       </div>
+    </div>
+    <div class="keep">
+      <p class="keephead">Want a record of this?</p>
+      <div class="row">
+        <button type="button" id="saveNote">Save to Notes</button>
+        <button type="button" id="saveShare" class="linkish" hidden>Share instead</button>
+        <a id="shortcutLink" href="shortcuts://" hidden aria-hidden="true" tabindex="-1">Run shortcut</a>
+      </div>
+      <p id="keepStatus" class="status"></p>
     </div>
   </section>
 

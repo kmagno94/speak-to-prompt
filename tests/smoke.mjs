@@ -38,7 +38,7 @@ const CORE = [
   'slow write:',
   'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
-  'AI app links:', 'calm first screen (#29)', 'more with this prompt (#33)', 'run stats: logs numbers only', 'number check flags a changed version',
+  'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
   'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
@@ -64,9 +64,8 @@ async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
   /* Start here plays on a first visit only; tests start as a returning visitor unless they ask for a fresh one. */
   if (opts.hooks) await ctx.addInitScript((h) => { Object.assign(window, h); }, opts.hooks);   /* test-only timing hooks, like __checkMaxMs */
-  /* R4 (v2.1.42): the Options chip and More with this prompt start closed for real visitors. Checks written before
-     R4 tap Mode, My context, X-ray and the rest directly, so pages start with both rows open; opts.calm keeps them
-     closed, the way a real first screen is. */
+  /* R4 (v2.1.42): the Options chip starts closed for real visitors. Checks written before R4 tap Mode and
+     My context directly, so pages start with Options open; opts.calm keeps it closed, the way a real first screen is. */
   if (!opts.calm) await ctx.addInitScript(() => { window.__openRows = true; });
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   /* v2.1.33: a returning visitor has also built a few prompts (the time strip shows) and had their first pro prompt.
@@ -1442,7 +1441,7 @@ await check('mode picker (Svelte component): hint follows the mode and the key',
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-/* ---- R4 Calm screens (v2.1.42): #29 Calm first screen, #33 More with this prompt. These run with opts.calm, the real first screen. ---- */
+/* ---- R4 Calm first screen (#29, v2.1.42). These run with opts.calm, the real first screen. ---- */
 await check('calm first screen (#29): only the box and Build show, the Options chip says the mode and opens Mode, the sliders and My context inline, and Prompt strength waits for 5 words', async () => {
   const p = await page({ calm: true });
   expect(await p.isVisible('#thoughts') && await p.isVisible('#build'), 'the words box and Build my prompt should show on first load');
@@ -1487,41 +1486,43 @@ await check('calm first screen (#29): only the box and Build show, the Options c
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('more with this prompt (#33): X-ray, Glow-Up, Report, Remember and Save to Notes sit in one closed row under the Copy buttons, a dot shows when Remember is waiting, and it closes on every new prompt', async () => {
+/* #33 More with this prompt was built in v2.1.42 and rolled back the same night: Kevin's Test lab check (11/15) said
+   a closed row "will never be looked at". These two checks keep the extras out in plain view. */
+await check('result extras stay in view (Test lab 11/15): Hear it, Glow-Up and X-ray sit right on top of the prompt, Something went wrong? and Save to Notes under it, with no More with this prompt row to open', async () => {
+  const p = await page({ calm: true });
+  await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
+  expect(!(await p.$('#moreBtn')) && !(await p.$('#moreWith')) && !/More with this prompt/.test(await p.textContent('#result')), 'there should be no More with this prompt row');
+  for (const id of ['#glowBtn', '#xrayBtn', '#output', '#copyNote', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should show on the result without tapping anything');
+  const place = await p.evaluate(() => {
+    const top = (id) => document.getElementById(id).getBoundingClientRect().top, bottom = (id) => document.getElementById(id).getBoundingClientRect().bottom;
+    const have = (ids) => ids.filter((id) => document.getElementById(id));   /* Hear it only shows where the browser can speak */
+    return { above: have(['hearBtn', 'glowBtn', 'xrayBtn']).every((id) => bottom(id) <= top('output')), below: ['reportBtn', 'saveNote'].every((id) => top(id) >= bottom('copyNote')), folded: have(['hearBtn', 'glowBtn', 'xrayBtn', 'reportBtn', 'saveNote']).some((id) => !!document.getElementById(id).closest('details, [hidden], #moreBody')) };
+  });
+  expect(place.above, 'Hear it, Glow-Up and X-ray should sit on top of the prompt');
+  expect(place.below, 'Something went wrong? and Save to Notes should sit under the Copy buttons');
+  expect(!place.folded, 'none of them should be inside something that folds');
+  expect(/tap X-ray to see|^$/.test(await p.textContent('#repairNote')), 'notes should point straight at X-ray');
+  await p.click('#xrayBtn'); await p.waitForSelector('#xray');
+  await p.click('#xrayBtn'); await p.waitForSelector('#xrayBar');
+  expect(await p.isVisible('#output') && await p.isVisible('#glowBtn'), 'Done should bring back the prompt with the buttons on top');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('result extras stay in view (Test lab 11/15): they are all still showing on the next prompt after New prompt, and Remember for next time? shows by itself when it has something', async () => {
   const intake = { title: 'Shortcut Help', need: 'N', category: 'Shortcuts', complexity: 'standard', questions: [{ question: 'Which Mac do you use?', choices: ['MacBook Air', 'iMac'] }], use_memory: [], remember: ['I study at WGU for cybersecurity'] };
   const p = await page({ calm: true, intake, write: 'Act as a Shortcuts expert. Build a shortcut that silences my phone at work.' });
   await p.fill('#thoughts', 'help me plan a 5k'); await p.click('#build'); await done(p);
-  expect(await p.isVisible('#output') && await p.isVisible('#copyNote'), 'the result should show the prompt and the Copy buttons');
-  expect(await p.isVisible('#moreBtn') && /More with this prompt/.test(await p.textContent('#moreBtn')) && await p.getAttribute('#moreBtn', 'aria-expanded') === 'false', 'More with this prompt should be one closed row');
-  for (const id of ['#xrayBtn', '#glowBtn', '#reportBtn', '#saveNote']) expect(!(await p.isVisible(id)), id + ' should be inside the closed row');
-  const order = await p.evaluate(() => document.getElementById('copyNote').getBoundingClientRect().bottom <= document.getElementById('moreBtn').getBoundingClientRect().top && document.getElementById('output').getBoundingClientRect().bottom <= document.getElementById('moreBtn').getBoundingClientRect().top);
-  expect(order, 'the row should sit under the prompt and the Copy buttons');
-  expect(!(await p.$('#moreDot')), 'no dot when nothing is waiting');
-  await p.click('#moreBtn');
-  for (const id of ['#xrayBtn', '#glowBtn', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should show once the row is open');
-  expect(await p.evaluate(() => ['xrayBtn', 'glowBtn', 'reportBtn', 'saveNote'].every((id) => !!document.getElementById(id).closest('#moreBody'))), 'all of them should live inside the row');
-  /* X-ray still opens in the prompt's place, and Done brings the prompt back. */
-  await p.click('#xrayBtn'); await p.waitForSelector('#xray');
-  expect(!(await p.isVisible('#output')), 'X-ray should take the prompt box\'s place');
-  await p.click('#xrayBtn'); await p.waitForTimeout(350);
-  expect(await p.isVisible('#output') && await p.getAttribute('#moreBtn', 'aria-expanded') === 'true', 'Done should bring the prompt back and leave the row open');
-  /* A new prompt closes the row again, and nothing about it is saved. */
+  await p.click('#xrayBtn'); await p.waitForSelector('#xray'); await p.click('#xrayBtn'); await p.waitForSelector('#xrayBar');
   await menuTap(p, '#reset');
   await p.fill('#thoughts', 'help me plan a 10k'); await p.click('#build'); await done(p);
-  expect(await p.getAttribute('#moreBtn', 'aria-expanded') === 'false' && !(await p.isVisible('#xrayBtn')), 'the row should close again on a new prompt');
-  await p.click('#moreBtn');
-  expect(await p.evaluate(() => Object.keys(localStorage).every((k) => !/more/i.test(k))), 'open or closed should never be saved');
-  /* The dot: with memory on, Remember for next time? has something waiting, so the closed row shows a dot. */
+  for (const id of ['#glowBtn', '#xrayBtn', '#reportBtn', '#saveNote']) expect(await p.isVisible(id), id + ' should still show on the next prompt, with nothing to open first');
+  expect(!(await p.$('#moreBtn')), 'no More with this prompt row on the next prompt either');
   await p.evaluate(() => { localStorage.setItem('stp-dev', '1'); localStorage.setItem('stp-memory', JSON.stringify({ on: true, facts: [] })); });
   await p.reload();
   await withKey(p); await p.fill('#thoughts', 'make a shortcut to silence my phone at work'); await p.click('#build');
   await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
-  await p.waitForSelector('#moreDot');
-  expect(await p.getAttribute('#moreBtn', 'aria-expanded') === 'false' && !(await p.isVisible('#memorySuggest')), 'the row should still be closed, with Remember for next time? inside it');
-  await p.click('#moreBtn');
-  expect(await p.isVisible('#memorySuggest') && !(await p.$('#moreDot')), 'opening the row should show Remember for next time? and drop the dot');
-  await p.click('#memoryDismiss'); await p.click('#moreBtn');
-  expect(!(await p.$('#moreDot')), 'no dot once Remember for next time? is answered');
+  await p.waitForSelector('#memorySuggest');
+  expect(await p.isVisible('#memorySuggest') && !(await p.$('#moreDot')), 'Remember for next time? should show on the result by itself, with no dot or row in front of it');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -2428,13 +2429,15 @@ await check('shortcut banner: Paste for Improve this app wraps the transcript (d
 await check('ghost coach: meter and notes follow what you write; tap a note to add its phrase', async () => {
   const p = await page();
   expect(!(await p.$('#coach')), 'coach should wait until there are a few words');
-  await p.fill('#thoughts', 'meal prep ideas');
+  await p.fill('#thoughts', 'meal prep ideas'); await p.waitForTimeout(300);
+  expect(!(await p.$('#coach')), 'coach should still wait at 3 words (5 since #29, v2.1.42)');
+  await p.fill('#thoughts', 'meal prep ideas and stuff');
   await p.waitForSelector('#coach');
   const seg = () => p.$$eval('#coach .meter span.on', l => l.length);
   const notes = () => p.$$eval('#coach .note', l => l.map(b => b.dataset.key));
   expect(await seg() === 0 && (await notes()).join() === 'goal,who', 'bare thoughts: 0 of 5, notes for goal and who: ' + (await notes()));
   await p.click('#coach .note[data-key="goal"]');
-  expect(await p.inputValue('#thoughts') === 'meal prep ideas\nWhat I want: ', 'tapping a note should add its phrase on a new line');
+  expect(await p.inputValue('#thoughts') === 'meal prep ideas and stuff\nWhat I want: ', 'tapping a note should add its phrase on a new line');
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'cursor should be in the box after a note');
   await p.type('#thoughts', 'help me plan a week of lunches');
   expect(await seg() >= 1 && (await notes())[0] === 'who', 'goal covered, next note is who');

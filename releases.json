@@ -4,18 +4,15 @@
     {
       "version": "2.1.42",
       "date": "2026-11-14",
-      "title": "R4 Calm screens: one box and one button to start, and the extras fold into More with this prompt",
+      "title": "R4 Calm first screen: one box and one button to start, with the result extras kept in plain view",
       "items": [
         "🌿 Calm first screen (#29): on first load you see the words box and Build my prompt. Quick or Normal, the four sliders, and My context now sit behind one Options chip under the box.",
         "The closed chip always says your mode, like Options · Quick, so you never build in a mode you can't see.",
         "Tapping the chip opens Mode, the sliders, and My context inline right under it, and Build my prompt moves down with them. It is closed again on every visit; open or closed is never saved.",
         "Prompt strength (the 👻 meter and its notes) now waits until you've typed or pasted 5 words, so an empty or barely started box stays quiet.",
         "The sliders used to live only inside Not sure where to start?. Now that they're in Options, a slider you move off the middle goes in as one plain line with your words when you build (like Tone: relaxed and friendly.). In the middle they add nothing, and Options shows exactly what will be added.",
-        "🧰 More with this prompt (#33): Hear it, Glow-Up, X-ray, Something went wrong?, Remember for next time?, and Save to Notes moved into one closed row under the Copy buttons. The result shows the prompt and Copy first.",
-        "A small dot shows on the closed row when Remember for next time? has something waiting, so a memory suggestion is never missed.",
-        "The row closes again on every new prompt. Open or closed is kept in memory only, nothing saved.",
-        "X-ray still opens in the prompt's place and Done brings the prompt back. Notes that pointed at X-ray now say Open More with this prompt and tap X-ray.",
-        "Dev tools: Use my core and Write with stay right under Build my prompt, outside Options."
+        "Dev tools: Use my core and Write with stay right under Build my prompt, outside Options.",
+        "↩️ More with this prompt (#33) was built and then taken back out the same night (Test lab 11/15): folding Hear it, Glow-Up, X-ray, Something went wrong?, Remember for next time?, and Save to Notes into one closed row meant they would never be looked at. They are back where they were: Hear it, Glow-Up, and X-ray on top of the prompt, the rest under the Copy buttons, nothing to open first."
       ],
       "checks": [
         {
@@ -41,19 +38,11 @@
         },
         {
           "say": "Build any prompt and look at the result before tapping anything.",
-          "see": "You see the prompt, then Copy prompt + my note, then one closed row that says 🧰 More with this prompt. Hear it, Glow-Up, X-ray, Something went wrong?, and Save to Notes are not showing."
+          "see": "Hear it, Glow-Up, and X-ray sit right on top of the prompt, like before. Under the prompt you see Copy prompt + my note, then Something went wrong? and Save to Notes. There is no More with this prompt row."
         },
         {
-          "say": "Tap More with this prompt, then tap X-ray, then Done.",
-          "see": "The row opens with Hear it, Glow-Up, X-ray, Something went wrong?, and Save to Notes inside. X-ray opens where the prompt was, and Done brings the prompt back."
-        },
-        {
-          "say": "With the row open, tap ⋯ in the dock, tap New prompt, and build another prompt.",
-          "see": "On the new result, More with this prompt is closed again."
-        },
-        {
-          "say": "With dev tools on and Tailored to you on, build in Normal and answer a question.",
-          "see": "The closed More with this prompt row has a small blue dot. Open it: Remember for next time? is inside and the dot is gone."
+          "say": "Tap ⋯ in the dock, tap New prompt, and build another prompt.",
+          "see": "On the new result, Hear it, Glow-Up, X-ray, Something went wrong?, and Save to Notes are all showing again, with nothing to open first."
         }
       ]
     },

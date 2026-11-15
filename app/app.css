@@ -380,16 +380,6 @@ details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color
 details.lock p { margin-top: 8px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
-/* #33 More with this prompt: one closed row under the Copy buttons; the extras open inside it. */
-.morewith { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; border-top: 1px solid var(--line); padding-top: 4px; }
-.morebtn { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tap); padding: 8px 2px; background: none; border: none; box-shadow: none; border-radius: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); text-align: left; }
-.morebtn .chev { margin-left: auto; font-style: normal; font-size: 13px; color: var(--muted); transition: transform var(--dur-fast) var(--ease); }
-.morebtn[aria-expanded="true"] .chev { transform: rotate(180deg); }
-.moredot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.morebody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-bottom: 4px; animation: morein var(--dur-fast) var(--ease); }
-.morebody[hidden] { display: none; }
-@keyframes morein { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .morebody { animation: none; } .morebtn .chev { transition: none; } }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
 /* Settings rows: quieter than the journey cards, with a chevron that turns when open. */
 details.key { background: transparent; border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); }
