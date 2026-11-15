@@ -2070,9 +2070,14 @@ await check('starter answers: 5 at a time, same all window, new set every 3 hour
   const visible = () => p.$$eval('#starter .chips button', l => l.filter(b => !b.classList.contains('skip') && b.id !== 'rotateMore').map(b => b.textContent.trim()));
   async function openMoney(time) {
     await p.clock.setFixedTime(new Date(time));
-    await p.reload(); await p.waitForTimeout(150);
-    await p.click('#starterBtn'); await p.click('#starter .cats button >> text=Money and budgeting');
-    await p.waitForSelector("#starter .msg.ai >> text=What's the goal?");
+    await p.reload(); await p.waitForSelector('#starterBtn'); await p.waitForTimeout(150);
+    /* One more try if the tap landed before the page was ready (promote check 11/14, slow runner) */
+    for (let tries = 0; ; tries++) {
+      if (!(await p.isVisible('#starter .cats button >> text=Money and budgeting'))) await p.click('#starterBtn');
+      await p.click('#starter .cats button >> text=Money and budgeting');
+      try { await p.waitForSelector("#starter .msg.ai >> text=What's the goal?", { timeout: 8000 }); break; }
+      catch (e) { if (tries) throw e; await p.reload(); await p.waitForSelector('#starterBtn'); await p.waitForTimeout(300); }
+    }
     return visible();
   }
   const t0 = new Date('2026-10-20T09:10:00-04:00').getTime();   // 9:10 AM Eastern (the test page runs on New York time), inside the 9 to 12 window
