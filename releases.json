@@ -2,6 +2,63 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.43",
+      "date": "2026-11-17",
+      "title": "Auto mode: questions first, a fast write, and a Quality check that decides what's next, plus Write my prompt right in the questions card",
+      "items": [
+        "⚡ Auto (#56): with a key there's no Quick or Normal to pick any more. Options says Options · Auto.",
+        "Auto works like Normal (Read, then a few questions) but writes on Flash-Lite, so it's fast. A Skip all questions button sits at the top of the questions card and writes right away with whatever you've answered.",
+        "Every Auto build gets the Quality check now, not just with run stats on.",
+        "4.5 and up: done. From 2 to 4.4 a What's thin card says in up to 3 plain lines what's missing, with Use it (copies the prompt) and Make it stronger (a rewrite on Flash).",
+        "Under 2: your first prompt stays on screen, ready to copy, while a stronger one writes. It swaps in by itself and says both scores, with Compare and Round 1 one tap away.",
+        "Make it stronger gives each Flash model 30 seconds. If Flash is busy, Flash-Lite writes it with no wait and no ask.",
+        "✍️ After your last answer, Write my prompt now shows right inside the questions card, under the questions. The dock button is still there too. The dock's ⚡ Quick version chip is gone; Skip all questions replaced it.",
+        "No key? Nothing changes: you still get the quick prompt to paste."
+      ],
+      "checks": [
+        {
+          "say": "With your key saved, open Options under the box.",
+          "see": "It says Options · Auto. No Quick or Normal buttons, just one line explaining Auto."
+        },
+        {
+          "say": "Type a short request (like: plan a yard sale this weekend) and tap Build my prompt.",
+          "see": "A few questions come up first, with Skip all questions at the top of the card."
+        },
+        {
+          "say": "Answer every question.",
+          "see": "A big ✍️ Write my prompt button shows inside the card, under the questions, and the dock still has Write my prompt too."
+        },
+        {
+          "say": "Tap ✍️ Write my prompt in the card.",
+          "see": "The prompt writes fast (Flash-Lite) and a Quality check card shows under it, even with run stats off."
+        },
+        {
+          "say": "Tap New prompt, build again, and tap Skip all questions right away.",
+          "see": "It skips straight to writing, no questions answered, and still gets a Quality check."
+        },
+        {
+          "say": "Open the staging site with #lowgrade at the end of the address, build anything, and wait for the result.",
+          "see": "Round 1 reads as 3.4: a What's thin card with up to 3 plain lines, Use it, and Make it stronger."
+        },
+        {
+          "say": "On that What's thin card, tap Use it.",
+          "see": "It says Copied, and your prompt is on the clipboard."
+        },
+        {
+          "say": "Build another #lowgrade prompt and tap Make it stronger.",
+          "see": "Round 2 writes on Flash, then Round 1 / Round 2 show on the card with Compare rounds."
+        },
+        {
+          "say": "Without a key (private tab), build anything.",
+          "see": "Same as before: the quick prompt to paste, no questions, no Auto."
+      },
+      {
+        "say": "Open the staging site with #vlowgrade at the end of the address, build anything with your key, and skip the questions.",
+        "see": "Your first prompt shows as 1.6 in a card you can copy from, the heading says Making a stronger version..., then the new one swaps in with Stronger version ready (1.6 to ...) and Compare."
+        }
+      ]
+    },
+    {
       "version": "2.1.42",
       "date": "2026-11-14",
       "title": "R4 Calm first screen: one box and one button to start, with the result extras kept in plain view",

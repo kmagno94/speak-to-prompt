@@ -41,7 +41,8 @@ const CORE = [
   'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
-  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone'
+  'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone',
+  'questions card (idea mwk245csqohp)', 'auto (#56): with a key'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
@@ -50,6 +51,8 @@ async function check(name, fn) {
   if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
+  /* PROGRESS=1: print each result as it lands (handy on a slow machine) */
+  if (process.env.PROGRESS) console.log(results[results.length - 1].slice(0, 2).join('  ') + (results[results.length - 1][2] ? '  ' + results[results.length - 1][2] : ''));
 }
 function expect(cond, msg) { if (!cond) throw new Error(msg); }
 
@@ -67,6 +70,9 @@ async function page(opts = {}) {
   /* R4 (v2.1.42): the Options chip starts closed for real visitors. Checks written before R4 tap Mode and
      My context directly, so pages start with Options open; opts.calm keeps it closed, the way a real first screen is. */
   if (!opts.calm) await ctx.addInitScript(() => { window.__openRows = true; });
+  /* #56 (v2.1.43): with a key it's Auto, with no mode to pick. Checks written before Auto pick Quick or Normal, so pages
+     keep the old picker (Normal once a key exists); opts.auto runs the real Auto. */
+  if (!opts.auto) await ctx.addInitScript(() => { window.__manualModes = true; });
   if (!opts.fresh) await ctx.addInitScript((stg) => { try { localStorage.setItem((stg ? 'stg:' : '') + 'stp-started', '1'); } catch (e) {} }, process.env.APP_CHANNEL === 'staging');
   /* v2.1.33: a returning visitor has also built a few prompts (the time strip shows) and had their first pro prompt.
      opts.newbie keeps Start here off but starts with neither, for the first-timer checks. */
@@ -4535,14 +4541,14 @@ await check('quick switch (v2.1.34): on a Normal build, ⚡ Switch to Quick show
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
-await check('quick switch (v2.1.34): on the questions, ⚡ Quick is in view without opening ⋯, and its write picks up the clock from Prep', async () => {
+await check('quick switch (v2.1.34): on the questions, Skip all questions is in view at the top of the card (#56), and its write picks up the clock from Prep', async () => {
   const intake = { title: 'Yard Sale', need: 'Plan a yard sale', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] };
   const p = await page({ intake, intakeDelay: 2300 });
   await withKey(p); await p.check('#normalMode');
   await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
-  expect(await p.isVisible('#qaSkip') && !(await p.isVisible('#dockMenu')), '⚡ Quick shows in the dock bar with the menu closed');
+  expect(await p.isVisible('#qaSkip') && !(await p.isVisible('#dockMenu')) && await p.evaluate(() => !!document.querySelector('#qa .qahead #qaSkip')), 'Skip all questions shows at the top of the questions card');
   const box = await p.$eval('#qaGo', (b) => ({ w: b.scrollWidth, c: b.clientWidth, t: b.textContent.trim() }));
-  expect(box.w <= box.c + 1 && /\(0 of 2\)/.test(box.t), 'Write my prompt (0 of 2) keeps its full width next to ⚡ Quick version: ' + JSON.stringify(box));
+  expect(box.w <= box.c + 1 && /\(0 of 2\)/.test(box.t), 'Write my prompt (0 of 2) keeps its full width in the dock: ' + JSON.stringify(box));
   const prep = await p.textContent('#buildTrack .el');
   await p.waitForTimeout(1200);   /* answering time is not machine time */
   await p.click('#qaSkip'); await done(p);
@@ -4561,8 +4567,8 @@ await check('next step dock: one main button per moment, the ⋯ menu, back to B
   await p.click('#qaList .chips button'); await p.waitForTimeout(700);
   expect(/\(1 of 2\)/.test(await p.textContent('#qaGo')), 'the count should go up as you answer');
   await p.click('#dockMore');
-  expect(await p.isVisible('#qaSkip') && await p.isVisible('#reset') && !(await p.isVisible('.openrow')), 'questions: ⚡ Quick in view and New prompt in the menu, no Open in');
-  expect(/Quick/.test(await p.textContent('#qaSkip')) && !(await p.$('#qa #qaSkip')) && !(await p.$('#dockMenu #qaSkip')), 'Quick lives on the dock (v2.1.34), not on the card or tucked in ⋯');
+  expect(await p.isVisible('#qaSkip') && await p.isVisible('#reset') && !(await p.isVisible('.openrow')), 'questions: Skip all in view and New prompt in the menu, no Open in');
+  expect(/Skip all/.test(await p.textContent('#qaSkip')) && !!(await p.$('#qa #qaSkip')) && !(await p.$('#nextDock #qaSkip')), 'Skip all lives at the top of the card (#56), not on the dock or tucked in ⋯');
   await p.click('h1'); await p.waitForTimeout(150);
   expect(!(await p.isVisible('#dockMenu')), 'a tap outside should close the menu');
   await p.click('#qaGo'); await done(p);
@@ -5876,6 +5882,90 @@ await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every writ
   expect(/The exam is worth 40% of my final grade\./.test(b17) && /writer: shortcut-chatgpt\+seeded/.test(b17), 'B17 has the made-up line and its writer tag');
   expect(/writer: shortcut-on-device/.test(key) && /writer: shortcut-cloud/.test(key), 'every case is tagged by writer');
   expect(!(await p.isVisible('#result')) && await p.isEnabled('#build'), 'the builder leaves the page as it was');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+
+/* ---- v2.1.43: Write my prompt in the questions card (idea mwk245csqohp) and Auto mode (#56) ---- */
+const AUTO_INTAKE = { title: 'Yard Sale', need: 'Plan a yard sale', category: 'Ideas', complexity: 'standard', questions: [{ question: 'When?', choices: ['Saturday'] }, { question: 'Budget?', choices: ['$50'] }] };
+
+await check('questions card (idea mwk245csqohp): after the last answer, Write my prompt shows right in the card and the dock keeps its own', async () => {
+  const p = await page({ intake: AUTO_INTAKE });
+  await withKey(p); await p.check('#normalMode');
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  expect(!(await p.isVisible('#qaGoCard')), 'no card button before the questions are done');
+  await p.click('#qaList .chips button'); await p.waitForTimeout(700);
+  await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.waitForTimeout(700);
+  expect(await p.isVisible('#qaGoCard') && await p.isVisible('#qaGo') && !(await p.isVisible('#qaSkip')), 'all answered: Write my prompt in the card and in the dock, Skip all gone');
+  expect(await p.evaluate(() => !!document.querySelector('#qa #qaGoCard')), 'the card button lives inside the questions card');
+  await p.click('#qaGoCard'); await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 30000 });
+  expect(p.calls.some((c) => !c.intake && /Saturday/.test(c.text)), 'the write used the answers');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('auto (#56): with a key there is no Quick or Normal; Read, then questions, Skip all writes on Flash-Lite and grades it', async () => {
+  const p = await page({ auto: true, intake: AUTO_INTAKE, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
+  await withKey(p); await p.dispatchEvent('#gkey', 'input'); await p.waitForTimeout(200);
+  expect(!(await p.isVisible('#quickMode')) && !(await p.isVisible('#normalMode')) && /Options · Auto/.test(await p.textContent('#optionsChip')) && /^Auto:/.test(await p.textContent('#modeHint')), 'Auto, with nothing to pick: ' + await p.textContent('#optionsChip'));
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  expect(await p.isVisible('#qaSkip') && /Skip all questions/.test(await p.textContent('#qaSkip')), 'questions come first, with Skip all questions at the top');
+  await p.click('#qaSkip'); await done(p);
+  const writes = p.calls.filter((c) => !c.intake);
+  expect(writes.length && writes.every((c) => /lite/.test(c.model)), 'Auto writes on Flash-Lite: ' + writes.map((c) => c.model).join());
+  await p.waitForFunction(() => !!document.getElementById('qualityCheck'), null, { timeout: 8000 });
+  expect(p.grades.length >= 1 && !(await p.isVisible('#whatsThin')) && !(await p.isVisible('#gradeNote')), 'graded for everyone (run stats off), passes, no What\'s thin card, no tester grade line');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('auto (#56): 2 to 4.4 shows What\'s thin with up to 3 plain lines, Use it copies, Make it stronger reworks on Flash', async () => {
+  const gradeFn = (ask) => /ROUND 2/.test(ask) || /STRONGER/.test(ask) ? { craft: 4.7, rearranged: false, invented: false, missing: [] } : { craft: 3.2, rearranged: true, invented: false, missing: ['role', 'success', 'format'] };
+  const p = await page({ auto: true, intake: AUTO_INTAKE, gradeFn, writeFn: (ask) => /ROUND 2/.test(ask) ? 'STRONGER PROMPT' : 'FIRST PROMPT' });
+  await withKey(p);
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  await p.click('#qaSkip'); await done(p);
+  await p.waitForSelector('#whatsThin', { timeout: 8000 });
+  const lines = await p.$$eval('#whatsThin li', (ls) => ls.map((l) => l.textContent));
+  expect(lines.length === 3 && !lines.some((l) => /lesson/i.test(l)), 'up to 3 plain lines: ' + lines.join(' | '));
+  expect(await p.isVisible('#thinUse') && await p.isVisible('#thinStronger') && !(await p.isVisible('#guideBtn')) && !(await p.isVisible('#reworkBtn')), 'Use it and Make it stronger, nothing else');
+  await p.click('#thinUse');
+  expect(await p.isVisible('#thinUsed') && await p.evaluate(() => navigator.clipboard.readText()) === await p.inputValue('#output'), 'Use it copies the prompt');
+  const before = p.calls.length;
+  await p.evaluate(() => { const g = document.getElementById('thinUsed'); return g; });
+  await p.evaluate(() => window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'stronger', where: 'result' } })));
+  await p.waitForSelector('#roundResult', { timeout: 15000 });
+  const round2 = p.calls.slice(before).filter((c) => !c.intake);
+  expect(round2.length && /flash/.test(round2[0].model) && !/lite/.test(round2[0].model), 'Make it stronger writes on Flash: ' + round2.map((c) => c.model).join());
+  expect(await p.inputValue('#output') === 'STRONGER PROMPT' && await p.isVisible('#round1Result'), 'round 2 on screen, round 1 one tap away');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('auto (#56): under 2 keeps the first prompt on screen while a stronger one writes, then swaps it in with both scores', async () => {
+  const flash = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const gradeFn = (ask) => /FLASH PROMPT/.test(ask) ? { craft: 4.6, rearranged: false, invented: false, missing: [] } : { craft: 1.6, rearranged: true, invented: false, missing: ['task', 'role'] };
+  const p = await page({ auto: true, intake: AUTO_INTAKE, gradeFn, slow: flash, writeFn: (ask) => /ROUND 2/.test(ask) ? 'STRONGER PROMPT' : 'FIRST PROMPT' });
+  await withKey(p);
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  await p.click('#qaSkip');
+  await p.waitForSelector('#holdCard', { timeout: 15000 });
+  expect(/1\.6/.test(await p.textContent('#holdCard')) && await p.textContent('#holdText') === 'FIRST PROMPT' && /stronger/i.test(await p.textContent('#resultHead')), 'the first prompt waits on screen with its score while the stronger one writes');
+  await p.click('#holdCopy');
+  expect(await p.evaluate(() => navigator.clipboard.readText()) === 'FIRST PROMPT', 'Copy first prompt works while it writes');
+  p.releaseSlow();
+  await p.waitForSelector('#roundResult', { timeout: 15000 });
+  expect(!(await p.isVisible('#holdCard')) && await p.inputValue('#output') === 'FLASH PROMPT', 'the stronger version (the released Flash write) swapped in: ' + await p.inputValue('#output'));
+  await p.waitForFunction(() => /1\.6 to 4\.6/.test(document.getElementById('result').textContent), null, { timeout: 8000 }).catch(() => { throw new Error('Stronger version ready (1.6 to 4.6) should show'); });
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('auto (#56): a busy Flash on Make it stronger goes to Flash-Lite with no ask', async () => {
+  const gradeFn = () => ({ craft: 3.0, rearranged: false, invented: false, missing: ['role'] });
+  const p = await page({ auto: true, intake: AUTO_INTAKE, gradeFn, fail: { 'gemini-3.8-flash': 503, 'gemini-3.7-flash': 503, 'gemini-3.6-flash': 503 } });
+  await withKey(p);
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  await p.click('#qaSkip'); await done(p);
+  await p.waitForSelector('#thinStronger', { timeout: 8000 }); await p.click('#thinStronger');
+  await p.waitForSelector('#roundResult', { timeout: 20000 });
+  expect(/Flash-Lite wrote the stronger version|Flash was busy/.test(await p.textContent('#result')) && !/Use quick model now/.test(await p.textContent('#result')), 'Flash-Lite wrote it, no wait or ask');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

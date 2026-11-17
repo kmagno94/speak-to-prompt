@@ -21,6 +21,8 @@
   const fmt = (n) => (n == null ? '' : n.toFixed(1));
   const act = (a) => window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: a, where: place } }));
   $effect(() => { if (!show) open = false; });
+  /* #56: Compare on the Stronger version ready note opens the table. */
+  $effect(() => { if (ui.openCompare && show && place === 'result') { open = true; ui.openCompare = false; } });
 </script>
 
 {#if show}

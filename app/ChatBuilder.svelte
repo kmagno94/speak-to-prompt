@@ -55,7 +55,14 @@
   {/if}
 {/snippet}
 
-<p class="eyebrow">A few quick questions</p>
+<!-- #56 (v2.1.43): Skip all questions sits at the top, where a person in a rush looks first. It writes now
+     with whatever is answered (0 is fine). It replaces the dock's ⚡ Quick version chip (same id). -->
+<div class="qahead">
+  <p class="eyebrow">A few quick questions</p>
+  {#if chat.questions.length && !chat.done}
+    <button type="button" class="skipall" id="qaSkip" disabled={chat.busy} aria-label="Skip all questions and write my prompt now" onclick={() => chat.finish(true)}>Skip all questions ⏭</button>
+  {/if}
+</div>
 <h2 id="qaTitle">{chat.title}</h2>
 {#if chat.need}
   {#if editingGoal}
@@ -119,5 +126,21 @@
   </div>
 {/if}
 
-<!-- Write my prompt and Quick version live in the Next step dock (NextDock.svelte, #17). -->
+<!-- Idea mwk245csqohp (v2.1.43): after the last answer, Write my prompt shows right here in the card, under
+     the questions, where your eyes already are. The dock's Write my prompt stays too (NextDock.svelte, #17). -->
+{#if chat.done}
+  <div class="cardgo" in:fly={{ y: 8, duration: ms(220) }}>
+    <button type="button" class="primary" id="qaGoCard" disabled={chat.busy} onclick={() => chat.finish(false)}>✍️ Write my prompt</button>
+    <small>All set. Tap to write it, or tap any answer above to change it.</small>
+  </div>
+{/if}
 
+
+<style>
+  .qahead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+  .qahead .eyebrow { margin: 0; }
+  .skipall { min-height: var(--tap); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-pill); font-weight: 700; font-size: var(--fs-sm); white-space: nowrap; }
+  .cardgo { display: grid; gap: var(--sp-1); margin-top: var(--sp-3); }
+  .cardgo .primary { width: 100%; min-height: 52px; font-size: var(--fs-md); font-weight: 800; }
+  .cardgo small { color: var(--muted); text-align: center; }
+</style>

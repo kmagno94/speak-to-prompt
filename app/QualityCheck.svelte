@@ -21,8 +21,26 @@
     <div class="meter" role="img" aria-label={`${g.score.toFixed(1)} out of 5`}>
       {#each [1, 2, 3, 4, 5] as i (i)}<i style="--f: {Math.max(0, Math.min(1, g.score - (i - 1)))}"></i>{/each}
     </div>
+    {#if g.auto && !g.pass}
+      <!-- #56 What's thin (v2.1.43, SPEC LOCKED 11/15 round 5): up to 3 plain lines on what's missing, so you can
+           decide without reading the whole prompt. The stand-in's questions (if any) sit just above this card. -->
+      <div class="thin" id="whatsThin">
+        <p class="thinhead"><b>What's thin</b>{#if g.working}<span> · polishing a few lines…</span>{/if}</p>
+        <ul>{#each g.thin as line, i (i)}<li>{line}</li>{/each}</ul>
+        {#if g.used}
+          <p class="thinused" id="thinUsed" role="status">✅ Copied. Paste it into your AI.</p>
+        {:else if !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
+          <div class="thinbtns">
+            <button type="button" class="primary usebtn" id="thinUse" onclick={() => act('thinuse')}>Use it</button>
+            <button type="button" class="rwbtn" id="thinStronger" onclick={() => act('stronger')}>💪 Make it stronger</button>
+          </div>
+          <p class="askhint">Make it stronger rewrites it with the stronger model. Your first prompt stays, one tap away.</p>
+        {/if}
+      </div>
+    {:else}
     <p class="tip">{g.working ? 'Polishing a few lines…' : 'Tip: ' + g.tip}</p>
-    {#if !g.pass && !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
+    {/if}
+    {#if !g.auto && !g.pass && !g.working && ui.hasKey && (!ui.round || (ui.round.stage === 'built' && ui.round.count < ui.round.max))}
       <!-- v2.1.39 (idea mwct7axlrttc): the tip asks you about what was weak and rewrites from your
            answers, so fixing it is a few taps and not "add that to your note and build again". -->
       {#if g.ask}
@@ -63,4 +81,11 @@
   .askbtn { justify-self: start; min-height: var(--tap); font-weight: 800; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); background: var(--accent); color: var(--accent-ink); border: 0; }
   .askhint { margin: 0; font-size: var(--fs-xs); color: var(--muted); }
   .rwbtn { justify-self: start; min-height: var(--tap); font-weight: 700; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); }
+  .thin { display: grid; gap: var(--sp-2); }
+  .thinhead { margin: 0; color: var(--ink); }
+  .thinhead span { color: var(--muted); font-size: var(--fs-sm); }
+  .thin ul { margin: 0; padding-left: 1.2em; color: var(--ink); font-size: var(--fs-sm); display: grid; gap: 2px; }
+  .thinbtns { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .usebtn { min-height: var(--tap); font-weight: 800; border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-5, 24px); }
+  .thinused { margin: 0; font-weight: 700; color: var(--ink); }
 </style>

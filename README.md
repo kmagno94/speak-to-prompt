@@ -120,16 +120,21 @@ On the staging build only, a 🧪 button at the bottom left (with **Show my Idea
 - The verdict: "Don't promote: 2 broken", or "All 14 work. Ready to promote v2.1.3" with a button that copies **Pre-flight passed, promote v2.1.3** for the Claude chat.
 - Live's version is passed in by the deploy, so the plan always matches what's actually live. Results are saved on this phone only (`stp-testlab` under `stg:`). The live build never shows it.
 
-### Two modes (in Options, under the box)
+### Auto mode (v2.1.43, #56)
 
-| Mode | What it does | Time |
-|---|---|---|
-| **Quick** | Skips the questions and writes right away on Flash-Lite (500 free requests a day), so it doesn't touch the smaller Flash allowance. | about 15 seconds |
-| **Normal** | Asks a few questions, then writes on the newest Flash. | usually 1 to 2 minutes |
+With a key there is nothing to pick: Options says **Options · Auto**.
 
-You can also tap **⋯** in the dock, then **Quick version**, to write right away the faster, lighter way with whatever you've answered.
+| Step | What happens |
+|---|---|
+| Read and questions | Same as Normal used to be: Read picks a few questions. **Skip all questions** at the top of the card writes right away with whatever is answered. After the last answer, **✍️ Write my prompt** shows right inside the card (idea mwk245csqohp); the dock keeps its own |
+| Write | Flash-Lite (the quick writer), so it's fast |
+| Check | The Quality check runs on every Auto build, not only with run stats on. The full grader line (#gradeNote) still shows only with run stats |
+| 4.5 and up | Done |
+| 2 to 4.4 | The **What's thin** card (`QualityCheck.svelte`): up to 3 plain lines (`thinLines`), the stand-in's questions just above it, **Use it** (copies) and **Make it stronger** (a Rework round on Flash) |
+| Under 2 | The first prompt stays on screen in a card you can copy from (`ui.hold`) while a Flash rework writes, then swaps in with **Stronger version ready (old to new)** and Compare |
+| Busy Flash | A rework gives each Flash model 30 seconds (`watchSlowWrite`, 2 Flash = 1:00), then Flash-Lite writes it with no ask (#35 relaxed for Auto) |
 
-The app starts in **Quick** when there's no key, so nobody hits a "needs a key" wall, and moves to **Normal** once a key is added, unless you picked a mode yourself.
+No key: unchanged, the quick prompt to paste. Quick and Normal stay as manual overrides with dev tools on (Auto, Quick, Normal), and the smoke tests written before Auto keep the old picker through the `__manualModes` test hook (`page({ auto: true })` runs the real Auto). Staging: `#lowgrade` reads round 1 as 3.4 (What's thin), `#vlowgrade` as 1.6 (the stronger version).
 
 ### The journey (what the page looks like)
 

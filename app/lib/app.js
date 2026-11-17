@@ -4,7 +4,7 @@ import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
-import { ui, notify, saveMode } from "./ui.svelte.js";
+import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
 import { startHere } from './starthere.svelte.js';
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
@@ -301,7 +301,7 @@ export function startApp() {
   function fullBuild() {
     if (!ui.hasKey || !thoughts.value.trim()) return;
     forceAsk = true;
-    ui.mode = "normal"; ui.modePicked = true; saveMode("normal");
+    if (manualModes() || core.dev) { ui.mode = "normal"; ui.modePicked = true; saveMode("normal"); } else ui.mode = "auto";   /* #56: with a key the full way is Auto */
     notify("result");
     form.scrollIntoView({ behavior: "smooth", block: "start" });
     form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
@@ -319,6 +319,9 @@ export function startApp() {
     else if (act === "askanyway") askAnyway();   /* AGT-14: bring back the questions a strong note skipped */
     else if (act === "fullbuild") fullBuild();   /* v2.1.25: the key just worked, rebuild the quick prompt the full way */
     else if (act === "rework") startRework(false);   /* #2: builds round 2 right away */
+    else if (act === "stronger") startRework(false);   /* #56: What's thin, Make it stronger (Flash) */
+    else if (act === "thinuse") useThin();   /* #56: What's thin, Use it */
+    else if (act === "compare") ui.openCompare = true;   /* #56: Stronger version ready, Compare */
     else if (act === "reworkedit") startRework(true);   /* Edit first: the box, then Build */
     else if (act === "guide") startGuided();   /* v2.1.39: questions about what was weak, then the next round */
     else if (act === "slowquick") slowQuick(false);
@@ -418,6 +421,7 @@ export function startApp() {
     notify("result");
     ui.build = ""; ui.slow = null; ui.switched = false;   /* #51: Ready, the chip steps away */
     ui.quickResult = false;   /* showQuick turns it back on; KeyNudge reads it */
+    ui.hold = null;   /* #56: the stronger version swaps in for the held first prompt */
     if (typeof resetKeep === "function") resetKeep();
     report.reset();
     xray.set({ prompt: text, raw: session ? session.raw : thoughts.value, answers: session ? withMem(session.answers) : [], core: extraBlock(), known: sessionKnown() });   /* Prompt X-ray */
@@ -741,8 +745,10 @@ export function startApp() {
     if (/^#stpback=/.test(h)) return;   /* a shortcut result (#53) is never a test switch */
     if (IS_STAGING && /lowgrade/.test(h)) {
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-      fakeLowGrade = true;
-      notify("form", "info", "Low grade test is on", "Staging test. Turn on Show run stats in More options, then build any prompt: its first Quality check comes back under the bar, so you can try Ask me, then rewrite. Reload to go back to normal.");
+      fakeLowGrade = /vlowgrade/.test(h) ? "vlow" : "low";   /* #56: #vlowgrade reads as 1.6, under 2, for the auto stronger version */
+      notify("form", "info", "Low grade test is on", fakeLowGrade === "vlow"
+        ? "Staging test. Build any prompt with your key: its first Quality check comes back as 1.6, so the first prompt stays on screen while a stronger one writes. Reload to go back to normal."
+        : "Staging test. Build any prompt with your key: its first Quality check comes back under the bar (3.4), so you can try What's thin, Use it and Make it stronger. Reload to go back to normal.");
       return;
     }
     if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
@@ -2512,7 +2518,7 @@ export function startApp() {
   }
 
   function geminiFlow(raw, key) {
-    session = { raw: raw, known: knownText(), forceAsk: forceAsk };
+    session = { raw: raw, known: knownText(), forceAsk: forceAsk, auto: currentMode() === "auto" };   /* #56 Auto: questions, a Flash-Lite write, the grade decides */
     forceAsk = false;
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
@@ -2522,8 +2528,8 @@ export function startApp() {
        a rush can skip the questions on the fly. The clock keeps going from here (session.t0). */
     session.t0 = Date.now();
     ui.goQuick = false;
-    ui.reading = currentMode() !== "quick";
-    ui.build = "read"; ui.switched = false; ui.slow = null; ui.quickOn = currentMode() === "quick";   /* #51: the chip stays from here to Ready */
+    ui.reading = currentMode() === "normal";   /* #56: Auto writes on Flash-Lite already, so there is no Switch to Quick */
+    ui.build = "read"; ui.switched = false; ui.slow = null; ui.quickOn = currentMode() !== "normal";   /* #51: the chip stays from here to Ready */
     savectx.newBuild();   /* #50: last build's Save as context offer never carries over */
     var onIntakeModel = startEstimate(document.getElementById("buildProg"), "Reading your thoughts", session.estIntake, "read", false);
     snapTo(document.getElementById("buildTrack"));
@@ -2662,7 +2668,12 @@ export function startApp() {
     qa.scrollIntoView({ behavior: "smooth", block: "start" });
     doneAway("questions");
   }
-  chat.onFinish = function (answers, quick) { if (busy || !session) return; if (guide) guidedBuild(answers, quick); else writeFinal(answers, quick); };
+  chat.onFinish = function (answers, quick) {
+    if (busy || !session) return;
+    if (guide) return guidedBuild(answers, quick);
+    if (quick && session.auto) session.mode = "Auto (skipped " + (answers.some(function (a) { return a.answer; }) ? "the rest" : "all") + ")";   /* #56: Skip all questions */
+    writeFinal(answers, quick);
+  };
 
   /* Everything the writer reads: rules, lessons, raw thoughts, answers, context, core, memory. */
   /* bare (Flow bench): leave out My context, your core, and memory, so only the flow differs. */
@@ -2854,11 +2865,14 @@ export function startApp() {
     var cap = FLASH_WAIT_MAX * TIME_SCALE;
     var autoAt = Math.max(now + 20000 * TIME_SCALE, session.writeStart.at + cap);
     var offerAt = Math.max(now, autoAt - (cap - SLOW_OFFER_MS * TIME_SCALE));
+    /* #56 (SPEC LOCKED 11/15): an Auto rework gives each Flash model 30 seconds (2 Flash = 1:00),
+       then Flash-Lite writes it with no ask and no countdown note. */
+    if (session.auto) { autoAt = now + Math.max(1, fullWriters().length) * ROTATE_MS * TIME_SCALE; offerAt = autoAt + 1; }
     slowWrite = {
       run: run, handle: handle, autoAt: autoAt,
       tick: setInterval(function () { if (run !== writeRun) stopSlowWrite(); }, 1000),
       offer: setTimeout(function () {
-        if (!slowWrite || run !== writeRun || !busy) return;
+        if (!slowWrite || run !== writeRun || !busy || session.auto) return;
         slowWrite.offered = true;
         /* #51 (SPEC 11/08, round 5): the note says why, and its countdown joins the one steady
            ⚡ Quick version chip under the tracker instead of bringing a second button. */
@@ -3152,6 +3166,9 @@ export function startApp() {
         session.waitingClean = false;
         session.prepWaitMs = (session.prepWaitMs || 0) + (Date.now() - waitT0); if (waitRun === writeRun) { setBusy(false); return writeFinal(answers, quick || !!session.quickAfterClean); } });
     }
+    /* #56 Auto (SPEC CHANGE 11/17): the first write follows Normal (Read, the questions) but writes on
+       Flash-Lite. Make it stronger (a Rework round) is the only Flash write. */
+    if (session.auto && !(session.round >= 2)) { quick = true; if (!session.mode || session.mode === "Full" || /^Full /.test(session.mode)) session.mode = "Auto"; }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
     session.answers = answers.filter(function (a) { return a.answer; });
     /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
@@ -3203,8 +3220,9 @@ export function startApp() {
        shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini. */
     var viaSc = !quick && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
     /* Every Flash model is used up for today: say so before anything is sent (#35). */
-    if (!viaSc && !quick && flashOnly() && flashUsedUp()) { askFlashWait("all used up"); return Promise.resolve(); }
-    var handle = { cycle: !quick && flashOnly() };
+    if (!viaSc && !quick && flashOnly() && flashUsedUp()) { if (session.auto) { quickAfterBusy(); return Promise.resolve(); } askFlashWait("all used up"); return Promise.resolve(); }   /* #56: Auto never asks, Flash-Lite writes it */
+    /* #56: an Auto rework gives each Flash 30 seconds (watchSlowWrite caps it), then Flash-Lite writes it. No busy cycling. */
+    var handle = { cycle: !quick && flashOnly() && !session.auto };
     if (!quick && !viaSc) watchSlowWrite(run, handle);
     var onWriter = function (m) { if (run === writeRun) eta(m); };
     return (viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
@@ -3252,7 +3270,7 @@ export function startApp() {
            the bar, run inside the timer. The prompt comes up when they're done, or after
            CHECK_MAX at most; anything still going then finishes in the background like before. */
         session.cooking = true;
-        var doStand = !quick && words(session.raw) >= STANDIN_MIN_WORDS, grading = testLog.on();
+        var doStand = (!quick || session.auto) && words(session.raw) >= STANDIN_MIN_WORDS, grading = testLog.on() || (!!session.auto && !!gemini.plan);   /* #56: Auto grades every build */
         if (!doStand && !grading) return reveal(0);
         session.checked = true;
         ui.build = "finish";
@@ -3345,7 +3363,7 @@ export function startApp() {
           /* Left mid-build and came back before it finished: say it picked back up. */
           if (!doneAway("prompt") && (session.intakeAway || 0) + (r.away || 0) >= 3000) notify("result", "info", "Picked back up", "You left mid-build, so it paused and finished when you came back. Nothing was lost.");
           session.writeStart = null;
-          if (session.autoQuick) { session.autoQuick = false; notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
+          if (session.autoQuick) { session.autoQuick = false; session.autoQuickNote = !!session.auto; if (session.auto) notify("result", "info", "Flash-Lite wrote the stronger version", "Flash was busy, so Flash-Lite reworked it to keep you moving. Check the Quality check before you paste it."); else notify("result", "info", "The quick model wrote this one", "Flash couldn't finish within 3 minutes, so the quick model wrote it to keep you moving. Check the Quality check before you paste it."); }
           showRepairNote(rep);
           showGapNote(session.standin);
           if (session.strongSkip && !ui.notices.result) notify("result", "info", "Your note had everything", "No questions needed, so it went straight to writing your prompt.", [{ label: "Ask me anyway", act: "askanyway" }]);
@@ -3359,6 +3377,10 @@ export function startApp() {
           }
           var nc = showNumberCheck(finalPrompt);
           session.numFlags = nc.extra.length + nc.missing.length + nc.dates.length;
+          /* #56: the round that replaced a held first prompt; its score lands with the grade (strongerReady). */
+          if (session.round >= 2 && session.strongerNote) strongerReady(session.strongerNote[0], session.strongerNote[1]);
+          else if (session.round >= 2 && session.heldFrom != null) notify("result", "success", "Stronger version ready", (session.autoQuickNote ? "Flash was busy, so Flash-Lite wrote it. " : "") + "Your first prompt is still there: tap Round 1 below to go back to it.", [{ label: "Compare", act: "compare" }]);
+          if (session.strongerAfterReveal) { session.strongerAfterReveal = false; setTimeout(autoStronger, 0); }
         }
       }
     }).catch(function (e) {
@@ -3375,7 +3397,8 @@ export function startApp() {
       signal("gemini-failed", "While writing");
       /* No Flash model could write it: ask wait or quick model instead of a silent backup (#35).
          Offline and key problems keep their own messages below. */
-      if (!quick && flashOnly() && flashBusy(e)) return flashUsedUp() ? askFlashWait(e && e.message ? e.message : "unknown") : quickAfterBusy();
+      if (!quick && flashOnly() && flashBusy(e)) return flashUsedUp() && !session.auto ? askFlashWait(e && e.message ? e.message : "unknown") : quickAfterBusy();   /* #56: Auto never asks */
+      if (!quick && session.auto && flashBusy(e)) return quickAfterBusy();
       session.writeStart = null;
       if (session.round >= 2 && rounds.length) {   /* A Rework round failed: the round it came from comes back, nothing lost */
         var why = e && e.message ? e.message : "unknown", failedN = session.round, backN = reworkFrom + 1;
@@ -3508,7 +3531,8 @@ export function startApp() {
       return l && seedLines.indexOf(l) === -1 && !/^what was weak:/i.test(l);
     }).join("\n").slice(0, 2000);
     session = Object.assign({}, s1, { answers: (s1.answers || []).slice(), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
-      round: n, reworkOf: reworkFrom + 1, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n });
+      round: n, reworkOf: reworkFrom + 1, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n + (ui.hold ? " (auto, under " + AUTO_REWORK_BELOW + ")" : ""),
+      heldFrom: ui.hold ? ui.hold.score : null, strongerAfterReveal: false, strongerNote: null, autoQuickNote: false });
     if (added) session.answers.push({ question: "What I changed when reworking", answer: added, tapped: false });
     ui.round = Object.assign({}, ui.round, { stage: "writing" });
     notify("form");
@@ -3588,7 +3612,7 @@ export function startApp() {
     var asked = ui.round.stage === "ask" || !!(session && session.guided);
     var text = asked ? "" : ui.round.stage === "edit" ? thoughts.value : session && session.reworkText ? session.reworkText : "";
     if (!asked) reworkDraft = text && text.trim() !== reworkSeed.trim() ? { from: reworkFrom, text: text } : null;
-    guide = null; guideRun++;
+    guide = null; guideRun++; ui.hold = null;
     qaStatus.textContent = "";
     writeRun++;
     setBusy(false);
@@ -3674,12 +3698,12 @@ export function startApp() {
     return g.confirm === "dropped" ? "a second look gave " + g.secondCraft.toFixed(2) + " (first " + g.firstCraft.toFixed(2) + ")" : g.confirm === "unconfirmed" ? "pass not confirmed" : "";
   }
   function gradeRun(prompt, run, writer) {
-    if (!testLog.on() || !gemini.plan || !session) return;
+    if ((!testLog.on() && !(session && session.auto)) || !gemini.plan || !session) return;   /* #56: Auto grades everyone's builds */
     var target = pendingRun, t0 = Date.now();
     var items = lessons.items;
     var job = gradeConfirmed(gradeOnce(prompt, session.raw, gradeAnswers(), session.today, items, lessons.grader, writer)).then(function (g) {
       /* Staging #lowgrade test: round 1 reads as under the bar, whatever the grader said. */
-      if (IS_STAGING && fakeLowGrade && !(session && session.round >= 2)) g = { craft: 3.4, pass: false, rearranged: false, invented: false, missing: ["role", "context"], broke: [], model: g.model, history: g.history };
+      if (IS_STAGING && fakeLowGrade && !(session && session.round >= 2)) g = { craft: fakeLowGrade === "vlow" ? 1.6 : 3.4, pass: false, rearranged: false, invented: false, missing: ["role", "context"], broke: [], model: g.model, history: g.history };
       var r = g;
       var fields = { grade: g.craft, grade_pass: g.pass, grade_rearranged: g.rearranged, grade_invented: g.invented, grade_missing: g.missing.join("+") || "none",
         grade_broke: g.broke.join("+") || "none", grade_confirm: g.confirm || "none", grade_numcheck: g.numCheck ? g.numCheck.join("+") : "none",
@@ -3691,7 +3715,12 @@ export function startApp() {
       session.gradeFields = fields;
       var el = document.getElementById("gradeNote");
       el.textContent = gradeText(g, fields, "");
-      el.hidden = false;
+      el.hidden = !testLog.on();   /* the full grader line is for run stats; Auto shows the card only */
+      /* #56: a stronger version just landed from a first prompt that scored under 2: say by how much. */
+      if (session.round >= 2 && session.heldFrom != null) { session.strongerNote = [session.heldFrom, Math.round(g.craft * 10) / 10]; session.heldFrom = null; if (!session.cooking) strongerReady(session.strongerNote[0], session.strongerNote[1]); }
+      /* #56 (SPEC LOCKED 11/15): an Auto first prompt under 2 gets a Flash rework by itself, no label fix first.
+         Still in the Check: it starts right after the prompt shows (reveal), so the prompt is never skipped. */
+      if (session.auto && !(session.round >= 2) && !g.pass && g.craft < AUTO_REWORK_BELOW) { if (session.cooking) session.strongerAfterReveal = true; else setTimeout(autoStronger, 0); return; }
       if (canFix(g)) return fixLabel(prompt, run, target, g, fields, items, el, writer);
     }, function (e) {
       /* Every grader missed (v2.1.25): say so, instead of "Still grading" forever. */
@@ -3700,6 +3729,39 @@ export function startApp() {
     }).then(function () { if (run === writeRun && session && session.refreshSteps) session.refreshSteps(); });
     if (target) target._grade = job;
     return job;
+  }
+  /* #56 Auto (v2.1.43, SPEC LOCKED 11/15). With a key, every build is graded. 4.5 and up: done.
+     2 to 4.4: the What's thin card (QualityCheck.svelte) says in up to 3 plain lines what's
+     missing, next to the stand-in's questions, with Use it and Make it stronger (a Flash
+     Rework round). Under 2: the first prompt stays on screen (ui.hold) while a stronger one
+     writes, then swaps in with both scores. Rounds, Back and Compare work as before. */
+  var AUTO_REWORK_BELOW = 2;
+  function thinLines(g) {
+    var n = [];
+    if (g.rearranged) n.push("It reads like your words rearranged, not clear steps for the AI.");
+    if (g.invented) n.push("It added something you didn't say.");
+    g.missing.forEach(function (m) { n.push("Missing " + (LABEL_NAMES[m] || m) + "."); });
+    if (g.numCheck) n.push("A number or date may not match what you said.");
+    if (!n.length) n.push("It could be more specific about what you want.");
+    return n.slice(0, 3);
+  }
+  function useThin() {
+    if (!ui.grade) return;
+    ui.grade = Object.assign({}, ui.grade, { used: true });
+    var c = document.getElementById("copy"); if (c && !c.hidden) c.click();
+  }
+  function autoStronger() {
+    var g = lastGrade();
+    if (!session || busy || session.round >= 2 || !g || g.pass || (ui.round && ui.round.stage !== "built")) return;
+    ui.hold = { text: output.value, score: Math.round(g.craft * 10) / 10 };
+    logRun({ outcome: "auto rework under " + AUTO_REWORK_BELOW, round: 1 });
+    startRework(false);
+    if (!ui.round || ui.round.stage !== "writing") { ui.hold = null; return; }   /* didn't start: the first prompt just stays */
+    document.getElementById("resultHead").textContent = "Making a stronger version...";
+  }
+  function strongerReady(from, to) {
+    notify("result", "success", "Stronger version ready (" + from.toFixed(1) + " to " + to.toFixed(1) + ")",
+      (session && session.autoQuickNote ? "Flash was busy, so Flash-Lite wrote it. " : "") + "Your first prompt is still there: tap Round 1 below to go back to it.", [{ label: "Compare", act: "compare" }]);
   }
   /* The glanceable Quality check (QualityCheck.svelte): score, a plain label, one tip. */
   function gradeView(g, extra) {
@@ -3710,7 +3772,8 @@ export function startApp() {
       : g.missing.length ? "It could say " + andList(g.missing.slice(0, TIP_MAX).map(function (m) { return LABEL_NAMES[m] || m; })) + "."
       : "A detail or two about what you want would sharpen it.";
     var score = Math.round(g.craft * 10) / 10, ask = tipWeak(g).length;
-    return { score: score, pass: !!g.pass, ask: ask, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || "") };
+    return { score: score, pass: !!g.pass, ask: ask, label: g.pass ? "Ready to go" : score >= 3.5 ? "Good start" : "Could be sharper", tip: tip, working: /adding .*\.\.\.$/.test(extra || ""),
+      auto: !!(session && session.auto), thin: thinLines(g), low: score < AUTO_REWORK_BELOW };
   }
   function gradeText(g, fields, extra) {
     ui.grade = gradeView(g, extra);
