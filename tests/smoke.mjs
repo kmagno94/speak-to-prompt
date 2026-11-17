@@ -115,6 +115,7 @@ async function page(opts = {}) {
       if (opts.gradeSeq) opts = { ...opts, grade: opts.gradeSeq[Math.min(p.grades.length, opts.gradeSeq.length - 1)] };
       p.grades.push({ model, level: body.generationConfig && body.generationConfig.thinkingConfig && body.generationConfig.thinkingConfig.thinkingLevel, json: !!(body.generationConfig && body.generationConfig.responseMimeType), text: ask });
       if (opts.gradeBusyOnce) { p.busy = p.busy || new Map(); const k = ask.slice(-300); if (!p.busy.has(k)) p.busy.set(k, Date.now()); if (Date.now() - p.busy.get(k) < 400) { return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }) }); } }
+      if (opts.gradeHang && opts.gradeHang.includes(model)) { await new Promise(() => {}); }   /* v2.1.44: this grader never answers, like a busy Flash */
       if (opts.gradeFail) return r.fulfill({ status: 503, headers: h, body: JSON.stringify({ error: { code: 503, message: 'mock' } }) });
       if (opts.gradeDelay) await new Promise(res => setTimeout(res, opts.gradeDelay));
       const g = JSON.stringify((opts.gradeFn && opts.gradeFn(ask)) || opts.grade || { craft: 4, rearranged: false, invented: false, missing: [] });
@@ -5894,8 +5895,10 @@ await check('questions card (idea mwk245csqohp): after the last answer, Write my
   await withKey(p); await p.check('#normalMode');
   await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
   expect(!(await p.isVisible('#qaGoCard')), 'no card button before the questions are done');
-  await p.click('#qaList .chips button'); await p.waitForTimeout(700);
-  await p.waitForSelector('#qaList .chips button'); await p.click('#qaList .chips button'); await p.waitForTimeout(700);
+  /* Waits for each answer to land before the next tap, so a slow machine can't tap a chip that is being swapped out. */
+  await p.click('#qaList .chips button', { timeout: 60000 }); await p.waitForFunction(() => document.querySelectorAll('#qaList .msg.me').length === 1, null, { timeout: 30000 });
+  await p.waitForSelector('#qaList .chips button:not([disabled])', { timeout: 30000 }); await p.click('#qaList .chips button', { timeout: 60000 });
+  await p.waitForSelector('#qaGoCard', { timeout: 30000 });
   expect(await p.isVisible('#qaGoCard') && await p.isVisible('#qaGo') && !(await p.isVisible('#qaSkip')), 'all answered: Write my prompt in the card and in the dock, Skip all gone');
   expect(await p.evaluate(() => !!document.querySelector('#qa #qaGoCard')), 'the card button lives inside the questions card');
   await p.click('#qaGoCard'); await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 30000 });
@@ -5966,6 +5969,36 @@ await check('auto (#56): a busy Flash on Make it stronger goes to Flash-Lite wit
   await p.waitForSelector('#thinStronger', { timeout: 8000 }); await p.click('#thinStronger');
   await p.waitForSelector('#roundResult', { timeout: 20000 });
   expect(/Flash-Lite wrote the stronger version|Flash was busy/.test(await p.textContent('#result')) && !/Use quick model now/.test(await p.textContent('#result')), 'Flash-Lite wrote it, no wait or ask');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+
+/* ---- v2.1.44: no picker for anyone, and Auto always gets a grade ---- */
+await check('auto (v2.1.44): no Quick or Normal for anyone, dev tools included', async () => {
+  const p = await page({ auto: true });
+  await devOn(p); await withKey(p); await p.dispatchEvent('#gkey', 'input'); await p.waitForTimeout(200);
+  expect(!(await p.$('#quickMode')) && !(await p.$('#normalMode')) && !(await p.$('#autoMode')) && /Options · Auto/.test(await p.textContent('#optionsChip')), 'dev tools with a key: Auto and no picker');
+  const q = await page({ auto: true });
+  expect(!(await q.$('#quickMode')) && !(await q.$('#normalMode')) && /A free key turns on Auto/.test(await q.textContent('#modeHint')), 'no key: no picker, a line about Auto');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + p.errors.concat(q.errors).join('; '));
+});
+
+await check('auto grade (v2.1.44): with one Flash-Lite and a Flash that never answers, the Flash-Lite still grades it', async () => {
+  const p = await page({ auto: true, intake: { ...AUTO_INTAKE, questions: [] }, models: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite'], gradeHang: ['gemini-3.8-flash', 'gemini-3.7-flash'], hooks: { __gradeHedgeMs: 400 }, grade: { craft: 4.8, rearranged: false, invented: false, missing: [] } });
+  await withKey(p);
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#qualityCheck', { timeout: 15000 });
+  const writer = p.calls.filter((c) => !c.intake).pop().model;
+  expect(/lite/.test(writer) && p.grades.some((g) => /lite/.test(g.model)) && /4\.8/.test(await p.textContent('#qualityCheck')), 'graded after Flash went quiet: ' + p.grades.map((g) => g.model).join());
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('auto grade (v2.1.44): a grade that never comes back says so on the card', async () => {
+  const p = await page({ auto: true, intake: { ...AUTO_INTAKE, questions: [] }, gradeFail: true });
+  await withKey(p);
+  await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#gradeFailed', { timeout: 15000 });
+  expect(/didn't come back/.test(await p.textContent('#gradeFailed')), 'the card says the check did not come back');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 

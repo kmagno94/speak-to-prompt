@@ -301,7 +301,7 @@ export function startApp() {
   function fullBuild() {
     if (!ui.hasKey || !thoughts.value.trim()) return;
     forceAsk = true;
-    if (manualModes() || core.dev) { ui.mode = "normal"; ui.modePicked = true; saveMode("normal"); } else ui.mode = "auto";   /* #56: with a key the full way is Auto */
+    if (manualModes()) { ui.mode = "normal"; ui.modePicked = true; saveMode("normal"); } else ui.mode = "auto";   /* #56: with a key the full way is Auto */
     notify("result");
     form.scrollIntoView({ behavior: "smooth", block: "start" });
     form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
@@ -1064,7 +1064,7 @@ export function startApp() {
   function route(job, writer) {
     var p = gemini.plan || { write: [], intake: [] };
     var lites = p.intake.filter(function (m) { return /lite/.test(m); });
-    if (job === "grade") return graderModels(writer).filter(function (m, i, a) { return m !== writer && a.indexOf(m) === i; });
+    if (job === "grade") return graderModels(writer).filter(function (m, i, a) { return a.indexOf(m) === i; });   /* graderModels decides when the writer may back up (v2.1.44) */
     if (job === "ledger") return liteCrew(2);
     if (job === "squeeze") return lites;
     return p.intake;
@@ -3668,6 +3668,11 @@ export function startApp() {
     var others = lites.filter(function (m) { return m !== writer; });
     if (others.length) return others;
     var flashes = gemini.plan.intake.filter(function (m) { return !/lite/.test(m) && m !== writer; });
+    /* v2.1.44 fix (Auto, Kevin 11/17: "there is no grade"): Auto writes on Flash-Lite, so on a key with one
+       Flash-Lite every grade went to Flash alone, and a busy Flash sat the full 30 seconds with no answer:
+       no grade at all. Flash still grades first (a different model than the writer), and the same Flash-Lite
+       joins after GRADE_HEDGE_MS in a fresh call, so a busy Flash can't leave you with no grade. */
+    if (/lite/.test(writer || "") && lites.length) return flashes.slice(0, 1).concat(lites);
     return flashes.length ? flashes.slice(0, 1) : lites;
   }
   function gradeOnce(prompt, raw, answers, today, items, grader, writer) {
@@ -3726,6 +3731,7 @@ export function startApp() {
       /* Every grader missed (v2.1.25): say so, instead of "Still grading" forever. */
       if (run !== writeRun || !session) return;
       session.gradeFailed = (e && e.message) || "no grader answered";
+      if (session.auto) ui.grade = { failed: true, auto: true };   /* v2.1.44: say it, instead of no card at all */
     }).then(function () { if (run === writeRun && session && session.refreshSteps) session.refreshSteps(); });
     if (target) target._grade = job;
     return job;

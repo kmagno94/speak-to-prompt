@@ -11,7 +11,12 @@
   const act = (a) => window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: a, where: 'result' } }));
 </script>
 
-{#if g}
+{#if g && g.failed}
+  <!-- v2.1.44: a grade that never came back says so, so a missing card never looks like a bug -->
+  <div class="qc" id="qualityCheck" in:fly={{ y: 6, duration: ms(220) }}>
+    <p class="tip" id="gradeFailed"><b>Quality check didn't come back this time.</b> Google was slow to answer. Your prompt is fine to use.</p>
+  </div>
+{:else if g}
   <div class="qc {tone}" id="qualityCheck" in:fly={{ y: 6, duration: ms(220) }}>
     <div class="top">
       <span class="ic" aria-hidden="true">{icon}</span>

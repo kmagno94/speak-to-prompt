@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.44",
+      "date": "2026-11-17",
+      "title": "Auto only, no mode picker, and Auto always gets its Quality check",
+      "items": [
+        "Quick and Normal are gone for everyone, dev tools included. With a key it's Auto; with no key, the quick prompt, plus a line saying a free key turns on Auto.",
+        "Fix: Auto writes on Flash-Lite, and on a key with only one Flash-Lite every grade went to Flash. A busy Flash sat the full 30 seconds without answering, so there was no grade at all. Flash still grades first, and now the Flash-Lite joins after 12 seconds, so a slow Flash can't leave you with no grade.",
+        "If a grade still doesn't come back, the card says so (and that your prompt is fine to use) instead of showing nothing."
+      ],
+      "checks": [
+        {
+          "say": "With your key saved and dev tools on, open Options.",
+          "see": "Options · Auto and one line about Auto. No Auto / Quick / Normal buttons."
+        },
+        {
+          "say": "Build a prompt with your key (skip the questions is fine).",
+          "see": "A Quality check card shows under the prompt within about 30 seconds, even in busy hours."
+        },
+        {
+          "say": "Open Step by step under the timer and look at the Grade row.",
+          "see": "It names the model that graded it, and shows a hand-off if Flash was slow and Flash-Lite stepped in."
+        },
+        {
+          "say": "In a private tab with no key, open Options.",
+          "see": "No buttons, just a line that a free key turns on Auto."
+        }
+      ]
+    },
+    {
       "version": "2.1.43",
       "date": "2026-11-17",
       "title": "Auto mode: questions first, a fast write, and a Quality check that decides what's next, plus Write my prompt right in the questions card",
