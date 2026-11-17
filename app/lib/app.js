@@ -3019,17 +3019,18 @@ export function startApp() {
     var name = SC_NAME + " (" + scLabel(w.model) + ")";
     var others = ["gpt", "cloud", "device"].filter(function (m) { return m !== w.model; });
     var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
-    var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use Flash instead", act: "scflash" };
+    var gem = session && session.auto ? "Flash-Lite" : "Flash";   /* v2.1.46: in Auto the Gemini fallback is Auto's own writer */
+    var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use " + gem + " instead", act: "scflash" };
     var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
     document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
     if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here, and one Paste tap brings the prompt in. Then Polish and Check carry on like always.", [run, swap, swap2, flash]);
-    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it brings you back here with the prompt on your clipboard. Then tap Paste result. Nothing came back? Run it again, try another model, or let Flash write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
+    else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it brings you back here with the prompt on your clipboard. Then tap Paste result. Nothing came back? Run it again, try another model, or let " + gem + " write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
     else if (state === "long") notify("result", "success", "The shortcut is done. Tap Paste", "Its answer is on your clipboard. Paste brings it in, then Polish and Check carry on.", [paste, run, flash]);
-    else if (state === "cut") notify("result", "warn", "That answer looks cut off", "It stops partway or is very short, so it wasn't used. Run the shortcut again, try another model, or let Flash write it. Sure it's whole? Use it anyway.", [run, swap, flash, { label: "Use it anyway", act: "scuse" }, paste]);
-    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let Flash write it.", [run, swap, swap2, flash, paste]);
-    else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let Flash write it.", [run, flash]);
-    else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let Flash write it.", [paste, run, flash]);
-    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try another model, or let Flash write it.", [run, swap, swap2, flash, paste]);
+    else if (state === "cut") notify("result", "warn", "That answer looks cut off", "It stops partway or is very short, so it wasn't used. Run the shortcut again, try another model, or let " + gem + " write it. Sure it's whole? Use it anyway.", [run, swap, flash, { label: "Use it anyway", act: "scuse" }, paste]);
+    else if (state === "same") notify("result", "warn", "The shortcut hasn't answered yet", "Your clipboard still has what was sent to the shortcut, not its answer. Run it again, or let " + gem + " write it.", [run, swap, swap2, flash, paste]);
+    else if (state === "nocopy") notify("result", "warn", "Couldn't copy for the shortcut", "This browser didn't allow the copy, so the shortcut wasn't opened. Tap to try again, or let " + gem + " write it.", [run, flash]);
+    else if (state === "nopaste") notify("result", "warn", "Couldn't read the clipboard", "This browser didn't allow the paste. Run the shortcut again, or let " + gem + " write it.", [paste, run, flash]);
+    else notify("result", "warn", "That didn't look like a prompt", "The shortcut came back with almost nothing. Run it again, try another model, or let " + gem + " write it.", [run, swap, swap2, flash, paste]);
     /* Snap to the card (Kevin, 11/12: "If I was not aware I'd just stare at it cooking and wonder
        why it is not working"). After the tracker's own snap, so this one wins. */
     setTimeout(function () { var n = document.getElementById("notice-result"); if (n && scWait === w) n.scrollIntoView({ behavior: "smooth", block: "center" }); }, 450);
@@ -3217,8 +3218,10 @@ export function startApp() {
     var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
     /* Shortcut stand-in (#53, dev tools): the first full write goes to the STP Flash Backup
-       shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini. */
-    var viaSc = !quick && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
+       shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini.
+       v2.1.46 (Test lab 11/17): Auto marks its first write quick (Flash-Lite), which skipped the
+       shortcut, so a Cloud or ChatGPT pick still went to Gemini. An Auto first write follows Write with too. */
+    var viaSc = (!quick || !!session.auto) && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
     /* Every Flash model is used up for today: say so before anything is sent (#35). */
     if (!viaSc && !quick && flashOnly() && flashUsedUp()) { if (session.auto) { quickAfterBusy(); return Promise.resolve(); } askFlashWait("all used up"); return Promise.resolve(); }   /* #56: Auto never asks, Flash-Lite writes it */
     /* #56: an Auto rework gives each Flash 30 seconds (watchSlowWrite caps it), then Flash-Lite writes it. No busy cycling. */

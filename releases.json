@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.46",
+      "date": "2026-11-17",
+      "title": "Auto follows Write with: Cloud, ChatGPT, and On-Device hand the write to the STP Flash Backup shortcut",
+      "items": [
+        "Fix (Test lab 11/17): with Auto, picking Cloud, ChatGPT, or On-Device under Write with did nothing. Auto writes its first prompt on Flash-Lite, and that path skipped the shortcut, so it always went to Gemini. Now an Auto build hands the write to the STP Flash Backup shortcut whenever Write with is on a shortcut, Skip all questions included.",
+        "The shortcut's prompt then goes through Polish and the Quality check like any Auto prompt.",
+        "In Auto the card's fallback says Use Flash-Lite instead (Auto's own writer), not Use Flash. With Write with on Flash, Auto writes on Flash-Lite like before."
+      ],
+      "checks": [
+        {
+          "say": "With your key and dev tools on, set Write with to Cloud, then build a prompt and tap Skip all questions.",
+          "see": "A Hand this write to STP Flash Backup (Cloud) card instead of a Flash-Lite prompt, with Copy and run shortcut, Try ChatGPT, Try On-Device, and Use Flash-Lite instead."
+        },
+        {
+          "say": "Tap Copy and run shortcut, let it run, and tap Paste result when you're back.",
+          "see": "The prompt shows, the made-by line names STP Flash Backup (Cloud), and the Quality check card shows under it."
+        },
+        {
+          "say": "Set Write with to ChatGPT, build again, and tap Use Flash-Lite instead on the card.",
+          "see": "Flash-Lite writes it, with no shortcut run."
+        },
+        {
+          "say": "Set Write with back to Flash and build.",
+          "see": "No shortcut card: Flash-Lite writes it right away, like before."
+        }
+      ]
+    },
+    {
       "version": "2.1.45",
       "date": "2026-11-17",
       "title": "Skip all questions moves out of the corner into a full-width bar above the first question",

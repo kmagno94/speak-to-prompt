@@ -16,10 +16,10 @@ const BASE = `http://localhost:${PORT}/`;
 function browserPath() {
   const dir = '/opt/pw-browsers';
   if (!existsSync(dir)) return undefined;
-  const shell = readdirSync(dir).find(d => d.startsWith('chromium_headless_shell'));
-  if (!shell) return undefined;
+  /* Every chromium_headless_shell folder is tried: some machines also have an empty unversioned one. */
+  const shells = readdirSync(dir).filter(d => d.startsWith('chromium_headless_shell'));
   /* Newer Playwright builds name the folder chrome-headless-shell-linux64. */
-  return [`${dir}/${shell}/chrome-linux/headless_shell`, `${dir}/${shell}/chrome-headless-shell-linux64/chrome-headless-shell`].find(existsSync);
+  return shells.flatMap(shell => [`${dir}/${shell}/chrome-linux/headless_shell`, `${dir}/${shell}/chrome-headless-shell-linux64/chrome-headless-shell`]).find(existsSync);
 }
 
 const server = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: ROOT, stdio: 'ignore' });
@@ -6000,6 +6000,43 @@ await check('auto grade (v2.1.44): a grade that never comes back says so on the 
   await p.waitForSelector('#gradeFailed', { timeout: 15000 });
   expect(/didn't come back/.test(await p.textContent('#gradeFailed')), 'the card says the check did not come back');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* ---- v2.1.46 (Test lab 11/17): Auto follows Write with ---- */
+await check('auto + shortcut writer (v2.1.46): with Write with on Cloud, an Auto build (Skip all included) hands the write to STP Flash Backup instead of Flash-Lite, the answer still gets its grade, and the card falls back to Flash-Lite', async () => {
+  const grade = { craft: 4.8, rearranged: false, invented: false, missing: [] };
+  /* 1. Questions, Skip all: the hand-off card, not a Gemini write. */
+  const p = await scPage('cloud', { auto: true, intake: AUTO_INTAKE, grade });
+  expect(/Flash-Lite writes it|STP Flash Backup/.test(await p.textContent('#writerInfo')) && await p.getAttribute('#writerCloud', 'aria-pressed') === 'true', 'Write with shows Cloud picked');
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
+  await p.click('#qaSkip');
+  await p.waitForFunction(() => /Hand this write to STP Flash Backup \(Cloud\)/.test((document.getElementById('notice-result') || {}).textContent || ''), null, { timeout: 15000 });
+  expect(!p.calls.some((c) => !c.intake), 'Auto with Cloud picked sends nothing to a Gemini writer: ' + p.calls.filter((c) => !c.intake).map((c) => c.model).join());
+  expect(/Use Flash-Lite instead/.test(await scCardText(p)), 'in Auto the fallback button names Flash-Lite: ' + await scCardText(p));
+  await scTap(p, 'Copy and run shortcut');
+  await p.waitForFunction(() => window.__scOpens.length === 1);
+  expect(/stpback%3Dcloud\./.test(await p.evaluate(() => window.__scOpens[0])), 'the link tells the shortcut to use Cloud');
+  await p.evaluate((t) => { location.hash = '#stpback=cloud.' + encodeURIComponent(t); }, SC_PROMPT);
+  await done(p);
+  expect(await p.inputValue('#output') === SC_PROMPT && /STP Flash Backup \(Cloud\)/.test(await p.textContent('#madeBy')), 'the shortcut\'s prompt shows, made by the shortcut: ' + await p.textContent('#madeBy'));
+  await p.waitForSelector('#qualityCheck', { timeout: 15000 });
+  expect(p.grades.length >= 1 && /4\.8/.test(await p.textContent('#qualityCheck')), 'Auto still grades the shortcut\'s prompt');
+  expect(!p.calls.some((c) => !c.intake), 'still no Gemini write');
+  /* 2. No questions, ChatGPT picked, then Use Flash-Lite instead: Auto's own writer takes it. */
+  const q = await scPage('gpt', { auto: true, grade });
+  await q.fill('#thoughts', SC_NOTE); await q.click('#build');
+  await q.waitForFunction(() => /STP Flash Backup \(ChatGPT\)/.test((document.getElementById('notice-result') || {}).textContent || ''), null, { timeout: 15000 });
+  expect(!q.calls.some((c) => !c.intake), 'no Gemini write before the choice');
+  await scTap(q, 'Use Flash-Lite instead');
+  await done(q);
+  const writes = q.calls.filter((c) => !c.intake);
+  expect(writes.length && writes.every((c) => /lite/.test(c.model)) && await q.inputValue('#output') === 'THE PROMPT', 'Use Flash-Lite instead writes on Flash-Lite: ' + writes.map((c) => c.model).join());
+  /* 3. Write with on Flash (the default): Auto writes on Flash-Lite as before, no card. */
+  const r = await scPage('', { auto: true, grade });
+  expect(/Flash-Lite writes it \(Auto\)/.test(await r.textContent('#writerInfo')), 'the Flash hint says Auto writes on Flash-Lite: ' + await r.textContent('#writerInfo'));
+  await r.fill('#thoughts', SC_NOTE); await r.click('#build'); await done(r);
+  expect(r.calls.some((c) => !c.intake && /lite/.test(c.model)) && !(await r.evaluate(() => window.__scOpens.length)), 'no shortcut with Flash picked');
+  for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
 await browser.close();

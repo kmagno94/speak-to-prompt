@@ -92,6 +92,8 @@ Busy hours make Flash unreliable, so with **More options > Show my dev tools** o
 
 The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full WRITE rules. The short text has six plain rules, asks for numbers as digits, and puts the must-keep list last. Lessons, your core, the memory facts Read picked, and picked My context all ride along in a compact form, so it is one to one with what Flash gets; only Rework is left out.
 
+**Auto follows Write with (v2.1.46):** Auto writes its first prompt on Flash-Lite, but with Write with on a shortcut, that write goes to the shortcut instead (Skip all questions included), then through Polish and the Quality check like any Auto prompt. In Auto the card's Gemini fallback is **Use Flash-Lite instead**.
+
 Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for two of the other models, and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
 
 ### 💡 Ideas tab (just for me)
