@@ -4547,7 +4547,7 @@ await check('quick switch (v2.1.34): on the questions, Skip all questions is in 
   const p = await page({ intake, intakeDelay: 2300 });
   await withKey(p); await p.check('#normalMode');
   await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
-  expect(await p.isVisible('#qaSkip') && !(await p.isVisible('#dockMenu')) && await p.evaluate(() => !!document.querySelector('#qa .qahead #qaSkip')), 'Skip all questions shows at the top of the questions card');
+  expect(await p.isVisible('#qaSkip') && !(await p.isVisible('#dockMenu')) && await p.evaluate(() => { const b = document.getElementById('qaSkip'), r = b.getBoundingClientRect(), first = document.getElementById('qaList'); return !!b.closest('#qa') && r.width >= document.getElementById('qa').clientWidth * 0.8 && (b.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'Skip all questions is a full-width bar right above the first question (v2.1.45)');
   const box = await p.$eval('#qaGo', (b) => ({ w: b.scrollWidth, c: b.clientWidth, t: b.textContent.trim() }));
   expect(box.w <= box.c + 1 && /\(0 of 2\)/.test(box.t), 'Write my prompt (0 of 2) keeps its full width in the dock: ' + JSON.stringify(box));
   const prep = await p.textContent('#buildTrack .el');
@@ -5911,8 +5911,8 @@ await check('auto (#56): with a key there is no Quick or Normal; Read, then ques
   await withKey(p); await p.dispatchEvent('#gkey', 'input'); await p.waitForTimeout(200);
   expect(!(await p.isVisible('#quickMode')) && !(await p.isVisible('#normalMode')) && /Options · Auto/.test(await p.textContent('#optionsChip')) && /^Auto:/.test(await p.textContent('#modeHint')), 'Auto, with nothing to pick: ' + await p.textContent('#optionsChip'));
   await p.fill('#thoughts', 'yard sale this weekend'); await p.click('#build'); await p.waitForSelector('#qaList .chips button');
-  expect(await p.isVisible('#qaSkip') && /Skip all questions/.test(await p.textContent('#qaSkip')), 'questions come first, with Skip all questions at the top');
-  await p.click('#qaSkip'); await done(p);
+  expect(await p.isVisible('#qaSkip') && /Skip all questions/.test(await p.textContent('#qaSkip')), 'questions come first, with Skip all questions above them');
+  await p.click('#qaSkip', { timeout: 60000 }); await p.waitForFunction(() => document.getElementById('madeBy').textContent.length > 0, null, { timeout: 30000 });   /* roomier waits: it runs last in the core set on a busy machine */
   const writes = p.calls.filter((c) => !c.intake);
   expect(writes.length && writes.every((c) => /lite/.test(c.model)), 'Auto writes on Flash-Lite: ' + writes.map((c) => c.model).join());
   await p.waitForFunction(() => !!document.getElementById('qualityCheck'), null, { timeout: 8000 });

@@ -55,14 +55,7 @@
   {/if}
 {/snippet}
 
-<!-- #56 (v2.1.43): Skip all questions sits at the top, where a person in a rush looks first. It writes now
-     with whatever is answered (0 is fine). It replaces the dock's ⚡ Quick version chip (same id). -->
-<div class="qahead">
-  <p class="eyebrow">A few quick questions</p>
-  {#if chat.questions.length && !chat.done}
-    <button type="button" class="skipall" id="qaSkip" disabled={chat.busy} aria-label="Skip all questions and write my prompt now" onclick={() => chat.finish(true)}>Skip all questions ⏭</button>
-  {/if}
-</div>
+<p class="eyebrow">A few quick questions</p>
 <h2 id="qaTitle">{chat.title}</h2>
 {#if chat.need}
   {#if editingGoal}
@@ -86,6 +79,13 @@
   {/if}
 {/if}
 <p id="qaPlan" class="plan">{chat.plan}</p>
+<!-- #56 Skip all questions (v2.1.45, Kevin 11/17: "too tucked in the corner"): a full-width bar right above the
+     first question, where the eye lands after the goal. Writes now with whatever is answered (0 is fine). -->
+{#if chat.questions.length && !chat.done}
+  <button type="button" class="skipall" id="qaSkip" disabled={chat.busy} aria-label="Skip all questions and write my prompt now" onclick={() => chat.finish(true)}>
+    <span>⏭ Skip all questions</span><small>Write my prompt now</small>
+  </button>
+{/if}
 
 <div id="qaList" class="thread" bind:this={thread} role="log" aria-live="polite" aria-label="Questions and your answers">
   {#each chat.messages as m (m.id)}
@@ -137,9 +137,10 @@
 
 
 <style>
-  .qahead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-  .qahead .eyebrow { margin: 0; }
-  .skipall { min-height: var(--tap); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-pill); font-weight: 700; font-size: var(--fs-sm); white-space: nowrap; }
+  .skipall { display: flex; width: 100%; min-height: 52px; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    margin: var(--sp-2) 0 var(--sp-3); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-md);
+    border: 1.5px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 800; font-size: var(--fs-md); }
+  .skipall small { font-weight: 600; font-size: var(--fs-sm); color: var(--muted); }
   .cardgo { display: grid; gap: var(--sp-1); margin-top: var(--sp-3); }
   .cardgo .primary { width: 100%; min-height: 52px; font-size: var(--fs-md); font-weight: 800; }
   .cardgo small { color: var(--muted); text-align: center; }
