@@ -39,19 +39,60 @@
   let armed = $state('');
   let editor = $state();
 
-  /* The editor always opens at its top with the cursor in a title: the new piece (which
-     goes first) for + New, the first piece for Edit. */
+  /* Pills (v2.1.48, idea mwmevd3e9pix): the editor lists your pieces as pills and opens one
+     at a time, so there's no scrolling past every big text box. `focus` is the open piece.
+     ↩ Revert changes puts it back the way it was when you opened it (`snap`), and a delete
+     shows Undo for a few seconds, in case of a missed tap. Memory only, like the pieces. */
+  let focus = $state('');
+  let snap = $state(null);
+  let undo = $state(null), undoTimer;
+  const cur = $derived(context.list.find((c) => c.id === focus) || null);
+  const changed = $derived(!!(cur && snap && snap.id === cur.id && (snap.title !== cur.title || snap.text !== cur.text)));
+  function show(id) {
+    armed = '';
+    const c = context.list.find((x) => x.id === id);
+    focus = c ? c.id : '';
+    snap = c ? { id: c.id, title: c.title, text: c.text } : null;
+  }
+  function revert() {
+    if (!changed) return;
+    context.update(snap.id, 'title', snap.title);
+    context.update(snap.id, 'text', snap.text);
+  }
+  async function pickPill(id) {
+    show(id);
+    await tick();
+    editor?.querySelector('.ctxitem')?.scrollIntoView({ block: 'nearest', behavior: ms(1) ? 'smooth' : 'auto' });
+  }
+
+  /* + New opens the new piece (it goes first) with the cursor in its title. Edit opens the pills,
+     or the only piece straight away when there's just one. Either way the editor's top comes into view. */
   async function openAt(id) {
     context.open = true;
+    show(id || (context.list.length === 1 ? context.list[0].id : ''));
     await tick();
-    const input = editor?.querySelector(id ? `[data-id="${id}"] input` : '.ctxitem input');
-    input?.focus({ preventScroll: true });
+    if (id) editor?.querySelector('.ctxitem input')?.focus({ preventScroll: true });
+    else editor?.querySelector('.ctxpill')?.focus({ preventScroll: true });
     /* After it slides open, so the page is tall enough to bring its top into view. */
     setTimeout(() => editor?.scrollIntoView({ block: 'start', behavior: ms(1) ? 'smooth' : 'auto' }), ms(230));
   }
   function addNew() { openAt(context.add()); }
-  function del(id) { if (armed !== id) { armed = id; return; } context.remove(id); armed = ''; }
-  function done() { context.save(); context.open = false; armed = ''; }
+  function del(id) {
+    if (armed !== id) { armed = id; return; }
+    clearTimeout(undoTimer);
+    undo = context.remove(id);
+    armed = ''; show('');
+    undoTimer = setTimeout(() => (undo = null), 8000);
+  }
+  function undoDelete() {
+    if (!undo) return;
+    clearTimeout(undoTimer);
+    const id = undo.piece.id;
+    context.restore(undo);
+    undo = null;
+    show(id);
+  }
+  function done() { context.save(); context.open = false; armed = ''; show(''); clearTimeout(undoTimer); undo = null; }
   /* On all your devices (v2.1.28, lib/contextsync.js): Copy for Notes copies the pieces as one note,
      then (iPhone/iPad) an Open Notes button opens Apple Notes to paste it into a new note; iCloud syncs it.
      It used to hand the note to the share sheet, but Notes' share sheet popped up and closed on it
@@ -135,6 +176,33 @@
 
   {#if context.open}
     <div class="ctxeditor" id="contextEditor" bind:this={editor} transition:slide={{ duration: ms(220) }}>
+      {#if context.list.length}
+        <div class="pillwrap">
+          <p class="pillhead" id="contextPillHead">{cur ? 'Your pieces' : 'Tap a piece to edit or delete it'}</p>
+          <div class="pills" role="group" aria-labelledby="contextPillHead">
+            {#each context.list as c (c.id)}
+              <button type="button" class="ctxpill" data-pill={c.id} class:overcap={context.overCap.includes(c.id)} aria-pressed={focus === c.id} onclick={() => pickPill(c.id)}>{label(c)}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if cur}
+        <div class="ctxitem" data-id={cur.id}>
+          <label class="sr" for="ctxTitle">Title</label>
+          <input id="ctxTitle" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={cur.title} oninput={(e) => context.update(cur.id, 'title', e.currentTarget.value)}>
+          <label class="sr" for="ctxText">Context</label>
+          <textarea id="ctxText" class="ctxtext" class:overcap={len(cur) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize" placeholder="Everything the AI should know about this. Messy is fine." value={cur.text} oninput={(e) => context.update(cur.id, 'text', e.currentTarget.value)}></textarea>
+          <p class="size" class:overcap={len(cur) > CAP} id="ctxSize" aria-live="polite">{#if len(cur) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(cur) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(cur))} / {n(CAP)} characters{/if}</p>
+          <div class="itemacts">
+            <button type="button" class="link back" id="contextBack" onclick={() => show('')}>← All pieces</button>
+            <button type="button" class="link revert" id="contextRevert" disabled={!changed} onclick={revert}>↩ Revert changes</button>
+            <button type="button" class="link del" onclick={() => del(cur.id)}>{armed === cur.id ? 'Tap again to delete' : 'Delete'}</button>
+          </div>
+        </div>
+      {/if}
+      {#if undo}
+        <p class="undo" id="contextUndo" role="status">Deleted “{label(undo.piece)}”. <button type="button" class="link" id="contextUndoBtn" onclick={undoDelete}>Undo</button></p>
+      {/if}
       <label class="keep" for="contextKeep">
         <input type="checkbox" id="contextKeep" checked={context.keep} onchange={(e) => context.setKeep(e.currentTarget.checked)}>
         <span><b>Save on this phone</b><small>{context.keep ? 'Saved in this browser on this phone only, never sent anywhere except inside prompts you build. Turn off to delete them from this phone.' : 'Off: these pieces go away when you close or refresh. Turn on to keep them on this phone only.'}</small></span>
@@ -157,16 +225,6 @@
       </div>
       <button type="button" class="guided" id="contextGuided" onclick={() => savectx.start('editor', '', '')}>🧱 Build one with questions<small>Answer a few questions and it writes the piece for you</small></button>
       <p class="hint">Tap a chip above to use that piece for this prompt: the facts this request needs get worked into the prompt, nothing tacked on. Keep each piece under {n(CAP)} characters.</p>
-      {#each context.list as c, i (c.id)}
-        <div class="ctxitem" data-id={c.id}>
-          <label class="sr" for="ctxTitle-{i}">Title</label>
-          <input id="ctxTitle-{i}" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={c.title} oninput={(e) => context.update(c.id, 'title', e.currentTarget.value)}>
-          <label class="sr" for="ctxText-{i}">Context</label>
-          <textarea id="ctxText-{i}" class="ctxtext" class:overcap={len(c) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize-{i}" placeholder="Everything the AI should know about this. Messy is fine." value={c.text} oninput={(e) => context.update(c.id, 'text', e.currentTarget.value)}></textarea>
-          <p class="size" class:overcap={len(c) > CAP} id="ctxSize-{i}" aria-live="polite">{#if len(c) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(c) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(c))} / {n(CAP)} characters{/if}</p>
-          <button type="button" class="link del" onclick={() => del(c.id)}>{armed === c.id ? 'Tap again to delete' : 'Delete'}</button>
-        </div>
-      {/each}
       <!-- Floats at the bottom of the screen (on top of the keyboard) while the editor is open. -->
       <div class="row ctxbar" id="contextBar">
         <button type="button" onclick={addNew}>+ Add another</button>
@@ -196,7 +254,19 @@
     background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border: 1px solid var(--line); box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--ink) 45%, transparent); }
   .ctxbar button { min-height: 48px; white-space: nowrap; }
-  .ctxitem { display: grid; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+  .ctxitem { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px solid var(--accent); border-radius: var(--r-md); scroll-margin: var(--sp-4); }
+  /* Pills (v2.1.48): every piece as one tap target; the open one is filled in. */
+  .pillwrap { display: grid; gap: var(--sp-2); }
+  .pillhead { margin: 0; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
+  .pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .ctxpill { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); font-size: var(--fs-sm); }
+  .ctxpill[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 700; }
+  .ctxpill.overcap { border-color: var(--warn); }
+  .itemacts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-4); }
+  .itemacts .link { min-height: 40px; }
+  .revert:disabled { opacity: 0.45; }
+  .undo { margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--warn-soft); font-size: var(--fs-sm); font-weight: 600; }
+  .undo .link { min-height: 40px; font-weight: 700; }
   .ctxtitle { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
   .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); min-height: 150px; }
   .ctxtitle:focus-visible, .ctxtext:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -210,7 +280,7 @@
   .ctxtext.overcap { border-color: var(--warn); }
   .ctxchip.overcap { border-color: var(--warn); }
   .capflag { color: var(--warn); font-weight: 700; }
-  .del { justify-self: start; color: var(--danger); min-height: 40px; }
+  .del { color: var(--danger); min-height: 40px; }
   .ctxin { min-height: var(--tap); font-size: var(--fs-sm); }
   .guided { display: grid; gap: 2px; justify-items: start; text-align: left; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; border-radius: var(--r-md); }
   .guided small { font-weight: 500; font-size: var(--fs-xs); color: var(--muted); }

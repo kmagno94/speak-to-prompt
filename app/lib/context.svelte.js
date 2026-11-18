@@ -101,10 +101,22 @@ class Context {
     }
     this.save();
   }
+  /* Returns what it took out, so the editor can offer Undo (v2.1.48). */
   remove(id) {
+    const index = this.list.findIndex((c) => c.id === id);
+    const gone = { piece: this.list[index], index, picked: this.picked.includes(id) };
     this.fresh = this.fresh.filter((f) => f !== id);
     this.list = this.list.filter((c) => c.id !== id);
     this.picked = this.picked.filter((p) => p !== id);
+    this.save();
+    return gone;
+  }
+  /* Undo a delete: the piece goes back where it was, picked again if it was picked. */
+  restore(gone) {
+    if (!gone || !gone.piece || this.list.some((c) => c.id === gone.piece.id)) return;
+    const at = Math.max(0, Math.min(gone.index, this.list.length));
+    this.list = [...this.list.slice(0, at), gone.piece, ...this.list.slice(at)];
+    if (gone.picked && !this.picked.includes(gone.piece.id)) this.picked = [...this.picked, gone.piece.id];
     this.save();
   }
   /* Bring in pieces from another device (lib/contextsync.js). Saved only if Save on this phone is on.

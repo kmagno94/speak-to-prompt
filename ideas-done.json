@@ -35,6 +35,8 @@
     { "id": "mvxecifv8i68", "commit": "bd4c677", "version": "2.1.28", "note": "My context gets Send to Notes and Bring in: pieces travel as one Apple Notes note that iCloud syncs, read back by a restore code, merged by title" },
     { "id": "mw9q183odo7y", "commit": "e55ac39", "version": "2.1.38", "note": "A My context piece you just added picks itself for this prompt once it has words (once only; brought-in pieces stay unpicked)" },
     { "id": "mwct7axlrttc", "commit": "7dd8229", "version": "2.1.39", "note": "The Quality check tip offers Ask me, then rewrite: one fitted question per weak spot with answers to tap or type, and the answers build the next round" },
-    { "id": "mwk245csqohp", "commit": "899b9bf", "version": "2.1.43", "note": "Write my prompt now shows inside the questions card right after the last answer, and Skip all questions sits at the top; the dock button stays" }
+    { "id": "mwk245csqohp", "commit": "899b9bf", "version": "2.1.43", "note": "Write my prompt now shows inside the questions card right after the last answer, and Skip all questions sits at the top; the dock button stays" },
+    { "id": "mwmevd3e9pix", "commit": "", "version": "2.1.48", "note": "My context editor shows pieces as pills and opens one at a time, with Revert changes and an Undo after Delete" },
+    { "id": "mwmew9f943qi", "commit": "", "version": "2.1.48", "note": "My context moved to the top of the Options panel, so its chips are on screen as soon as Options opens" }
   ]
 }

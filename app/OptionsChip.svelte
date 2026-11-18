@@ -3,7 +3,8 @@
      Build my prompt. Mode, the four sliders and My context sit behind this one chip, which
      always says the mode you are in (Options · Quick), since that is the one setting that
      changes how long Build takes. Tapping it opens them inline right under it, and Build my
-     prompt moves down with them. Open or closed is kept in memory only: closed on every load.
+     prompt moves down with them. My context sits at the top of the panel (v2.1.48) so you
+     can pick pieces without scrolling. Open or closed is kept in memory only: closed on every load.
      The parts stay on the page while it is closed (the mode still follows your key, and
      picked context still goes into the prompt), they are only out of sight. */
   import { ui } from './lib/ui.svelte.js';
@@ -29,6 +30,8 @@
 </button>
 
 <div class="optpanel" id="optionsPanel" hidden={!ui.optionsOpen}>
+  <!-- My context goes first (v2.1.48, idea mwmew9f943qi), so its chips are on screen the moment Options opens. -->
+  <ContextRow />
   <ModePicker />
   <div class="tune" id="optionsTune">
     <div class="tunehead">
@@ -45,7 +48,6 @@
     {/each}
     <p class="tunenote" id="optTuneNote">{starter.tuneLines.length ? 'Goes in with your words when you build: ' + starter.tuneLines.map((t) => t.line).join(' ') : 'In the middle, the sliders add nothing.'}</p>
   </div>
-  <ContextRow />
 </div>
 
 <style>

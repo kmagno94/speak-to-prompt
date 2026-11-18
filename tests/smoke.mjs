@@ -62,6 +62,14 @@ async function menuTap(p, sel) { if (!(await p.isVisible(sel))) await p.click('#
 /* The Flow bench is a closed row in dev tools (11/14): open it before tapping anything inside. */
 async function flowOpen(p) { if (!(await p.evaluate(() => document.getElementById('flowFold').open))) await p.click('#flowFold > summary'); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
+/* My context pills (v2.1.48): the editor opens one piece at a time, so read every piece's words by tapping each pill. */
+async function ctxTexts(p) {
+  if (!(await p.$('#contextEditor'))) { await p.click('#contextEdit'); await p.waitForSelector('#contextEditor'); }
+  const ids = await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.dataset.pill));
+  const out = [];
+  for (const id of ids) { await p.click(`#contextEditor .ctxpill[data-pill="${id}"]`); await p.waitForSelector(`#contextEditor .ctxitem[data-id="${id}"]`); out.push(await p.inputValue('#contextEditor .ctxitem .ctxtext')); }
+  return out;
+}
 
 async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
@@ -3965,7 +3973,7 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("2 added")');
   expect(await q.isVisible('#contextRow .ctxchip:has-text("Corner bakery orders")') && await q.isVisible('#contextRow .ctxchip:has-text("Weekend soccer team")'), 'both pieces come in as chips');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
   expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
   // Again, with one piece changed on the first device: 1 already here, and the changed one is never overwritten without asking (v2.1.37, #50)
@@ -3978,14 +3986,14 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.waitForSelector('#saveCtx[open] #ctxOverlapLine');
   expect(/1 already here/.test(await q.textContent('#contextSyncMsg')), 'the unchanged piece is just counted: ' + await q.textContent('#contextSyncMsg'));
   expect(/Saturday/.test(await q.textContent('#ctxOld')) && /Sunday 10am/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
-  expect(!(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)) && !(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
+  expect(!(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
   await q.click('#ctxUpdate');
   await q.waitForSelector('#ctxDoneLine:has-text("1 updated")');
   expect(/1 already here/.test(await q.textContent('#ctxDoneLine')), 'the summary counts both: ' + await q.textContent('#ctxDoneLine'));
   await q.click('#ctxDone');
   await q.waitForFunction(() => !document.getElementById('saveCtx').open);
   expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
-  expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
+  expect((await ctxTexts(q)).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
   expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
   // A clipboard without the code: the paste box opens, and junk says what to do
   await q.evaluate(() => navigator.clipboard.writeText('just some random grocery list'));
@@ -4029,7 +4037,7 @@ await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies th
   await q.evaluate((n) => navigator.clipboard.writeText(n), note);
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("3 added")');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.some((t) => t.length > 3700 && /piece 2$/.test(t)), 'a 3,800 character piece comes back whole');
   // A computer: no Open Notes button, still copies
   const c = await page();
@@ -4376,7 +4384,7 @@ await check('my context notes (v2.1.28 Test lab report): the note has no garbage
   await q.evaluate((n) => navigator.clipboard.writeText(n), edited);
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("1 added")');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.length === 1 && /Sunday 10am/.test(texts[0]) && /\n## bring cones\n/.test(texts[0]) && !/jerseys/.test(texts[0]), 'the Notes edit comes across, the ## line is back as written, the jot is ignored: ' + JSON.stringify(texts));
   await q.click('#contextIn');
   await q.waitForSelector('#contextSyncMsg:has-text("1 already here")');
@@ -4822,7 +4830,53 @@ await check('my context: the editor opens at its top with the cursor in a title 
   await p.click('#contextEditor button:text-is("Done")');
   await p.evaluate(() => window.scrollTo(0, 0));
   await p.click('#contextEdit'); await p.waitForTimeout(400);
-  expect(await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxitem input')), 'Edit should open with the cursor in the first title');
+  /* v2.1.48 pills: with several pieces, Edit opens the pills (no big text boxes) with the first pill ready to tap. */
+  expect(!(await p.$('#contextEditor .ctxitem')) && await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxpill')), 'Edit with several pieces should open the pills, first pill focused');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.48 Fix session: ideas mwmevd3e9pix (pills, Revert, Undo) and mwmew9f943qi (My context first in Options). */
+await check('my context pills (v2.1.48): Options opens with My context first, the editor shows pieces as pills and opens one at a time, Revert changes puts it back, and Delete offers Undo', async () => {
+  const p = await page({ calm: true });
+  await p.evaluate(() => { localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Taco truck', text: 'Open Thu to Sun, 11 to 9. Al pastor sells out by 7.' }, { id: 'b', title: 'Book club', text: 'Third Thursday at Rosa\'s, 6 people.' }, { id: 'c', title: 'Garden plot', text: 'Plot 14, tomatoes and basil.' }])); localStorage.setItem('stp-context-keep', '1'); });
+  await p.reload();
+  await p.click('#optionsChip');
+  await p.waitForTimeout(300);
+  const order = await p.evaluate(() => { const panel = document.getElementById('optionsPanel'), kids = [...panel.children]; const at = (sel) => kids.findIndex((k) => k.matches(sel) || k.querySelector(sel)); return { ctx: at('#contextRow'), mode: at('#quickMode'), chips: [...document.querySelectorAll('#contextRow .ctxchip')].every((c) => { const r = c.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) }; });
+  expect(order.ctx === 0 && order.mode > order.ctx, 'My context should be first in the Options panel, above the mode picker: ' + JSON.stringify(order));
+  expect(order.chips, 'every My context chip should be on screen right after Options opens, no scrolling');
+  await p.click('#contextEdit');
+  await p.waitForSelector('#contextEditor');
+  expect((await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.textContent.trim()))).join('|') === 'Taco truck|Book club|Garden plot', 'every piece shows as a pill');
+  expect(!(await p.$('#contextEditor textarea.ctxtext')), 'no big text boxes until you tap a pill');
+  await p.click('#contextEditor .ctxpill:has-text("Book club")');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]');
+  expect((await p.$$('#contextEditor .ctxitem')).length === 1 && await p.inputValue('#ctxTitle') === 'Book club' && await p.getAttribute('#contextEditor .ctxpill[data-pill="b"]', 'aria-pressed') === 'true', 'tapping a pill opens only that piece');
+  expect(await p.isDisabled('#contextRevert'), 'Revert changes waits until something changed');
+  // A missed tap wipes the text: Revert brings it back
+  await p.fill('#ctxText', '');
+  await p.fill('#ctxTitle', 'Bok clb');
+  expect(await p.isEnabled('#contextRevert'), 'Revert changes turns on after an edit');
+  await p.click('#contextRevert');
+  expect(await p.inputValue('#ctxTitle') === 'Book club' && /Third Thursday at Rosa's/.test(await p.inputValue('#ctxText')) && await p.isDisabled('#contextRevert'), 'Revert puts the title and words back the way they were when you opened it');
+  expect(/Third Thursday/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the reverted words are what is saved');
+  // A kept edit stays after switching pieces, and Revert compares to when you opened it
+  await p.fill('#ctxText', 'Third Thursday at Rosa\'s, 7 people now.');
+  await p.click('#contextEditor .ctxpill:has-text("Garden plot")');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="c"]');
+  await p.click('#contextEditor .ctxpill:has-text("Book club")');
+  expect(/7 people now/.test(await p.inputValue('#ctxText')) && await p.isDisabled('#contextRevert'), 'switching pieces keeps your edit, and reopening starts a fresh Revert point');
+  // Delete asks twice, then Undo brings it back where it was
+  await p.click('#contextEditor .ctxitem button:text-is("Delete")');
+  await p.click('#contextEditor .ctxitem button:text-is("Tap again to delete")');
+  await p.waitForSelector('#contextUndo');
+  expect(/Deleted “Book club”/.test(await p.textContent('#contextUndo')) && !(await p.$('#contextEditor .ctxpill[data-pill="b"]')) && !(await p.$('#contextEditor .ctxitem')), 'after a delete: the pill is gone and Undo shows');
+  await p.click('#contextUndoBtn');
+  expect((await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.dataset.pill))).join() === 'a,b,c' && /7 people now/.test(await p.inputValue('#ctxText')) && !(await p.$('#contextUndo')), 'Undo puts the piece back in its spot, open, with its words');
+  expect(/7 people now/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the restored piece is saved again');
+  // All pieces closes the open one
+  await p.click('#contextBack');
+  expect(!(await p.$('#contextEditor .ctxitem')), 'All pieces goes back to just the pills');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -5489,11 +5543,11 @@ await check('save as context: an ironed note with a number you never said falls 
   await again('U10 Rockets, now at Oak Field');
   await q.click('#ctxSkipOverlap');
   await q.waitForFunction(() => !document.getElementById('saveCtx').open);
-  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await ctxTexts(q)).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
   await again('U10 Rockets, now at Oak Field');
   await q.click('#ctxUpdate');
   await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
-  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await ctxTexts(q)).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
   expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
 });
 
