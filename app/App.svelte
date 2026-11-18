@@ -304,7 +304,7 @@
       </div>
       <div class="stats">
         <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
-        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
+        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then send them to Kevin (or, with dev tools on, copy them all into one Fix session for Claude). Saves only what you type there, on this phone.</p>
       </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>

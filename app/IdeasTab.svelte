@@ -8,6 +8,13 @@
   import { ideas, startTrail, fixPrompt, KINDS, SOON, AREAS, areaOf } from './lib/ideas.svelte.js';
   import { packIdeas } from './lib/ideashare.js';
   import { IS_STAGING } from './lib/channel.js';
+  import { core } from './lib/core.svelte.js';
+
+  /* Owner only (v2.1.48): Fix session and Paste shared ideas show only with Show my dev tools on,
+     which is on for Kevin's phone (it turns itself on for a phone with a core). Anyone else
+     testing the app (dev tools off) logs ideas and gets Send your ideas to Kevin instead.
+     It hides the parts, it isn't a lock: nothing here is secret. */
+  const owner = $derived(core.dev);
 
   let kind = $state('');
   let area = $state('');
@@ -91,6 +98,7 @@
      Fixed ids, so a second try shows "already here". Staging only, nothing saved until you tap Add. */
   function sharedSample() {
     if (!IS_STAGING || !/sharedsample/.test(location.hash || '')) return;
+    if (!core.dev) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} ideas.open = true; sayShare('Staging sample: turn on More options > Show my dev tools first (Paste shared ideas is owner only), then tap the link again.', true); return; }
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
     const day = '2026-11-18';
     pasteText = packIdeas([
@@ -200,7 +208,8 @@
     {/if}
     {#if saved}<p class="saved" id="ideaSaved" role="status">{saved}</p>{/if}
 
-    <section class="fix">
+    {#if owner}
+    <section class="fix" id="ideaFixBox">
       <p class="lbl">🛠️ Fix session</p>
       <p class="sub">{ideas.openList.length ? `Hands all ${ideas.openList.length} open idea${ideas.openList.length === 1 ? '' : 's'} to a new Claude chat, oldest first, with the repo and the staging rules.` : 'No open ideas yet. Log one above and it shows up here.'}</p>
       <div class="row">
@@ -210,16 +219,17 @@
       {#if fixMsg}<p class="sub" role="status" id="ideaFixMsg">{fixMsg}</p>{/if}
       {#if fixMsg.startsWith('Couldn')}<textarea class="fixbox" readonly bind:this={fixBox} value={fixPrompt()} aria-label="Fix session prompt"></textarea>{/if}
     </section>
+    {/if}
 
     <section class="fix share" id="ideaShare">
-      <p class="lbl">👥 Shared ideas</p>
-      <p class="sub">Testing for Kevin? Copy your open ideas and text them to him. Got ideas from someone? Copy their whole message, then tap Paste.</p>
+      <p class="lbl">{owner ? '👥 Shared ideas' : '📤 Send your ideas to Kevin'}</p>
+      <p class="sub">{owner ? 'Got ideas from someone testing the app? Copy their whole message, then tap Paste. They land in Open and ride your Fix session.' : 'Type your first name, tap Copy my ideas, and paste it in a text to Kevin. That’s it: he takes it from there.'}</p>
       <label class="namebox" for="ideaName"><span>Your first name, so Kevin knows who sent it</span>
         <input id="ideaName" maxlength="30" autocomplete="given-name" placeholder="Like Maria" value={ideas.name} oninput={(e) => ideas.setName(e.currentTarget.value)}>
       </label>
       <div class="row">
         <button type="button" id="ideaCopyShare" disabled={!ideas.mine.length} onclick={copyShare}>📋 Copy my ideas{ideas.mine.length ? ` (${ideas.mine.length})` : ''}</button>
-        <button type="button" id="ideaPasteShare" onclick={pasteShare}>📥 Paste shared ideas</button>
+        {#if owner}<button type="button" id="ideaPasteShare" onclick={pasteShare}>📥 Paste shared ideas</button>{/if}
       </div>
       {#if pasteOpen}
         <label class="sr" for="ideaPasteBox">Paste the shared ideas message</label>

@@ -4436,6 +4436,7 @@ await check('safari mic keep talking glow (v2.1.28 Test lab report): tapping Kee
 
 await check('ideas tab: never saves the prompt box, sends nothing, and the fix session lists open ideas with the staging rules', async () => {
   const p = await page();
+  await devOn(p);   /* Fix session is owner only: dev tools on (v2.1.48) */
   const sent = []; p.on('request', r => { if (!/localhost|generativelanguage|fonts\./.test(r.url())) sent.push(r.url()); });
   await p.fill('#thoughts', 'SECRET-THOUGHTS plan my sister surprise party');
   await p.click('#build'); await done(p);
@@ -4476,6 +4477,7 @@ await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own
   expect(await c.isDisabled('#ideaCopyShare'), 'nothing to copy before any ideas');
   await logIdea(c, 'idea', 'result', 'The prompt should say how long it is');
   await logIdea(c, 'bug', 'copy', 'Copy did nothing the first time on my iPad');
+  expect(!(await c.$('#ideaFixBox')) && !(await c.$('#ideaFix')) && !(await c.$('#ideaPasteShare')) && /Send your ideas to Kevin/.test(await c.textContent('#ideaShare')), 'with dev tools off there is no Fix session and no Paste, just Send your ideas to Kevin');
   await c.fill('#ideaName', 'Maria');
   await c.click('#ideaCopyShare');
   await c.waitForSelector('#ideaShareMsg:has-text("Copied 2 ideas")');
@@ -4486,7 +4488,9 @@ await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own
   expect(!sent.length, 'Copy my ideas sends nothing: ' + sent.join(', '));
   // Kevin's phone: one idea of his own, then Paste shared ideas
   const k = await page();
+  await devOn(k);   /* Kevin's phone: dev tools on, so Fix session and Paste show */
   await ideasOn(k); await k.click('#ideaTab');
+  expect(await k.isVisible('#ideaFix') && await k.isVisible('#ideaPasteShare') && /Shared ideas/.test(await k.textContent('#ideaShare')), 'with dev tools on, Fix session and Paste shared ideas show');
   await logIdea(k, 'faster', 'input', 'Paste should be one tap');
   await k.evaluate((n) => navigator.clipboard.writeText(n), note + '\n\nps call me later');
   await k.click('#ideaPasteShare');
@@ -4549,7 +4553,7 @@ await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen
   const p = await page();
   await p.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: 'fixme1', commit: 'abc1234', version: '2.1.0', note: 'Copy now works on iPad' }] }) }));
   const item = (id, text) => ({ id, kind: 'bug', area: 'copy', where: 'Copy and open', topic: '', topicLabel: '', text, soon: 'now', context: { trail: [], signals: [] }, at: '2026-10-23T10:00:00Z', date: '2026-10-23', version: '2.1.0', status: 'open' });
-  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
+  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-dev', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
   await p.reload(); await p.click('#ideaTab');
   await p.waitForSelector('#ideaClosed');
   expect(/1 idea closed by the latest fixes/.test(await p.textContent('#ideaClosed')), 'should say one idea was closed');

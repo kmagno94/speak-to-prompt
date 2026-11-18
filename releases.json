@@ -9,6 +9,7 @@
         "Options: My context now sits at the top of the panel, and opening Options scrolls down just enough that every context chip is on screen, ready to tap.",
         "My context editor: Edit shows your pieces as pills. Tap one and only that piece opens, with ← All pieces, ↩ Revert changes (back to how it was when you opened it), and Delete. After a delete, Undo shows for 8 seconds. + New opens straight into a blank piece.",
         "💡 Ideas jar: a new Shared ideas box. Someone testing the app types their first name and taps 📋 Copy my ideas to text them to Kevin; Kevin taps 📥 Paste shared ideas and they land in Open marked from that person, ride the Fix session, and close by themselves when a fix lists them. No server: the site sends nothing.",
+        "Fix session and Paste shared ideas are yours only: they show with Show my dev tools on (already on for your phone). Anyone else with the Ideas tab on sees Send your ideas to Kevin: their name and Copy my ideas.",
         "Staging test link #sharedsample puts a made-up message from Sample cousin in the paste box, so Paste can be tried on one phone."
       ],
       "checks": [
@@ -43,6 +44,10 @@
         {
           "say": "Tap Copy fix session and paste it into a note.",
           "see": "Both sample ideas are listed with · from Sample cousin · on their line."
+        },
+        {
+          "say": "In More options, turn off Show my dev tools, then open the 💡 Ideas jar.",
+          "see": "No Fix session box and no Paste shared ideas. The box says Send your ideas to Kevin, with a first name field and 📋 Copy my ideas. Turn Show my dev tools back on and Fix session is back."
         },
         {
           "say": "Type your first name under Shared ideas, tap 📋 Copy my ideas, and paste it into a note.",
