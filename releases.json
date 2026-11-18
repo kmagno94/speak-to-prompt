@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.47",
+      "date": "2026-11-18",
+      "title": "Make it stronger can run on the shortcut too, on the model you last used",
+      "items": [
+        "With Write with on Cloud, ChatGPT, or On-Device, Make it stronger (and Rework, Ask me then rewrite, and the automatic stronger version under 2) hands the next round to the STP Flash Backup shortcut instead of Flash. The card says Hand round 2 (the stronger version).",
+        "It starts on the model the last round really used, so a Try ChatGPT swap carries over. Change Write with before tapping Make it stronger and the new pick wins.",
+        "The shortcut gets the same short rules plus the prompt to improve with what was weak at the top. Use Flash instead on the card writes the round on Flash, like before. With Write with on Flash nothing changes."
+      ],
+      "checks": [
+        {
+          "say": "With dev tools on and Write with on Cloud, build a prompt through the shortcut until it shows a What's thin card, then tap Make it stronger.",
+          "see": "A Hand round 2 (the stronger version) to STP Flash Backup (Cloud) card, with Use Flash instead as the fallback."
+        },
+        {
+          "say": "Run the shortcut and Paste result.",
+          "see": "Round 2 shows, written by STP Flash Backup (Cloud), with its own Quality check and Round 1 one tap away."
+        },
+        {
+          "say": "Build again, tap Try ChatGPT on the first card, then Make it stronger.",
+          "see": "The round 2 card names ChatGPT (the model you last used), while Write with still says Cloud."
+        },
+        {
+          "say": "Before tapping Make it stronger, switch Write with to On-Device.",
+          "see": "The round card names On-Device: a changed Write with wins."
+        }
+      ]
+    },
+    {
       "version": "2.1.46",
       "date": "2026-11-17",
       "title": "Auto follows Write with: Cloud, ChatGPT, and On-Device hand the write to the STP Flash Backup shortcut",

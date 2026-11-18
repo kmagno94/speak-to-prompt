@@ -10,7 +10,7 @@
     core.writer === 'flash' ? (ui.mode === 'auto' ? 'Flash-Lite writes it (Auto), like for everyone else.' : 'Flash writes it, like for everyone else.')
       : ui.mode === 'quick' ? 'Quick writes with Gemini. Tap Normal to hand the write to the shortcut.'
       : 'The STP Flash Backup shortcut writes it with ' + (core.writer === 'gpt' ? 'ChatGPT (your words go to OpenAI)' : core.writer === 'device' ? "Apple's on-device model" : "Apple's cloud model")
-        + '. One Paste tap brings it back. This build is kept on this device while it waits.'
+        + '. One Paste tap brings it back, and Make it stronger uses it too. This build is kept on this device while it waits.'
   );
 </script>
 
