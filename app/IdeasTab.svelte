@@ -62,6 +62,28 @@
     catch (e) { fixMsg = 'Couldn’t copy. It’s selected below: copy it by hand.'; await tick(); fixBox?.select(); }
   }
 
+  /* Shared ideas (v2.1.48): copy your own open ideas to text to Kevin, or paste someone's in. */
+  let shareMsg = $state(''), shareBad = $state(false), pasteOpen = $state(false), pasteText = $state('');
+  const sayShare = (m, bad = false) => { shareMsg = m; shareBad = bad; };
+  async function copyShare() {
+    if (!ideas.mine.length) return;
+    try { await navigator.clipboard.writeText(ideas.shareText()); sayShare(`Copied ${ideas.mine.length} idea${ideas.mine.length === 1 ? '' : 's'}. Paste it in a text to Kevin.`); }
+    catch (e) { sayShare('Couldn’t copy here. Try Safari.', true); }
+  }
+  function takeShared(t) {
+    const note = ideas.readShared(t);
+    if (!note) return sayShare('That isn’t a shared ideas message. Copy the whole text, from “Speak to Prompt · Shared ideas” to the end line.', true);
+    if (!note.ideas.length) return sayShare('That message has no ideas in it.', true);
+    const r = ideas.bringIn(note);
+    pasteOpen = false; pasteText = '';
+    sayShare(`From ${r.from}: ` + [r.added && `${r.added} added`, r.same && `${r.same} already here`].filter(Boolean).join(', ') + '.' + (r.added ? ' They’re in Open and ride the next Fix session.' : ''));
+  }
+  async function pasteShare() {
+    try { const t = await navigator.clipboard.readText(); if (t && ideas.readShared(t)) return takeShared(t); } catch (e) {}
+    pasteOpen = true;
+    sayShare('Paste the message here, then tap Add to my jar.');
+  }
+
   function del(id) {
     if (armed !== id) { armed = id; return; }
     ideas.remove(id); armed = '';
@@ -170,6 +192,24 @@
       {#if fixMsg.startsWith('Couldn')}<textarea class="fixbox" readonly bind:this={fixBox} value={fixPrompt()} aria-label="Fix session prompt"></textarea>{/if}
     </section>
 
+    <section class="fix share" id="ideaShare">
+      <p class="lbl">👥 Shared ideas</p>
+      <p class="sub">Testing for Kevin? Copy your open ideas and text them to him. Got ideas from someone? Copy their whole message, then tap Paste.</p>
+      <label class="namebox" for="ideaName"><span>Your first name, so Kevin knows who sent it</span>
+        <input id="ideaName" maxlength="30" autocomplete="given-name" placeholder="Like Maria" value={ideas.name} oninput={(e) => ideas.setName(e.currentTarget.value)}>
+      </label>
+      <div class="row">
+        <button type="button" id="ideaCopyShare" disabled={!ideas.mine.length} onclick={copyShare}>📋 Copy my ideas{ideas.mine.length ? ` (${ideas.mine.length})` : ''}</button>
+        <button type="button" id="ideaPasteShare" onclick={pasteShare}>📥 Paste shared ideas</button>
+      </div>
+      {#if pasteOpen}
+        <label class="sr" for="ideaPasteBox">Paste the shared ideas message</label>
+        <textarea id="ideaPasteBox" rows="4" placeholder="Paste the whole message here" bind:value={pasteText}></textarea>
+        <button type="button" class="primary" id="ideaPasteGo" disabled={!pasteText.trim()} onclick={() => takeShared(pasteText)}>Add to my jar</button>
+      {/if}
+      {#if shareMsg}<p class="sub sharemsg" class:bad={shareBad} role="status" id="ideaShareMsg">{shareMsg}</p>{/if}
+    </section>
+
     <section class="list" aria-label="Your ideas">
       {#if ideas.closedNote}<p class="closed" id="ideaClosed" role="status">{ideas.closedNote}</p>{/if}
       <p class="lbl">Open <span class="n">{ideas.openList.length}</span></p>
@@ -186,7 +226,7 @@
               </div>
             {:else}
             <p class="txt">{it.text}</p>
-            <p class="meta">{it.where}{it.topicLabel ? ' › ' + it.topicLabel : ''} · {soonOf(it.soon).icon} {soonOf(it.soon).label} · {it.date}</p>
+            <p class="meta">{#if it.from}<b class="from">from {it.from}</b> · {/if}{it.where}{it.topicLabel ? ' › ' + it.topicLabel : ''} · {soonOf(it.soon).icon} {soonOf(it.soon).label} · {it.date}</p>
             <div class="acts">
               <button type="button" class="link" onclick={() => startEdit(it)}>Edit</button>
               <button type="button" class="link" onclick={() => ideas.setStatus(it.id, 'fixed')}>Mark fixed</button>
@@ -219,7 +259,7 @@
       {/if}
     </section>
 
-    <p class="privacy">Only what you type here is saved, on this phone. Nothing from your prompt box, questions, or results is ever kept. Turn off in More options.</p>
+    <p class="privacy">Only what you type here is saved, on this phone. Nothing from your prompt box, questions, or results is ever kept, and the site sends nothing: Copy my ideas only goes where you paste it. Turn off in More options.</p>
   </aside>
 {/if}
 
@@ -279,5 +319,10 @@
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .closed { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--ok) 14%, var(--surface)); color: var(--ok); font-weight: 700; font-size: 14px; }
   .privacy { margin: 0; font-size: 13px; color: var(--muted); }
+  .namebox { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+  .namebox input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; }
+  .sharemsg { color: var(--accent); font-weight: 600; }
+  .sharemsg.bad { color: var(--warn); }
+  .from { color: var(--accent); }
   @media (prefers-reduced-motion: reduce) { .ideatab, .ichip, .pick { transition: none; } }
 </style>

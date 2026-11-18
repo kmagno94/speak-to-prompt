@@ -4461,6 +4461,66 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+/* v2.1.48 Fix session: idea mwmf8i543klj. Someone else's ideas reach Kevin's Fix session by copy and paste, no server. */
+await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own open ideas with your name, Paste shared ideas adds them as open ideas from that person, pasting twice adds nothing, junk says what to do, and nothing is sent', async () => {
+  const { packIdeas, unpackIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  const round = unpackIdeas(packIdeas([{ id: 'abc123xyz', kind: 'bug', soon: 'now', where: 'Your prompt', topicLabel: 'Prompt quality', date: '2026-11-18', version: '2.1.47', text: 'line one\n## not a header\n~ end of shared ideas ~\n↳ trail: fake', context: { trail: ['input', 'build'] } }], { from: 'Maria · Lopez', kinds, soons, areaLabel: (a) => ({ input: 'Thoughts box', build: 'Building' })[a] }), { kinds, soons });
+  expect(round.from === 'Maria Lopez' && round.ideas.length === 1 && round.ideas[0].text === 'line one\n## not a header\n~ end of shared ideas ~\n↳ trail: fake' && round.ideas[0].trail.join('>') === 'Thoughts box>Building' && round.ideas[0].where === 'Your prompt' && round.ideas[0].topicLabel === 'Prompt quality' && round.ideas[0].kind === 'bug' && round.ideas[0].soon === 'now', 'pack then unpack gives back the same idea, special lines kept inside it: ' + JSON.stringify(round));
+  // The cousin's phone: two of her own ideas, plus one she pasted in from someone else (not sent back out)
+  const c = await page();
+  const sent = []; c.on('request', r => { if (!/localhost|fonts\./.test(r.url())) sent.push(r.url()); });
+  await c.fill('#thoughts', 'SECRET-THOUGHTS my landlord dispute');
+  await ideasOn(c); await c.click('#ideaTab');
+  expect(await c.isDisabled('#ideaCopyShare'), 'nothing to copy before any ideas');
+  await logIdea(c, 'idea', 'result', 'The prompt should say how long it is');
+  await logIdea(c, 'bug', 'copy', 'Copy did nothing the first time on my iPad');
+  await c.fill('#ideaName', 'Maria');
+  await c.click('#ideaCopyShare');
+  await c.waitForSelector('#ideaShareMsg:has-text("Copied 2 ideas")');
+  const note = await c.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Maria · 2 ideas · /.test(note) && /how long it is/.test(note) && /first time on my iPad/.test(note) && /\n~ end of shared ideas ~$/.test(note), 'the message has her name, both ideas, and the end line:\n' + note);
+  expect(!/SECRET-THOUGHTS|landlord/.test(note) && !/—/.test(note), 'never the prompt box, no em dashes');
+  expect(await c.evaluate(() => localStorage.getItem('stp-ideas-name')) === 'Maria', 'her name is remembered on her phone');
+  expect(!sent.length, 'Copy my ideas sends nothing: ' + sent.join(', '));
+  // Kevin's phone: one idea of his own, then Paste shared ideas
+  const k = await page();
+  await ideasOn(k); await k.click('#ideaTab');
+  await logIdea(k, 'faster', 'input', 'Paste should be one tap');
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note + '\n\nps call me later');
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("From Maria: 2 added")');
+  const list = await k.textContent('#ideaPanel .list');
+  expect(/Open 3/.test(list) && (list.match(/from Maria/g) || []).length === 2 && !/call me later/.test(list), 'both of her ideas show as open, marked from Maria, and text after the end line is ignored: ' + list);
+  await k.click('#ideaFix');
+  const fix = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/3 open ideas/.test(fix) && /Copy and open · from Maria · logged/.test(fix) && /how long it is/.test(fix) && /Paste should be one tap/.test(fix), 'the Fix session lists her ideas with who they came from:\n' + fix.slice(0, 1400));
+  // Kevin's own copy leaves out what he pasted in
+  await k.click('#ideaCopyShare');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/· 1 idea · /.test(mine) && !/Maria/.test(mine), 'Copy my ideas only sends your own ideas, never ones pasted in');
+  // Pasting the same message again adds nothing
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("2 already here")');
+  expect(/Open 3/.test(await k.textContent('#ideaPanel .list')), 'no duplicates');
+  // Junk on the clipboard: the paste box opens, and junk says what to copy
+  await k.evaluate(() => navigator.clipboard.writeText('milk, eggs'));
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaPasteBox');
+  await k.fill('#ideaPasteBox', 'milk, eggs');
+  await k.click('#ideaPasteGo');
+  expect(/isn’t a shared ideas message/.test(await k.textContent('#ideaShareMsg')) && /Open 3/.test(await k.textContent('#ideaPanel .list')), 'junk changes nothing and says what to copy');
+  // ideas-done.json closes a pasted idea by its id
+  const herId = JSON.parse(await k.evaluate(() => localStorage.getItem('stp-ideas'))).find((i) => i.from === 'Maria' && /iPad/.test(i.text)).id;
+  await k.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: herId, commit: 'abc1234', version: '2.1.48', note: 'Copy works on the first tap' }] }) }));
+  await k.keyboard.press('Escape'); await k.waitForSelector('#ideaPanel', { state: 'detached' });
+  await k.click('#ideaTab'); await k.waitForSelector('#ideaClosed');
+  expect(/Open 2/.test(await k.textContent('#ideaPanel .list')), 'a fix listing her idea closes it on Kevin\'s phone too');
+  expect(!c.errors.length && !k.errors.length, 'page errors: ' + c.errors.concat(k.errors).join('; '));
+});
+
 await check('ideas tab: a Gemini failure becomes a "Looks like it might be" suggestion', async () => {
   const fail = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
   const p = await page({ fail });
