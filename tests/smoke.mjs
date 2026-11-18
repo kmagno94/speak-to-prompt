@@ -4518,6 +4518,16 @@ await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own
   await k.keyboard.press('Escape'); await k.waitForSelector('#ideaPanel', { state: 'detached' });
   await k.click('#ideaTab'); await k.waitForSelector('#ideaClosed');
   expect(/Open 2/.test(await k.textContent('#ideaPanel .list')), 'a fix listing her idea closes it on Kevin\'s phone too');
+  // Staging test link #sharedsample: a made-up message waits in the paste box (live ignores it)
+  await k.keyboard.press('Escape'); await k.waitForSelector('#ideaPanel', { state: 'detached' });
+  await k.evaluate(() => { location.hash = '#sharedsample'; });
+  await k.waitForTimeout(300);
+  if (process.env.APP_CHANNEL === 'staging') {
+    await k.waitForSelector('#ideaPasteBox');
+    expect(/from Sample cousin/.test(await k.inputValue('#ideaPasteBox')) && /Staging sample/.test(await k.textContent('#ideaShareMsg')), 'the sample message waits in the paste box');
+    await k.click('#ideaPasteGo');
+    await k.waitForSelector('#ideaShareMsg:has-text("From Sample cousin: 2 added")');
+  } else expect(!(await k.$('#ideaPanel')), 'live ignores #sharedsample');
   expect(!c.errors.length && !k.errors.length, 'page errors: ' + c.errors.concat(k.errors).join('; '));
 });
 

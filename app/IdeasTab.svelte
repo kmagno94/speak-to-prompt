@@ -6,6 +6,8 @@
   import { fly, fade } from 'svelte/transition';
   import { ms } from './lib/motion.js';
   import { ideas, startTrail, fixPrompt, KINDS, SOON, AREAS, areaOf } from './lib/ideas.svelte.js';
+  import { packIdeas } from './lib/ideashare.js';
+  import { IS_STAGING } from './lib/channel.js';
 
   let kind = $state('');
   let area = $state('');
@@ -83,6 +85,23 @@
     pasteOpen = true;
     sayShare('Paste the message here, then tap Add to my jar.');
   }
+
+  /* Staging test link #sharedsample (v2.1.48): opens the jar with a made-up message from
+     "Sample cousin" in the paste box, so Paste shared ideas can be tried on one phone.
+     Fixed ids, so a second try shows "already here". Staging only, nothing saved until you tap Add. */
+  function sharedSample() {
+    if (!IS_STAGING || !/sharedsample/.test(location.hash || '')) return;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    const day = '2026-11-18';
+    pasteText = packIdeas([
+      { id: 'samplecousin1', kind: 'idea', soon: 'soon', where: 'Your prompt', topicLabel: 'Too long or short', date: day, version: '2.1.47', text: 'Sample: the prompt for my bakery flyer was way longer than I needed, maybe a short version button?', context: { trail: ['Thoughts box', 'Building'] } },
+      { id: 'samplecousin2', kind: 'bug', soon: 'now', where: 'Copy and open', topicLabel: '', date: day, version: '2.1.47', text: 'Sample: tapped Copy twice before it said copied, on my iPhone 13.', context: { trail: [] } }
+    ], { from: 'Sample cousin', kinds: KINDS, soons: SOON });
+    ideas.open = true; pasteOpen = true;
+    sayShare('Staging sample: a made-up message from Sample cousin is in the box. Tap Add to my jar.');
+    tick().then(() => document.getElementById('ideaShare')?.scrollIntoView({ block: 'center' }));
+  }
+  onMount(() => { sharedSample(); addEventListener('hashchange', sharedSample); return () => removeEventListener('hashchange', sharedSample); });
 
   function del(id) {
     if (armed !== id) { armed = id; return; }

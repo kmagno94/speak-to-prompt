@@ -2,6 +2,55 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.48",
+      "date": "2026-11-18",
+      "title": "My context as pills with Revert and Undo, Options snaps to your contexts, and shared ideas by copy and paste",
+      "items": [
+        "Options: My context now sits at the top of the panel, and opening Options scrolls down just enough that every context chip is on screen, ready to tap.",
+        "My context editor: Edit shows your pieces as pills. Tap one and only that piece opens, with ← All pieces, ↩ Revert changes (back to how it was when you opened it), and Delete. After a delete, Undo shows for 8 seconds. + New opens straight into a blank piece.",
+        "💡 Ideas jar: a new Shared ideas box. Someone testing the app types their first name and taps 📋 Copy my ideas to text them to Kevin; Kevin taps 📥 Paste shared ideas and they land in Open marked from that person, ride the Fix session, and close by themselves when a fix lists them. No server: the site sends nothing.",
+        "Staging test link #sharedsample puts a made-up message from Sample cousin in the paste box, so Paste can be tried on one phone."
+      ],
+      "checks": [
+        {
+          "say": "Scroll to the top, then tap ⚙️ Options.",
+          "see": "The page slides down so My context sits right under the Options chip, above Mode and the sliders, with all its chips on screen."
+        },
+        {
+          "say": "With 2 or more pieces in My context, tap Edit.",
+          "see": "Your pieces show as pills (no big text boxes), with Tap a piece to edit or delete it above them."
+        },
+        {
+          "say": "Tap one pill, change its title and wipe its words, then tap ↩ Revert changes.",
+          "see": "Only that piece opened (its pill is filled in). Revert puts the title and words back the way they were when you opened it, and goes gray."
+        },
+        {
+          "say": "Tap Delete, then Tap again to delete, then Undo.",
+          "see": "The pill disappears and Deleted “…”. Undo shows; Undo brings the piece back in the same spot, open, with its words."
+        },
+        {
+          "say": "Tap ← All pieces, then + Add another.",
+          "see": "← All pieces goes back to just the pills; + Add another opens a blank piece first, with the cursor in its title."
+        },
+        {
+          "say": "Tap the #sharedsample test link, then Add to my jar.",
+          "see": "The 💡 Ideas jar opens with a message from Sample cousin in the paste box. After Add: From Sample cousin: 2 added, and both show in Open marked from Sample cousin."
+        },
+        {
+          "say": "Tap the #sharedsample test link again, then Add to my jar.",
+          "see": "From Sample cousin: 2 already here. Still no duplicates in Open."
+        },
+        {
+          "say": "Tap Copy fix session and paste it into a note.",
+          "see": "Both sample ideas are listed with · from Sample cousin · on their line."
+        },
+        {
+          "say": "Type your first name under Shared ideas, tap 📋 Copy my ideas, and paste it into a note.",
+          "see": "One message starting Speak to Prompt · Shared ideas · from (your name), with only your own ideas (no Sample cousin ones), ending with ~ end of shared ideas ~. Then delete the two sample ideas."
+        }
+      ]
+    },
+    {
       "version": "2.1.47",
       "date": "2026-11-18",
       "title": "Make it stronger can run on the shortcut too, on the model you last used",
