@@ -79,6 +79,13 @@
   {/if}
 {/if}
 <p id="qaPlan" class="plan">{chat.plan}</p>
+<!-- #56 Skip all questions (v2.1.45, Kevin 11/17: "too tucked in the corner"): a full-width bar right above the
+     first question, where the eye lands after the goal. Writes now with whatever is answered (0 is fine). -->
+{#if chat.questions.length && !chat.done}
+  <button type="button" class="skipall" id="qaSkip" disabled={chat.busy} aria-label="Skip all questions and write my prompt now" onclick={() => chat.finish(true)}>
+    <span>⏭ Skip all questions</span><small>Write my prompt now</small>
+  </button>
+{/if}
 
 <div id="qaList" class="thread" bind:this={thread} role="log" aria-live="polite" aria-label="Questions and your answers">
   {#each chat.messages as m (m.id)}
@@ -119,5 +126,22 @@
   </div>
 {/if}
 
-<!-- Write my prompt and Quick version live in the Next step dock (NextDock.svelte, #17). -->
+<!-- Idea mwk245csqohp (v2.1.43): after the last answer, Write my prompt shows right here in the card, under
+     the questions, where your eyes already are. The dock's Write my prompt stays too (NextDock.svelte, #17). -->
+{#if chat.done}
+  <div class="cardgo" in:fly={{ y: 8, duration: ms(220) }}>
+    <button type="button" class="primary" id="qaGoCard" disabled={chat.busy} onclick={() => chat.finish(false)}>✍️ Write my prompt</button>
+    <small>All set. Tap to write it, or tap any answer above to change it.</small>
+  </div>
+{/if}
 
+
+<style>
+  .skipall { display: flex; width: 100%; min-height: 52px; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    margin: var(--sp-2) 0 var(--sp-3); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-md);
+    border: 1.5px solid var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 800; font-size: var(--fs-md); }
+  .skipall small { font-weight: 600; font-size: var(--fs-sm); color: var(--muted); }
+  .cardgo { display: grid; gap: var(--sp-1); margin-top: var(--sp-3); }
+  .cardgo .primary { width: 100%; min-height: 52px; font-size: var(--fs-md); font-weight: 800; }
+  .cardgo small { color: var(--muted); text-align: center; }
+</style>

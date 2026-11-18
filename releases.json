@@ -2,6 +2,170 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.47",
+      "date": "2026-11-18",
+      "title": "Make it stronger can run on the shortcut too, on the model you last used",
+      "items": [
+        "With Write with on Cloud, ChatGPT, or On-Device, Make it stronger (and Rework, Ask me then rewrite, and the automatic stronger version under 2) hands the next round to the STP Flash Backup shortcut instead of Flash. The card says Hand round 2 (the stronger version).",
+        "It starts on the model the last round really used, so a Try ChatGPT swap carries over. Change Write with before tapping Make it stronger and the new pick wins.",
+        "The shortcut gets the same short rules plus the prompt to improve with what was weak at the top. Use Flash instead on the card writes the round on Flash, like before. With Write with on Flash nothing changes."
+      ],
+      "checks": [
+        {
+          "say": "With dev tools on and Write with on Cloud, build a prompt through the shortcut until it shows a What's thin card, then tap Make it stronger.",
+          "see": "A Hand round 2 (the stronger version) to STP Flash Backup (Cloud) card, with Use Flash instead as the fallback."
+        },
+        {
+          "say": "Run the shortcut and Paste result.",
+          "see": "Round 2 shows, written by STP Flash Backup (Cloud), with its own Quality check and Round 1 one tap away."
+        },
+        {
+          "say": "Build again, tap Try ChatGPT on the first card, then Make it stronger.",
+          "see": "The round 2 card names ChatGPT (the model you last used), while Write with still says Cloud."
+        },
+        {
+          "say": "Before tapping Make it stronger, switch Write with to On-Device.",
+          "see": "The round card names On-Device: a changed Write with wins."
+        }
+      ]
+    },
+    {
+      "version": "2.1.46",
+      "date": "2026-11-17",
+      "title": "Auto follows Write with: Cloud, ChatGPT, and On-Device hand the write to the STP Flash Backup shortcut",
+      "items": [
+        "Fix (Test lab 11/17): with Auto, picking Cloud, ChatGPT, or On-Device under Write with did nothing. Auto writes its first prompt on Flash-Lite, and that path skipped the shortcut, so it always went to Gemini. Now an Auto build hands the write to the STP Flash Backup shortcut whenever Write with is on a shortcut, Skip all questions included.",
+        "The shortcut's prompt then goes through Polish and the Quality check like any Auto prompt.",
+        "In Auto the card's fallback says Use Flash-Lite instead (Auto's own writer), not Use Flash. With Write with on Flash, Auto writes on Flash-Lite like before."
+      ],
+      "checks": [
+        {
+          "say": "With your key and dev tools on, set Write with to Cloud, then build a prompt and tap Skip all questions.",
+          "see": "A Hand this write to STP Flash Backup (Cloud) card instead of a Flash-Lite prompt, with Copy and run shortcut, Try ChatGPT, Try On-Device, and Use Flash-Lite instead."
+        },
+        {
+          "say": "Tap Copy and run shortcut, let it run, and tap Paste result when you're back.",
+          "see": "The prompt shows, the made-by line names STP Flash Backup (Cloud), and the Quality check card shows under it."
+        },
+        {
+          "say": "Set Write with to ChatGPT, build again, and tap Use Flash-Lite instead on the card.",
+          "see": "Flash-Lite writes it, with no shortcut run."
+        },
+        {
+          "say": "Set Write with back to Flash and build.",
+          "see": "No shortcut card: Flash-Lite writes it right away, like before."
+        }
+      ]
+    },
+    {
+      "version": "2.1.45",
+      "date": "2026-11-17",
+      "title": "Skip all questions moves out of the corner into a full-width bar above the first question",
+      "items": [
+        "⏭ Skip all questions is now a full-width bar right under your goal and above the first question, with Write my prompt now beside it, so nobody has to hunt the corner for it.",
+        "It still writes right away with whatever you've answered (0 is fine), and it goes away once every question is answered (Write my prompt shows in the card then)."
+      ],
+      "checks": [
+        {
+          "say": "With your key, build any prompt.",
+          "see": "Under Your goal and the plan line, a wide ⏭ Skip all questions bar sits right above the first question."
+        },
+        {
+          "say": "Tap Skip all questions.",
+          "see": "It writes right away and the Quality check shows under the prompt."
+        },
+        {
+          "say": "Build again and answer every question.",
+          "see": "The Skip all bar goes away and ✍️ Write my prompt shows in the card."
+        }
+      ]
+    },
+    {
+      "version": "2.1.44",
+      "date": "2026-11-17",
+      "title": "Auto only, no mode picker, and Auto always gets its Quality check",
+      "items": [
+        "Quick and Normal are gone for everyone, dev tools included. With a key it's Auto; with no key, the quick prompt, plus a line saying a free key turns on Auto.",
+        "Fix: Auto writes on Flash-Lite, and on a key with only one Flash-Lite every grade went to Flash. A busy Flash sat the full 30 seconds without answering, so there was no grade at all. Flash still grades first, and now the Flash-Lite joins after 12 seconds, so a slow Flash can't leave you with no grade.",
+        "If a grade still doesn't come back, the card says so (and that your prompt is fine to use) instead of showing nothing."
+      ],
+      "checks": [
+        {
+          "say": "With your key saved and dev tools on, open Options.",
+          "see": "Options · Auto and one line about Auto. No Auto / Quick / Normal buttons."
+        },
+        {
+          "say": "Build a prompt with your key (skip the questions is fine).",
+          "see": "A Quality check card shows under the prompt within about 30 seconds, even in busy hours."
+        },
+        {
+          "say": "Open Step by step under the timer and look at the Grade row.",
+          "see": "It names the model that graded it, and shows a hand-off if Flash was slow and Flash-Lite stepped in."
+        },
+        {
+          "say": "In a private tab with no key, open Options.",
+          "see": "No buttons, just a line that a free key turns on Auto."
+        }
+      ]
+    },
+    {
+      "version": "2.1.43",
+      "date": "2026-11-17",
+      "title": "Auto mode: questions first, a fast write, and a Quality check that decides what's next, plus Write my prompt right in the questions card",
+      "items": [
+        "⚡ Auto (#56): with a key there's no Quick or Normal to pick any more. Options says Options · Auto.",
+        "Auto works like Normal (Read, then a few questions) but writes on Flash-Lite, so it's fast. A Skip all questions button sits at the top of the questions card and writes right away with whatever you've answered.",
+        "Every Auto build gets the Quality check now, not just with run stats on.",
+        "4.5 and up: done. From 2 to 4.4 a What's thin card says in up to 3 plain lines what's missing, with Use it (copies the prompt) and Make it stronger (a rewrite on Flash).",
+        "Under 2: your first prompt stays on screen, ready to copy, while a stronger one writes. It swaps in by itself and says both scores, with Compare and Round 1 one tap away.",
+        "Make it stronger gives each Flash model 30 seconds. If Flash is busy, Flash-Lite writes it with no wait and no ask.",
+        "✍️ After your last answer, Write my prompt now shows right inside the questions card, under the questions. The dock button is still there too. The dock's ⚡ Quick version chip is gone; Skip all questions replaced it.",
+        "No key? Nothing changes: you still get the quick prompt to paste."
+      ],
+      "checks": [
+        {
+          "say": "With your key saved, open Options under the box.",
+          "see": "It says Options · Auto. No Quick or Normal buttons, just one line explaining Auto."
+        },
+        {
+          "say": "Type a short request (like: plan a yard sale this weekend) and tap Build my prompt.",
+          "see": "A few questions come up first, with Skip all questions at the top of the card."
+        },
+        {
+          "say": "Answer every question.",
+          "see": "A big ✍️ Write my prompt button shows inside the card, under the questions, and the dock still has Write my prompt too."
+        },
+        {
+          "say": "Tap ✍️ Write my prompt in the card.",
+          "see": "The prompt writes fast (Flash-Lite) and a Quality check card shows under it, even with run stats off."
+        },
+        {
+          "say": "Tap New prompt, build again, and tap Skip all questions right away.",
+          "see": "It skips straight to writing, no questions answered, and still gets a Quality check."
+        },
+        {
+          "say": "Open the staging site with #lowgrade at the end of the address, build anything, and wait for the result.",
+          "see": "Round 1 reads as 3.4: a What's thin card with up to 3 plain lines, Use it, and Make it stronger."
+        },
+        {
+          "say": "On that What's thin card, tap Use it.",
+          "see": "It says Copied, and your prompt is on the clipboard."
+        },
+        {
+          "say": "Build another #lowgrade prompt and tap Make it stronger.",
+          "see": "Round 2 writes on Flash, then Round 1 / Round 2 show on the card with Compare rounds."
+        },
+        {
+          "say": "Without a key (private tab), build anything.",
+          "see": "Same as before: the quick prompt to paste, no questions, no Auto."
+      },
+      {
+        "say": "Open the staging site with #vlowgrade at the end of the address, build anything with your key, and skip the questions.",
+        "see": "Your first prompt shows as 1.6 in a card you can copy from, the heading says Making a stronger version..., then the new one swaps in with Stronger version ready (1.6 to ...) and Compare."
+        }
+      ]
+    },
+    {
       "version": "2.1.42",
       "date": "2026-11-14",
       "title": "R4 Calm first screen: one box and one button to start, with the result extras kept in plain view",

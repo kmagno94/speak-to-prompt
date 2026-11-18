@@ -242,6 +242,9 @@ export function shortWriteText(o) {
   if (sh.success || sh.format) out.push("", "ONLY IF I DID NOT SAY (suggestions, my own words win):" + (sh.success ? "\nA great answer: " + sh.success : "") + (sh.format ? "\nFormat: " + sh.format : ""));
   if (o.context) out.push("", "BACKGROUND I PICKED (use only the facts this request needs, in plain words; never paste it in as a block):", o.context);
   if (o.today) out.push("", "TODAY IS " + o.today + ". Use it only to count days. Never add a year, weekday, or month to a date I gave.");
+  /* v2.1.47: a Rework round (Make it stronger) on the shortcut. The prompt to improve, with what
+     was weak at the top; the notes and answers above stay the source of truth for facts. */
+  if (o.rework) out.push("", "MY PROMPT FROM ROUND " + (o.reworkOf || 1) + ", TO MAKE STRONGER (start from it: keep what works and every detail, fix what the What was weak line says, and follow every rule above. Never copy the What was weak line into the prompt):", '"""', o.rework, '"""');
   const items = o.items || [];
   if (items.length) out.push("", "MUST KEEP (every item below has to be in the prompt, in a clean sentence):", ...items.map((i) => "- " + i));
   out.push("", "Now write the prompt.");

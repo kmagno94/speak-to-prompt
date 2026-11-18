@@ -92,7 +92,11 @@ Busy hours make Flash unreliable, so with **More options > Show my dev tools** o
 
 The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Apple's Cloud model dropped the date, the budget, and three preferences under the full WRITE rules. The short text has six plain rules, asks for numbers as digits, and puts the must-keep list last. Lessons, your core, the memory facts Read picked, and picked My context all ride along in a compact form, so it is one to one with what Flash gets; only Rework is left out.
 
-Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for two of the other models, and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
+**Auto follows Write with (v2.1.46):** Auto writes its first prompt on Flash-Lite, but with Write with on a shortcut, that write goes to the shortcut instead (Skip all questions included), then through Polish and the Quality check like any Auto prompt. In Auto the card's Gemini fallback is **Use Flash-Lite instead**.
+
+**Make it stronger on the shortcut (v2.1.47):** Rework rounds follow Write with too: Make it stronger, Rework, Ask me then rewrite, and the automatic stronger version under 2. The card says **Hand round N (the stronger version)**. A round starts on the model the last round really used (a Try swap carries over, `scCarry`), unless Write with changed since. The shortcut gets the short rules plus the prompt to improve with its What was weak line (`rework` in `shortWriteText`), and the fallback is **Use Flash instead**, since Rework rounds write on Flash. A round picked up in a new tab shows without its earlier rounds (they stay in the first tab).
+
+Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for two of the other models, and **Use Flash instead**. Quick writes stay on Gemini (Rework rounds follow Write with since v2.1.47). Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
 
 ### 💡 Ideas tab (just for me)
 
@@ -120,16 +124,21 @@ On the staging build only, a 🧪 button at the bottom left (with **Show my Idea
 - The verdict: "Don't promote: 2 broken", or "All 14 work. Ready to promote v2.1.3" with a button that copies **Pre-flight passed, promote v2.1.3** for the Claude chat.
 - Live's version is passed in by the deploy, so the plan always matches what's actually live. Results are saved on this phone only (`stp-testlab` under `stg:`). The live build never shows it.
 
-### Two modes (in Options, under the box)
+### Auto mode (v2.1.43, #56)
 
-| Mode | What it does | Time |
-|---|---|---|
-| **Quick** | Skips the questions and writes right away on Flash-Lite (500 free requests a day), so it doesn't touch the smaller Flash allowance. | about 15 seconds |
-| **Normal** | Asks a few questions, then writes on the newest Flash. | usually 1 to 2 minutes |
+With a key there is nothing to pick: Options says **Options · Auto**.
 
-You can also tap **⋯** in the dock, then **Quick version**, to write right away the faster, lighter way with whatever you've answered.
+| Step | What happens |
+|---|---|
+| Read and questions | Same as Normal used to be: Read picks a few questions. **Skip all questions** at the top of the card writes right away with whatever is answered. After the last answer, **✍️ Write my prompt** shows right inside the card (idea mwk245csqohp); the dock keeps its own |
+| Write | Flash-Lite (the quick writer), so it's fast |
+| Check | The Quality check runs on every Auto build, not only with run stats on. The full grader line (#gradeNote) still shows only with run stats. Flash grades a Flash-Lite prompt; on a key with one Flash-Lite, that Flash-Lite joins after 12s in a fresh call, so a busy Flash never leaves you with no grade (v2.1.44). A grade that still doesn't come back says so on the card |
+| 4.5 and up | Done |
+| 2 to 4.4 | The **What's thin** card (`QualityCheck.svelte`): up to 3 plain lines (`thinLines`), the stand-in's questions just above it, **Use it** (copies) and **Make it stronger** (a Rework round on Flash) |
+| Under 2 | The first prompt stays on screen in a card you can copy from (`ui.hold`) while a Flash rework writes, then swaps in with **Stronger version ready (old to new)** and Compare |
+| Busy Flash | A rework gives each Flash model 30 seconds (`watchSlowWrite`, 2 Flash = 1:00), then Flash-Lite writes it with no ask (#35 relaxed for Auto) |
 
-The app starts in **Quick** when there's no key, so nobody hits a "needs a key" wall, and moves to **Normal** once a key is added, unless you picked a mode yourself.
+No key: unchanged, the quick prompt to paste. Quick and Normal are gone for everyone, dev tools included (v2.1.44); only the smoke tests written before Auto keep the old picker through the `__manualModes` test hook (`page({ auto: true })` runs the real Auto). Staging: `#lowgrade` reads round 1 as 3.4 (What's thin), `#vlowgrade` as 1.6 (the stronger version).
 
 ### The journey (what the page looks like)
 

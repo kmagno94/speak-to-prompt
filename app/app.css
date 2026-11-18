@@ -299,8 +299,12 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 .ts-check { background: var(--ok); } .tslegend .ts-check::before { background: var(--ok); }
 .tslegend span[class^="ts-"] { background: none; }
 /* Cooking (v2.1.19): the prompt card shows only its heading, the tracker, round banner, and messages until the prompt is ready. */
-#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round):not(.waitrow):not(#stayTip) { display: none !important; }
+#result.cooking > :not(#resultHead):not(#resultTrack):not(.msgbox):not(.round):not(.waitrow):not(#stayTip):not(#holdCard) { display: none !important; }
 .waitrow { display: grid; gap: var(--sp-2); }
+.holdcard { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); border: 1.5px solid var(--line); background: var(--bg); }
+.holdcard p { margin: 0; font-size: var(--fs-sm); }
+.holdcard button { justify-self: start; min-height: var(--tap); border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-4); font-weight: 700; }
+.holdcard pre { white-space: pre-wrap; font-size: var(--fs-xs); max-height: 240px; overflow: auto; margin: var(--sp-2) 0 0; }
 .waitrow > :first-child { margin-top: 0; }
 .waitrow:not(:has(*)) { display: none; }
 .tracker li { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); text-align: center; }

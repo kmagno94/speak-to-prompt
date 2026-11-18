@@ -13,7 +13,7 @@
   import ModePicker from './ModePicker.svelte';
   import ContextRow from './ContextRow.svelte';
 
-  const mode = $derived(ui.mode === 'quick' ? 'Quick' : 'Normal');
+  const mode = $derived(ui.mode === 'auto' ? 'Auto' : ui.mode === 'quick' ? 'Quick' : 'Normal');
   /* The My context editor can be opened from elsewhere (Save as context, Bring in): it lives in here, so open up. */
   $effect(() => { if (context.open) ui.optionsOpen = true; });
 

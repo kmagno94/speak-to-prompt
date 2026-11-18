@@ -189,6 +189,14 @@
     <!-- While the prompt is being written (#50, #51): the ⚡ Quick version chip, and next to it the
          Save as context offer when Read spotted background worth keeping. Outside #resultTrack on
          purpose: Rework rounds redraw that from saved HTML. -->
+    {#if ui.hold}
+      <!-- #56 under 2 (SPEC LOCKED 11/15 round 2): the first prompt stays usable while a stronger one writes. -->
+      <div class="holdcard" id="holdCard" role="status">
+        <p><b>Your first prompt is ready to copy.</b> It scored {ui.hold.score.toFixed(1)}, so a stronger version is writing. It swaps in by itself.</p>
+        <button type="button" id="holdCopy" onclick={(e) => { navigator.clipboard?.writeText(ui.hold.text).catch(() => {}); e.currentTarget.textContent = '✅ Copied'; }}>Copy first prompt</button>
+        <details><summary>Show it</summary><pre id="holdText">{ui.hold.text}</pre></details>
+      </div>
+    {/if}
     {#if ui.build}<div class="waitrow" id="waitRow"><QuickSwitch place="result" /><ContextNudge place="wait" /></div>{/if}
     <p id="madeBy" class="madeby"></p>
     <KeyNudge place="result" />

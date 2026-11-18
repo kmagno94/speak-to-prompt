@@ -198,7 +198,6 @@
   let lastAI = $state('');
   const openList = $derived([...AIS.filter((a) => a.name === lastAI), ...AIS.filter((a) => a.name !== lastAI)]);
   const openedIn = (name) => setTimeout(() => { lastAI = name; menu = false; }, 0);
-  function quick() { menu = false; chat.finish(true); }
   function saveCtx() { menu = false; window.dispatchEvent(new CustomEvent('stp-act', { detail: { act: 'savectx', where: 'result' } })); }
 
   /* Undo: app.js puts back your words and whatever was on screen (questions or the prompt). */
@@ -247,11 +246,7 @@
     </div>
   </div>
 
-  <!-- Quick version (v2.1.34): always in view on the questions, not tucked in ⋯, for anyone in a rush.
-       A chip just above the pill, so Write my prompt (N of 3) keeps its full width. -->
-  <div class="qrow" hidden={moment !== 'qa'}>
-    <button type="button" class="qquick" id="qaSkip" disabled={chat.busy} aria-label="Quick version: write it now, skip the rest of the questions" onclick={quick}>⚡ Quick version <small>skip the rest</small></button>
-  </div>
+  <!-- #56 (v2.1.43): the ⚡ Quick version chip moved to the top of the questions card as Skip all questions. -->
   <div class="bar">
     <button type="button" class="primary main copybig" class:alt={showBuild} id="copy" hidden={!showCopy}>Copy prompt</button>
     <button type="submit" form="form" class="primary main" id="dockBuild" hidden={!showBuild} disabled={busy}>{busy ? busyLabel : moment === 'redo' ? 'Rebuild' : 'Build my prompt'}</button>
@@ -309,13 +304,6 @@
   /* Redo: Copy prompt (the prompt you already have) sits beside Rebuild as the lighter button. */
   .bar button.alt { flex: 0 1 auto; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); box-shadow: none; padding: 8px 14px; }
   .bar button.alt + button.main { padding: 8px 14px; }
-  /* ⚡ Quick version on the questions: a chip just above the pill, always in view. */
-  .qrow { display: flex; justify-content: flex-end; margin-bottom: 8px; }
-  .qquick { min-height: 40px; padding: 8px 16px; border-radius: 999px; font-size: 15px; font-weight: 700; white-space: nowrap;
-    color: var(--accent); background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1.5px solid var(--accent);
-    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-    box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--ink) 55%, transparent); }
-  .qquick small { font-weight: 500; color: var(--muted); margin-left: 4px; }
   .more { flex: none; width: 48px; padding: 0; font-size: 22px; line-height: 1; font-weight: 700; color: var(--ink); }
   .more[aria-expanded='true'] { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
 
