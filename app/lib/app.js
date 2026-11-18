@@ -2969,7 +2969,14 @@ export function startApp() {
     return shortWriteText({ raw: cleaned || session.raw, answers: session.answers, goal: session.goal && session.goal.text || "",
       shape: { success: sh0.success && !strictAdds(sh0.success).length ? sh0.success : "", format: sh0.format },
       context: context.active ? context.block : "", today: session.today, items: session.ledger && session.ledger.items || [],
-      lessons: lessons.list, core: core.active ? core.facts : "", memory: session.memFacts || [] });
+      lessons: lessons.list, core: core.active ? core.facts : "", memory: session.memFacts || [],
+      rework: session.round >= 2 ? session.reworkText || "" : "", reworkOf: session.reworkOf || 1 });
+  }
+  /* v2.1.47: a Rework round follows Write with too. It starts on the model the last round really
+     used (a Try ChatGPT swap carries over), unless Write with was changed since then. A Use Flash
+     instead from the last round is not carried: the new round asks the shortcut again. */
+  function scCarry(s1) {
+    return { noShortcut: false, scModel: s1.scModel && s1.scPick === core.writer ? s1.scModel : null };
   }
   function scLink(m) {
     var back = location.origin + location.pathname + "#stpback=" + (SC_MODELS[m] || SC_MODELS.cloud).slug + ".";
@@ -3019,11 +3026,12 @@ export function startApp() {
     var name = SC_NAME + " (" + scLabel(w.model) + ")";
     var others = ["gpt", "cloud", "device"].filter(function (m) { return m !== w.model; });
     var run = { label: w.sent ? "Run shortcut again" : "Copy and run shortcut", act: "scrun", primary: state !== "long" };
-    var gem = session && session.auto ? "Flash-Lite" : "Flash";   /* v2.1.46: in Auto the Gemini fallback is Auto's own writer */
+    var rework = !!(session && session.round >= 2);
+    var gem = session && session.auto && !rework ? "Flash-Lite" : "Flash";   /* v2.1.46: in Auto the Gemini fallback is Auto's own writer; a Rework round writes on Flash (v2.1.47) */
     var swap = { label: "Try " + scLabel(others[0]), act: "scother-" + others[0] }, swap2 = { label: "Try " + scLabel(others[1]), act: "scother-" + others[1] }, flash = { label: "Use " + gem + " instead", act: "scflash" };
     var paste = { label: "Paste result", act: "scpaste", primary: state === "long" };
     document.getElementById("resultHead").textContent = state === "ready" ? "Ready for the shortcut" : "Waiting for the shortcut...";
-    if (state === "ready") notify("result", "info", "Hand this write to " + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here, and one Paste tap brings the prompt in. Then Polish and Check carry on like always.", [run, swap, swap2, flash]);
+    if (state === "ready") notify("result", "info", (rework ? "Hand round " + session.round + " (the stronger version) to " : "Hand this write to ") + name, "One tap copies your notes with a short set of writing rules and runs the shortcut. It brings you back here, and one Paste tap brings the prompt in. Then Polish and Check carry on like always.", [run, swap, swap2, flash]);
     else if (state === "wait") notify("result", "info", "Waiting for " + name, "When the shortcut is done it brings you back here with the prompt on your clipboard. Then tap Paste result. Nothing came back? Run it again, try another model, or let " + gem + " write it. Your words and answers stay put.", [run, swap, swap2, flash, paste]);
     else if (state === "long") notify("result", "success", "The shortcut is done. Tap Paste", "Its answer is on your clipboard. Paste brings it in, then Polish and Check carry on.", [paste, run, flash]);
     else if (state === "cut") notify("result", "warn", "That answer looks cut off", "It stops partway or is very short, so it wasn't used. Run the shortcut again, try another model, or let " + gem + " write it. Sure it's whole? Use it anyway.", [run, swap, flash, { label: "Use it anyway", act: "scuse" }, paste]);
@@ -3102,6 +3110,7 @@ export function startApp() {
     scWait = null;
     scDrop();
     notify("result");
+    if (session) { session.scModel = w.model; session.scPick = core.writer; }   /* v2.1.47: the next Rework round starts here */
     w.resolve({ text: out, model: SC_MODELS[w.model].tag, ms: Math.max(0, Date.now() - w.t0), away: 0, history: w.swaps, tokens: null, thinkingTokens: 0 });
   }
   /* The shortcut is back: #stpback=<cloud|ondevice>.<the prompt, URL-encoded, or STP-CLIPBOARD>. */
@@ -3218,10 +3227,10 @@ export function startApp() {
     var hedgeAfter = ROTATE_MS * TIME_SCALE;
     if (busyP) hedgeAfter = Math.min(hedgeAfter, busyP.race * 1000);
     /* Shortcut stand-in (#53, dev tools): the first full write goes to the STP Flash Backup
-       shortcut instead of Flash. Quick writes and Rework rounds stay on Gemini.
+       shortcut instead of Flash. Quick writes stay on Gemini; Rework rounds follow it too since v2.1.47.
        v2.1.46 (Test lab 11/17): Auto marks its first write quick (Flash-Lite), which skipped the
        shortcut, so a Cloud or ChatGPT pick still went to Gemini. An Auto first write follows Write with too. */
-    var viaSc = (!quick || !!session.auto) && !(session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
+    var viaSc = (!quick || !!session.auto || session.round >= 2) && !session.noShortcut && !!(scBack || scModel());
     /* Every Flash model is used up for today: say so before anything is sent (#35). */
     if (!viaSc && !quick && flashOnly() && flashUsedUp()) { if (session.auto) { quickAfterBusy(); return Promise.resolve(); } askFlashWait("all used up"); return Promise.resolve(); }   /* #56: Auto never asks, Flash-Lite writes it */
     /* #56: an Auto rework gives each Flash 30 seconds (watchSlowWrite caps it), then Flash-Lite writes it. No busy cycling. */
@@ -3535,7 +3544,7 @@ export function startApp() {
     }).join("\n").slice(0, 2000);
     session = Object.assign({}, s1, { answers: (s1.answers || []).slice(), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
       round: n, reworkOf: reworkFrom + 1, reworkText: text.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n + (ui.hold ? " (auto, under " + AUTO_REWORK_BELOW + ")" : ""),
-      heldFrom: ui.hold ? ui.hold.score : null, strongerAfterReveal: false, strongerNote: null, autoQuickNote: false });
+      heldFrom: ui.hold ? ui.hold.score : null, strongerAfterReveal: false, strongerNote: null, autoQuickNote: false }, scCarry(s1));
     if (added) session.answers.push({ question: "What I changed when reworking", answer: added, tapped: false });
     ui.round = Object.assign({}, ui.round, { stage: "writing" });
     notify("form");
@@ -3595,7 +3604,7 @@ export function startApp() {
     var s1 = guide.base, n = rounds.length + 1, got = answers.filter(function (a) { return a.answer; });
     session = Object.assign({}, s1, { answers: (s1.answers || []).concat(got), grades: null, gradeFields: null, draftBefore: null, repair: null, numFlags: 0,
       round: n, reworkOf: reworkFrom + 1, reworkText: reworkSeed.slice(0, 12000), round1Secs: s1.workSecs || 0, mode: "Rework round " + n + " (asked)",
-      guided: { asked: guide.asked || 0, answered: got.length, ai: guide.fromAi || 0 } });
+      guided: { asked: guide.asked || 0, answered: got.length, ai: guide.fromAi || 0 } }, scCarry(s1));
     guide = null;
     ui.round = Object.assign({}, ui.round, { stage: "writing" });
     notify("form");

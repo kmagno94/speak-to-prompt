@@ -94,7 +94,9 @@ The shortcut gets a shorter text than Flash (v2.1.41): on the first real test Ap
 
 **Auto follows Write with (v2.1.46):** Auto writes its first prompt on Flash-Lite, but with Write with on a shortcut, that write goes to the shortcut instead (Skip all questions included), then through Polish and the Quality check like any Auto prompt. In Auto the card's Gemini fallback is **Use Flash-Lite instead**.
 
-Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for two of the other models, and **Use Flash instead**. Quick writes and Rework rounds stay on Gemini. Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
+**Make it stronger on the shortcut (v2.1.47):** Rework rounds follow Write with too: Make it stronger, Rework, Ask me then rewrite, and the automatic stronger version under 2. The card says **Hand round N (the stronger version)**. A round starts on the model the last round really used (a Try swap carries over, `scCarry`), unless Write with changed since. The shortcut gets the short rules plus the prompt to improve with its What was weak line (`rework` in `shortWriteText`), and the fallback is **Use Flash instead**, since Rework rounds write on Flash. A round picked up in a new tab shows without its earlier rounds (they stay in the first tab).
+
+Nothing switches models on its own: the card always has **Run shortcut again**, **Try** buttons for two of the other models, and **Use Flash instead**. Quick writes stay on Gemini (Rework rounds follow Write with since v2.1.47). Needs an Apple Intelligence device (iPhone 15 Pro or later, M-series iPad, Apple silicon Mac) with the shortcut installed. Kevin only for now, backlog #53.
 
 ### 💡 Ideas tab (just for me)
 

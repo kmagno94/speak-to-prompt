@@ -6039,6 +6039,70 @@ await check('auto + shortcut writer (v2.1.46): with Write with on Cloud, an Auto
   for (const x of [p, q, r]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
+/* ---- v2.1.47: Make it stronger (Rework rounds) follows Write with ---- */
+await check('rework + shortcut writer (v2.1.47): Make it stronger hands round 2 to the shortcut on the model the last round used, a changed Write with wins, and Use Flash instead writes it on Flash', async () => {
+  const R2 = 'Role: You are a seasoned party planner. Context: I am hosting a taco night for 6 people on Friday at 7 with a 60 dollar budget. Task: plan the menu and shopping list. Limits: my cousin is vegetarian. Format: a short checklist.';
+  const gradeFn = (ask) => /seasoned party planner/.test(ask) ? { craft: 4.7, rearranged: false, invented: false, missing: [] } : { craft: 3.2, rearranged: false, invented: false, missing: ['success', 'format'] };
+  const backWith = async (p, slug, text) => { await p.evaluate(([sl, t]) => { location.hash = '#stpback=' + sl + '.' + encodeURIComponent(t); }, [slug, text]); };
+  const cardHas = (p, re) => p.waitForFunction((src) => new RegExp(src).test((document.getElementById('notice-result') || {}).textContent || ''), re.source, { timeout: 15000 });
+  /* 1. Cloud for round 1 and round 2; the shortcut gets the prompt to improve. */
+  const p = await scPage('cloud', { auto: true, gradeFn });
+  await p.fill('#thoughts', SC_NOTE); await p.click('#build');
+  await cardHas(p, /Hand this write to STP Flash Backup \(Cloud\)/);
+  await scTap(p, 'Copy and run shortcut'); await p.waitForFunction(() => window.__scOpens.length === 1);
+  await backWith(p, 'cloud', SC_PROMPT); await done(p);
+  await p.waitForSelector('#thinStronger', { timeout: 15000 });
+  await p.click('#thinStronger');
+  await cardHas(p, /Hand round 2 \(the stronger version\) to STP Flash Backup \(Cloud\)/);
+  expect(/Use Flash instead/.test(await scCardText(p)) && !/Use Flash-Lite instead/.test(await scCardText(p)), 'a Rework round falls back to Flash: ' + await scCardText(p));
+  expect(!p.calls.some((c) => !c.intake), 'Make it stronger sends nothing to Gemini while the shortcut is picked');
+  await scTap(p, 'Copy and run shortcut'); await p.waitForFunction(() => window.__scOpens.length === 2);
+  expect(/stpback%3Dcloud\./.test(await p.evaluate(() => window.__scOpens[1])), 'round 2 runs the shortcut on Cloud');
+  const sent = await p.evaluate(() => navigator.clipboard.readText());
+  expect(/MY NOTES:/.test(sent) && /TO MAKE STRONGER/.test(sent) && /What was weak:/.test(sent) && sent.includes(SC_PROMPT) && /Now write the prompt\.$/.test(sent), 'the shortcut gets the short rules plus the round 1 prompt and what was weak: ' + sent.slice(-400));
+  await backWith(p, 'cloud', R2);
+  await p.waitForSelector('#roundResult', { timeout: 15000 });
+  expect(await p.inputValue('#output') === R2 && /STP Flash Backup \(Cloud\)/.test(await p.textContent('#madeBy')) && await p.isVisible('#round1Result'), 'round 2 is the shortcut\'s, round 1 one tap away');
+  expect(!p.calls.some((c) => !c.intake), 'still no Gemini write');
+  /* 2. A Try ChatGPT swap in round 1 carries into round 2; Use Flash instead writes round 2 on Flash; a changed Write with wins in round 3. */
+  const q = await scPage('cloud', { auto: true, gradeFn });
+  await q.fill('#thoughts', SC_NOTE); await q.click('#build');
+  await cardHas(q, /Hand this write to/);
+  await scTap(q, 'Try ChatGPT'); await q.waitForFunction(() => window.__scOpens.length === 1);
+  await backWith(q, 'chatgpt', SC_PROMPT); await done(q);
+  await q.waitForSelector('#thinStronger', { timeout: 15000 }); await q.click('#thinStronger');
+  await cardHas(q, /Hand round 2 \(the stronger version\) to STP Flash Backup \(ChatGPT\)/);
+  expect(await q.evaluate(() => localStorage.getItem('stp-writer')) === 'cloud', 'the saved Write with stays Cloud');
+  await scTap(q, 'Use Flash instead');
+  await q.waitForSelector('#roundResult', { timeout: 15000 });
+  const r2 = q.calls.filter((c) => !c.intake);
+  expect(r2.length && /flash/.test(r2[0].model) && !/lite/.test(r2[0].model), 'Use Flash instead writes round 2 on Flash: ' + r2.map((c) => c.model).join());
+  await q.click('#writerDevice');
+  await q.waitForSelector('#thinStronger', { timeout: 15000 }); await q.click('#thinStronger');
+  await cardHas(q, /Hand round 3 \(the stronger version\) to STP Flash Backup \(On-Device\)/);
+  /* 3. Write with on Flash: Make it stronger writes on Flash as before, no card. */
+  const r = await scPage('', { auto: true, gradeFn, writeFn: (ask) => /ROUND 2/.test(ask) ? R2 : SC_PROMPT });
+  await r.fill('#thoughts', SC_NOTE); await r.click('#build'); await done(r);
+  await r.waitForSelector('#thinStronger', { timeout: 15000 }); await r.click('#thinStronger');
+  await r.waitForSelector('#roundResult', { timeout: 15000 });
+  expect(!(await r.evaluate(() => window.__scOpens.length)) && r.calls.some((c) => !c.intake && /flash/.test(c.model) && !/lite/.test(c.model)), 'no shortcut with Flash picked');
+  /* 4. Under 2: the first prompt stays on screen and the stronger version goes to the shortcut too. */
+  const v = await scPage('cloud', { auto: true, gradeFn: (ask) => /seasoned party planner/.test(ask) ? { craft: 4.6, rearranged: false, invented: false, missing: [] } : { craft: 1.6, rearranged: true, invented: false, missing: ['task', 'role'] } });
+  await v.fill('#thoughts', SC_NOTE); await v.click('#build');
+  await cardHas(v, /Hand this write to/);
+  await scTap(v, 'Copy and run shortcut'); await v.waitForFunction(() => window.__scOpens.length === 1);
+  await backWith(v, 'cloud', SC_PROMPT);
+  await v.waitForSelector('#holdCard', { timeout: 15000 });
+  await cardHas(v, /Hand round 2 \(the stronger version\) to STP Flash Backup \(Cloud\)/);
+  expect(await v.textContent('#holdText') === SC_PROMPT && !v.calls.some((c) => !c.intake), 'the first prompt waits on screen, nothing sent to Gemini');
+  await scTap(v, 'Copy and run shortcut'); await v.waitForFunction(() => window.__scOpens.length === 2);
+  await backWith(v, 'cloud', R2);
+  await v.waitForSelector('#roundResult', { timeout: 15000 });
+  expect(await v.inputValue('#output') === R2 && !(await v.isVisible('#holdCard')), 'the shortcut\'s stronger version swaps in');
+  await v.waitForFunction(() => /1\.6 to 4\.6/.test(document.getElementById('result').textContent), null, { timeout: 8000 }).catch(() => { throw new Error('Stronger version ready (1.6 to 4.6) should show'); });
+  for (const x of [p, q, r, v]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
