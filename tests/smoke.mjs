@@ -4899,12 +4899,20 @@ await check('my context: the editor opens at its top with the cursor in a title 
 await check('my context pills (v2.1.48): Options opens with My context first, the editor shows pieces as pills and opens one at a time, Revert changes puts it back, and Delete offers Undo', async () => {
   const p = await page({ calm: true });
   await p.evaluate(() => { localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Taco truck', text: 'Open Thu to Sun, 11 to 9. Al pastor sells out by 7.' }, { id: 'b', title: 'Book club', text: 'Third Thursday at Rosa\'s, 6 people.' }, { id: 'c', title: 'Garden plot', text: 'Plot 14, tomatoes and basil.' }])); localStorage.setItem('stp-context-keep', '1'); });
+  /* A short screen, so the Options panel opens below the fold, like a real first screen with the idea strip (Test lab screenshot, 11/18). */
+  await p.setViewportSize({ width: 390, height: 600 });
   await p.reload();
+  await p.evaluate(() => window.scrollTo(0, 0));
+  const before = await p.evaluate(() => scrollY);
   await p.click('#optionsChip');
-  await p.waitForTimeout(300);
+  await p.waitForTimeout(900);
   const order = await p.evaluate(() => { const panel = document.getElementById('optionsPanel'), kids = [...panel.children]; const at = (sel) => kids.findIndex((k) => k.matches(sel) || k.querySelector(sel)); return { ctx: at('#contextRow'), mode: at('#quickMode'), chips: [...document.querySelectorAll('#contextRow .ctxchip')].every((c) => { const r = c.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) }; });
   expect(order.ctx === 0 && order.mode > order.ctx, 'My context should be first in the Options panel, above the mode picker: ' + JSON.stringify(order));
-  expect(order.chips, 'every My context chip should be on screen right after Options opens, no scrolling');
+  expect(order.chips, 'every My context chip should be on screen right after Options opens, no scrolling by hand');
+  expect(await p.evaluate(() => document.getElementById('optionsChip').getBoundingClientRect().top >= 0) && await p.evaluate(() => scrollY) > before, 'the page snaps down to My context and keeps the Options chip on screen');
+  await p.click('#optionsChip'); await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(100);
+  await p.click('#optionsChip'); await p.waitForTimeout(100);
+  await p.setViewportSize({ width: 390, height: 844 });
   await p.click('#contextEdit');
   await p.waitForSelector('#contextEditor');
   expect((await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.textContent.trim()))).join('|') === 'Taco truck|Book club|Garden plot', 'every piece shows as a pill');

@@ -13,10 +13,28 @@
   import { SLIDERS } from './lib/starters.js';
   import ModePicker from './ModePicker.svelte';
   import ContextRow from './ContextRow.svelte';
+  import { tick } from 'svelte';
+  import { ms } from './lib/motion.js';
 
   const mode = $derived(ui.mode === 'auto' ? 'Auto' : ui.mode === 'quick' ? 'Quick' : 'Normal');
   /* The My context editor can be opened from elsewhere (Save as context, Bring in): it lives in here, so open up. */
   $effect(() => { if (context.open) ui.optionsOpen = true; });
+
+  /* Snap to My context (v2.1.48, idea mwmew9f943qi): when Options opens and the My context
+     chips land below the screen, the page scrolls so the chip sits near the top and every
+     context chip is in view, ready to tap. Nothing moves when they already fit. */
+  let chipEl = $state();
+  async function toggle() {
+    ui.optionsOpen = !ui.optionsOpen;
+    if (!ui.optionsOpen) return;
+    await tick();
+    const row = document.getElementById('contextRow');
+    if (!row || !chipEl) return;
+    const r = row.getBoundingClientRect();
+    if (r.bottom <= innerHeight - 12) return;
+    const by = Math.min(r.bottom - innerHeight + 24, chipEl.getBoundingClientRect().top - 12);
+    if (by > 0) window.scrollBy({ top: by, behavior: ms(1) ? 'smooth' : 'auto' });
+  }
 
   function said(sl) {
     const t = sl.steps[starter.tune[sl.key] - 1];
@@ -24,8 +42,8 @@
   }
 </script>
 
-<button type="button" class="optchip" id="optionsChip" aria-expanded={ui.optionsOpen} aria-controls="optionsPanel"
-        onclick={() => (ui.optionsOpen = !ui.optionsOpen)}>
+<button type="button" class="optchip" id="optionsChip" aria-expanded={ui.optionsOpen} aria-controls="optionsPanel" bind:this={chipEl}
+        onclick={toggle}>
   <span aria-hidden="true">⚙️</span> Options · <b id="optionsMode">{mode}</b><i class="chev" aria-hidden="true">▾</i>
 </button>
 
