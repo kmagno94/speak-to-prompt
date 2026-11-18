@@ -156,7 +156,7 @@
           {#if showReport}<textarea class="report" readonly rows="8" aria-label="Test lab report">{lab.report}</textarea>{/if}
         {/if}
         {#if lab.verdict.ready}
-          <button type="button" class="primary" id="labPromote" onclick={copyPromote}>Copy “{lab.verdict.promote}”</button>
+          <button type="button" class="primary" id="labPromote" onclick={copyPromote}>Copy “Pre-flight passed, promote v{lab.plan.newest}”</button>
           {#if copied}<p class="sub" role="status">{copied}</p>{/if}
         {/if}
       </section>

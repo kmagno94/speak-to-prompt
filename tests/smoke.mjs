@@ -5257,7 +5257,7 @@ if (process.env.APP_CHANNEL === 'staging') {
     for (let i = 0; i < 7; i++) await p.click('#labWorks');
     expect(/All 7 work\. Ready to promote v9\.0\.2\./.test(await p.textContent('#labVerdict')), 'all passed should say Ready to promote v9.0.2');
     await p.click('#labPromote');
-    expect((await p.evaluate(() => navigator.clipboard.readText())) === 'Pre-flight passed, promote v9.0.2', 'Copy should put the exact promote phrase on the clipboard');
+    expect((await p.evaluate(() => navigator.clipboard.readText())) === "Pre-flight passed, promote v9.0.2. This is my go-ahead to merge: once the Promote check is green, merge it yourself without asking me, then tell me when it's live.", 'Copy should put the exact promote phrase on the clipboard');
     await p.click('#labReset');
     expect(/All 7 work/.test(await p.textContent('#labVerdict')), 'one tap must not clear results');
     await p.click('#labReset');

@@ -53,7 +53,7 @@ export function verdict(plan, results = {}) {
   else if (fail) text = `Don't promote: ${fail} broken.`;
   else if (left) text = `${pass} of ${total} checked. ${left} to go.`;
   else text = `All ${total} work. Ready to promote v${plan.newest}.`;
-  return { total, pass, fail, left, ready, text, promote: ready ? `Pre-flight passed, promote v${plan.newest}` : '' };
+  return { total, pass, fail, left, ready, text, promote: ready ? `Pre-flight passed, promote v${plan.newest}. This is my go-ahead to merge: once the Promote check is green, merge it yourself without asking me, then tell me when it's live.` : '' };
 }
 
 /* 📋 Copy report: everything a Claude chat needs to fix what broke, ready to paste. Broken

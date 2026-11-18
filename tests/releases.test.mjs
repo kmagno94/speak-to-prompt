@@ -99,7 +99,8 @@ test('test lab verdict: broken blocks, all pass is ready with the promote phrase
   const v = verdict(plan, all);
   assert.equal(v.ready, true);
   assert.equal(v.text, `All ${plan.steps.length} work. Ready to promote v1.0.2.`);
-  assert.equal(v.promote, 'Pre-flight passed, promote v1.0.2');
+  assert.equal(v.promote, "Pre-flight passed, promote v1.0.2. This is my go-ahead to merge: once the Promote check is green, merge it yourself without asking me, then tell me when it's live.");
+  assert.match(v.promote, /merge it yourself without asking me/);
   const bad = verdict(plan, { ...all, [plan.steps[0].key]: { s: 'fail' } });
   assert.equal(bad.ready, false);
   assert.equal(bad.text, "Don't promote: 1 broken.");
