@@ -59,22 +59,37 @@
     context.update(snap.id, 'title', snap.title);
     context.update(snap.id, 'text', snap.text);
   }
+  /* v2.1.49 (Test lab 11/19): the open piece sits right under its own pill (not below every pill),
+     and the tapped pill comes to the top of the screen so its box is in view. ← All pieces, a delete,
+     and + Add another snap back up to the pills instead of leaving you at the bottom. */
+  const behavior = () => (ms(1) ? 'smooth' : 'auto');
+  function toPill(id) { editor?.querySelector(`.ctxpill[data-pill="${id}"]`)?.scrollIntoView({ block: 'start', behavior: behavior() }); }
+  function toPills() { (editor?.querySelector('.pillwrap') || editor)?.scrollIntoView({ block: 'start', behavior: behavior() }); }
   async function pickPill(id) {
     show(id);
     await tick();
-    editor?.querySelector('.ctxitem')?.scrollIntoView({ block: 'nearest', behavior: ms(1) ? 'smooth' : 'auto' });
+    toPill(id);
+  }
+  async function back() {
+    show('');
+    await tick();
+    toPills();
+    editor?.querySelector('.ctxpill')?.focus({ preventScroll: true });
   }
 
   /* + New opens the new piece (it goes first) with the cursor in its title. Edit opens the pills,
      or the only piece straight away when there's just one. Either way the editor's top comes into view. */
   async function openAt(id) {
+    const wasOpen = !!(context.open && editor);
     context.open = true;
     show(id || (context.list.length === 1 ? context.list[0].id : ''));
     await tick();
     if (id) editor?.querySelector('.ctxitem input')?.focus({ preventScroll: true });
     else editor?.querySelector('.ctxpill')?.focus({ preventScroll: true });
-    /* After it slides open, so the page is tall enough to bring its top into view. */
-    setTimeout(() => editor?.scrollIntoView({ block: 'start', behavior: ms(1) ? 'smooth' : 'auto' }), ms(230));
+    /* After it slides open, so the page is tall enough to bring the pills into view
+       (straight away when the editor was already open, like + Add another). */
+    const snapUp = () => (id ? toPill(id) : toPills());
+    if (wasOpen) snapUp(); else setTimeout(snapUp, ms(230));
   }
   function addNew() { openAt(context.add()); }
   function del(id) {
@@ -83,6 +98,7 @@
     undo = context.remove(id);
     armed = ''; show('');
     undoTimer = setTimeout(() => (undo = null), 8000);
+    tick().then(toPills);
   }
   function undoDelete() {
     if (!undo) return;
@@ -90,7 +106,7 @@
     const id = undo.piece.id;
     context.restore(undo);
     undo = null;
-    show(id);
+    pickPill(id);
   }
   function done() { context.save(); context.open = false; armed = ''; show(''); clearTimeout(undoTimer); undo = null; }
   /* On all your devices (v2.1.28, lib/contextsync.js): Copy for Notes copies the pieces as one note,
@@ -182,21 +198,21 @@
           <div class="pills" role="group" aria-labelledby="contextPillHead">
             {#each context.list as c (c.id)}
               <button type="button" class="ctxpill" data-pill={c.id} class:overcap={context.overCap.includes(c.id)} aria-pressed={focus === c.id} onclick={() => pickPill(c.id)}>{label(c)}{#if context.overCap.includes(c.id)}<span class="capflag"> · over {n(CAP)}</span>{/if}</button>
+              {#if cur && cur.id === c.id}
+              <div class="ctxitem" data-id={cur.id}>
+                <label class="sr" for="ctxTitle">Title</label>
+                <input id="ctxTitle" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={cur.title} oninput={(e) => context.update(cur.id, 'title', e.currentTarget.value)}>
+                <label class="sr" for="ctxText">Context</label>
+                <textarea id="ctxText" class="ctxtext" class:overcap={len(cur) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize" placeholder="Everything the AI should know about this. Messy is fine." value={cur.text} oninput={(e) => context.update(cur.id, 'text', e.currentTarget.value)}></textarea>
+                <p class="size" class:overcap={len(cur) > CAP} id="ctxSize" aria-live="polite">{#if len(cur) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(cur) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(cur))} / {n(CAP)} characters{/if}</p>
+                <div class="itemacts">
+                  <button type="button" class="link back" id="contextBack" onclick={back}>← All pieces</button>
+                  <button type="button" class="link revert" id="contextRevert" disabled={!changed} onclick={revert}>↩ Revert changes</button>
+                  <button type="button" class="link del" onclick={() => del(cur.id)}>{armed === cur.id ? 'Tap again to delete' : 'Delete'}</button>
+                </div>
+              </div>
+              {/if}
             {/each}
-          </div>
-        </div>
-      {/if}
-      {#if cur}
-        <div class="ctxitem" data-id={cur.id}>
-          <label class="sr" for="ctxTitle">Title</label>
-          <input id="ctxTitle" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={cur.title} oninput={(e) => context.update(cur.id, 'title', e.currentTarget.value)}>
-          <label class="sr" for="ctxText">Context</label>
-          <textarea id="ctxText" class="ctxtext" class:overcap={len(cur) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize" placeholder="Everything the AI should know about this. Messy is fine." value={cur.text} oninput={(e) => context.update(cur.id, 'text', e.currentTarget.value)}></textarea>
-          <p class="size" class:overcap={len(cur) > CAP} id="ctxSize" aria-live="polite">{#if len(cur) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(cur) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(cur))} / {n(CAP)} characters{/if}</p>
-          <div class="itemacts">
-            <button type="button" class="link back" id="contextBack" onclick={() => show('')}>← All pieces</button>
-            <button type="button" class="link revert" id="contextRevert" disabled={!changed} onclick={revert}>↩ Revert changes</button>
-            <button type="button" class="link del" onclick={() => del(cur.id)}>{armed === cur.id ? 'Tap again to delete' : 'Delete'}</button>
           </div>
         </div>
       {/if}
@@ -254,11 +270,13 @@
     background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border: 1px solid var(--line); box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--ink) 45%, transparent); }
   .ctxbar button { min-height: 48px; white-space: nowrap; }
-  .ctxitem { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px solid var(--accent); border-radius: var(--r-md); scroll-margin: var(--sp-4); }
+  /* Inside the pills row, the open piece takes a full line right under its pill; the pills after it wrap below. */
+  .ctxitem { flex: 1 1 100%; min-width: 0; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px solid var(--accent); border-radius: var(--r-md); scroll-margin: var(--sp-4); }
   /* Pills (v2.1.48): every piece as one tap target; the open one is filled in. */
   .pillwrap { display: grid; gap: var(--sp-2); }
   .pillhead { margin: 0; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
   .pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .pillwrap, .ctxpill { scroll-margin-top: var(--sp-4); }
   .ctxpill { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); font-size: var(--fs-sm); }
   .ctxpill[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 700; }
   .ctxpill.overcap { border-color: var(--warn); }

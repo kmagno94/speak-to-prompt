@@ -2,6 +2,38 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.49",
+      "date": "2026-11-19",
+      "title": "Test lab fixes: a context piece opens right under its pill, All pieces snaps back up, and Copy my ideas always answers",
+      "items": [
+        "My context editor: tap a pill and its box opens right under that pill (the pills after it move below the box), with the pill brought to the top of the screen. It used to open below every pill, down near the bottom.",
+        "← All pieces, + Add another, and a delete now scroll back up to the pills instead of leaving you at the bottom of the editor.",
+        "💡 Ideas jar: 📋 Copy my ideas is never a dead gray button. With no ideas of your own (only ones pasted in, like Sample cousin's), a tap says why and to drop one in the jar first. If the browser won't copy, the message shows selected in a box to copy by hand."
+      ],
+      "checks": [
+        {
+          "say": "With 3 or more pieces in My context, tap Edit, then tap the second pill.",
+          "see": "Its box opens right under that pill (not at the bottom), the pills after it sit below the box, and the pill you tapped is near the top of the screen."
+        },
+        {
+          "say": "Scroll down to the bottom of the editor, then tap ← All pieces.",
+          "see": "The page snaps back up to the pills, with no piece open."
+        },
+        {
+          "say": "Scroll down again, then tap + Add another in the floating bar.",
+          "see": "The page snaps up to a blank piece open under the first pill, with the cursor in its title. Tap Delete twice to remove it: the page stays on the pills, with Undo showing."
+        },
+        {
+          "say": "Open the 💡 Ideas jar with only the Sample cousin ideas in Open (none of your own), then tap 📋 Copy my ideas.",
+          "see": "A line says Copy my ideas only sends ideas you logged yourself, and to drop one in the jar first. The button never just sits gray."
+        },
+        {
+          "say": "Drop one idea of your own in the jar, type your first name, tap 📋 Copy my ideas (1), and paste it into a note.",
+          "see": "Copied 1 idea. The note starts Speak to Prompt · Shared ideas · from (your name), has only your idea (no Sample cousin ones), and ends with ~ end of shared ideas ~. Then delete the sample ideas and your test idea."
+        }
+      ]
+    },
+    {
       "version": "2.1.48",
       "date": "2026-11-18",
       "title": "My context as pills with Revert and Undo, Options snaps to your contexts, and shared ideas by copy and paste",

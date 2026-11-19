@@ -73,11 +73,25 @@
 
   /* Shared ideas (v2.1.48): copy your own open ideas to text to Kevin, or paste someone's in. */
   let shareMsg = $state(''), shareBad = $state(false), pasteOpen = $state(false), pasteText = $state('');
+  let shareBox = $state(), shareOut = $state('');
   const sayShare = (m, bad = false) => { shareMsg = m; shareBad = bad; };
+  /* v2.1.49 (Test lab 11/19, "Copy my ideas did not work"): the button used to go gray with no
+     word when every open idea was pasted in from someone else (Sample cousin), so a tap did nothing.
+     Now it always answers: no ideas of your own says so; a browser that won't copy shows the message
+     selected in a box to copy by hand (like Fix session), with an old-style copy tried first. */
   async function copyShare() {
-    if (!ideas.mine.length) return;
-    try { await navigator.clipboard.writeText(ideas.shareText()); sayShare(`Copied ${ideas.mine.length} idea${ideas.mine.length === 1 ? '' : 's'}. Paste it in a text to Kevin.`); }
-    catch (e) { sayShare('Couldn’t copy here. Try Safari.', true); }
+    shareOut = '';
+    const n = ideas.mine.length;
+    if (!n) return sayShare(ideas.openList.length ? 'Copy my ideas only sends ideas you logged yourself, and all your open ones came from someone else. Drop one in the jar above first.' : 'No ideas of your own yet. Drop one in the jar above first, then Copy my ideas.', true);
+    const t = ideas.shareText();
+    const ok = `Copied ${n} idea${n === 1 ? '' : 's'}. Paste it in a text to Kevin.`;
+    try { await navigator.clipboard.writeText(t); return sayShare(ok); } catch (e) {}
+    shareOut = t;
+    await tick();
+    shareBox?.focus(); shareBox?.select();
+    let old = false; try { old = document.execCommand('copy'); } catch (e) {}
+    if (old) { shareOut = ''; return sayShare(ok); }
+    sayShare('Couldn’t copy by itself here. The message is selected below: copy it by hand.', true);
   }
   function takeShared(t) {
     const note = ideas.readShared(t);
@@ -228,7 +242,7 @@
         <input id="ideaName" maxlength="30" autocomplete="given-name" placeholder="Like Maria" value={ideas.name} oninput={(e) => ideas.setName(e.currentTarget.value)}>
       </label>
       <div class="row">
-        <button type="button" id="ideaCopyShare" disabled={!ideas.mine.length} onclick={copyShare}>📋 Copy my ideas{ideas.mine.length ? ` (${ideas.mine.length})` : ''}</button>
+        <button type="button" id="ideaCopyShare" class:quiet={!ideas.mine.length} onclick={copyShare}>📋 Copy my ideas{ideas.mine.length ? ` (${ideas.mine.length})` : ''}</button>
         {#if owner}<button type="button" id="ideaPasteShare" onclick={pasteShare}>📥 Paste shared ideas</button>{/if}
       </div>
       {#if pasteOpen}
@@ -236,6 +250,7 @@
         <textarea id="ideaPasteBox" rows="4" placeholder="Paste the whole message here" bind:value={pasteText}></textarea>
         <button type="button" class="primary" id="ideaPasteGo" disabled={!pasteText.trim()} onclick={() => takeShared(pasteText)}>Add to my jar</button>
       {/if}
+      {#if shareOut}<textarea class="fixbox" id="ideaShareBox" readonly bind:this={shareBox} value={shareOut} aria-label="Your shared ideas message"></textarea>{/if}
       {#if shareMsg}<p class="sub sharemsg" class:bad={shareBad} role="status" id="ideaShareMsg">{shareMsg}</p>{/if}
     </section>
 
@@ -352,6 +367,7 @@
   .namebox input { font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; }
   .sharemsg { color: var(--accent); font-weight: 600; }
   .sharemsg.bad { color: var(--warn); }
+  #ideaCopyShare.quiet { opacity: 0.6; }
   .from { color: var(--accent); }
   @media (prefers-reduced-motion: reduce) { .ideatab, .ichip, .pick { transition: none; } }
 </style>

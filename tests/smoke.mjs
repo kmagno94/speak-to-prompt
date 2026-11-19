@@ -4474,7 +4474,8 @@ await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own
   const sent = []; c.on('request', r => { if (!/localhost|fonts\./.test(r.url())) sent.push(r.url()); });
   await c.fill('#thoughts', 'SECRET-THOUGHTS my landlord dispute');
   await ideasOn(c); await c.click('#ideaTab');
-  expect(await c.isDisabled('#ideaCopyShare'), 'nothing to copy before any ideas');
+  await c.click('#ideaCopyShare');
+  expect(/No ideas of your own yet/.test(await c.textContent('#ideaShareMsg')), 'nothing to copy before any ideas, and a tap says so');
   await logIdea(c, 'idea', 'result', 'The prompt should say how long it is');
   await logIdea(c, 'bug', 'copy', 'Copy did nothing the first time on my iPad');
   expect(!(await c.$('#ideaFixBox')) && !(await c.$('#ideaFix')) && !(await c.$('#ideaPasteShare')) && /Send your ideas to Kevin/.test(await c.textContent('#ideaShare')), 'with dev tools off there is no Fix session and no Paste, just Send your ideas to Kevin');
@@ -4899,8 +4900,9 @@ await check('my context: the editor opens at its top with the cursor in a title 
   const st = await p.evaluate(() => { const ed = document.getElementById('contextEditor'), first = ed.querySelector('.ctxitem input'); return { focused: document.activeElement === first, empty: first.value === '', top: ed.getBoundingClientRect().top }; });
   expect(st.focused && st.empty, 'the new piece should be first, with the cursor in its title: ' + JSON.stringify(st));
   await p.waitForTimeout(900);
-  const top = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().top);
-  expect(top >= -2 && top < 120, 'the editor should be scrolled to its top: ' + top);
+  /* v2.1.49: it snaps to the pills (the new piece opens under the first one). */
+  const top = await p.evaluate(() => document.querySelector('#contextEditor .pillwrap').getBoundingClientRect().top);
+  expect(top >= -40 && top < 120, 'the editor should be scrolled to its pills: ' + top);
   await p.click('#contextEditor button:text-is("Done")');
   await p.evaluate(() => window.scrollTo(0, 0));
   await p.click('#contextEdit'); await p.waitForTimeout(400);
@@ -4960,6 +4962,94 @@ await check('my context pills (v2.1.48): Options opens with My context first, th
   await p.click('#contextBack');
   expect(!(await p.$('#contextEditor .ctxitem')), 'All pieces goes back to just the pills');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): the open piece shows right under its own pill, and the tapped pill comes to the top of the screen. */
+const ctxPieces = [{ id: 'a', title: 'Taco truck', text: 'Open Thu to Sun, 11 to 9.' }, { id: 'b', title: 'Book club', text: 'Third Thursday at Rosa\'s, 6 people.' }, { id: 'c', title: 'Garden plot', text: 'Plot 14, tomatoes and basil.' }, { id: 'd', title: 'Dog walker', text: 'Sam, Tuesdays and Fridays.' }, { id: 'e', title: 'Spanish class', text: 'Level 2, Monday nights.' }];
+async function ctxEditorOpen() {
+  const p = await page();
+  await p.evaluate((l) => { localStorage.setItem('stp-context', JSON.stringify(l)); localStorage.setItem('stp-context-keep', '1'); }, ctxPieces);
+  await p.setViewportSize({ width: 390, height: 600 });
+  await p.reload();
+  await p.click('#contextEdit'); await p.waitForSelector('#contextEditor .ctxpill'); await p.waitForTimeout(500);
+  return p;
+}
+await check('my context pills (v2.1.49): tapping a pill opens its box right under that pill, not below every pill, with the pill brought to the top of the screen', async () => {
+  const p = await ctxEditorOpen();
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextEditor .ctxpill[data-pill="b"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]'); await p.waitForTimeout(700);
+  const g = await p.evaluate(() => {
+    const pill = document.querySelector('#contextEditor .ctxpill[data-pill="b"]'), box = document.querySelector('#contextEditor .ctxitem'), next = document.querySelector('#contextEditor .ctxpill[data-pill="c"]');
+    const pr = pill.getBoundingClientRect(), br = box.getBoundingClientRect(), nr = next.getBoundingClientRect();
+    return { gap: br.top - pr.bottom, after: pill.nextElementSibling === box, nextBelow: nr.top >= br.bottom - 1, pillTop: pr.top, boxFits: br.top < innerHeight };
+  });
+  expect(g.after && g.gap >= 0 && g.gap < 40, 'the box sits right under the tapped pill: ' + JSON.stringify(g));
+  expect(g.nextBelow, 'the pills after it wrap below the box: ' + JSON.stringify(g));
+  expect(g.pillTop >= -2 && g.pillTop < 150 && g.boxFits, 'the tapped pill comes to the top of the screen with its box in view: ' + JSON.stringify(g));
+  await p.click('#contextEditor .ctxpill[data-pill="e"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="e"]');
+  expect((await p.$$('#contextEditor .ctxitem')).length === 1 && await p.evaluate(() => document.querySelector('#contextEditor .ctxpill[data-pill="e"]').nextElementSibling === document.querySelector('#contextEditor .ctxitem')), 'tapping another pill moves the one open box under that pill');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): ← All pieces, + Add another, and a delete snap back up to the pills instead of leaving you at the bottom. */
+await check('my context pills (v2.1.49): All pieces and Add another snap back up to the pills', async () => {
+  const p = await ctxEditorOpen();
+  const pillsTop = () => p.evaluate(() => document.querySelector('#contextEditor .pillwrap').getBoundingClientRect().top);
+  await p.click('#contextEditor .ctxpill[data-pill="d"]');
+  await p.waitForSelector('#contextBack');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  expect(await pillsTop() < -50, 'test setup: the pills are scrolled off the top');
+  await p.click('#contextBack'); await p.waitForTimeout(700);
+  const t = await pillsTop();
+  expect(!(await p.$('#contextEditor .ctxitem')) && t >= -2 && t < 150, 'All pieces goes back to just the pills, scrolled into view: ' + t);
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextBar button:text-is("+ Add another")'); await p.waitForTimeout(700);
+  const a = await p.evaluate(() => { const box = document.querySelector('#contextEditor .ctxitem'), first = document.querySelector('#contextEditor .ctxpill'); return { first: first.nextElementSibling === box, focused: document.activeElement === box.querySelector('input'), empty: box.querySelector('input').value === '', top: first.getBoundingClientRect().top, boxTop: box.getBoundingClientRect().top, h: innerHeight }; });
+  expect(a.first && a.focused && a.empty, 'Add another opens a blank piece first, cursor in its title: ' + JSON.stringify(a));
+  expect(a.top >= -2 && a.top < 150 && a.boxTop < a.h, 'Add another snaps up to the new piece under the first pill: ' + JSON.stringify(a));
+  // A delete snaps back up to the pills too
+  await p.click('#contextEditor .ctxpill[data-pill="e"]'); await p.waitForSelector('#contextEditor .ctxitem[data-id="e"]');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextEditor .ctxitem button:text-is("Delete")');
+  await p.click('#contextEditor .ctxitem button:text-is("Tap again to delete")'); await p.waitForTimeout(700);
+  const d = await pillsTop();
+  expect(d >= -2 && d < 150 && await p.isVisible('#contextUndo'), 'after a delete the pills and Undo are in view: ' + d);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): "Copy my ideas did not work". It went gray with no word when every open idea was pasted in. */
+await check('ideas tab Copy my ideas (v2.1.49): always answers a tap, says why when all open ideas came from someone else, and shows the message to copy by hand when the browser won\'t copy', async () => {
+  const k = await page();
+  await devOn(k);
+  await ideasOn(k); await k.click('#ideaTab');
+  // Only someone else's ideas in the jar (like the Sample cousin test): the tap explains instead of doing nothing
+  const { packIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  const note = packIdeas([{ id: 'cousin1abc', kind: 'idea', soon: 'soon', where: 'Your prompt', topicLabel: '', date: '2026-11-19', version: '2.1.48', text: 'A shorter version button', context: { trail: [] } }], { from: 'Cousin', kinds, soons });
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("From Cousin: 1 added")');
+  expect(!(await k.isDisabled('#ideaCopyShare')), 'Copy my ideas is never a dead gray button');
+  await k.click('#ideaCopyShare');
+  expect(/only sends ideas you logged yourself/.test(await k.textContent('#ideaShareMsg')), 'with only pasted-in ideas, the tap says why nothing was copied: ' + await k.textContent('#ideaShareMsg'));
+  // One of your own: copies just that one, with your name
+  await logIdea(k, 'bug', 'copy', 'Copy my ideas looked dead');
+  await k.fill('#ideaName', 'Kev');
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("Copied 1 idea")');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Kev · 1 idea · /.test(mine) && /looked dead/.test(mine) && !/shorter version/.test(mine) && /~ end of shared ideas ~$/.test(mine), 'only your own idea, with your name and the end line:\n' + mine);
+  // A browser that won't copy: the message shows selected in a box to copy by hand
+  await k.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('NotAllowedError')); document.execCommand = () => false; });
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareBox');
+  const box = await k.inputValue('#ideaShareBox');
+  expect(/Couldn’t copy by itself/.test(await k.textContent('#ideaShareMsg')) && /from Kev · 1 idea/.test(box) && /~ end of shared ideas ~$/.test(box), 'the message waits in a box to copy by hand: ' + box.slice(0, 120));
+  expect(await k.evaluate(() => { const b = document.getElementById('ideaShareBox'); return document.activeElement === b && b.selectionEnd - b.selectionStart === b.value.length; }), 'the whole message is selected');
+  expect(!k.errors.length, 'page errors: ' + k.errors.join('; '));
 });
 
 await check('number check: flags a weekday that doesn\'t match its date, and a year nobody said', async () => {
