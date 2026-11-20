@@ -7,6 +7,10 @@
      - Kept through Build my prompt (v2.1.28, Test lab report): Kevin built, saw he forgot to pick
        his context, reloaded, and lost his words. Only the words are kept, never the prompt, and the
        note says they're from your last build.
+     - Dropped once the prompt is finished (v2.1.49, Kevin 11/20: the note shouldn't outlive a
+       completed prompt). Build still keeps the words while it's writing, so a reload mid-build
+       brings them back; once "Your prompt is ready" shows (stp:ready from setReady), they're
+       forgotten. Typing in the box after that starts a new draft.
    Brought back only into an empty box, with a note and a Start fresh button. */
 export const DRAFT_KEY = 'stp-draft';
 export const DRAFT_MAX_MS = 30 * 60 * 1000;
@@ -50,12 +54,16 @@ export function watchDraft() {
   const onChanged = () => { if (!box.value.trim()) { clearTimeout(saveT); drop(); return; } save(); };
   /* Build keeps the words (marked as built), so a reload after Build still has them. */
   const onBuild = () => { if (!box.value.trim()) return; clearTimeout(saveT); lastBuilt = box.value; keep(box.value, true); draft.restored = false; };
+  /* A finished prompt forgets the words (v2.1.49). Box edits after this start a fresh draft. */
+  const onReady = () => { clearTimeout(saveT); drop(); lastBuilt = ''; draft.restored = false; draft.built = false; };
   /* The 30 minute limit also covers a tab that's just left open. */
   const expire = setInterval(() => { const x = read(); if (x && Date.now() - x.at > DRAFT_MAX_MS) drop(); }, 60000);
   box.addEventListener('input', onInput);
   box.addEventListener('stp:changed', onChanged);
   form && form.addEventListener('submit', onBuild, true);
+  document.addEventListener('stp:ready', onReady);
   return () => {
+    document.removeEventListener('stp:ready', onReady);
     box.removeEventListener('input', onInput); box.removeEventListener('stp:changed', onChanged);
     form && form.removeEventListener('submit', onBuild, true);
     clearInterval(expire); clearTimeout(saveT);

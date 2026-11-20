@@ -4,11 +4,12 @@
     {
       "version": "2.1.49",
       "date": "2026-11-19",
-      "title": "Test lab fixes: a context piece opens right under its pill, All pieces snaps back up, and Copy my ideas always answers",
+      "title": "Test lab fixes: a context piece opens right under its pill, All pieces snaps back up, Copy my ideas always answers, and a finished prompt clears Your words are back",
       "items": [
         "My context editor: tap a pill and its box opens right under that pill (the pills after it move below the box), with the pill brought to the top of the screen. It used to open below every pill, down near the bottom.",
         "← All pieces, + Add another, and a delete now scroll back up to the pills instead of leaving you at the bottom of the editor.",
-        "💡 Ideas jar: 📋 Copy my ideas is never a dead gray button. With no ideas of your own (only ones pasted in, like Sample cousin's), a tap says why and to drop one in the jar first. If the browser won't copy, the message shows selected in a box to copy by hand."
+        "💡 Ideas jar: 📋 Copy my ideas is never a dead gray button. With no ideas of your own (only ones pasted in, like Sample cousin's), a tap says why and to drop one in the jar first. If the browser won't copy, the message shows selected in a box to copy by hand.",
+        "Your words are back note: a finished prompt now forgets your saved words, so after a prompt is done a reload brings back an empty box and no note. A reload while it's still writing still brings them back."
       ],
       "checks": [
         {
@@ -30,6 +31,14 @@
         {
           "say": "Drop one idea of your own in the jar, type your first name, tap 📋 Copy my ideas (1), and paste it into a note.",
           "see": "Copied 1 idea. The note starts Speak to Prompt · Shared ideas · from (your name), has only your idea (no Sample cousin ones), and ends with ~ end of shared ideas ~. Then delete the sample ideas and your test idea."
+        },
+        {
+          "say": "Type a few words, build a prompt, wait for Your prompt is ready, then reload the page.",
+          "see": "The box comes back empty, with no Your words are back note."
+        },
+        {
+          "say": "Type a few words (don't build), then reload.",
+          "see": "Your words come back with Your words are back from before the page reloaded and Start fresh, like before."
         }
       ]
     },

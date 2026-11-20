@@ -371,6 +371,8 @@ export function startApp() {
     }
   }
   function setReady(ready) {
+    /* v2.1.49: a finished prompt ends the draft safety net (lib/draft.svelte.js drops the saved words). */
+    if (ready) document.dispatchEvent(new Event("stp:ready"));
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
     /* Cooking (v2.1.19): until the prompt is ready, the card shows only the heading, the
        tracker, and messages. The prompt comes up once Write, Polish, and Check are done. */

@@ -4307,7 +4307,7 @@ await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, survives Build, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
+await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
   const p = await page();
   const draftKeys = () => p.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)), l: Object.keys(localStorage).filter((k) => /draft/.test(k)), ls: Object.keys(localStorage).map((k) => localStorage.getItem(k)).join('|') }));
   await p.focus('#thoughts'); await p.keyboard.type('need a toast for my buddy Marco wedding saturday, funny but not mean');
@@ -4324,7 +4324,7 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')) && !(await draftKeys()).s.length, 'Start fresh clears the box and the draft: ' + JSON.stringify([await p.inputValue('#thoughts'), !!(await p.$('#draftNote')), await draftKeys()]));
   await p.reload(); await p.waitForSelector('#thoughts');
   expect((await p.inputValue('#thoughts')) === '', 'nothing comes back after Start fresh');
-  // Build keeps it now (Test lab report): checked in its own smoke test below
+  // A finished prompt forgets it (v2.1.49): checked in its own smoke test below
   await p.fill('#thoughts', ''); await p.waitForTimeout(450);
   // Emptying the box deletes it
   await p.focus('#thoughts'); await p.keyboard.type('short note'); await p.waitForTimeout(450);
@@ -4339,31 +4339,31 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('draft net after Build (v2.1.28 Test lab report): you build, reload because you forgot your context, and your words come back with a note that they are from your last build; the prompt is never kept', async () => {
+/* v2.1.49 (Kevin 11/20): the "Your words are back" note shouldn't outlive a finished prompt. This replaces the
+   v2.1.28 rule that kept the words through Build: Build still keeps them while it writes, and a finished prompt drops them. */
+await check('draft net ends with a finished prompt (v2.1.49): a finished prompt forgets your words, a reload after that brings back nothing, and typing again starts a new draft', async () => {
   const p = await page();
   const keys = () => p.evaluate(() => Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)).map((k) => sessionStorage.getItem(k.replace(/^stg:/, ''))));   /* staging prefixes keys (lib/channel.js) */
   await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
   await p.waitForTimeout(450);
+  expect((await keys()).length === 1, 'the words are kept while you type');
   await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
   await p.waitForTimeout(450);
-  const k = await keys();
-  expect(k.length === 1 && /Bear Mountain/.test(k[0]), 'Build keeps the words in this tab: ' + JSON.stringify(k));
-  const out = await p.inputValue('#output').catch(() => '');
-  expect(!out || !k[0].includes(out.slice(0, 40)), 'the built prompt is never kept, only your words');
-  await p.reload(); await p.waitForSelector('#thoughts');
-  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'the words come back after a reload that follows a build');
-  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
-  expect(await p.isVisible('#draftNote') && /last build/.test(await p.textContent('#draftNote')) && /this tab only/.test(await p.textContent('#draftNote')), 'the note says they are from your last build, this tab only: ' + await p.textContent('#draftNote').catch(() => ''));
-  // Typing more turns it back into a plain draft
-  await p.focus('#thoughts'); await p.keyboard.press('End'); await p.keyboard.type(', bring the dog');
+  expect(!(await keys()).length, 'a finished prompt forgets the words: ' + JSON.stringify(await keys()));
+  await p.reload(); await p.waitForSelector('#thoughts'); await p.waitForTimeout(400);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')), 'a reload after a finished prompt brings back nothing and shows no note');
+  // A new draft after that is kept and comes back as a plain draft
+  await p.focus('#thoughts'); await p.keyboard.type('bring the dog on the hike');
   await p.waitForTimeout(450);
   await p.reload(); await p.waitForSelector('#thoughts');
   await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
-  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && !/last build/.test(await p.textContent('#draftNote')), 'an edited draft comes back as a plain draft');
-  // Start fresh still forgets everything
-  await p.click('#draftFresh'); await p.waitForTimeout(350);
-  await p.reload(); await p.waitForSelector('#thoughts');
-  expect((await p.inputValue('#thoughts')) === '' && !(await keys()).length, 'Start fresh forgets it');
+  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && /before the page reloaded/.test(await p.textContent('#draftNote')), 'typing again starts a new draft');
+  // Building it ends that one too, and the note goes away
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(450);
+  expect(!(await keys()).length && !(await p.$('#draftNote')), 'a finished prompt clears the draft and its note');
   expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
