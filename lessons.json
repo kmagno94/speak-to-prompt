@@ -1,7 +1,7 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
   "updated": "2026-11-20 23:59 UTC",
-  "version": 5,
+  "version": 6,
   "lessons": [
     {
       "id": "L1",
@@ -23,8 +23,8 @@
     },
     {
       "id": "L4",
-      "text": "Always state how long the answer should be (short or detailed, how many items, or about one screen) and what shape it takes, on its own line near the end. A list of sections to cover is not a length.",
-      "why": "Review AM Oct 21: format was missing in 11 of 17 graded runs (65%), and in 6 of 12 (50%) written by a Flash model, not only Flash-Lite. Grader G2 checks length.",
+      "text": "Always state how long the answer should be (short or detailed, how many items, or about one screen) and what shape it takes, on its own line near the end. A list of sections is not a length. Never invent a number for it.",
+      "why": "Review AM Oct 21: format was missing in 11 of 17 graded runs (65%), and in 6 of 12 (50%) written by a Flash model, not only Flash-Lite. Grader G2 checks length. Reworded after stress test 5 (Nov 20): the writer made up a length number the person never said.",
       "added": "2026-10-21"
     },
     {
