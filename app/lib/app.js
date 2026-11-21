@@ -1440,7 +1440,7 @@ export function startApp() {
         var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, limit || TIME_LIMIT) : null;
         var hedge = hedgeAfter && i < list.length - 1 ? setTimeout(function () {
           if (done || next !== i + 1) return;
-          history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt) / 1000) + "s");
+          history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt - awayMs(tAttempt)) / 1000) + "s");   /* time away in another app is left out */
           cookSwitch();
           startNext();
         }, hedgeAfter) : null;

@@ -1314,6 +1314,19 @@ await check('number check flags a changed version, and stays quiet when numbers 
   expect(await q.evaluate(() => document.getElementById('starterBtn').closest('.buildrow') !== null), 'Not sure where to start should sit in the Build row');
 });
 
+await check('stress test 5: a length number that matches a corrected-away date is still made up', async () => {
+  const note = "the bake sale is saturday december 12th, no wait the 12th is the book fair, so the 19th. one batch makes 2 loaves and we want 36 loaves, no wait 30. a 5 pound bag is $4.25. keep the sign under 20 words.";
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'School', complexity: 'simple', questions: [] }, write: 'Plan the bread table for Saturday, December 19th with 30 loaves, 2 per batch, and a 5 pound bag at $4.25. Format and Length: A structured plan, approximately 12 screens long.' });
+  await withKey(p);
+  await p.fill('#thoughts', note); await p.click('#build'); await done(p);
+  const warn = await p.textContent('#numWarn');
+  expect(await p.isVisible('#numWarn') && /mentions 12, which you never said/.test(warn), '12 screens should be flagged as made up: ' + warn);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'School', complexity: 'simple', questions: [] }, write: 'Plan the bread table for Saturday, December 19th with 30 loaves, 2 per batch, and a 5 pound bag at $4.25. Not the 12th, that is the book fair. Keep the sign under 20 words.' });
+  await withKey(q);
+  await q.fill('#thoughts', note); await q.click('#build'); await done(q);
+  expect(!(await q.isVisible('#numWarn')), 'a length the person said (20 words) should not be flagged: ' + await q.textContent('#numWarn'));
+});
+
 await check('repeat shortcut run replaces the old transcript', async () => {
   const p = await page();
   await p.goto(BASE + '#paste');
