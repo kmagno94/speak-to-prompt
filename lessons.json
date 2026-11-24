@@ -1,6 +1,6 @@
 {
   "note": "Lessons learned. lessons: short, general prompt-writing rules the twice-daily review keeps from graded runs (issue #2) and stress tests; every prompt build adds them to the writing step, and the quality grade checks every prompt against them (a broken lesson caps the grade below the 4.5 pass bar); bump version on every change. grader: calibration rules from Claude's own grading of pasted results, added to the quality grade prompt; bump grader_version on every grader change (runs log it in grade_model as g<N>, so grades are only compared within one grader version). Grades are 1.00 to 5.00 from g4 on, pass at 4.5. Never anyone's words. At most 6 of each, each under 240 characters.",
-  "updated": "2026-11-20 23:59 UTC",
+  "updated": "2026-11-24 23:59 UTC",
   "version": 6,
   "lessons": [
     {
@@ -40,7 +40,7 @@
       "added": "2026-10-22"
     }
   ],
-  "grader_version": 14,
+  "grader_version": 15,
   "grader": [
     {
       "id": "G1",
@@ -68,8 +68,8 @@
     },
     {
       "id": "G6",
-      "text": "Invented check: list each specific detail (a name, number, item, weekday, or a length like pages or screens) not in the raw thoughts, answers, or TODAY'S DATE. Math on their numbers is fine. Any other item or changed count is invented.",
-      "why": "Stress test 5 (Nov 20): app graded 4.12 with invented no; Claude graded 3.00. A made-up length number slipped in (not said by the person), and one text became two. Merges G4 into one list-then-decide check.",
+      "text": "Invented check: list each detail (name, number, item, date, weekday, or a length in digits like 12 pages) not in the raw thoughts, answers, or TODAY'S DATE, or now tied to a different person, place, or event. Math on their numbers is fine.",
+      "why": "Stress test 6 (Nov 24): app 4.12 invented no, Claude 3.00 invented yes. A relative's city and a call's day got tied to the wrong person and event. Length in words (about two screens) stays fine, per bench B3, B11.",
       "added": "2026-10-21"
     },
     {
