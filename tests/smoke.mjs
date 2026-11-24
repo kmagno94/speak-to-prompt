@@ -3724,8 +3724,11 @@ await check('ask me: the Quality check tip offers Ask me, then rewrite; it asks 
   expect(p.calls.filter((c) => c.intake).length === intakes, 'no second Read: the questions come from the small call');
   expect(/Round 2/.test(await p.textContent('#madeBy')) && await p.isHidden('#qa'), 'the card should say Round 2 and the questions step away');
   await p.waitForSelector('#roundResult:has-text("3.0 → 5.0")', { timeout: 5000 });
-  const stored = await p.evaluate(() => JSON.stringify(Object.assign({}, localStorage)) + JSON.stringify(Object.assign({}, sessionStorage)));
-  expect(!/18 kids/.test(stored) && !/school event planner/.test(stored), 'the answers are never saved');
+  // v2.1.50: the finished round 2 prompt may sit in the tab-only last-prompt slot (it can carry the answers, woven in); nothing else holds them
+  const st = await p.evaluate(() => { const all = Object.assign({}, localStorage, sessionStorage); const k = Object.keys(all).find((x) => /stp-last$/.test(x));
+    const slot = k ? JSON.parse(all[k]) : null; if (k) delete all[k]; return { rest: JSON.stringify(all), slot, out: document.querySelector('#output')?.value || '' }; });
+  expect(!/18 kids/.test(st.rest) && !/school event planner/.test(st.rest), 'the answers are never saved');
+  expect(!st.slot || st.slot.p === st.out, 'the last-prompt slot holds only the finished prompt');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
