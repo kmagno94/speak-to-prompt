@@ -108,7 +108,28 @@
     undo = null;
     pickPill(id);
   }
-  function done() { context.save(); context.open = false; armed = ''; show(''); clearTimeout(undoTimer); undo = null; }
+  /* v2.1.50 (Test lab 11/24): Done snaps back up to the My context chips, where you pick what goes in
+     the prompt, instead of leaving you down where the editor was. */
+  let row = $state();
+  async function done() {
+    context.save(); context.open = false; armed = ''; show(''); clearTimeout(undoTimer); undo = null;
+    await tick();
+    if (!row) return;
+    if (row.getBoundingClientRect().top < 0 || row.getBoundingClientRect().top > innerHeight * 0.6) row.scrollIntoView({ block: 'start', behavior: behavior() });
+    row.querySelector('#contextEdit')?.focus({ preventScroll: true });
+  }
+  /* v2.1.50 (Test lab 11/24, iPhone): once the keyboard is up, the title or text box you tapped stays
+     above the floating Done bar and the keyboard (Safari only makes sure it's above the keyboard). */
+  function keepInView(e) {
+    const el = e.currentTarget;
+    setTimeout(() => {
+      const vv = window.visualViewport;
+      if (document.activeElement !== el || !vv || innerHeight - vv.height < 120) return;   /* only while the keyboard is up */
+      const bottom = vv.offsetTop + vv.height - (editor?.querySelector('.ctxbar')?.getBoundingClientRect().height || 0) - 12;
+      const r = el.getBoundingClientRect(), top = vv.offsetTop + 12;
+      if (r.bottom > bottom) window.scrollBy({ top: Math.min(r.bottom - bottom, r.top - top), behavior: behavior() });
+    }, ms(1) ? 350 : 0);
+  }
   /* On all your devices (v2.1.28, lib/contextsync.js): Copy for Notes copies the pieces as one note,
      then (iPhone/iPad) an Open Notes button opens Apple Notes to paste it into a new note; iCloud syncs it.
      It used to hand the note to the share sheet, but Notes' share sheet popped up and closed on it
@@ -171,7 +192,7 @@
   });
 </script>
 
-<div class="ctxrow" id="contextRow">
+<div class="ctxrow" id="contextRow" bind:this={row}>
   <div class="ctxhead">
     <span class="ctxlabel">My context</span>
     {#if context.chosen.length}<span class="ctxcount" class:over={context.over} id="contextCount" title={`Budget: ${n(BUDGET)} tokens`}>{context.chosen.length} added to this prompt · {budget}</span>{/if}
@@ -201,9 +222,9 @@
               {#if cur && cur.id === c.id}
               <div class="ctxitem" data-id={cur.id}>
                 <label class="sr" for="ctxTitle">Title</label>
-                <input id="ctxTitle" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={cur.title} oninput={(e) => context.update(cur.id, 'title', e.currentTarget.value)}>
+                <input id="ctxTitle" class="ctxtitle" maxlength="60" placeholder="Title, like Bean N Bean roasting" value={cur.title} onfocus={keepInView} oninput={(e) => context.update(cur.id, 'title', e.currentTarget.value)}>
                 <label class="sr" for="ctxText">Context</label>
-                <textarea id="ctxText" class="ctxtext" class:overcap={len(cur) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize" placeholder="Everything the AI should know about this. Messy is fine." value={cur.text} oninput={(e) => context.update(cur.id, 'text', e.currentTarget.value)}></textarea>
+                <textarea id="ctxText" class="ctxtext" class:overcap={len(cur) > CAP} rows="6" maxlength="6000" aria-describedby="ctxSize" placeholder="Everything the AI should know about this. Messy is fine." value={cur.text} onfocus={keepInView} oninput={(e) => context.update(cur.id, 'text', e.currentTarget.value)}></textarea>
                 <p class="size" class:overcap={len(cur) > CAP} id="ctxSize" aria-live="polite">{#if len(cur) > CAP}⚠️ Over the {n(CAP)} character cap by {n(len(cur) - CAP)}. Trim it so the AI gets the parts that matter.{:else}{n(len(cur))} / {n(CAP)} characters{/if}</p>
                 <div class="itemacts">
                   <button type="button" class="link back" id="contextBack" onclick={back}>← All pieces</button>
@@ -251,7 +272,7 @@
 </div>
 
 <style>
-  .ctxrow { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
+  .ctxrow { scroll-margin-top: var(--sp-4); grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1.5px dashed var(--line); border-radius: var(--r-md); }
   .ctxhead { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
   .ctxlabel { font-family: var(--display); font-weight: 600; font-size: var(--fs-md); }
   .ctxcount { font-size: var(--fs-xs); color: var(--accent); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--r-pill); background: var(--accent-soft); font-variant-numeric: tabular-nums; }
@@ -262,20 +283,23 @@
   .ctxchip { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chips .ctxmore { min-height: var(--tap); border-style: dashed; color: var(--accent); font-weight: 700; background: transparent; }
   .ctxnew { min-height: var(--tap); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); border: 1.5px dashed var(--line); background: transparent; color: var(--accent); font-weight: 700; font-size: var(--fs-sm); }
-  .ctxeditor { display: grid; gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
+  /* v2.1.50 (Test lab 11/24, "text box going off the screen" on iPhone): every grid here is pinned to the
+     screen width (minmax(0, 1fr)), so a long piece title can't stretch the editor, its open box, and the
+     floating bar past the right edge. */
+  .ctxeditor { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); scroll-margin-top: var(--sp-4); }
   /* Floating Done: sticks to the bottom of the screen, above the keyboard (--kb, lib/keyboard.svelte.js),
      while you scroll through the pieces; settles back at the end of the list. */
   .ctxbar { position: sticky; bottom: calc(var(--kb, 0px) + env(safe-area-inset-bottom, 0px) + 10px); z-index: 5;
-    display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--r-md);
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--r-md);
     background: color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border: 1px solid var(--line); box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--ink) 45%, transparent); }
-  .ctxbar button { min-height: 48px; white-space: nowrap; }
+  .ctxbar button { min-height: 48px; min-width: 0; white-space: nowrap; padding-inline: var(--sp-3); }
   /* Inside the pills row, the open piece takes a full line right under its pill; the pills after it wrap below. */
-  .ctxitem { flex: 1 1 100%; min-width: 0; display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1.5px solid var(--accent); border-radius: var(--r-md); scroll-margin: var(--sp-4); }
+  .ctxitem { flex: 1 1 100%; min-width: 0; max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-3); border: 1.5px solid var(--accent); border-radius: var(--r-md); scroll-margin: var(--sp-4); scroll-margin-bottom: 96px; }
   /* Pills (v2.1.48): every piece as one tap target; the open one is filled in. */
-  .pillwrap { display: grid; gap: var(--sp-2); }
+  .pillwrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
   .pillhead { margin: 0; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); }
-  .pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
   .pillwrap, .ctxpill { scroll-margin-top: var(--sp-4); }
   .ctxpill { min-height: var(--tap); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); font-size: var(--fs-sm); }
   .ctxpill[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 700; }
@@ -286,7 +310,9 @@
   .undo { margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--warn-soft); font-size: var(--fs-sm); font-weight: 600; }
   .undo .link { min-height: 40px; font-weight: 700; }
   .ctxtitle { font: inherit; font-weight: 700; font-size: 16px; color: var(--ink); background: var(--bg); width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sm); }
-  .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); min-height: 150px; }
+  /* The box scrolls inside itself past about 6 lines (a long piece never pushes Delete or the floating bar off the screen). */
+  .ctxtext { font: inherit; font-size: 16px; line-height: 1.5; background: var(--bg); padding: var(--sp-2) var(--sp-3); width: 100%; min-width: 0; min-height: 150px; max-height: min(36vh, 260px); overflow-y: auto; }
+  .ctxtitle { min-width: 0; }
   .ctxtitle:focus-visible, .ctxtext:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .keep { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--accent-soft); cursor: pointer; }
   .keep input { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--accent); }

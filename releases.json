@@ -2,6 +2,52 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.50",
+      "date": "2026-11-24",
+      "title": "Test lab fixes: the open context piece fits an iPhone screen, Done snaps back to your contexts, Copy my ideas never shows an old warning, and your last prompt survives a reload",
+      "items": [
+        "My context editor: a piece with a long title no longer stretches the editor past the right edge of an iPhone. The open box, its buttons, and the floating Add another / Done bar stay inside the screen, and a long piece scrolls inside its box (about 6 lines) instead of growing past the screen.",
+        "With the keyboard up, the title or text box you tapped moves up so it isn't hidden behind the floating Done bar.",
+        "Done in the My context editor now snaps back up to your My context chips, where you pick what goes in the prompt.",
+        "💡 Ideas jar: the Nothing to copy yet warning goes away as soon as you drop an idea or type your name, so it can't look like the answer to your next tap, and every tap's answer flashes in fresh. It also names who the pasted-in ideas came from. If iPhone's copy never answers, after 1.5 seconds the message shows in a box to copy by hand.",
+        "Last prompt: a finished prompt now waits in one spot in this tab (replaced by your next prompt, gone after 30 minutes or when the tab closes, never sent). After a reload the box still comes back empty with no Your words are back note; a small line under it offers 📋 Copy it, ↩ Put my words back, See it, and ✕ to forget it."
+      ],
+      "checks": [
+        {
+          "say": "With 3 or more pieces in My context (give one a long title), tap Edit, then tap the long-titled pill.",
+          "see": "Its box opens right under that pill and fits the screen: no part runs off the right edge, Delete is in view above the floating bar, and a long piece scrolls inside its box."
+        },
+        {
+          "say": "Tap into the piece's text so the keyboard comes up.",
+          "see": "The text box sits above the floating Add another / Done bar, not behind it."
+        },
+        {
+          "say": "Scroll down to the bottom of the editor, then tap Done in the floating bar.",
+          "see": "The editor closes and the page snaps back up to the My context chips, ready to tap."
+        },
+        {
+          "say": "Open the 💡 Ideas jar with only the Sample cousin ideas in Open, tap 📋 Copy my ideas, then drop one idea of your own in the jar.",
+          "see": "The first tap says Nothing to copy yet, naming Sample cousin. Once your idea is in the jar that warning is gone and the button says Copy my ideas (1)."
+        },
+        {
+          "say": "Type your first name, tap 📋 Copy my ideas (1), and paste it into a note.",
+          "see": "Copied 1 idea. The note starts Speak to Prompt · Shared ideas · from (your name), has only your idea (no Sample cousin ones), and ends with ~ end of shared ideas ~. Then delete the sample ideas and your test idea."
+        },
+        {
+          "say": "Type a few words, build a prompt, wait for Your prompt is ready, then reload the page.",
+          "see": "The box comes back empty with no Your words are back note. A small line says Your last prompt is still here, with 📋 Copy it, ↩ Put my words back, See it, and ✕."
+        },
+        {
+          "say": "Tap 📋 Copy it and paste somewhere, then tap ↩ Put my words back.",
+          "see": "The paste is the prompt you just built. Your words come back in the box."
+        },
+        {
+          "say": "Reload once more and tap ✕, then reload again.",
+          "see": "The last prompt line goes away and stays gone after the reload."
+        }
+      ]
+    },
+    {
       "version": "2.1.49",
       "date": "2026-11-19",
       "title": "Test lab fixes: a context piece opens right under its pill, All pieces snaps back up, Copy my ideas always answers, and a finished prompt clears Your words are back",

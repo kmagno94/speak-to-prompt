@@ -5047,7 +5047,7 @@ await check('ideas tab Copy my ideas (v2.1.49): always answers a tap, says why w
   await k.waitForSelector('#ideaShareMsg:has-text("From Cousin: 1 added")');
   expect(!(await k.isDisabled('#ideaCopyShare')), 'Copy my ideas is never a dead gray button');
   await k.click('#ideaCopyShare');
-  expect(/only sends ideas you logged yourself/.test(await k.textContent('#ideaShareMsg')), 'with only pasted-in ideas, the tap says why nothing was copied: ' + await k.textContent('#ideaShareMsg'));
+  expect(/only sends ideas you drop in the jar here/.test(await k.textContent('#ideaShareMsg')) && /from Cousin/.test(await k.textContent('#ideaShareMsg')), 'with only pasted-in ideas, the tap says why nothing was copied: ' + await k.textContent('#ideaShareMsg'));
   // One of your own: copies just that one, with your name
   await logIdea(k, 'bug', 'copy', 'Copy my ideas looked dead');
   await k.fill('#ideaName', 'Kev');
@@ -5063,6 +5063,108 @@ await check('ideas tab Copy my ideas (v2.1.49): always answers a tap, says why w
   expect(/Couldn’t copy by itself/.test(await k.textContent('#ideaShareMsg')) && /from Kev · 1 idea/.test(box) && /~ end of shared ideas ~$/.test(box), 'the message waits in a box to copy by hand: ' + box.slice(0, 120));
   expect(await k.evaluate(() => { const b = document.getElementById('ideaShareBox'); return document.activeElement === b && b.selectionEnd - b.selectionStart === b.value.length; }), 'the whole message is selected');
   expect(!k.errors.length, 'page errors: ' + k.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "text box is now going off of the screen for iphone". A long piece title stretched the editor past the right edge. */
+await check('my context pills (v2.1.50): on a small iPhone with a long piece title, the open box, its buttons, and the floating bar stay inside the screen', async () => {
+  const p = await page();
+  const long = 'Notes about my class, '.repeat(120);
+  await p.evaluate((l) => { localStorage.setItem('stp-context', JSON.stringify(l)); localStorage.setItem('stp-context-keep', '1'); }, [{ id: 'a', title: 'Bean N Bean roasting', text: long }, { id: 'b', title: 'My WGU class and everything about my capstone project', text: long }, { id: 'c', title: 'Garden', text: 'Plot 14.' }]);
+  await p.setViewportSize({ width: 320, height: 568 });
+  await p.reload();
+  await p.click('#contextEdit'); await p.waitForSelector('#contextEditor .ctxpill'); await p.waitForTimeout(400);
+  await p.click('#contextEditor .ctxpill[data-pill="b"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]'); await p.waitForTimeout(700);
+  const g = await p.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    const item = r('#contextEditor .ctxitem'), text = r('#ctxText'), del = r('#contextEditor .ctxitem .del'), bar = r('#contextBar'), done = r('#contextDone'), pill = r('#contextEditor .ctxpill[data-pill="b"]');
+    return { w: innerWidth, h: innerHeight, itemR: item.right, itemL: item.left, textR: text.right, textH: text.height, barR: bar.right, doneR: done.right, pillR: pill.right, delB: del.bottom, barT: bar.top };
+  });
+  expect(g.itemL >= 0 && g.itemR <= g.w && g.textR <= g.w && g.pillR <= g.w, 'the open box and its pill fit the screen width: ' + JSON.stringify(g));
+  expect(g.barR <= g.w && g.doneR <= g.w, 'the floating Add another / Done bar fits the screen width: ' + JSON.stringify(g));
+  expect(g.textH <= 262, 'a long piece scrolls inside its box instead of growing past the screen: ' + JSON.stringify(g));
+  expect(g.delB <= g.barT, 'Delete sits above the floating bar, in view: ' + JSON.stringify(g));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "When I click done it should snap back to the context selection window". */
+await check('my context pills (v2.1.50): Done snaps back up to the My context chips you pick from', async () => {
+  const p = await ctxEditorOpen();
+  await p.click('#contextEditor .ctxpill[data-pill="d"]'); await p.waitForSelector('#contextBack');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  expect(await p.evaluate(() => document.getElementById('contextRow').getBoundingClientRect().top) < -50, 'test setup: the My context chips are scrolled off the top');
+  await p.click('#contextDone'); await p.waitForTimeout(800);
+  const g = await p.evaluate(() => { const row = document.getElementById('contextRow').getBoundingClientRect(), chip = document.querySelector('#contextRow .ctxchip').getBoundingClientRect(); return { top: row.top, chipB: chip.bottom, h: innerHeight, editor: !!document.getElementById('contextEditor') }; });
+  expect(!g.editor && g.top >= -2 && g.top < 150 && g.chipB < g.h, 'after Done the editor is closed and the My context chips are on screen: ' + JSON.stringify(g));
+  expect(await p.evaluate(() => document.activeElement && document.activeElement.id === 'contextEdit'), 'focus lands on Edit, next to the chips');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "I keep getting this when I try to copy". The old warning stayed on screen after an idea was dropped, so it looked like the answer to the next tap. */
+await check('ideas tab Copy my ideas (v2.1.50): dropping an idea or typing your name clears the old warning, each tap answers fresh, and a clipboard that hangs falls back to the copy-by-hand box', async () => {
+  const k = await page();
+  await devOn(k);
+  await ideasOn(k); await k.click('#ideaTab');
+  const { packIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  await k.evaluate((n) => navigator.clipboard.writeText(n), packIdeas([{ id: 'samplecousin1', kind: 'idea', soon: 'soon', where: 'Your prompt', topicLabel: '', date: '2026-11-18', version: '2.1.47', text: 'Sample: a short version button', context: { trail: [] } }, { id: 'samplecousin2', kind: 'bug', soon: 'now', where: 'Copy and open', topicLabel: '', date: '2026-11-18', version: '2.1.47', text: 'Sample: tapped Copy twice', context: { trail: [] } }], { from: 'Sample cousin', kinds, soons }));
+  await k.click('#ideaPasteShare'); await k.waitForSelector('#ideaShareMsg:has-text("From Sample cousin: 2 added")');
+  await k.click('#ideaCopyShare');
+  expect(/your 2 open ideas were pasted in from Sample cousin/.test(await k.textContent('#ideaShareMsg')), 'the warning names who the open ideas came from: ' + await k.textContent('#ideaShareMsg'));
+  // Drop one of your own: the old warning goes away, and the button counts it
+  await logIdea(k, 'bug', 'copy', 'my own test idea');
+  expect(!(await k.$('#ideaShareMsg')), 'dropping an idea clears the old warning, so it can\'t look like the next answer');
+  expect(/Copy my ideas \(1\)/.test(await k.textContent('#ideaCopyShare')), 'the button counts your own idea');
+  await k.fill('#ideaName', 'Kev');
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("Copied 1 idea")');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Kev · 1 idea · /.test(mine) && /my own test idea/.test(mine) && !/Sample:/.test(mine) && /~ end of shared ideas ~$/.test(mine), 'only your own idea, with your name and the end line:\n' + mine);
+  // A clipboard write that never answers (seen on iPhone Safari): after 1.5 seconds the box to copy by hand shows
+  await k.evaluate(() => { navigator.clipboard.writeText = () => new Promise(() => {}); document.execCommand = () => false; });
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareBox', { timeout: 4000 });
+  expect(/Couldn’t copy by itself/.test(await k.textContent('#ideaShareMsg')) && /my own test idea/.test(await k.inputValue('#ideaShareBox')), 'a hanging copy falls back to the box to copy by hand');
+  expect(!k.errors.length, 'page errors: ' + k.errors.join('; '));
+});
+
+/* v2.1.50 (Kevin 11/24): a finished prompt waits in one tab-only slot, so an accidental reload doesn't lose it. The box still comes back empty, with no Your words are back note. */
+await check('last prompt (v2.1.50): after a finished prompt a reload brings back an empty box with no words note, and offers the last prompt to copy or its words back, until the next prompt replaces it', async () => {
+  const p = await page();
+  const slot = () => p.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => /stp-last$/.test(x)); return k ? JSON.parse(sessionStorage.getItem(k.replace(/^stg:/, ''))) : null; });
+  await p.fill('#thoughts', 'plan a chill saturday hike near Bear Mountain for 4 people');
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(300);
+  const first = await p.inputValue('#output');
+  const s1 = await slot();
+  expect(s1 && first.length > 20 && s1.p === first && /Bear Mountain/.test(s1.w), 'the finished prompt and its words wait in the tab-only slot: ' + JSON.stringify(s1));
+  await p.reload(); await p.waitForSelector('#thoughts'); await p.waitForTimeout(400);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')), 'the box comes back empty, with no Your words are back note');
+  await p.waitForSelector('#lastPrompt');
+  await p.click('#lastCopy'); await p.waitForSelector('#lastMsg:has-text("Copied")');
+  expect((await p.evaluate(() => navigator.clipboard.readText())) === first, 'Copy it copies the last prompt');
+  await p.click('#lastSee');
+  expect((await p.inputValue('#lastText')) === first, 'See it shows the prompt');
+  await p.click('#lastWords');
+  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'Put my words back fills the box with the words it was built from');
+  // The next finished prompt replaces it (one slot)
+  await p.fill('#thoughts', 'a cozy movie night for 6 friends');
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(300);
+  const s2 = await slot();
+  expect(s2 && /movie night/.test(s2.w) && !/Bear Mountain/.test(s2.w), 'the next finished prompt replaces the slot: ' + JSON.stringify(s2));
+  // ✕ forgets it
+  await p.reload(); await p.waitForSelector('#lastPrompt');
+  await p.click('#lastForget');
+  await p.waitForSelector('#lastPrompt', { state: 'detached', timeout: 2000 }).catch(() => {});
+  expect(!(await p.$('#lastPrompt')) && !(await slot()), '✕ forgets the last prompt: ' + !!(await p.$('#lastPrompt')) + ' ' + JSON.stringify(await slot()));
+  await p.reload(); await p.waitForTimeout(400);
+  expect(!(await p.$('#lastPrompt')) && !(await p.$('#draftNote')), 'after ✕ a reload shows nothing');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /stp-last|draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('number check: flags a weekday that doesn\'t match its date, and a year nobody said', async () => {

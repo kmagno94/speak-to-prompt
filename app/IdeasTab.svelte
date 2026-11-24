@@ -62,6 +62,7 @@
     if (!ready) return;
     ideas.add({ kind, area, topic, text, soon });
     saved = `${K.icon} In the jar. ${ideas.openList.length} open.`;
+    clearShare();
     kind = ''; area = ''; topic = ''; topicChosen = false; text = ''; starter = ''; soon = 'soon';
   }
 
@@ -74,7 +75,14 @@
   /* Shared ideas (v2.1.48): copy your own open ideas to text to Kevin, or paste someone's in. */
   let shareMsg = $state(''), shareBad = $state(false), pasteOpen = $state(false), pasteText = $state('');
   let shareBox = $state(), shareOut = $state('');
-  const sayShare = (m, bad = false) => { shareMsg = m; shareBad = bad; };
+  let shareTick = $state(0);
+  const sayShare = (m, bad = false) => { shareMsg = m; shareBad = bad; shareTick++; };
+  /* v2.1.50 (Test lab 11/24, "I keep getting this when I try to copy"): an old answer used to stay on
+     screen after you dropped an idea or typed your name, so it looked like the answer to the next tap.
+     Now a change to the jar or the name clears it, and every tap's answer flashes in fresh. */
+  const clearShare = () => { shareMsg = ''; shareBad = false; shareOut = ''; };
+  /* iPhone Safari can leave a clipboard write hanging with no answer; after 1.5 seconds it counts as a no. */
+  const writeClip = (t) => Promise.race([navigator.clipboard.writeText(t), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 1500))]);
   /* v2.1.49 (Test lab 11/19, "Copy my ideas did not work"): the button used to go gray with no
      word when every open idea was pasted in from someone else (Sample cousin), so a tap did nothing.
      Now it always answers: no ideas of your own says so; a browser that won't copy shows the message
@@ -82,10 +90,13 @@
   async function copyShare() {
     shareOut = '';
     const n = ideas.mine.length;
-    if (!n) return sayShare(ideas.openList.length ? 'Copy my ideas only sends ideas you logged yourself, and all your open ones came from someone else. Drop one in the jar above first.' : 'No ideas of your own yet. Drop one in the jar above first, then Copy my ideas.', true);
+    if (!n) {
+      const from = [...new Set(ideas.openList.map((i) => i.from).filter(Boolean))].join(' and ');
+      return sayShare(ideas.openList.length ? `Nothing to copy yet: your ${ideas.openList.length} open idea${ideas.openList.length === 1 ? ' was' : 's were'} pasted in from ${from || 'someone else'}, and Copy my ideas only sends ideas you drop in the jar here. Drop one in above, then tap Copy my ideas (1).` : 'No ideas of your own yet. Drop one in the jar above first, then Copy my ideas.', true);
+    }
     const t = ideas.shareText();
     const ok = `Copied ${n} idea${n === 1 ? '' : 's'}. Paste it in a text to Kevin.`;
-    try { await navigator.clipboard.writeText(t); return sayShare(ok); } catch (e) {}
+    try { await writeClip(t); return sayShare(ok); } catch (e) {}
     shareOut = t;
     await tick();
     shareBox?.focus(); shareBox?.select();
@@ -239,7 +250,7 @@
       <p class="lbl">{owner ? '👥 Shared ideas' : '📤 Send your ideas to Kevin'}</p>
       <p class="sub">{owner ? 'Got ideas from someone testing the app? Copy their whole message, then tap Paste. They land in Open and ride your Fix session.' : 'Type your first name, tap Copy my ideas, and paste it in a text to Kevin. That’s it: he takes it from there.'}</p>
       <label class="namebox" for="ideaName"><span>Your first name, so Kevin knows who sent it</span>
-        <input id="ideaName" maxlength="30" autocomplete="given-name" placeholder="Like Maria" value={ideas.name} oninput={(e) => ideas.setName(e.currentTarget.value)}>
+        <input id="ideaName" maxlength="30" autocomplete="given-name" placeholder="Like Maria" value={ideas.name} oninput={(e) => { ideas.setName(e.currentTarget.value); if (shareBad) clearShare(); }}>
       </label>
       <div class="row">
         <button type="button" id="ideaCopyShare" class:quiet={!ideas.mine.length} onclick={copyShare}>📋 Copy my ideas{ideas.mine.length ? ` (${ideas.mine.length})` : ''}</button>
@@ -251,7 +262,7 @@
         <button type="button" class="primary" id="ideaPasteGo" disabled={!pasteText.trim()} onclick={() => takeShared(pasteText)}>Add to my jar</button>
       {/if}
       {#if shareOut}<textarea class="fixbox" id="ideaShareBox" readonly bind:this={shareBox} value={shareOut} aria-label="Your shared ideas message"></textarea>{/if}
-      {#if shareMsg}<p class="sub sharemsg" class:bad={shareBad} role="status" id="ideaShareMsg">{shareMsg}</p>{/if}
+      {#if shareMsg}{#key shareTick}<p class="sub sharemsg" class:bad={shareBad} role="status" id="ideaShareMsg" in:fade={{ duration: ms(220) }}>{shareMsg}</p>{/key}{/if}
     </section>
 
     <section class="list" aria-label="Your ideas">
