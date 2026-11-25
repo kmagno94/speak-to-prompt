@@ -51,7 +51,7 @@ const CANT_SEE = [
   { name: 'email', see: false, re: /\b(?:this|my|the|that) email\b|\bthe email below\b/i },
   { name: 'resume', see: false, re: /\b(?:my|the|this) (?:resume|résumé)\b/i },
   { name: 'CV', see: false, re: /\b(?:my|the|this) cv\b/i },
-  { name: 'attachment', see: false, re: /\bthe attach(?:ed|ment)\b|\bmy attach(?:ed|ment)\b/i },
+  { name: 'file', see: true, re: /\b(?:the|my) attach(?:ed|ment)\b/i },
   { name: 'code', see: false, re: /\b(?:my|this) code\b/i },
   { name: 'article', see: false, re: /\b(?:that|this|the) article\b/i },
   { name: 'essay', see: false, re: /\bmy essay\b/i },
@@ -76,14 +76,13 @@ export function cantSeeThings(text) {
   return out.sort((a, b) => a.at - b.at).slice(0, 2).map(({ name, see }) => ({ name, see }));
 }
 
-/* The card's one short line. */
+/* The card's one short line. Typed things get pasted, files and pictures get attached. */
 export function cantSeeLine(things) {
   if (!things.length) return '';
-  const names = things.map((t) => t.name);
-  const list = names.length === 2 ? names[0] + ' and ' + names[1] : names[0];
+  const and = (list) => list.map((t) => t.name).join(' and ');
+  const it = (list) => (list.length === 2 ? 'them' : 'it');
   const attach = things.filter((t) => t.see), paste = things.filter((t) => !t.see);
-  const pasteList = paste.map((t) => t.name).join(' and '), attachList = attach.map((t) => t.name).join(' and ');
-  if (!attach.length) return "Your AI can't see your " + list + '. Paste it right under the prompt when you send it.';
-  if (!paste.length) return "Your AI can't see your " + list + '. Attach it in the chat after you paste the prompt.';
-  return "Your AI can't see your " + pasteList + ' or your ' + attachList + '. Paste the ' + pasteList + ' under the prompt, and attach the ' + attachList + ' in the chat.';
+  if (!attach.length) return "Your AI can't see your " + and(paste) + '. Paste ' + it(paste) + ' right under the prompt when you send it.';
+  if (!paste.length) return "Your AI can't see your " + and(attach) + '. Attach ' + it(attach) + ' in the chat after you paste the prompt.';
+  return "Your AI can't see your " + paste[0].name + ' or your ' + attach[0].name + '. Paste the ' + paste[0].name + ' right under the prompt, and attach the ' + attach[0].name + ' in the chat.';
 }
