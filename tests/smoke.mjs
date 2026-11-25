@@ -6447,6 +6447,36 @@ await check('rework + shortcut writer (v2.1.47): Make it stronger hands round 2 
   for (const x of [p, q, r, v]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
+await check('cant-see radar: a card names what the AI cannot see, hides when the text is pasted, and Got it hides it (AGT-71)', async () => {
+  const intake = { title: 'Landlord Reply', need: 'Reply to my landlord', category: 'Work', complexity: 'simple', questions: [] };
+  const NOTE = "fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite";
+  const p = await page({ intake, write: 'THE PROMPT' });
+  await p.fill('#thoughts', NOTE); await p.click('#build'); await done(p);
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  const txt = await p.textContent('#cantSee');
+  expect(/can't see your email and attachment/.test(txt) && /Paste it right under the prompt/.test(txt), 'card names both: ' + txt);
+  expect(await p.evaluate(() => !!(document.getElementById('output').compareDocumentPosition(document.getElementById('cantSee')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'it sits under the prompt');
+  expect(!/can.t see your/i.test(await p.inputValue('#output')), 'the prompt text is untouched by the card');
+  expect(!p.calls.some((c) => !c.intake && /can't see/i.test(c.text || '')), 'no extra Gemini call for it');
+  await p.click('#cantSeeGot');
+  await p.waitForSelector('#cantSee', { state: 'detached', timeout: 3000 });
+  // A screenshot gets the attach wording
+  const q = await page({ intake, write: 'THE PROMPT' });
+  await q.fill('#thoughts', 'what does the screenshot of my bank error mean, explain it simply'); await q.click('#build'); await done(q);
+  await q.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/Attach it in the chat/.test(await q.textContent('#cantSee')), 'screenshot says attach');
+  // The whole email already pasted (a 200 word block): no card
+  const r = await page({ intake, write: 'THE PROMPT' });
+  const BLOCK = Array.from({ length: 200 }, (_, i) => 'word' + i).join(' ');
+  await r.fill('#thoughts', 'fix this email and make it kind:\n' + BLOCK); await r.click('#build'); await done(r);
+  expect(!(await r.$('#cantSee')), 'a pasted long email hides the card');
+  // A plain note, and dress code is not "my code"
+  const s = await page({ intake, write: 'THE PROMPT' });
+  await s.fill('#thoughts', 'plan a birthday dinner for six, the dress code is casual, keep it under fifty dollars'); await s.click('#build'); await done(s);
+  expect(!(await s.$('#cantSee')), 'a plain note shows no card');
+  for (const x of [p, q, r, s]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));

@@ -30,6 +30,7 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import MoveCard from './MoveCard.svelte';
+  import CantSee from './CantSee.svelte';
   import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
@@ -216,6 +217,7 @@
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
     <MoveCard />
+    <CantSee />
     <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
          The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
