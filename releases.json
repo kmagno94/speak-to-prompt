@@ -2,6 +2,29 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.52",
+      "date": "2026-11-25",
+      "title": "Polish: Hear it, Glow-Up, and X-ray are easier to tap on a phone",
+      "items": [
+        "The three buttons under the finished prompt (🔊 Hear it, ✨ Glow-Up, 🩻 X-ray) are now a full 44px tall, the size phones recommend for a finger, up from about 34px. They look the same otherwise and now fit on one line even on a smaller phone like an iPhone SE or mini (375px wide), where X-ray used to drop to a second line.",
+        "The three now line up exactly (Glow-Up used to sit 2px taller than the other two), and X-ray's Done button got the same bigger size."
+      ],
+      "checks": [
+        {
+          "say": "On your phone, build any note (for example: plan a cozy movie night for 4 friends this saturday, we have a small couch and one guy hates horror) and scroll to the buttons under the prompt.",
+          "see": "Hear it, Glow-Up, and X-ray sit on one line, all the same height, a little taller than before, and easy to hit with your thumb."
+        },
+        {
+          "say": "Tap X-ray, then tap Done.",
+          "see": "X-ray opens on the first tap and Done (same bigger size) closes it. Nothing jumps around."
+        },
+        {
+          "say": "Tap Hear it, then tap it again.",
+          "see": "It starts reading and the button says Stop; the second tap stops it. The button stays the same height the whole time."
+        }
+      ]
+    },
+    {
       "version": "2.1.51",
       "date": "2026-11-25",
       "title": "Can't-see-it radar: when your words mention an email, resume, rubric, file, or screenshot, a card under the prompt says to paste or attach it",

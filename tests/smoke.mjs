@@ -3622,6 +3622,25 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
+await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 375 and 390 (phone) and 1280 (desktop)', async () => {
+  /* One page, resized: building once keeps this check quick on a busy machine. */
+  const p = await page();
+  await withKey(p);
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForSelector('#xrayBtn');
+  for (const w of [375, 390, 360, 1280]) {
+    await p.setViewportSize({ width: w, height: 844 });
+    const r = await p.evaluate(() => ['#hearBtn', '#glowBtn', '#xrayBtn'].map(s => { const el = document.querySelector(s); if (!el) return null; const b = el.getBoundingClientRect(); return { s, h: Math.round(b.height), top: Math.round(b.top) }; }).filter(Boolean));
+    expect(r.length === 3, 'result row buttons missing at ' + w + ': ' + JSON.stringify(r));
+    for (const b of r) expect(b.h >= 44, b.s + ' is ' + b.h + 'px tall at ' + w);
+    if (w >= 375) expect(new Set(r.map(b => b.top)).size === 1, 'buttons wrap to two lines at ' + w + ': ' + JSON.stringify(r));
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'side scroll at ' + w);
+  }
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('motion and touch: welcome entrance under a second, none with Reduce Motion, main controls at least 44px', async () => {
   const p = await page();
   const total = await p.evaluate(() => Math.max(...['.wrap > header', '.journey', '.hero'].map(s => { const c = getComputedStyle(document.querySelector(s)); return (parseFloat(c.animationDuration) + parseFloat(c.animationDelay)) * (c.animationDuration.endsWith('ms') ? 1 : 1000); })));

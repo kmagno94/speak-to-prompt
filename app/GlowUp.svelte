@@ -202,7 +202,7 @@
 
 <style>
   /* Same pill as X-ray, outlined so X-ray stays the main one. */
-  .glow { margin-right: auto; min-height: 0; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: none; border: 1.5px solid var(--accent-soft); }
+  .glow { margin-right: auto; min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: none; border: 1.5px solid var(--accent-soft); }
   .glowup { border: 0; padding: 0; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px -20px rgba(10, 20, 40, 0.55); }
   .glowup::backdrop { background: color-mix(in srgb, #0b1420 55%, transparent); }
   .sheet { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; padding: 20px 18px 16px; display: grid; gap: 12px; }
