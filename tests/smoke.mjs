@@ -3622,8 +3622,8 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
-await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 390 (phone)', async () => {
-  for (const w of [390, 360]) {
+await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 390 (phone) and 1280 (desktop)', async () => {
+  for (const w of [390, 360, 1280]) {
     const p = await page();
     await p.setViewportSize({ width: w, height: 844 });
     await withKey(p);
@@ -3632,7 +3632,7 @@ await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and st
     await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
     await p.waitForSelector('#xrayBtn');
     const r = await p.evaluate(() => ['#hearBtn', '#glowBtn', '#xrayBtn'].map(s => { const el = document.querySelector(s); if (!el) return null; const b = el.getBoundingClientRect(); return { s, h: Math.round(b.height), top: Math.round(b.top), r: Math.round(b.right) }; }).filter(Boolean));
-    expect(r.length >= 2, 'result row buttons missing at ' + w);
+    expect(r.length === 3, 'result row buttons missing at ' + w + ': ' + JSON.stringify(r));
     for (const b of r) expect(b.h >= 44, b.s + ' is ' + b.h + 'px tall at ' + w);
     if (w >= 390) expect(new Set(r.map(b => b.top)).size === 1, 'buttons wrap to two lines at ' + w + ': ' + JSON.stringify(r));
     expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'side scroll at ' + w);
