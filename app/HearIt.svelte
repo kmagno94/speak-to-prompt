@@ -129,7 +129,7 @@
 {/if}
 
 <style>
-  .hear { margin-right: 6px; min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
+  .hear { margin-right: 6px; min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
   .hear.on { color: var(--accent-ink); background: var(--accent); }
   .hearnote { display: block; order: 99; flex-basis: 100%; text-align: right; margin-top: 4px; font-size: var(--fs-xs, 12px); color: var(--muted); }
 </style>

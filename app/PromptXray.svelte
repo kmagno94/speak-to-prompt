@@ -126,7 +126,7 @@
 {/if}
 
 <style>
-  .xbtn { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
+  .xbtn { min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
   .xray {
     --x0: #fde7b0; --x1: #cdeccf; --x2: #d6e4fb; --x3: #f6d3e4; --x4: #e3d9f7; --x5: #cfeeed;
     display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);

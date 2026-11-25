@@ -6,7 +6,7 @@
       "date": "2026-11-25",
       "title": "Polish: Hear it, Glow-Up, and X-ray are easier to tap on a phone",
       "items": [
-        "The three buttons under the finished prompt (🔊 Hear it, ✨ Glow-Up, 🩻 X-ray) are now a full 44px tall, the size phones recommend for a finger, up from about 34px. They look the same otherwise and still fit on one line on a normal phone.",
+        "The three buttons under the finished prompt (🔊 Hear it, ✨ Glow-Up, 🩻 X-ray) are now a full 44px tall, the size phones recommend for a finger, up from about 34px. They look the same otherwise and now fit on one line even on a smaller phone like an iPhone SE or mini (375px wide), where X-ray used to drop to a second line.",
         "The three now line up exactly (Glow-Up used to sit 2px taller than the other two), and X-ray's Done button got the same bigger size."
       ],
       "checks": [
