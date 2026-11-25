@@ -42,7 +42,7 @@ const CORE = [
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
   'lessons.json is valid', 'usage.json is valid', 'staging build:', 'live build:', 'test lab:', 'pro prompt button:',
   'quick chip:', 'save as context:', 'bench builder: a Read answer', 'bench builder: the seeded flaw', 'stay on screen: on iPhone',
-  'questions card (idea mwk245csqohp)', 'auto (#56): with a key', 'cant-see radar:'
+  'questions card (idea mwk245csqohp)', 'auto (#56): with a key'
 ];
 const QUICK = process.env.QUICK === '1';
 let skipped = 0;
