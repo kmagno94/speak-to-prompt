@@ -2,6 +2,34 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.51",
+      "date": "2026-11-25",
+      "title": "Can't-see-it radar: when your words mention an email, resume, rubric, file, or screenshot, a card under the prompt says to paste or attach it",
+      "items": [
+        "Under the finished prompt, a small 🙈 card shows when your words point at something your AI can't see, like this email, my resume, the rubric, the attached file, or the screenshot. Typed things get Paste it right under the prompt; a file, screenshot, or photo gets Attach it in the chat.",
+        "It names up to two things in one line, and stays away when a big block of text (over about 150 words) already follows, since you probably pasted it in. Dress code and other everyday words don't set it off.",
+        "Got it hides the card until your next prompt. It runs on the phone with a plain word list: free, no Gemini call, nothing saved or sent, and the prompt itself never changes."
+      ],
+      "checks": [
+        {
+          "say": "Say or type: fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite. Build it.",
+          "see": "Under the Move I made card, a 🙈 card says Your AI can't see your email or your file. Paste the email right under the prompt, and attach the file in the chat. The prompt itself has no such line."
+        },
+        {
+          "say": "Tap Got it (a quick double tap is fine).",
+          "see": "The card slides away and doesn't come back on that prompt."
+        },
+        {
+          "say": "Tap New prompt and try: what does the screenshot of my bank error mean.",
+          "see": "The card is back and says Attach it in the chat after you paste the prompt."
+        },
+        {
+          "say": "New prompt with a plain note: plan a birthday dinner for six, the dress code is casual.",
+          "see": "No 🙈 card at all."
+        }
+      ]
+    },
+    {
       "version": "2.1.50",
       "date": "2026-11-24",
       "title": "Test lab fixes: the open context piece fits an iPhone screen, Done snaps back to your contexts, Copy my ideas never shows an old warning, and your last prompt survives a reload",
