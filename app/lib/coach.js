@@ -43,3 +43,46 @@ export function assess(text) {
   const checks = CHECKS.map((c) => ({ ...c, hit: typeof c.test === 'function' ? c.test(t, w) : c.test.test(t) }));
   return { words: w, score: checks.filter((c) => c.hit).length, checks };
 }
+
+/* Can't-see-it radar (AGT-71, Slice 1): words that point at something your AI can't see
+   (this email, my resume, the rubric). Free, on the phone, no Gemini call. Bare "code" is left
+   out on purpose (dress code), only "my code" and "this code" count. */
+const CANT_SEE = [
+  { name: 'email', see: false, re: /\b(?:this|my|the|that) email\b|\bthe email below\b/i },
+  { name: 'resume', see: false, re: /\b(?:my|the|this) (?:resume|résumé)\b/i },
+  { name: 'CV', see: false, re: /\b(?:my|the|this) cv\b/i },
+  { name: 'file', see: true, re: /\b(?:the|my) attach(?:ed|ment)\b/i },
+  { name: 'code', see: false, re: /\b(?:my|this) code\b/i },
+  { name: 'article', see: false, re: /\b(?:that|this|the) article\b/i },
+  { name: 'essay', see: false, re: /\bmy essay\b/i },
+  { name: 'rubric', see: false, re: /\bthe rubric\b|\bmy rubric\b/i },
+  { name: 'document', see: false, re: /\b(?:this|my) document\b/i },
+  { name: 'spreadsheet', see: false, re: /\b(?:this|my) spreadsheet\b/i },
+  { name: 'screenshot', see: true, re: /\b(?:the|this|my|that) screenshot\b/i },
+  { name: 'photo', see: true, re: /\b(?:this|my|the|that) photo\b/i }
+];
+const BIG_BLOCK = 150;   /* more than this many words after the phrase: the text is probably already pasted */
+
+/* -> up to two { name, see } the note points at but the AI can't see. [] when none, or when a big block follows. */
+export function cantSeeThings(text) {
+  const t = String(text || '');
+  const out = [];
+  for (const c of CANT_SEE) {
+    const m = c.re.exec(t);
+    if (!m) continue;
+    if (words(t.slice(m.index + m[0].length)) > BIG_BLOCK) continue;
+    if (!out.some((o) => o.name === c.name)) out.push({ name: c.name, see: c.see, at: m.index });
+  }
+  return out.sort((a, b) => a.at - b.at).slice(0, 2).map(({ name, see }) => ({ name, see }));
+}
+
+/* The card's one short line. Typed things get pasted, files and pictures get attached. */
+export function cantSeeLine(things) {
+  if (!things.length) return '';
+  const and = (list) => list.map((t) => t.name).join(' and ');
+  const it = (list) => (list.length === 2 ? 'them' : 'it');
+  const attach = things.filter((t) => t.see), paste = things.filter((t) => !t.see);
+  if (!attach.length) return "Your AI can't see your " + and(paste) + '. Paste ' + it(paste) + ' right under the prompt when you send it.';
+  if (!paste.length) return "Your AI can't see your " + and(attach) + '. Attach ' + it(attach) + ' in the chat after you paste the prompt.';
+  return "Your AI can't see your " + paste[0].name + ' or your ' + attach[0].name + '. Paste the ' + paste[0].name + ' right under the prompt, and attach the ' + attach[0].name + ' in the chat.';
+}

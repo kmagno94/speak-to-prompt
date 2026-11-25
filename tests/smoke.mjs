@@ -6447,6 +6447,38 @@ await check('rework + shortcut writer (v2.1.47): Make it stronger hands round 2 
   for (const x of [p, q, r, v]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
+await check('cant-see radar: a card names what the AI cannot see, hides when the text is pasted, and Got it hides it (AGT-71)', async () => {
+  const intake = { title: 'Landlord Reply', need: 'Reply to my landlord', category: 'Work', complexity: 'simple', questions: [] };
+  const p = await page({ intake, write: 'THE PROMPT' });
+  let built = false;   // after the first prompt, each note starts with New prompt, the way a person goes again
+  const build = async (note) => { if (built) await menuTap(p, '#reset'); built = true; await p.fill('#thoughts', note); await p.click('#build'); await done(p); };
+  await build("fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite");
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  const txt = await p.textContent('#cantSee');
+  expect(/can't see your email or your file\. Paste the email right under the prompt, and attach the file in the chat\./.test(txt), 'card names both, paste and attach: ' + txt);
+  expect(await p.evaluate(() => !!(document.getElementById('output').compareDocumentPosition(document.getElementById('cantSee')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'it sits under the prompt');
+  expect(!/can.t see your/i.test(await p.inputValue('#output')), 'the prompt text is untouched by the card');
+  expect(!p.calls.some((c) => !c.intake && /can't see/i.test(c.text || '')), 'no extra Gemini call for it');
+  await p.dblclick('#cantSeeGot');   // a double tap is harmless
+  await p.waitForSelector('#cantSee', { state: 'detached', timeout: 8000 });
+  // A new prompt brings it back. Two things to paste say "them"
+  await build('look at my resume and my cover letter is in this document, make them match the job');
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/can't see your resume and document\. Paste them right under the prompt/.test(await p.textContent('#cantSee')), 'two to paste says them: ' + (await p.textContent('#cantSee')));
+  // A screenshot gets the attach wording
+  await build('what does the screenshot of my bank error mean, explain it simply');
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/Attach it in the chat/.test(await p.textContent('#cantSee')), 'screenshot says attach');
+  // The whole email already pasted (a 200 word block): no card
+  await build('fix this email and make it kind:\n' + Array.from({ length: 200 }, (_, i) => 'word' + i).join(' '));
+  expect(!(await p.$('#cantSee')), 'a pasted long email hides the card');
+  // A plain note, and dress code is not "my code"
+  await build('plan a birthday dinner for six, the dress code is casual, keep it under fifty dollars');
+  expect(!(await p.$('#cantSee')), 'a plain note shows no card');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  await p.context().close();
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
