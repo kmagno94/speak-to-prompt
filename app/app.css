@@ -245,7 +245,7 @@ details.benchfold .benchbody { display: flex; flex-direction: column; gap: 10px;
 /* Version pill, top right: up to date, update ready, or just Refresh. Doubles as the
    refresh button in the Home Screen web app, which has no browser bar. */
 .toprow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px; }
-.verpill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+.verpill { margin-left: auto; margin-block: -4px; display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
   border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); }
 .verpill .ic { font-size: 15px; line-height: 1; }
 .verpill[data-state="latest"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
