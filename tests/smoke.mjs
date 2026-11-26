@@ -48,6 +48,7 @@ const QUICK = process.env.QUICK === '1';
 /* SHARD=2/3: run only every third check, starting with the second, so CI can split the full
    suite across parallel jobs. Each check keeps its slot whatever ONLY or QUICK skip. */
 const SHARD = /^(\d+)\/(\d+)$/.exec(process.env.SHARD || '');
+if (process.env.SHARD && !(SHARD && +SHARD[1] >= 1 && +SHARD[1] <= +SHARD[2])) { console.log('SHARD must look like 2/3 (a shard from 1 to the total), got ' + process.env.SHARD); process.exit(1); }
 let skipped = 0, seen = 0;
 async function check(name, fn) {
   const slot = seen++;
@@ -6585,4 +6586,5 @@ const failed = results.filter(r => r[0] === 'FAIL').length;
 console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : SHARD ? `, ${skipped} skipped (SHARD=${process.env.SHARD}; the other shards run the rest)` : ''));
 if (QUICK && !SHARD && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
 if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
+if (SHARD && !ONLY && !results.length) { console.log('SHARD=' + process.env.SHARD + ' ran no checks'); process.exit(1); }
 process.exit(failed ? 1 : 0);
