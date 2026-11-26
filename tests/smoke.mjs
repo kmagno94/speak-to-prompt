@@ -3756,6 +3756,9 @@ await check('thumb targets: the small buttons are at least 44px to tap at 390 an
     await tap('Latest pill', '#versionPill');
     await tap('Ideas Pause', '#ideasPause');
     await tap('Try this one', '#ideasTry');
+    /* the longest category label used to squeeze Try this one onto 2 lines at 360 */
+    const tryH = await p.evaluate(() => { document.getElementById('ideasCat').textContent = '⏰ Money and time'; return document.getElementById('ideasTry').getBoundingClientRect().height; });
+    if (tryH > 46) bad.push(w + ' Try this one wrapped to 2 lines (' + tryH + 'px)');
     await oneLine('ideas top row', '.ideas-top > *'); await oneLine('ideas bottom row', '.ideas-bottom > *');
     await tap('report button (first screen)', '.reportbtn');
     await flat('first screen');

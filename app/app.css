@@ -142,7 +142,7 @@ textarea#thoughts { resize: none; }
 .ideas-top span, .ideas-bottom span { font-size: 13px; font-weight: 700; color: var(--muted); }
 .ideas button { pointer-events: auto; min-height: var(--tap); border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
 .ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -8px -4px -8px 0; }
-.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); margin-block: -2px; }
+.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); margin-block: -2px; flex: none; white-space: nowrap; }
 .ideas-track { pointer-events: auto; display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; cursor: text; }
 .ideas-track::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: no-preference) {
