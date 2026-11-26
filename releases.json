@@ -2,6 +2,45 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.57",
+      "date": "2026-11-26",
+      "title": "Polish: the small buttons are easier to tap with a thumb",
+      "items": [
+        "Seven small buttons and links are now at least 44px to tap, the size phones recommend for a finger: Something went wrong? (and Worked great), Show me the steps, Optional lock your key, Remember my key, the Hear it speed buttons, the Latest pill, and the ideas card's Pause and Try this one, plus the Edit link next to Your goal. They look the same, they just catch your thumb better.",
+        "Remember my key now ticks when you tap anywhere on its line, not just the little box. On smaller phones Try this one stays on one line instead of squeezing onto two."
+      ],
+      "checks": [
+        {
+          "say": "On your phone, open staging and tap Something went wrong? under the box, right near its top or bottom edge.",
+          "see": "It opens on the first try. Tap it again to close it."
+        },
+        {
+          "say": "Tap Unlock smarter prompts, then tap near the top or bottom edge of Show me the steps.",
+          "see": "The steps open on the first tap. The little triangle is still there."
+        },
+        {
+          "say": "In the same panel, tap near the edge of Optional: lock your key.",
+          "see": "It opens on the first tap."
+        },
+        {
+          "say": "Tap the words Remember my key, out near the end of the line, away from the box.",
+          "see": "The box ticks. Tap again and it unticks."
+        },
+        {
+          "say": "Open More options and tap each Hear it speed (1x, 1.25x, 1.5x, 2x).",
+          "see": "Each one picks on the first tap and all four stay on one line."
+        },
+        {
+          "say": "Tap the Latest pill at the top right.",
+          "see": "It answers on the first tap (refresh or update check, same as before). It looks a hair taller, nothing else moved."
+        },
+        {
+          "say": "On the ideas card, tap Pause, then Try this one. Then build a note with your key and tap Edit next to Your goal.",
+          "see": "Pause and Try this one each answer on the first tap, Try this one stays on one line, and Edit opens the goal box."
+        }
+      ]
+    },
+    {
       "version": "2.1.56",
       "date": "2026-11-26",
       "title": "Behind the scenes: the full test run is split in 3 and can't hang for hours",

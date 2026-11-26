@@ -140,9 +140,9 @@ textarea#thoughts { resize: none; }
 @media (prefers-reduced-transparency: reduce) { .ideas .panel { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .ideas-top, .ideas-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .ideas-top span, .ideas-bottom span { font-size: 13px; font-weight: 700; color: var(--muted); }
-.ideas button { pointer-events: auto; min-height: 40px; border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
-.ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -6px -4px -6px 0; }
-.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); }
+.ideas button { pointer-events: auto; min-height: var(--tap); border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
+.ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -8px -4px -8px 0; }
+.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); margin-block: -2px; flex: none; white-space: nowrap; }
 .ideas-track { pointer-events: auto; display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; cursor: text; }
 .ideas-track::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: no-preference) {
@@ -245,7 +245,7 @@ details.benchfold .benchbody { display: flex; flex-direction: column; gap: 10px;
 /* Version pill, top right: up to date, update ready, or just Refresh. Doubles as the
    refresh button in the Home Screen web app, which has no browser bar. */
 .toprow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px; }
-.verpill { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+.verpill { margin-left: auto; margin-block: -4px; display: inline-flex; align-items: center; gap: 6px; min-height: var(--tap); padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
   border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); }
 .verpill .ic { font-size: 15px; line-height: 1; }
 .verpill[data-state="latest"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
@@ -331,7 +331,7 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 /* Clarity mirror (AGT-13): "Your goal: ..." with Edit, above the questions. */
 .need.goal { color: var(--ink); line-height: 1.45; }
 .need.goal .goallbl { font-weight: 700; margin-right: 4px; }
-.need.goal .goalbtn { background: none; border: none; padding: 6px 4px; margin-left: 2px; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; box-shadow: none; }
+.need.goal .goalbtn { background: none; border: none; padding: 6px 4px; margin-left: 2px; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; min-width: 44px; box-shadow: none; }
 .goalhint { margin: 0; font-size: 13px; color: var(--muted); }
 .goaledit { display: grid; gap: 8px; margin: 2px 0; }
 .goaledit label { font-size: 13px; font-weight: 700; color: var(--muted); }
@@ -382,6 +382,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .keysteps a, details.lock a { color: var(--accent); font-weight: 700; }
 details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--accent); }
 details.lock p { margin-top: 8px; }
+/* 44px to tap. Padding, not flex, keeps the little triangle; the margins keep the old spacing. */
+#keyStepsHelp > summary, #keyPanel details.lock > summary { padding: 9px 0; margin: -6px 0 -2px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
@@ -418,6 +420,8 @@ details.key[open] summary { margin-bottom: 10px; }
 #gkey:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 15px; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+#keyPanel label.check { min-height: var(--tap); }
+#keyPanel label.check:not(.keep-halo) { margin-block: -5px; }
 #keyStatus { font-size: 14px; margin: 0; min-height: 1.2em; }
 #keyStatus.good { color: var(--ok); }
 #keyStatus.bad { color: var(--danger); }

@@ -102,9 +102,9 @@
   .report { display: grid; gap: 10px; }
   .report.front { margin-top: 2px; }
   .rrow { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 14px; }
-  .likebtn { margin-right: auto; min-height: 40px; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
+  .likebtn { margin-right: auto; min-height: var(--tap); margin-block: -2px; padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: none; }
   .liked { margin-right: auto; font-size: 14px; font-weight: 700; color: var(--ok); }
-  .reportbtn { background: none; border: none; min-height: 0; padding: 4px 2px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  .reportbtn { display: inline-flex; align-items: center; background: none; border: none; min-height: var(--tap); margin-block: -6px; padding: 4px 2px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
   .reportbox { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
   .rhead { margin: 0; font-weight: 700; }
   label { font-size: 14px; font-weight: 700; }
