@@ -4530,8 +4530,8 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(/2 open ideas/.test(clip), 'fix session should count 2 open ideas');
   expect(/Show the word count/.test(clip) && /Paste should happen/.test(clip), 'fix session should list both ideas');
   expect(/staging branch only/i.test(clip) && /Never push to main/.test(clip), 'fix session should carry the staging rules');
-  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /5\/5 ahead of live/.test(clip), 'fix session should check the release limit before any code');
-  expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
+  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /(\d+)\/\1 ahead of live/.test(clip), 'fix session should check the release limit before any code');   /* any limit: sprint days raise RELEASE_LIMIT */
+  expect(/top of releases\.json/.test(clip) && /Staging is N\/\d+ ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/limit');
   expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
   expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
   expect(/staging\/#testlab/.test(clip), 'fix session should hand over the Test lab link');
