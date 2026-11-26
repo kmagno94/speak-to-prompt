@@ -312,7 +312,7 @@ export function startApp() {
     if (act === "idea") { if (typeof ideasTry !== "undefined" && DECK.length) { ideasTry.click(); } thoughts.focus(); notify("form"); }
     else if (act === "paste") pasteBtn.click();
     else if (act === "pasteanyway" && pendingPaste) pasteFromClipboard(pendingPaste.fromShortcut, pendingPaste.wrap, true);
-    else if (act === "retry") { notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "retry") retryBuild();
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
@@ -409,15 +409,30 @@ export function startApp() {
   }
   /* When Gemini can't finish, the quick prompt still shows, and one message says what
      happened and the next step (Try again, Fix my key, or just wait). */
-  function failNotice(e) {
+  function failNotice(e, kept) {   /* kept: a write failed after your answers, so Try again reuses them */
     var st = e && e.status, offline = navigator.onLine === false || st === "network";
     var retry = { label: "Try again", act: "retry", primary: true };
-    if (offline) return notify("result", "error", "You look offline", "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
+    if (offline) return notify("result", "error", "You look offline", kept ? "Your answers are kept. Reconnect, then tap Try again to write the full version with them. The quick prompt below doesn't include them."
+      : "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
     if (st === 429) return e.perMinute
-      ? notify("result", "warn", "Google needs a short breather", "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
+      ? notify("result", "warn", "Google needs a short breather", kept ? "Too many requests this minute. Your answers are kept: wait a minute, then tap Try again. The quick prompt below doesn't include them."
+        : "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
       : notify("result", "warn", "Today's free Gemini limit is used up", "Your quick prompt is below and ready to copy. Google's free limit refreshes overnight, so follow-up questions are back tomorrow.");
     if (st === 400 || st === 403) return notify("result", "error", "Google didn't accept your key", "Your quick prompt is below. Copy your key again from Google AI Studio, paste it, and tap Check key.", [{ label: "Fix my key", act: "key", primary: true }]);
-    notify("result", "error", "Gemini didn't come through", "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+    notify("result", "error", "Gemini didn't come through", kept ? "Your answers are kept. Tap Try again to write the full version with them. The quick prompt below doesn't include them."
+      : "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+  }
+  /* Try again after a failed write: same note and a key still in, so write again with the
+     answers you already gave. Anything else builds from the top, as before. */
+  function retryBuild() {
+    notify("result");
+    if (session && session.retryWrite && !busy && ui.hasKey && thoughts.value.trim() === session.box) {
+      var again = session.retryWrite;
+      ui.switched = false;
+      delete session.writeError;
+      return writeFinal(again.answers, again.quick);
+    }
+    form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
   }
   var GLIDE_MS = 1800;
   function showResult(text, madeBy, title) {
@@ -2547,7 +2562,7 @@ export function startApp() {
   }
 
   function geminiFlow(raw, key) {
-    session = { raw: raw, known: knownText(), forceAsk: forceAsk, auto: currentMode() === "auto" };   /* #56 Auto: questions, a Flash-Lite write, the grade decides */
+    session = { raw: raw, known: knownText(), forceAsk: forceAsk, auto: currentMode() === "auto", box: thoughts.value.trim() };   /* #56 Auto: questions, a Flash-Lite write, the grade decides */
     forceAsk = false;
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
@@ -3209,6 +3224,7 @@ export function startApp() {
        Flash-Lite. Make it stronger (a Rework round) is the only Flash write. */
     if (session.auto && !(session.round >= 2)) { quick = true; if (!session.mode || session.mode === "Full" || /^Full /.test(session.mode)) session.mode = "Auto"; }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
+    session.retryWrite = null;
     session.answers = answers.filter(function (a) { return a.answer; });
     /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
        the person's own words; one left as is was seen and kept. Rework rounds keep it. */
@@ -3448,7 +3464,8 @@ export function startApp() {
         return notify("result", "error", "Round " + failedN + " didn't come through", "Your round " + backN + " prompt is back and ready to copy. Tap Rework from this prompt to try again.");
       }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
-      failNotice(e);
+      if (session.answers.length) session.retryWrite = { answers: session.answers, quick: quick };
+      failNotice(e, !!session.retryWrite);
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });

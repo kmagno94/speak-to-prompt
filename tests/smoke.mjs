@@ -36,7 +36,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
 const CORE = [
   'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model', 'model routing:',
   'slow write:',
-  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
+  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'errors: Try again after', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
@@ -3643,6 +3643,37 @@ await check('quality check: a glanceable score, a plain label, and one tip (neve
   await menuTap(p, '#reset');
   expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('errors: Try again after a failed write keeps your answers and asks nothing again', async () => {
+  const writers = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
+  for (const how of ['server', 'offline', 'edited']) {
+    const opts = { auto: true, write: 'RETRIED PROMPT' };
+    const p = await page(opts);
+    await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build');
+    await p.click('#qaList .chips button:has-text("iPhone")');
+    if (how === 'offline') opts.drop = Object.fromEntries(Object.keys(writers).map(m => [m, true])); else opts.fail = writers;
+    await p.click('#qaGoCard'); await p.waitForSelector('#notice-result button:has-text("Try again")', { timeout: 15000 });
+    const t = await p.textContent('#notice-result');
+    expect(/answers are kept/.test(t), how + ': the message should say the answers are kept: ' + t);
+    delete opts.fail; delete opts.drop;
+    if (how === 'edited') await p.fill('#thoughts', 'plan a beach day instead');
+    const before = p.calls.length;
+    await p.click('#notice-result button:has-text("Try again")');
+    if (how === 'edited') {
+      await p.waitForSelector('#qaList .chips button', { state: 'visible' });
+      expect(p.calls.slice(before).some(c => c.intake), 'a changed note should start fresh with new questions');
+    } else {
+      await p.waitForFunction(() => document.getElementById('output').value.includes('RETRIED PROMPT'), null, { timeout: 15000 });
+      const after = p.calls.slice(before);
+      expect(after.length && !after.some(c => c.intake), how + ': Try again should not ask the questions again');
+      expect(/Q: Devices\?\nA: iPhone/.test(after[0].text), how + ': the retried write should carry the answer');
+      expect(after[0].text === p.calls.slice(0, before).filter(c => !c.intake)[0].text, how + ': the retried write should send the same thing as the first try');
+      expect(!(await p.isVisible('#qa')) && !(await p.isVisible('#notice-result')), how + ': no questions card or old error should remain');
+    }
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
 });
 
 await check('errors: Gemini failing still gives a prompt, plus a plain message with Try again; a used-up limit says when it comes back', async () => {
