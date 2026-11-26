@@ -251,6 +251,26 @@ await check('ready glide: a keyed build brings the prompt into view after the pl
   const later = await seen(q);
   expect(Math.abs(later.y - mine.y) < 5 && later.top > later.h - 250, 'a scroll of your own keeps the page where you put it: ' + JSON.stringify([mine, later]));
   expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  await q.context().close();
+  /* A tap counts as yours too, and so does New prompt: neither one gets yanked down 1.8s later */
+  const t = await page({ intake });
+  await withKey(t); await t.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await t.click('#build'); await done(t);
+  await t.waitForTimeout(600); await t.click('#resultHead');
+  const tapped = await seen(t);
+  await t.waitForTimeout(2200);
+  const stayed = await seen(t);
+  expect(Math.abs(stayed.y - tapped.y) < 5 && stayed.top > stayed.h - 250, 'a tap of your own keeps the page where it is: ' + JSON.stringify([tapped, stayed]));
+  expect(!t.errors.length, 'page errors: ' + t.errors.join('; '));
+  await t.context().close();
+  const n = await page({ intake });
+  await withKey(n); await n.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await n.click('#build'); await done(n);
+  await n.waitForTimeout(400); await menuTap(n, '#reset');
+  await n.waitForTimeout(900);   /* New prompt glides up to the box on its own first */
+  const fresh = await n.evaluate(() => Math.round(scrollY));
+  await n.waitForTimeout(1600);
+  const after = await n.evaluate(() => Math.round(scrollY));
+  expect(Math.abs(after - fresh) < 5, 'New prompt right after Ready: no glide afterwards: ' + JSON.stringify([fresh, after]));
+  expect(!n.errors.length, 'page errors: ' + n.errors.join('; '));
 });
 
 await check('key nudge: Quick mode line and result card point to the key panel, then hide once a key exists (v2.1.23)', async () => {
