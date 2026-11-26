@@ -420,6 +420,8 @@ details.key[open] summary { margin-bottom: 10px; }
 #gkey:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 15px; }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+#keyPanel label.check { min-height: var(--tap); }
+#keyPanel label.check:not(.keep-halo) { margin-block: -5px; }
 #keyStatus { font-size: 14px; margin: 0; min-height: 1.2em; }
 #keyStatus.good { color: var(--ok); }
 #keyStatus.bad { color: var(--danger); }
