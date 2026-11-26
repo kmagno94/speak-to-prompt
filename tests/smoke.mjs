@@ -2176,6 +2176,19 @@ await check('faster first load: the Test lab, Your core, and the Mic log are fet
   expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
 });
 
+await check('faster first load: a slow font sheet never holds up the first screen, and the fonts still apply when it arrives', async () => {
+  const p = await page(); let sent = false, release;
+  const held = new Promise((r) => { release = r; });
+  await p.route(/fonts\.googleapis\.com\/css2/, async (r) => { await held; sent = true; await r.fulfill({ status: 200, contentType: 'text/css', body: '@font-face{font-family:"Atkinson Hyperlegible";src:local("Arial")}' }); });
+  await p.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => performance.getEntriesByName('first-contentful-paint').length > 0, null, { timeout: 5000 });
+  expect(!sent && await p.isVisible('#thoughts'), 'the box shows while the font sheet is still on its way');
+  release();
+  await p.waitForFunction(() => document.querySelector('link[href*="fonts.googleapis.com/css2"]').media === 'all', null, { timeout: 5000 });
+  expect(/display=swap/.test(await p.getAttribute('link[href*="fonts.googleapis.com/css2"]', 'href')), 'font-display stays swap');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {
   const p = await page(); await devOn(p);
   expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
