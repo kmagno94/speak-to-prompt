@@ -45,8 +45,13 @@ const CORE = [
   'questions card (idea mwk245csqohp)', 'auto (#56): with a key'
 ];
 const QUICK = process.env.QUICK === '1';
-let skipped = 0;
+/* SHARD=2/3: run only every third check, starting with the second, so CI can split the full
+   suite across parallel jobs. Each check keeps its slot whatever ONLY or QUICK skip. */
+const SHARD = /^(\d+)\/(\d+)$/.exec(process.env.SHARD || '');
+let skipped = 0, seen = 0;
 async function check(name, fn) {
+  const slot = seen++;
+  if (SHARD && slot % Number(SHARD[2]) !== Number(SHARD[1]) - 1) { skipped++; return; }
   if (ONLY && !ONLY.test(name)) { skipped++; return; }
   if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
@@ -6577,7 +6582,7 @@ for (const r of results) console.log(r.join('  '));
 /* On GitHub Actions, each failure also becomes an annotation on the run page. */
 if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
-console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : ''));
-if (QUICK && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
+console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : SHARD ? `, ${skipped} skipped (SHARD=${process.env.SHARD}; the other shards run the rest)` : ''));
+if (QUICK && !SHARD && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
 if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
 process.exit(failed ? 1 : 0);

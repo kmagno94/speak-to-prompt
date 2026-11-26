@@ -169,10 +169,18 @@ jobs:
   # Staging push only: the full suite on the pushed staging commit, next to the quick deploy.
   # It never holds up the deploy, but a failure turns the run red so it's caught long before
   # the promote check (which would stop the promote anyway).
+  # Split in 3 parallel shards (SHARD in tests/smoke.mjs), so the full suite takes about a third
+  # of the time. fail-fast off: one red shard still lets the other two report. 30 minutes is about
+  # 3x a shard's normal time, so a hung run fails fast instead of eating an hour.
   full-staging:
-    name: Full tests (staging, background)
+    name: Full tests (staging, background) ${{ matrix.shard }}/3
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     permissions:
       contents: read
     steps:
@@ -183,7 +191,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium || npx playwright install chromium
-      - run: env -u GITHUB_SHA APP_CHANNEL=staging npm test
+      - run: env -u GITHUB_SHA APP_CHANNEL=staging SHARD=${{ matrix.shard }}/3 npm test
 
   # The Cloudflare Worker (worker/report-relay.js), only after the tests pass, and only
   # from a normal push to main, so staging work never changes the live relay.
