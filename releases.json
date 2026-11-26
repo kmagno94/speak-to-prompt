@@ -2,6 +2,22 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.54",
+      "date": "2026-11-25",
+      "title": "Test lab: clearer steps for the Can't-see-it radar",
+      "items": [
+        "The Test lab steps for the 🙈 Can't-see-it radar (v2.1.51) now come with a note you can copy, say where to find New prompt, and spell out what to look for. The last step, the plain birthday note, now says plainly that seeing no 🙈 card is the right result.",
+        "Nothing in the app itself changed. A new automatic check builds each of those Test lab notes and makes sure the card shows or stays away exactly the way the step says."
+      ],
+      "checks": [
+        {
+          "say": "Open the Test lab and go to the v2.1.51 Can't-see-it radar steps. Re-check the last one: tap New prompt (in the ⋯ menu), tap Copy on the note, paste it, and tap Build.",
+          "see": "The step now tells you that no 🙈 card under the prompt is the right result. No card shows, so mark it Works.",
+          "paste": "plan a birthday dinner for six, the dress code is casual."
+        }
+      ]
+    },
+    {
       "version": "2.1.53",
       "date": "2026-11-25",
       "title": "Polish: with a key, the finished prompt comes into view by itself",
@@ -54,20 +70,23 @@
       ],
       "checks": [
         {
-          "say": "Say or type: fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite. Build it.",
-          "see": "Under the Move I made card, a 🙈 card says Your AI can't see your email or your file. Paste the email right under the prompt, and attach the file in the chat. The prompt itself has no such line."
+          "say": "Copy the note below, paste it in the box, and tap Build.",
+          "see": "Scroll under the finished prompt. Below the Move I made card there is a small card that starts with 🙈 and says Your AI can't see your email or your file. Paste the email right under the prompt, and attach the file in the chat. The prompt itself has no such line.",
+          "paste": "fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite"
         },
         {
           "say": "Tap Got it (a quick double tap is fine).",
           "see": "The card slides away and doesn't come back on that prompt."
         },
         {
-          "say": "Tap New prompt and try: what does the screenshot of my bank error mean.",
-          "see": "The card is back and says Attach it in the chat after you paste the prompt."
+          "say": "Tap New prompt (in the ⋯ menu at the bottom), then paste the note below and tap Build.",
+          "see": "The 🙈 card is back under the prompt and says Your AI can't see your screenshot. Attach it in the chat after you paste the prompt.",
+          "paste": "what does the screenshot of my bank error mean"
         },
         {
-          "say": "New prompt with a plain note: plan a birthday dinner for six, the dress code is casual.",
-          "see": "No 🙈 card at all."
+          "say": "This one checks the card stays quiet. Tap New prompt (in the ⋯ menu), paste the note below, and tap Build. The note mentions nothing your AI can't see, and 'dress code' should not count as code.",
+          "see": "Scroll under the finished prompt: there is NO card starting with 🙈 Your AI can't see. Seeing nothing there is the right result, so mark it Works.",
+          "paste": "plan a birthday dinner for six, the dress code is casual."
         }
       ]
     },

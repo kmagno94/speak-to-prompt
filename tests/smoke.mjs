@@ -6542,6 +6542,30 @@ await check('cant-see radar: a card names what the AI cannot see, hides when the
   await p.context().close();
 });
 
+await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) shows or hides the card the way its step says (Test lab 11/25)', async () => {
+  const rel = JSON.parse(readFileSync(path.join(ROOT, '..', 'releases.json'), 'utf8')).releases.find((r) => r.version === '2.1.51');
+  const steps = rel.checks.filter((c) => c.paste);
+  expect(steps.length >= 3, 'the radar steps should each carry a note to copy: ' + steps.length);
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  let built = false;
+  for (const step of steps) {
+    if (built) await menuTap(p, '#reset');   /* each step starts with New prompt, as the step says */
+    built = true;
+    await p.fill('#thoughts', step.paste); await p.click('#build'); await done(p);
+    const quiet = /\bNO card\b/.test(step.see);
+    if (quiet) {
+      await p.waitForTimeout(400);
+      expect(!(await p.$('#cantSee')), 'step says no card, but one showed for: ' + step.paste);
+    } else {
+      await p.waitForSelector('#cantSee', { timeout: 6000 });
+      const line = (await p.textContent('#cantSee .cs')).replace(/^🙈\s*/, '').trim();
+      expect(step.see.includes(line), 'the card should say what the step says: ' + JSON.stringify([line, step.see]));
+    }
+  }
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  await p.context().close();
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
