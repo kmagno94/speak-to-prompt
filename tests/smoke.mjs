@@ -229,6 +229,50 @@ await check('quick version works with no key', async () => {
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('ready glide: a keyed build brings the prompt into view after the plate, and your own scroll wins', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const seen = (p) => p.evaluate(() => ({ y: Math.round(scrollY), top: Math.round(document.getElementById('output').getBoundingClientRect().top), dock: Math.round(document.getElementById('copy').getBoundingClientRect().top), h: innerHeight }));
+  for (const opts of [{}, { reduced: true }]) {
+    const p = await page({ intake, ...opts });
+    await withKey(p); await p.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await p.click('#build'); await done(p);
+    await p.waitForTimeout(700);
+    const early = await seen(p);
+    expect(early.top > early.h - 200, 'setup: right at Ready the plate shows first and the prompt is below: ' + JSON.stringify(early));
+    await p.waitForFunction(() => document.getElementById('output').getBoundingClientRect().top < document.getElementById('copy').getBoundingClientRect().top - 80, null, { timeout: 6000 });
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  const q = await page({ intake });
+  await withKey(q); await q.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await q.click('#build'); await done(q);
+  await q.waitForTimeout(700);
+  await q.mouse.move(200, 300); await q.mouse.wheel(0, 40); await q.waitForTimeout(300);
+  const mine = await seen(q);
+  await q.waitForTimeout(2200);
+  const later = await seen(q);
+  expect(Math.abs(later.y - mine.y) < 5 && later.top > later.h - 250, 'a scroll of your own keeps the page where you put it: ' + JSON.stringify([mine, later]));
+  expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  await q.context().close();
+  /* A tap counts as yours too, and so does New prompt: neither one gets yanked down 1.8s later */
+  const t = await page({ intake });
+  await withKey(t); await t.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await t.click('#build'); await done(t);
+  await t.waitForTimeout(600); await t.click('#resultHead');
+  const tapped = await seen(t);
+  await t.waitForTimeout(2200);
+  const stayed = await seen(t);
+  expect(Math.abs(stayed.y - tapped.y) < 5 && stayed.top > stayed.h - 250, 'a tap of your own keeps the page where it is: ' + JSON.stringify([tapped, stayed]));
+  expect(!t.errors.length, 'page errors: ' + t.errors.join('; '));
+  await t.context().close();
+  const n = await page({ intake });
+  await withKey(n); await n.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await n.click('#build'); await done(n);
+  await n.waitForTimeout(400); await menuTap(n, '#reset');
+  await n.waitForTimeout(900);   /* New prompt glides up to the box on its own first */
+  const fresh = await n.evaluate(() => Math.round(scrollY));
+  await n.waitForTimeout(1600);
+  const after = await n.evaluate(() => Math.round(scrollY));
+  expect(Math.abs(after - fresh) < 5, 'New prompt right after Ready: no glide afterwards: ' + JSON.stringify([fresh, after]));
+  expect(!n.errors.length, 'page errors: ' + n.errors.join('; '));
+});
+
 await check('key nudge: Quick mode line and result card point to the key panel, then hide once a key exists (v2.1.23)', async () => {
   const p = await page();
   expect(await p.isVisible('#keyNudge'), 'no-key visitors should see the Quick mode key line under Build');
@@ -4486,8 +4530,8 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(/2 open ideas/.test(clip), 'fix session should count 2 open ideas');
   expect(/Show the word count/.test(clip) && /Paste should happen/.test(clip), 'fix session should list both ideas');
   expect(/staging branch only/i.test(clip) && /Never push to main/.test(clip), 'fix session should carry the staging rules');
-  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /5\/5 ahead of live/.test(clip), 'fix session should check the release limit before any code');
-  expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
+  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /(\d+)\/\1 ahead of live/.test(clip), 'fix session should check the release limit before any code');   /* any limit: sprint days raise RELEASE_LIMIT */
+  expect(/top of releases\.json/.test(clip) && /Staging is N\/\d+ ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/limit');
   expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
   expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
   expect(/staging\/#testlab/.test(clip), 'fix session should hand over the Test lab link');

@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.53",
+      "date": "2026-11-25",
+      "title": "Polish: with a key, the finished prompt comes into view by itself",
+      "items": [
+        "With a key, a finished prompt used to stop on the cooking plate and leave the prompt a whole screen further down, so you had to scroll to find it. Now the plate still gets its moment, and about 2 seconds later the page glides down so the prompt and its notes sit right above the Copy prompt button.",
+        "If you touch, scroll, tap, or press a key before then, or tap New prompt, the page stays where you put it. With Reduce Motion on it jumps instead of gliding. Quick version (no key) is unchanged."
+      ],
+      "checks": [
+        {
+          "say": "On your phone with your key in, build any note (for example: plan a cozy game night for 6 this friday, one friend is colorblind so no red and green games) and keep your hands off the screen.",
+          "see": "Ready shows the plate first, then the page glides down by itself and the prompt box sits above Copy prompt."
+        },
+        {
+          "say": "Build another note, and as soon as Ready shows, scroll a little with your thumb.",
+          "see": "The page stays where you put it. No jump a second later."
+        }
+      ]
+    },
+    {
       "version": "2.1.52",
       "date": "2026-11-25",
       "title": "Polish: Hear it, Glow-Up, and X-ray are easier to tap on a phone",
