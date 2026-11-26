@@ -36,7 +36,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
 const CORE = [
   'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model', 'model routing:',
   'slow write:',
-  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
+  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'errors: Try again after', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
@@ -3642,6 +3642,60 @@ await check('quality check: a glanceable score, a plain label, and one tip (neve
   expect(await p.getAttribute('#qualityCheck .meter', 'aria-label') === '2.0 out of 5', 'meter needs a text label');
   await menuTap(p, '#reset');
   expect(!(await p.$('#qualityCheck')), 'Start over should clear the Quality check');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('errors: Try again after a failed write keeps your answers and asks nothing again', async () => {
+  const writers = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
+  for (const how of ['server', 'offline', 'edited', 'slider']) {
+    const opts = { auto: true, write: 'RETRIED PROMPT' };
+    const p = await page(opts);
+    await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build');
+    await p.click('#qaList .chips button:has-text("iPhone")');
+    if (how === 'offline') opts.drop = Object.fromEntries(Object.keys(writers).map(m => [m, true])); else opts.fail = writers;
+    await p.click('#qaGoCard'); await p.waitForSelector('#notice-result button:has-text("Try again")', { timeout: 15000 });
+    const t = await p.textContent('#notice-result');
+    expect(/answers are kept/.test(t), how + ': the message should say the answers are kept: ' + t);
+    delete opts.fail; delete opts.drop;
+    if (how === 'edited') await p.fill('#thoughts', 'plan a beach day instead');
+    if (how === 'slider') await p.$eval('#opt-tune-detail', (el) => { el.value = '5'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    const before = p.calls.length;
+    await p.click('#notice-result button:has-text("Try again")');
+    if (how === 'edited' || how === 'slider') {
+      await p.waitForSelector('#qaList .chips button', { state: 'visible' });
+      expect(p.calls.slice(before).some(c => c.intake), how + ': a changed note or slider should start fresh with new questions');
+    } else {
+      await p.waitForFunction(() => document.getElementById('output').value.includes('RETRIED PROMPT'), null, { timeout: 15000 });
+      const after = p.calls.slice(before);
+      expect(after.length && !after.some(c => c.intake), how + ': Try again should not ask the questions again');
+      expect(/Q: Devices\?\nA: iPhone/.test(after[0].text), how + ': the retried write should carry the answer');
+      expect(after[0].text === p.calls.slice(0, before).filter(c => !c.intake)[0].text, how + ': the retried write should send the same thing as the first try');
+      expect(!(await p.isVisible('#qa')) && !(await p.isVisible('#notice-result')), how + ': no questions card or old error should remain');
+    }
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('staging switches: #writefail fails the first write after the questions once, Try again then writes with the kept answers, and live ignores it', async () => {
+  const staging = process.env.APP_CHANNEL === 'staging';
+  const p = await page({ auto: true, write: 'WRITTEN AFTER RETRY', hash: '#writefail' });
+  await p.waitForTimeout(300);
+  expect(/Write fail test is on/.test(await p.evaluate(() => document.body.textContent)) === staging, 'the switch should say it is on, on staging only');
+  await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build');
+  await p.click('#qaList .chips button:has-text("iPhone")'); await p.click('#qaGoCard');
+  if (!staging) {
+    await p.waitForFunction(() => document.getElementById('output').value.includes('WRITTEN AFTER RETRY'), null, { timeout: 15000 });
+    expect(!(await p.isVisible('#notice-result')), 'live must ignore #writefail');
+    return;
+  }
+  await p.waitForSelector('#notice-result button:has-text("Try again")', { timeout: 15000 });
+  expect(/answers are kept/.test(await p.textContent('#notice-result')), 'the message should say the answers are kept');
+  const sent = p.calls.filter(c => !c.intake).length;
+  expect(sent === 0, 'the failed test write should send nothing, sent ' + sent);
+  await p.click('#notice-result button:has-text("Try again")');
+  await p.waitForFunction(() => document.getElementById('output').value.includes('WRITTEN AFTER RETRY'), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.intake).length === 1 && /A: iPhone/.test(p.calls.filter(c => !c.intake)[0].text), 'one questions call in all, and the write carries the answer');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
