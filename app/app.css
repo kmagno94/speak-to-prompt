@@ -382,6 +382,8 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .keysteps a, details.lock a { color: var(--accent); font-weight: 700; }
 details.lock summary { cursor: pointer; font-size: 14px; font-weight: 700; color: var(--accent); }
 details.lock p { margin-top: 8px; }
+/* 44px to tap. Padding, not flex, keeps the little triangle; the margins keep the old spacing. */
+#keyStepsHelp > summary { padding: 9px 0; margin: -6px 0 -2px; }
 details.lock code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
 .keep { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .keephead { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
