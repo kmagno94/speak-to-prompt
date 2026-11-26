@@ -44,9 +44,17 @@ export function numberIssuesFor(promptText, said, background) {
   const got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(all)));
   conversions(promptText, Object.keys(have)).forEach((n) => { have[n] = true; });   /* 140 miles is about 225 km */
   const money = {}; (String(promptText || "").match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach((m) => { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
+  const extra = Object.keys(gotBig).filter((n) => !have[n] && !(money[n] && math(n)));   /* correct money math isn't made up */
+  /* A length the prompt gives ("about 12 screens") must be one the person gave for that length.
+     The same digits showing up elsewhere (a date they corrected away) don't make it theirs. */
+  const LEN = "(?:screens?|pages?|words?|paragraphs?|sentences?|lines?)";
+  const lens = new RegExp("\\b(\\d{2,})[\\s-]*" + LEN + "\\b", "gi"), saidLens = new RegExp("\\b(\\d{2,})[\\s-]*" + LEN + "\\b", "gi");
+  const sayLen = {}; let lm;
+  while ((lm = saidLens.exec(all))) sayLen[lm[1]] = true;
+  while ((lm = lens.exec(String(promptText || "")))) { if (!sayLen[lm[1]] && have[lm[1]] && !extra.includes(lm[1])) extra.push(lm[1]); }
   return {
     missing: Object.keys(given).filter((n) => !got[n]),
-    extra: Object.keys(gotBig).filter((n) => !have[n] && !(money[n] && math(n)))   /* correct money math isn't made up */
+    extra
   };
 }
 

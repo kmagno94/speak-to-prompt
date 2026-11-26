@@ -7,7 +7,7 @@
    - At RELEASE_LIMIT builds ahead, stop building: test staging and promote first.
    Plain JS, no Svelte runes, so the deploy check and the tests can use it too. */
 
-export const RELEASE_LIMIT = 5;
+export const RELEASE_LIMIT = 20;
 
 /* "2.1.10" -> [2, 1, 10]. A leading v is fine. Anything else -> null. */
 export function parseVersion(v) {

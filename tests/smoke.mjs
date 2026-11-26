@@ -51,6 +51,9 @@ async function check(name, fn) {
   if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
+  /* Close every page the check opened, pass or fail. Left open, ~330 pages kept their timers and animations
+     running all run long, and the last checks of a full staging run timed out until the runner gave up (11/24 to 11/26). */
+  for (const c of browser.contexts()) await c.close().catch(() => {});
   /* PROGRESS=1: print each result as it lands (handy on a slow machine) */
   if (process.env.PROGRESS) console.log(results[results.length - 1].slice(0, 2).join('  ') + (results[results.length - 1][2] ? '  ' + results[results.length - 1][2] : ''));
 }
@@ -62,6 +65,14 @@ async function menuTap(p, sel) { if (!(await p.isVisible(sel))) await p.click('#
 /* The Flow bench is a closed row in dev tools (11/14): open it before tapping anything inside. */
 async function flowOpen(p) { if (!(await p.evaluate(() => document.getElementById('flowFold').open))) await p.click('#flowFold > summary'); }
 async function devOn(p) { await p.evaluate(() => localStorage.setItem('stp-dev', '1')); await p.reload(); }
+/* My context pills (v2.1.48): the editor opens one piece at a time, so read every piece's words by tapping each pill. */
+async function ctxTexts(p) {
+  if (!(await p.$('#contextEditor'))) { await p.click('#contextEdit'); await p.waitForSelector('#contextEditor'); }
+  const ids = await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.dataset.pill));
+  const out = [];
+  for (const id of ids) { await p.click(`#contextEditor .ctxpill[data-pill="${id}"]`); await p.waitForSelector(`#contextEditor .ctxitem[data-id="${id}"]`); out.push(await p.inputValue('#contextEditor .ctxitem .ctxtext')); }
+  return out;
+}
 
 async function page(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['clipboard-read', 'clipboard-write'], timezoneId: 'America/New_York', ...(opts.ua ? { userAgent: opts.ua } : {}), ...(opts.reduced ? { reducedMotion: 'reduce' } : {}) });
@@ -219,6 +230,50 @@ await check('quick version works with no key', async () => {
   const out = await p.inputValue('#output');
   expect(/MY RAW THOUGHTS/.test(out) && /help me plan a 5k/.test(out), 'quick prompt missing raw thoughts');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('ready glide: a keyed build brings the prompt into view after the plate, and your own scroll wins', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const seen = (p) => p.evaluate(() => ({ y: Math.round(scrollY), top: Math.round(document.getElementById('output').getBoundingClientRect().top), dock: Math.round(document.getElementById('copy').getBoundingClientRect().top), h: innerHeight }));
+  for (const opts of [{}, { reduced: true }]) {
+    const p = await page({ intake, ...opts });
+    await withKey(p); await p.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await p.click('#build'); await done(p);
+    await p.waitForTimeout(700);
+    const early = await seen(p);
+    expect(early.top > early.h - 200, 'setup: right at Ready the plate shows first and the prompt is below: ' + JSON.stringify(early));
+    await p.waitForFunction(() => document.getElementById('output').getBoundingClientRect().top < document.getElementById('copy').getBoundingClientRect().top - 80, null, { timeout: 6000 });
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  const q = await page({ intake });
+  await withKey(q); await q.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await q.click('#build'); await done(q);
+  await q.waitForTimeout(700);
+  await q.mouse.move(200, 300); await q.mouse.wheel(0, 40); await q.waitForTimeout(300);
+  const mine = await seen(q);
+  await q.waitForTimeout(2200);
+  const later = await seen(q);
+  expect(Math.abs(later.y - mine.y) < 5 && later.top > later.h - 250, 'a scroll of your own keeps the page where you put it: ' + JSON.stringify([mine, later]));
+  expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  await q.context().close();
+  /* A tap counts as yours too, and so does New prompt: neither one gets yanked down 1.8s later */
+  const t = await page({ intake });
+  await withKey(t); await t.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await t.click('#build'); await done(t);
+  await t.waitForTimeout(600); await t.click('#resultHead');
+  const tapped = await seen(t);
+  await t.waitForTimeout(2200);
+  const stayed = await seen(t);
+  expect(Math.abs(stayed.y - tapped.y) < 5 && stayed.top > stayed.h - 250, 'a tap of your own keeps the page where it is: ' + JSON.stringify([tapped, stayed]));
+  expect(!t.errors.length, 'page errors: ' + t.errors.join('; '));
+  await t.context().close();
+  const n = await page({ intake });
+  await withKey(n); await n.fill('#thoughts', 'plan a friendsgiving for 8 on saturday with a tiny oven'); await n.click('#build'); await done(n);
+  await n.waitForTimeout(400); await menuTap(n, '#reset');
+  await n.waitForTimeout(900);   /* New prompt glides up to the box on its own first */
+  const fresh = await n.evaluate(() => Math.round(scrollY));
+  await n.waitForTimeout(1600);
+  const after = await n.evaluate(() => Math.round(scrollY));
+  expect(Math.abs(after - fresh) < 5, 'New prompt right after Ready: no glide afterwards: ' + JSON.stringify([fresh, after]));
+  expect(!n.errors.length, 'page errors: ' + n.errors.join('; '));
 });
 
 await check('key nudge: Quick mode line and result card point to the key panel, then hide once a key exists (v2.1.23)', async () => {
@@ -1304,6 +1359,19 @@ await check('number check flags a changed version, and stays quiet when numbers 
   expect(!(await q.$('#deepMode')), 'Deep mode should be gone');
   expect(!(await q.$('#example')), 'Try an example should be gone');
   expect(await q.evaluate(() => document.getElementById('starterBtn').closest('.buildrow') !== null), 'Not sure where to start should sit in the Build row');
+});
+
+await check('stress test 5: a length number that matches a corrected-away date is still made up', async () => {
+  const note = "the bake sale is saturday december 12th, no wait the 12th is the book fair, so the 19th. one batch makes 2 loaves and we want 36 loaves, no wait 30. a 5 pound bag is $4.25. keep the sign under 20 words.";
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'School', complexity: 'simple', questions: [] }, write: 'Plan the bread table for Saturday, December 19th with 30 loaves, 2 per batch, and a 5 pound bag at $4.25. Format and Length: A structured plan, approximately 12 screens long.' });
+  await withKey(p);
+  await p.fill('#thoughts', note); await p.click('#build'); await done(p);
+  const warn = await p.textContent('#numWarn');
+  expect(await p.isVisible('#numWarn') && /mentions 12, which you never said/.test(warn), '12 screens should be flagged as made up: ' + warn);
+  const q = await page({ intake: { title: 'T', need: 'N', category: 'School', complexity: 'simple', questions: [] }, write: 'Plan the bread table for Saturday, December 19th with 30 loaves, 2 per batch, and a 5 pound bag at $4.25. Not the 12th, that is the book fair. Keep the sign under 20 words.' });
+  await withKey(q);
+  await q.fill('#thoughts', note); await q.click('#build'); await done(q);
+  expect(!(await q.isVisible('#numWarn')), 'a length the person said (20 words) should not be flagged: ' + await q.textContent('#numWarn'));
 });
 
 await check('repeat shortcut run replaces the old transcript', async () => {
@@ -3601,6 +3669,25 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
+await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 375 and 390 (phone) and 1280 (desktop)', async () => {
+  /* One page, resized: building once keeps this check quick on a busy machine. */
+  const p = await page();
+  await withKey(p);
+  await p.fill('#thoughts', 'memo'); await p.click('#build');
+  await p.waitForSelector('#qa:not([hidden])');
+  await p.click('#qaList .chips button'); await p.click('#qaGo'); await done(p);
+  await p.waitForSelector('#xrayBtn');
+  for (const w of [375, 390, 360, 1280]) {
+    await p.setViewportSize({ width: w, height: 844 });
+    const r = await p.evaluate(() => ['#hearBtn', '#glowBtn', '#xrayBtn'].map(s => { const el = document.querySelector(s); if (!el) return null; const b = el.getBoundingClientRect(); return { s, h: Math.round(b.height), top: Math.round(b.top) }; }).filter(Boolean));
+    expect(r.length === 3, 'result row buttons missing at ' + w + ': ' + JSON.stringify(r));
+    for (const b of r) expect(b.h >= 44, b.s + ' is ' + b.h + 'px tall at ' + w);
+    if (w >= 375) expect(new Set(r.map(b => b.top)).size === 1, 'buttons wrap to two lines at ' + w + ': ' + JSON.stringify(r));
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'side scroll at ' + w);
+  }
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('motion and touch: welcome entrance under a second, none with Reduce Motion, main controls at least 44px', async () => {
   const p = await page();
   const total = await p.evaluate(() => Math.max(...['.wrap > header', '.journey', '.hero'].map(s => { const c = getComputedStyle(document.querySelector(s)); return (parseFloat(c.animationDuration) + parseFloat(c.animationDelay)) * (c.animationDuration.endsWith('ms') ? 1 : 1000); })));
@@ -3703,8 +3790,11 @@ await check('ask me: the Quality check tip offers Ask me, then rewrite; it asks 
   expect(p.calls.filter((c) => c.intake).length === intakes, 'no second Read: the questions come from the small call');
   expect(/Round 2/.test(await p.textContent('#madeBy')) && await p.isHidden('#qa'), 'the card should say Round 2 and the questions step away');
   await p.waitForSelector('#roundResult:has-text("3.0 → 5.0")', { timeout: 5000 });
-  const stored = await p.evaluate(() => JSON.stringify(Object.assign({}, localStorage)) + JSON.stringify(Object.assign({}, sessionStorage)));
-  expect(!/18 kids/.test(stored) && !/school event planner/.test(stored), 'the answers are never saved');
+  // v2.1.50: the finished round 2 prompt may sit in the tab-only last-prompt slot (it can carry the answers, woven in); nothing else holds them
+  const st = await p.evaluate(() => { const all = Object.assign({}, localStorage, sessionStorage); const k = Object.keys(all).find((x) => /stp-last$/.test(x));
+    const slot = k ? JSON.parse(all[k]) : null; if (k) delete all[k]; return { rest: JSON.stringify(all), slot, out: document.querySelector('#output')?.value || '' }; });
+  expect(!/18 kids/.test(st.rest) && !/school event planner/.test(st.rest), 'the answers are never saved');
+  expect(!st.slot || st.slot.p === st.out, 'the last-prompt slot holds only the finished prompt');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -3965,7 +4055,7 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("2 added")');
   expect(await q.isVisible('#contextRow .ctxchip:has-text("Corner bakery orders")') && await q.isVisible('#contextRow .ctxchip:has-text("Weekend soccer team")'), 'both pieces come in as chips');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.some((t) => /Café ☕/.test(t) && /jalapeño/.test(t)), 'emoji and accents survive the trip: ' + JSON.stringify(texts));
   expect(/Turn on Save on this phone/.test(await q.textContent('#contextSyncMsg')) && !(await q.evaluate(() => Object.keys(localStorage).some((k) => /stp-context/.test(k)))), 'brought-in pieces are not saved until Save on this phone is on');
   // Again, with one piece changed on the first device: 1 already here, and the changed one is never overwritten without asking (v2.1.37, #50)
@@ -3978,14 +4068,14 @@ await check('my context sync (v2.1.28): Send to Notes packs every piece into one
   await q.waitForSelector('#saveCtx[open] #ctxOverlapLine');
   expect(/1 already here/.test(await q.textContent('#contextSyncMsg')), 'the unchanged piece is just counted: ' + await q.textContent('#contextSyncMsg'));
   expect(/Saturday/.test(await q.textContent('#ctxOld')) && /Sunday 10am/.test(await q.textContent('#ctxNew')), 'the overlap screen shows old vs new');
-  expect(!(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)) && !(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
+  expect(!(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || ''))), 'nothing is overwritten before you pick');
   await q.click('#ctxUpdate');
   await q.waitForSelector('#ctxDoneLine:has-text("1 updated")');
   expect(/1 already here/.test(await q.textContent('#ctxDoneLine')), 'the summary counts both: ' + await q.textContent('#ctxDoneLine'));
   await q.click('#ctxDone');
   await q.waitForFunction(() => !document.getElementById('saveCtx').open);
   expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2, 'same titles update in place, no duplicates');
-  expect((await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
+  expect((await ctxTexts(q)).some((t) => /Sunday 10am/.test(t)), 'the changed words came across');
   expect(await q.evaluate(() => /Sunday 10am/.test(localStorage.getItem('stp-context') || '')), 'with Save on, brought-in pieces are kept');
   // A clipboard without the code: the paste box opens, and junk says what to do
   await q.evaluate(() => navigator.clipboard.writeText('just some random grocery list'));
@@ -4029,7 +4119,7 @@ await check('my context sync (v2.1.28 Test lab report): Copy for Notes copies th
   await q.evaluate((n) => navigator.clipboard.writeText(n), note);
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("3 added")');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.some((t) => t.length > 3700 && /piece 2$/.test(t)), 'a 3,800 character piece comes back whole');
   // A computer: no Open Notes button, still copies
   const c = await page();
@@ -4299,7 +4389,7 @@ await check('ideas tab: log a bug, it stays after a reload, Mark fixed, Reopen, 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, survives Build, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
+await check('draft net (v2.1.28): the words box comes back after a reload, in sessionStorage only, and is deleted on Start fresh, an empty box, and after 30 minutes', async () => {
   const p = await page();
   const draftKeys = () => p.evaluate(() => ({ s: Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)), l: Object.keys(localStorage).filter((k) => /draft/.test(k)), ls: Object.keys(localStorage).map((k) => localStorage.getItem(k)).join('|') }));
   await p.focus('#thoughts'); await p.keyboard.type('need a toast for my buddy Marco wedding saturday, funny but not mean');
@@ -4316,7 +4406,7 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')) && !(await draftKeys()).s.length, 'Start fresh clears the box and the draft: ' + JSON.stringify([await p.inputValue('#thoughts'), !!(await p.$('#draftNote')), await draftKeys()]));
   await p.reload(); await p.waitForSelector('#thoughts');
   expect((await p.inputValue('#thoughts')) === '', 'nothing comes back after Start fresh');
-  // Build keeps it now (Test lab report): checked in its own smoke test below
+  // A finished prompt forgets it (v2.1.49): checked in its own smoke test below
   await p.fill('#thoughts', ''); await p.waitForTimeout(450);
   // Emptying the box deletes it
   await p.focus('#thoughts'); await p.keyboard.type('short note'); await p.waitForTimeout(450);
@@ -4331,31 +4421,31 @@ await check('draft net (v2.1.28): the words box comes back after a reload, in se
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
-await check('draft net after Build (v2.1.28 Test lab report): you build, reload because you forgot your context, and your words come back with a note that they are from your last build; the prompt is never kept', async () => {
+/* v2.1.49 (Kevin 11/20): the "Your words are back" note shouldn't outlive a finished prompt. This replaces the
+   v2.1.28 rule that kept the words through Build: Build still keeps them while it writes, and a finished prompt drops them. */
+await check('draft net ends with a finished prompt (v2.1.49): a finished prompt forgets your words, a reload after that brings back nothing, and typing again starts a new draft', async () => {
   const p = await page();
   const keys = () => p.evaluate(() => Object.keys(sessionStorage).filter((k) => /stp-draft/.test(k)).map((k) => sessionStorage.getItem(k.replace(/^stg:/, ''))));   /* staging prefixes keys (lib/channel.js) */
   await p.focus('#thoughts'); await p.keyboard.type('plan a chill saturday hike near Bear Mountain for 4 people');
   await p.waitForTimeout(450);
+  expect((await keys()).length === 1, 'the words are kept while you type');
   await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
   await p.waitForTimeout(450);
-  const k = await keys();
-  expect(k.length === 1 && /Bear Mountain/.test(k[0]), 'Build keeps the words in this tab: ' + JSON.stringify(k));
-  const out = await p.inputValue('#output').catch(() => '');
-  expect(!out || !k[0].includes(out.slice(0, 40)), 'the built prompt is never kept, only your words');
-  await p.reload(); await p.waitForSelector('#thoughts');
-  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'the words come back after a reload that follows a build');
-  await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
-  expect(await p.isVisible('#draftNote') && /last build/.test(await p.textContent('#draftNote')) && /this tab only/.test(await p.textContent('#draftNote')), 'the note says they are from your last build, this tab only: ' + await p.textContent('#draftNote').catch(() => ''));
-  // Typing more turns it back into a plain draft
-  await p.focus('#thoughts'); await p.keyboard.press('End'); await p.keyboard.type(', bring the dog');
+  expect(!(await keys()).length, 'a finished prompt forgets the words: ' + JSON.stringify(await keys()));
+  await p.reload(); await p.waitForSelector('#thoughts'); await p.waitForTimeout(400);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')), 'a reload after a finished prompt brings back nothing and shows no note');
+  // A new draft after that is kept and comes back as a plain draft
+  await p.focus('#thoughts'); await p.keyboard.type('bring the dog on the hike');
   await p.waitForTimeout(450);
   await p.reload(); await p.waitForSelector('#thoughts');
   await p.waitForSelector('#draftNote', { timeout: 3000 }).catch(() => {});
-  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && !/last build/.test(await p.textContent('#draftNote')), 'an edited draft comes back as a plain draft');
-  // Start fresh still forgets everything
-  await p.click('#draftFresh'); await p.waitForTimeout(350);
-  await p.reload(); await p.waitForSelector('#thoughts');
-  expect((await p.inputValue('#thoughts')) === '' && !(await keys()).length, 'Start fresh forgets it');
+  expect(/bring the dog/.test(await p.inputValue('#thoughts')) && /before the page reloaded/.test(await p.textContent('#draftNote')), 'typing again starts a new draft');
+  // Building it ends that one too, and the note goes away
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(450);
+  expect(!(await keys()).length && !(await p.$('#draftNote')), 'a finished prompt clears the draft and its note');
   expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
@@ -4376,7 +4466,7 @@ await check('my context notes (v2.1.28 Test lab report): the note has no garbage
   await q.evaluate((n) => navigator.clipboard.writeText(n), edited);
   await q.click('#contextInQuick');
   await q.waitForSelector('#contextSyncMsg:has-text("1 added")');
-  const texts = await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value));
+  const texts = await ctxTexts(q);
   expect(texts.length === 1 && /Sunday 10am/.test(texts[0]) && /\n## bring cones\n/.test(texts[0]) && !/jerseys/.test(texts[0]), 'the Notes edit comes across, the ## line is back as written, the jot is ignored: ' + JSON.stringify(texts));
   await q.click('#contextIn');
   await q.waitForSelector('#contextSyncMsg:has-text("1 already here")');
@@ -4428,6 +4518,7 @@ await check('safari mic keep talking glow (v2.1.28 Test lab report): tapping Kee
 
 await check('ideas tab: never saves the prompt box, sends nothing, and the fix session lists open ideas with the staging rules', async () => {
   const p = await page();
+  await devOn(p);   /* Fix session is owner only: dev tools on (v2.1.48) */
   const sent = []; p.on('request', r => { if (!/localhost|generativelanguage|fonts\./.test(r.url())) sent.push(r.url()); });
   await p.fill('#thoughts', 'SECRET-THOUGHTS plan my sister surprise party');
   await p.click('#build'); await done(p);
@@ -4442,8 +4533,8 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(/2 open ideas/.test(clip), 'fix session should count 2 open ideas');
   expect(/Show the word count/.test(clip) && /Paste should happen/.test(clip), 'fix session should list both ideas');
   expect(/staging branch only/i.test(clip) && /Never push to main/.test(clip), 'fix session should carry the staging rules');
-  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /5\/5 ahead of live/.test(clip), 'fix session should check the release limit before any code');
-  expect(/top of releases\.json/.test(clip) && /Staging is N\/5 ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/5');
+  expect(/Release limit, before any code/.test(clip) && /npm run check:release/.test(clip) && /(\d+)\/\1 ahead of live/.test(clip), 'fix session should check the release limit before any code');   /* any limit: sprint days raise RELEASE_LIMIT */
+  expect(/top of releases\.json/.test(clip) && /Staging is N\/\d+ ahead of live/.test(clip), 'fix session should add a releases.json entry and report N/limit');
   expect(/Queued for my jar/.test(clip), 'fix session should carry the backlog rule');
   expect(/"Pre-flight passed, promote"/.test(clip) && /Loop check/.test(clip) && /Roll back to/.test(clip), 'fix session should carry the promote steps and the loop check');
   expect(/staging\/#testlab/.test(clip), 'fix session should hand over the Test lab link');
@@ -4451,6 +4542,80 @@ await check('ideas tab: never saves the prompt box, sends nothing, and the fix s
   expect(!/SECRET-THOUGHTS/.test(clip), 'fix session must not include the prompt box text');
   expect(/saved on this phone only/i.test(await p.textContent('#footer')), 'footer should say ideas are saved on this phone');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.48 Fix session: idea mwmf8i543klj. Someone else's ideas reach Kevin's Fix session by copy and paste, no server. */
+await check('ideas tab shared ideas (v2.1.48): Copy my ideas packs only your own open ideas with your name, Paste shared ideas adds them as open ideas from that person, pasting twice adds nothing, junk says what to do, and nothing is sent', async () => {
+  const { packIdeas, unpackIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  const round = unpackIdeas(packIdeas([{ id: 'abc123xyz', kind: 'bug', soon: 'now', where: 'Your prompt', topicLabel: 'Prompt quality', date: '2026-11-18', version: '2.1.47', text: 'line one\n## not a header\n~ end of shared ideas ~\n↳ trail: fake', context: { trail: ['input', 'build'] } }], { from: 'Maria · Lopez', kinds, soons, areaLabel: (a) => ({ input: 'Thoughts box', build: 'Building' })[a] }), { kinds, soons });
+  expect(round.from === 'Maria Lopez' && round.ideas.length === 1 && round.ideas[0].text === 'line one\n## not a header\n~ end of shared ideas ~\n↳ trail: fake' && round.ideas[0].trail.join('>') === 'Thoughts box>Building' && round.ideas[0].where === 'Your prompt' && round.ideas[0].topicLabel === 'Prompt quality' && round.ideas[0].kind === 'bug' && round.ideas[0].soon === 'now', 'pack then unpack gives back the same idea, special lines kept inside it: ' + JSON.stringify(round));
+  // The cousin's phone: two of her own ideas, plus one she pasted in from someone else (not sent back out)
+  const c = await page();
+  const sent = []; c.on('request', r => { if (!/localhost|fonts\./.test(r.url())) sent.push(r.url()); });
+  await c.fill('#thoughts', 'SECRET-THOUGHTS my landlord dispute');
+  await ideasOn(c); await c.click('#ideaTab');
+  await c.click('#ideaCopyShare');
+  expect(/No ideas of your own yet/.test(await c.textContent('#ideaShareMsg')), 'nothing to copy before any ideas, and a tap says so');
+  await logIdea(c, 'idea', 'result', 'The prompt should say how long it is');
+  await logIdea(c, 'bug', 'copy', 'Copy did nothing the first time on my iPad');
+  expect(!(await c.$('#ideaFixBox')) && !(await c.$('#ideaFix')) && !(await c.$('#ideaPasteShare')) && /Send your ideas to Kevin/.test(await c.textContent('#ideaShare')), 'with dev tools off there is no Fix session and no Paste, just Send your ideas to Kevin');
+  await c.fill('#ideaName', 'Maria');
+  await c.click('#ideaCopyShare');
+  await c.waitForSelector('#ideaShareMsg:has-text("Copied 2 ideas")');
+  const note = await c.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Maria · 2 ideas · /.test(note) && /how long it is/.test(note) && /first time on my iPad/.test(note) && /\n~ end of shared ideas ~$/.test(note), 'the message has her name, both ideas, and the end line:\n' + note);
+  expect(!/SECRET-THOUGHTS|landlord/.test(note) && !/—/.test(note), 'never the prompt box, no em dashes');
+  expect(await c.evaluate(() => localStorage.getItem('stp-ideas-name')) === 'Maria', 'her name is remembered on her phone');
+  expect(!sent.length, 'Copy my ideas sends nothing: ' + sent.join(', '));
+  // Kevin's phone: one idea of his own, then Paste shared ideas
+  const k = await page();
+  await devOn(k);   /* Kevin's phone: dev tools on, so Fix session and Paste show */
+  await ideasOn(k); await k.click('#ideaTab');
+  expect(await k.isVisible('#ideaFix') && await k.isVisible('#ideaPasteShare') && /Shared ideas/.test(await k.textContent('#ideaShare')), 'with dev tools on, Fix session and Paste shared ideas show');
+  await logIdea(k, 'faster', 'input', 'Paste should be one tap');
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note + '\n\nps call me later');
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("From Maria: 2 added")');
+  const list = await k.textContent('#ideaPanel .list');
+  expect(/Open 3/.test(list) && (list.match(/from Maria/g) || []).length === 2 && !/call me later/.test(list), 'both of her ideas show as open, marked from Maria, and text after the end line is ignored: ' + list);
+  await k.click('#ideaFix');
+  const fix = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/3 open ideas/.test(fix) && /Copy and open · from Maria · logged/.test(fix) && /how long it is/.test(fix) && /Paste should be one tap/.test(fix), 'the Fix session lists her ideas with who they came from:\n' + fix.slice(0, 1400));
+  // Kevin's own copy leaves out what he pasted in
+  await k.click('#ideaCopyShare');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/· 1 idea · /.test(mine) && !/Maria/.test(mine), 'Copy my ideas only sends your own ideas, never ones pasted in');
+  // Pasting the same message again adds nothing
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("2 already here")');
+  expect(/Open 3/.test(await k.textContent('#ideaPanel .list')), 'no duplicates');
+  // Junk on the clipboard: the paste box opens, and junk says what to copy
+  await k.evaluate(() => navigator.clipboard.writeText('milk, eggs'));
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaPasteBox');
+  await k.fill('#ideaPasteBox', 'milk, eggs');
+  await k.click('#ideaPasteGo');
+  expect(/isn’t a shared ideas message/.test(await k.textContent('#ideaShareMsg')) && /Open 3/.test(await k.textContent('#ideaPanel .list')), 'junk changes nothing and says what to copy');
+  // ideas-done.json closes a pasted idea by its id
+  const herId = JSON.parse(await k.evaluate(() => localStorage.getItem('stp-ideas'))).find((i) => i.from === 'Maria' && /iPad/.test(i.text)).id;
+  await k.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: herId, commit: 'abc1234', version: '2.1.48', note: 'Copy works on the first tap' }] }) }));
+  await k.keyboard.press('Escape'); await k.waitForSelector('#ideaPanel', { state: 'detached' });
+  await k.click('#ideaTab'); await k.waitForSelector('#ideaClosed');
+  expect(/Open 2/.test(await k.textContent('#ideaPanel .list')), 'a fix listing her idea closes it on Kevin\'s phone too');
+  // Staging test link #sharedsample: a made-up message waits in the paste box (live ignores it)
+  await k.keyboard.press('Escape'); await k.waitForSelector('#ideaPanel', { state: 'detached' });
+  await k.evaluate(() => { location.hash = '#sharedsample'; });
+  await k.waitForTimeout(300);
+  if (process.env.APP_CHANNEL === 'staging') {
+    await k.waitForSelector('#ideaPasteBox');
+    expect(/from Sample cousin/.test(await k.inputValue('#ideaPasteBox')) && /Staging sample/.test(await k.textContent('#ideaShareMsg')), 'the sample message waits in the paste box');
+    await k.click('#ideaPasteGo');
+    await k.waitForSelector('#ideaShareMsg:has-text("From Sample cousin: 2 added")');
+  } else expect(!(await k.$('#ideaPanel')), 'live ignores #sharedsample');
+  expect(!c.errors.length && !k.errors.length, 'page errors: ' + c.errors.concat(k.errors).join('; '));
 });
 
 await check('ideas tab: a Gemini failure becomes a "Looks like it might be" suggestion', async () => {
@@ -4471,7 +4636,7 @@ await check('ideas tab: fixes close their own ideas from ideas-done.json, Reopen
   const p = await page();
   await p.route(/ideas-done\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ done: [{ id: 'fixme1', commit: 'abc1234', version: '2.1.0', note: 'Copy now works on iPad' }] }) }));
   const item = (id, text) => ({ id, kind: 'bug', area: 'copy', where: 'Copy and open', topic: '', topicLabel: '', text, soon: 'now', context: { trail: [], signals: [] }, at: '2026-10-23T10:00:00Z', date: '2026-10-23', version: '2.1.0', status: 'open' });
-  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
+  await p.evaluate((list) => { localStorage.setItem('stp-ideas-on', '1'); localStorage.setItem('stp-dev', '1'); localStorage.setItem('stp-ideas', JSON.stringify(list)); }, [item('fixme1', 'Copy did nothing on iPad'), item('still2', 'Paste is slow')]);
   await p.reload(); await p.click('#ideaTab');
   await p.waitForSelector('#ideaClosed');
   expect(/1 idea closed by the latest fixes/.test(await p.textContent('#ideaClosed')), 'should say one idea was closed');
@@ -4817,12 +4982,257 @@ await check('my context: the editor opens at its top with the cursor in a title 
   const st = await p.evaluate(() => { const ed = document.getElementById('contextEditor'), first = ed.querySelector('.ctxitem input'); return { focused: document.activeElement === first, empty: first.value === '', top: ed.getBoundingClientRect().top }; });
   expect(st.focused && st.empty, 'the new piece should be first, with the cursor in its title: ' + JSON.stringify(st));
   await p.waitForTimeout(900);
-  const top = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().top);
-  expect(top >= -2 && top < 120, 'the editor should be scrolled to its top: ' + top);
+  /* v2.1.49: it snaps to the pills (the new piece opens under the first one). */
+  const top = await p.evaluate(() => document.querySelector('#contextEditor .pillwrap').getBoundingClientRect().top);
+  expect(top >= -40 && top < 120, 'the editor should be scrolled to its pills: ' + top);
   await p.click('#contextEditor button:text-is("Done")');
   await p.evaluate(() => window.scrollTo(0, 0));
   await p.click('#contextEdit'); await p.waitForTimeout(400);
-  expect(await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxitem input')), 'Edit should open with the cursor in the first title');
+  /* v2.1.48 pills: with several pieces, Edit opens the pills (no big text boxes) with the first pill ready to tap. */
+  expect(!(await p.$('#contextEditor .ctxitem')) && await p.evaluate(() => document.activeElement === document.querySelector('#contextEditor .ctxpill')), 'Edit with several pieces should open the pills, first pill focused');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.48 Fix session: ideas mwmevd3e9pix (pills, Revert, Undo) and mwmew9f943qi (My context first in Options). */
+await check('my context pills (v2.1.48): Options opens with My context first, the editor shows pieces as pills and opens one at a time, Revert changes puts it back, and Delete offers Undo', async () => {
+  const p = await page({ calm: true });
+  await p.evaluate(() => { localStorage.setItem('stp-context', JSON.stringify([{ id: 'a', title: 'Taco truck', text: 'Open Thu to Sun, 11 to 9. Al pastor sells out by 7.' }, { id: 'b', title: 'Book club', text: 'Third Thursday at Rosa\'s, 6 people.' }, { id: 'c', title: 'Garden plot', text: 'Plot 14, tomatoes and basil.' }])); localStorage.setItem('stp-context-keep', '1'); });
+  /* A short screen, so the Options panel opens below the fold, like a real first screen with the idea strip (Test lab screenshot, 11/18). */
+  await p.setViewportSize({ width: 390, height: 600 });
+  await p.reload();
+  await p.evaluate(() => window.scrollTo(0, 0));
+  const before = await p.evaluate(() => scrollY);
+  await p.click('#optionsChip');
+  await p.waitForTimeout(900);
+  const order = await p.evaluate(() => { const panel = document.getElementById('optionsPanel'), kids = [...panel.children]; const at = (sel) => kids.findIndex((k) => k.matches(sel) || k.querySelector(sel)); return { ctx: at('#contextRow'), mode: at('#quickMode'), chips: [...document.querySelectorAll('#contextRow .ctxchip')].every((c) => { const r = c.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }) }; });
+  expect(order.ctx === 0 && order.mode > order.ctx, 'My context should be first in the Options panel, above the mode picker: ' + JSON.stringify(order));
+  expect(order.chips, 'every My context chip should be on screen right after Options opens, no scrolling by hand');
+  expect(await p.evaluate(() => document.getElementById('optionsChip').getBoundingClientRect().top >= 0) && await p.evaluate(() => scrollY) > before, 'the page snaps down to My context and keeps the Options chip on screen');
+  await p.click('#optionsChip'); await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(100);
+  await p.click('#optionsChip'); await p.waitForTimeout(100);
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.click('#contextEdit');
+  await p.waitForSelector('#contextEditor');
+  expect((await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.textContent.trim()))).join('|') === 'Taco truck|Book club|Garden plot', 'every piece shows as a pill');
+  expect(!(await p.$('#contextEditor textarea.ctxtext')), 'no big text boxes until you tap a pill');
+  await p.click('#contextEditor .ctxpill:has-text("Book club")');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]');
+  expect((await p.$$('#contextEditor .ctxitem')).length === 1 && await p.inputValue('#ctxTitle') === 'Book club' && await p.getAttribute('#contextEditor .ctxpill[data-pill="b"]', 'aria-pressed') === 'true', 'tapping a pill opens only that piece');
+  expect(await p.isDisabled('#contextRevert'), 'Revert changes waits until something changed');
+  // A missed tap wipes the text: Revert brings it back
+  await p.fill('#ctxText', '');
+  await p.fill('#ctxTitle', 'Bok clb');
+  expect(await p.isEnabled('#contextRevert'), 'Revert changes turns on after an edit');
+  await p.click('#contextRevert');
+  expect(await p.inputValue('#ctxTitle') === 'Book club' && /Third Thursday at Rosa's/.test(await p.inputValue('#ctxText')) && await p.isDisabled('#contextRevert'), 'Revert puts the title and words back the way they were when you opened it');
+  expect(/Third Thursday/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the reverted words are what is saved');
+  // A kept edit stays after switching pieces, and Revert compares to when you opened it
+  await p.fill('#ctxText', 'Third Thursday at Rosa\'s, 7 people now.');
+  await p.click('#contextEditor .ctxpill:has-text("Garden plot")');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="c"]');
+  await p.click('#contextEditor .ctxpill:has-text("Book club")');
+  expect(/7 people now/.test(await p.inputValue('#ctxText')) && await p.isDisabled('#contextRevert'), 'switching pieces keeps your edit, and reopening starts a fresh Revert point');
+  // Delete asks twice, then Undo brings it back where it was
+  await p.click('#contextEditor .ctxitem button:text-is("Delete")');
+  await p.click('#contextEditor .ctxitem button:text-is("Tap again to delete")');
+  await p.waitForSelector('#contextUndo');
+  expect(/Deleted “Book club”/.test(await p.textContent('#contextUndo')) && !(await p.$('#contextEditor .ctxpill[data-pill="b"]')) && !(await p.$('#contextEditor .ctxitem')), 'after a delete: the pill is gone and Undo shows');
+  await p.click('#contextUndoBtn');
+  expect((await p.$$eval('#contextEditor .ctxpill', (l) => l.map((b) => b.dataset.pill))).join() === 'a,b,c' && /7 people now/.test(await p.inputValue('#ctxText')) && !(await p.$('#contextUndo')), 'Undo puts the piece back in its spot, open, with its words');
+  expect(/7 people now/.test(await p.evaluate(() => localStorage.getItem('stp-context'))), 'the restored piece is saved again');
+  // All pieces closes the open one
+  await p.click('#contextBack');
+  expect(!(await p.$('#contextEditor .ctxitem')), 'All pieces goes back to just the pills');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): the open piece shows right under its own pill, and the tapped pill comes to the top of the screen. */
+const ctxPieces = [{ id: 'a', title: 'Taco truck', text: 'Open Thu to Sun, 11 to 9.' }, { id: 'b', title: 'Book club', text: 'Third Thursday at Rosa\'s, 6 people.' }, { id: 'c', title: 'Garden plot', text: 'Plot 14, tomatoes and basil.' }, { id: 'd', title: 'Dog walker', text: 'Sam, Tuesdays and Fridays.' }, { id: 'e', title: 'Spanish class', text: 'Level 2, Monday nights.' }];
+async function ctxEditorOpen() {
+  const p = await page();
+  await p.evaluate((l) => { localStorage.setItem('stp-context', JSON.stringify(l)); localStorage.setItem('stp-context-keep', '1'); }, ctxPieces);
+  await p.setViewportSize({ width: 390, height: 600 });
+  await p.reload();
+  await p.click('#contextEdit'); await p.waitForSelector('#contextEditor .ctxpill'); await p.waitForTimeout(500);
+  return p;
+}
+await check('my context pills (v2.1.49): tapping a pill opens its box right under that pill, not below every pill, with the pill brought to the top of the screen', async () => {
+  const p = await ctxEditorOpen();
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextEditor .ctxpill[data-pill="b"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]'); await p.waitForTimeout(700);
+  const g = await p.evaluate(() => {
+    const pill = document.querySelector('#contextEditor .ctxpill[data-pill="b"]'), box = document.querySelector('#contextEditor .ctxitem'), next = document.querySelector('#contextEditor .ctxpill[data-pill="c"]');
+    const pr = pill.getBoundingClientRect(), br = box.getBoundingClientRect(), nr = next.getBoundingClientRect();
+    return { gap: br.top - pr.bottom, after: pill.nextElementSibling === box, nextBelow: nr.top >= br.bottom - 1, pillTop: pr.top, boxFits: br.top < innerHeight };
+  });
+  expect(g.after && g.gap >= 0 && g.gap < 40, 'the box sits right under the tapped pill: ' + JSON.stringify(g));
+  expect(g.nextBelow, 'the pills after it wrap below the box: ' + JSON.stringify(g));
+  expect(g.pillTop >= -2 && g.pillTop < 150 && g.boxFits, 'the tapped pill comes to the top of the screen with its box in view: ' + JSON.stringify(g));
+  await p.click('#contextEditor .ctxpill[data-pill="e"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="e"]');
+  expect((await p.$$('#contextEditor .ctxitem')).length === 1 && await p.evaluate(() => document.querySelector('#contextEditor .ctxpill[data-pill="e"]').nextElementSibling === document.querySelector('#contextEditor .ctxitem')), 'tapping another pill moves the one open box under that pill');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): ← All pieces, + Add another, and a delete snap back up to the pills instead of leaving you at the bottom. */
+await check('my context pills (v2.1.49): All pieces and Add another snap back up to the pills', async () => {
+  const p = await ctxEditorOpen();
+  const pillsTop = () => p.evaluate(() => document.querySelector('#contextEditor .pillwrap').getBoundingClientRect().top);
+  await p.click('#contextEditor .ctxpill[data-pill="d"]');
+  await p.waitForSelector('#contextBack');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  expect(await pillsTop() < -50, 'test setup: the pills are scrolled off the top');
+  await p.click('#contextBack'); await p.waitForTimeout(700);
+  const t = await pillsTop();
+  expect(!(await p.$('#contextEditor .ctxitem')) && t >= -2 && t < 150, 'All pieces goes back to just the pills, scrolled into view: ' + t);
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextBar button:text-is("+ Add another")'); await p.waitForTimeout(700);
+  const a = await p.evaluate(() => { const box = document.querySelector('#contextEditor .ctxitem'), first = document.querySelector('#contextEditor .ctxpill'); return { first: first.nextElementSibling === box, focused: document.activeElement === box.querySelector('input'), empty: box.querySelector('input').value === '', top: first.getBoundingClientRect().top, boxTop: box.getBoundingClientRect().top, h: innerHeight }; });
+  expect(a.first && a.focused && a.empty, 'Add another opens a blank piece first, cursor in its title: ' + JSON.stringify(a));
+  expect(a.top >= -2 && a.top < 150 && a.boxTop < a.h, 'Add another snaps up to the new piece under the first pill: ' + JSON.stringify(a));
+  // A delete snaps back up to the pills too
+  await p.click('#contextEditor .ctxpill[data-pill="e"]'); await p.waitForSelector('#contextEditor .ctxitem[data-id="e"]');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  await p.click('#contextEditor .ctxitem button:text-is("Delete")');
+  await p.click('#contextEditor .ctxitem button:text-is("Tap again to delete")'); await p.waitForTimeout(700);
+  const d = await pillsTop();
+  expect(d >= -2 && d < 150 && await p.isVisible('#contextUndo'), 'after a delete the pills and Undo are in view: ' + d);
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.49 Test lab (11/19): "Copy my ideas did not work". It went gray with no word when every open idea was pasted in. */
+await check('ideas tab Copy my ideas (v2.1.49): always answers a tap, says why when all open ideas came from someone else, and shows the message to copy by hand when the browser won\'t copy', async () => {
+  const k = await page();
+  await devOn(k);
+  await ideasOn(k); await k.click('#ideaTab');
+  // Only someone else's ideas in the jar (like the Sample cousin test): the tap explains instead of doing nothing
+  const { packIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  const note = packIdeas([{ id: 'cousin1abc', kind: 'idea', soon: 'soon', where: 'Your prompt', topicLabel: '', date: '2026-11-19', version: '2.1.48', text: 'A shorter version button', context: { trail: [] } }], { from: 'Cousin', kinds, soons });
+  await k.evaluate((n) => navigator.clipboard.writeText(n), note);
+  await k.click('#ideaPasteShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("From Cousin: 1 added")');
+  expect(!(await k.isDisabled('#ideaCopyShare')), 'Copy my ideas is never a dead gray button');
+  await k.click('#ideaCopyShare');
+  expect(/only sends ideas you drop in the jar here/.test(await k.textContent('#ideaShareMsg')) && /from Cousin/.test(await k.textContent('#ideaShareMsg')), 'with only pasted-in ideas, the tap says why nothing was copied: ' + await k.textContent('#ideaShareMsg'));
+  // One of your own: copies just that one, with your name
+  await logIdea(k, 'bug', 'copy', 'Copy my ideas looked dead');
+  await k.fill('#ideaName', 'Kev');
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("Copied 1 idea")');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Kev · 1 idea · /.test(mine) && /looked dead/.test(mine) && !/shorter version/.test(mine) && /~ end of shared ideas ~$/.test(mine), 'only your own idea, with your name and the end line:\n' + mine);
+  // A browser that won't copy: the message shows selected in a box to copy by hand
+  await k.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error('NotAllowedError')); document.execCommand = () => false; });
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareBox');
+  const box = await k.inputValue('#ideaShareBox');
+  expect(/Couldn’t copy by itself/.test(await k.textContent('#ideaShareMsg')) && /from Kev · 1 idea/.test(box) && /~ end of shared ideas ~$/.test(box), 'the message waits in a box to copy by hand: ' + box.slice(0, 120));
+  expect(await k.evaluate(() => { const b = document.getElementById('ideaShareBox'); return document.activeElement === b && b.selectionEnd - b.selectionStart === b.value.length; }), 'the whole message is selected');
+  expect(!k.errors.length, 'page errors: ' + k.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "text box is now going off of the screen for iphone". A long piece title stretched the editor past the right edge. */
+await check('my context pills (v2.1.50): on a small iPhone with a long piece title, the open box, its buttons, and the floating bar stay inside the screen', async () => {
+  const p = await page();
+  const long = 'Notes about my class, '.repeat(120);
+  await p.evaluate((l) => { localStorage.setItem('stp-context', JSON.stringify(l)); localStorage.setItem('stp-context-keep', '1'); }, [{ id: 'a', title: 'Bean N Bean roasting', text: long }, { id: 'b', title: 'My WGU class and everything about my capstone project', text: long }, { id: 'c', title: 'Garden', text: 'Plot 14.' }]);
+  await p.setViewportSize({ width: 320, height: 568 });
+  await p.reload();
+  await p.click('#contextEdit'); await p.waitForSelector('#contextEditor .ctxpill'); await p.waitForTimeout(400);
+  await p.click('#contextEditor .ctxpill[data-pill="b"]');
+  await p.waitForSelector('#contextEditor .ctxitem[data-id="b"]'); await p.waitForTimeout(700);
+  const g = await p.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    const item = r('#contextEditor .ctxitem'), text = r('#ctxText'), del = r('#contextEditor .ctxitem .del'), bar = r('#contextBar'), done = r('#contextDone'), pill = r('#contextEditor .ctxpill[data-pill="b"]');
+    return { w: innerWidth, h: innerHeight, itemR: item.right, itemL: item.left, textR: text.right, textH: text.height, barR: bar.right, doneR: done.right, pillR: pill.right, delB: del.bottom, barT: bar.top };
+  });
+  expect(g.itemL >= 0 && g.itemR <= g.w && g.textR <= g.w && g.pillR <= g.w, 'the open box and its pill fit the screen width: ' + JSON.stringify(g));
+  expect(g.barR <= g.w && g.doneR <= g.w, 'the floating Add another / Done bar fits the screen width: ' + JSON.stringify(g));
+  expect(g.textH <= 262, 'a long piece scrolls inside its box instead of growing past the screen: ' + JSON.stringify(g));
+  expect(g.delB <= g.barT, 'Delete sits above the floating bar, in view: ' + JSON.stringify(g));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "When I click done it should snap back to the context selection window". */
+await check('my context pills (v2.1.50): Done snaps back up to the My context chips you pick from', async () => {
+  const p = await ctxEditorOpen();
+  await p.click('#contextEditor .ctxpill[data-pill="d"]'); await p.waitForSelector('#contextBack');
+  await p.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await p.waitForTimeout(150);
+  expect(await p.evaluate(() => document.getElementById('contextRow').getBoundingClientRect().top) < -50, 'test setup: the My context chips are scrolled off the top');
+  await p.click('#contextDone'); await p.waitForTimeout(800);
+  const g = await p.evaluate(() => { const row = document.getElementById('contextRow').getBoundingClientRect(), chip = document.querySelector('#contextRow .ctxchip').getBoundingClientRect(); return { top: row.top, chipB: chip.bottom, h: innerHeight, editor: !!document.getElementById('contextEditor') }; });
+  expect(!g.editor && g.top >= -2 && g.top < 150 && g.chipB < g.h, 'after Done the editor is closed and the My context chips are on screen: ' + JSON.stringify(g));
+  expect(await p.evaluate(() => document.activeElement && document.activeElement.id === 'contextEdit'), 'focus lands on Edit, next to the chips');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+/* v2.1.50 Test lab (11/24): "I keep getting this when I try to copy". The old warning stayed on screen after an idea was dropped, so it looked like the answer to the next tap. */
+await check('ideas tab Copy my ideas (v2.1.50): dropping an idea or typing your name clears the old warning, each tap answers fresh, and a clipboard that hangs falls back to the copy-by-hand box', async () => {
+  const k = await page();
+  await devOn(k);
+  await ideasOn(k); await k.click('#ideaTab');
+  const { packIdeas } = await import('../app/lib/ideashare.js');
+  const kinds = [{ key: 'bug', icon: '🐞', label: 'Bug' }, { key: 'idea', icon: '💡', label: 'Idea' }, { key: 'faster', icon: '⚡', label: 'Faster way' }];
+  const soons = [{ key: 'now', icon: '🔥', label: 'Now' }, { key: 'soon', icon: '🗓️', label: 'Soon' }, { key: 'someday', icon: '🌱', label: 'Someday' }];
+  await k.evaluate((n) => navigator.clipboard.writeText(n), packIdeas([{ id: 'samplecousin1', kind: 'idea', soon: 'soon', where: 'Your prompt', topicLabel: '', date: '2026-11-18', version: '2.1.47', text: 'Sample: a short version button', context: { trail: [] } }, { id: 'samplecousin2', kind: 'bug', soon: 'now', where: 'Copy and open', topicLabel: '', date: '2026-11-18', version: '2.1.47', text: 'Sample: tapped Copy twice', context: { trail: [] } }], { from: 'Sample cousin', kinds, soons }));
+  await k.click('#ideaPasteShare'); await k.waitForSelector('#ideaShareMsg:has-text("From Sample cousin: 2 added")');
+  await k.click('#ideaCopyShare');
+  expect(/your 2 open ideas were pasted in from Sample cousin/.test(await k.textContent('#ideaShareMsg')), 'the warning names who the open ideas came from: ' + await k.textContent('#ideaShareMsg'));
+  // Drop one of your own: the old warning goes away, and the button counts it
+  await logIdea(k, 'bug', 'copy', 'my own test idea');
+  expect(!(await k.$('#ideaShareMsg')), 'dropping an idea clears the old warning, so it can\'t look like the next answer');
+  expect(/Copy my ideas \(1\)/.test(await k.textContent('#ideaCopyShare')), 'the button counts your own idea');
+  await k.fill('#ideaName', 'Kev');
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareMsg:has-text("Copied 1 idea")');
+  const mine = await k.evaluate(() => navigator.clipboard.readText());
+  expect(/^Speak to Prompt · Shared ideas · from Kev · 1 idea · /.test(mine) && /my own test idea/.test(mine) && !/Sample:/.test(mine) && /~ end of shared ideas ~$/.test(mine), 'only your own idea, with your name and the end line:\n' + mine);
+  // A clipboard write that never answers (seen on iPhone Safari): after 1.5 seconds the box to copy by hand shows
+  await k.evaluate(() => { navigator.clipboard.writeText = () => new Promise(() => {}); document.execCommand = () => false; });
+  await k.click('#ideaCopyShare');
+  await k.waitForSelector('#ideaShareBox', { timeout: 4000 });
+  expect(/Couldn’t copy by itself/.test(await k.textContent('#ideaShareMsg')) && /my own test idea/.test(await k.inputValue('#ideaShareBox')), 'a hanging copy falls back to the box to copy by hand');
+  expect(!k.errors.length, 'page errors: ' + k.errors.join('; '));
+});
+
+/* v2.1.50 (Kevin 11/24): a finished prompt waits in one tab-only slot, so an accidental reload doesn't lose it. The box still comes back empty, with no Your words are back note. */
+await check('last prompt (v2.1.50): after a finished prompt a reload brings back an empty box with no words note, and offers the last prompt to copy or its words back, until the next prompt replaces it', async () => {
+  const p = await page();
+  const slot = () => p.evaluate(() => { const k = Object.keys(sessionStorage).find((x) => /stp-last$/.test(x)); return k ? JSON.parse(sessionStorage.getItem(k.replace(/^stg:/, ''))) : null; });
+  await p.fill('#thoughts', 'plan a chill saturday hike near Bear Mountain for 4 people');
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(300);
+  const first = await p.inputValue('#output');
+  const s1 = await slot();
+  expect(s1 && first.length > 20 && s1.p === first && /Bear Mountain/.test(s1.w), 'the finished prompt and its words wait in the tab-only slot: ' + JSON.stringify(s1));
+  await p.reload(); await p.waitForSelector('#thoughts'); await p.waitForTimeout(400);
+  expect((await p.inputValue('#thoughts')) === '' && !(await p.$('#draftNote')), 'the box comes back empty, with no Your words are back note');
+  await p.waitForSelector('#lastPrompt');
+  await p.click('#lastCopy'); await p.waitForSelector('#lastMsg:has-text("Copied")');
+  expect((await p.evaluate(() => navigator.clipboard.readText())) === first, 'Copy it copies the last prompt');
+  await p.click('#lastSee');
+  expect((await p.inputValue('#lastText')) === first, 'See it shows the prompt');
+  await p.click('#lastWords');
+  expect(/Bear Mountain/.test(await p.inputValue('#thoughts')), 'Put my words back fills the box with the words it was built from');
+  // The next finished prompt replaces it (one slot)
+  await p.fill('#thoughts', 'a cozy movie night for 6 friends');
+  await p.click('#build'); await done(p);
+  await p.waitForFunction(() => /ready/i.test(document.getElementById('resultHead').textContent));
+  await p.waitForTimeout(300);
+  const s2 = await slot();
+  expect(s2 && /movie night/.test(s2.w) && !/Bear Mountain/.test(s2.w), 'the next finished prompt replaces the slot: ' + JSON.stringify(s2));
+  // ✕ forgets it
+  await p.reload(); await p.waitForSelector('#lastPrompt');
+  await p.click('#lastForget');
+  await p.waitForSelector('#lastPrompt', { state: 'detached', timeout: 2000 }).catch(() => {});
+  expect(!(await p.$('#lastPrompt')) && !(await slot()), '✕ forgets the last prompt: ' + !!(await p.$('#lastPrompt')) + ' ' + JSON.stringify(await slot()));
+  await p.reload(); await p.waitForTimeout(400);
+  expect(!(await p.$('#lastPrompt')) && !(await p.$('#draftNote')), 'after ✕ a reload shows nothing');
+  expect(await p.evaluate(() => !Object.keys(localStorage).some((k) => /stp-last|draft/.test(k) && !/lessons/.test(k))), 'never in localStorage');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
@@ -5489,11 +5899,11 @@ await check('save as context: an ironed note with a number you never said falls 
   await again('U10 Rockets, now at Oak Field');
   await q.click('#ctxSkipOverlap');
   await q.waitForFunction(() => !document.getElementById('saveCtx').open);
-  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && !(await ctxTexts(q)).some((t) => /Oak Field/.test(t)), 'Skip leaves everything as it was');
   await again('U10 Rockets, now at Oak Field');
   await q.click('#ctxUpdate');
   await q.waitForSelector('#ctxDoneLine:has-text("Updated")'); await q.click('#ctxDone');
-  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await q.$$eval('#contextEditor .ctxtext', (l) => l.map((t) => t.value))).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
+  expect((await q.$$eval('#contextRow .ctxchip', (l) => l.length)) === 2 && (await ctxTexts(q)).some((t) => /Oak Field/.test(t)), 'Update replaces the old words');
   expect(!p.errors.length && !f.errors.length && !q.errors.length, 'page errors: ' + [p, f, q].flatMap(x => x.errors).join('; '));
 });
 
@@ -6101,6 +6511,64 @@ await check('rework + shortcut writer (v2.1.47): Make it stronger hands round 2 
   expect(await v.inputValue('#output') === R2 && !(await v.isVisible('#holdCard')), 'the shortcut\'s stronger version swaps in');
   await v.waitForFunction(() => /1\.6 to 4\.6/.test(document.getElementById('result').textContent), null, { timeout: 8000 }).catch(() => { throw new Error('Stronger version ready (1.6 to 4.6) should show'); });
   for (const x of [p, q, r, v]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('cant-see radar: a card names what the AI cannot see, hides when the text is pasted, and Got it hides it (AGT-71)', async () => {
+  const intake = { title: 'Landlord Reply', need: 'Reply to my landlord', category: 'Work', complexity: 'simple', questions: [] };
+  const p = await page({ intake, write: 'THE PROMPT' });
+  let built = false;   // after the first prompt, each note starts with New prompt, the way a person goes again
+  const build = async (note) => { if (built) await menuTap(p, '#reset'); built = true; await p.fill('#thoughts', note); await p.click('#build'); await done(p); };
+  await build("fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite");
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  const txt = await p.textContent('#cantSee');
+  expect(/can't see your email or your file\. Paste the email right under the prompt, and attach the file in the chat\./.test(txt), 'card names both, paste and attach: ' + txt);
+  expect(await p.evaluate(() => !!(document.getElementById('output').compareDocumentPosition(document.getElementById('cantSee')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'it sits under the prompt');
+  expect(!/can.t see your/i.test(await p.inputValue('#output')), 'the prompt text is untouched by the card');
+  expect(!p.calls.some((c) => !c.intake && /can't see/i.test(c.text || '')), 'no extra Gemini call for it');
+  await p.dblclick('#cantSeeGot');   // a double tap is harmless
+  await p.waitForSelector('#cantSee', { state: 'detached', timeout: 8000 });
+  // A new prompt brings it back. Two things to paste say "them"
+  await build('look at my resume and my cover letter is in this document, make them match the job');
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/can't see your resume and document\. Paste them right under the prompt/.test(await p.textContent('#cantSee')), 'two to paste says them: ' + (await p.textContent('#cantSee')));
+  // A screenshot gets the attach wording
+  await build('what does the screenshot of my bank error mean, explain it simply');
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/Attach it in the chat/.test(await p.textContent('#cantSee')), 'screenshot says attach');
+  // The whole email already pasted (a 200 word block): no card
+  await build('fix this email and make it kind:\n' + Array.from({ length: 200 }, (_, i) => 'word' + i).join(' '));
+  // New prompt slides the last card out (250ms); a slow runner can still be mid-slide when the prompt is ready
+  const noCard = (why) => p.waitForSelector('#cantSee', { state: 'detached', timeout: 4000 }).catch(() => { throw new Error(why); });
+  await noCard('a pasted long email hides the card');
+  // A plain note, and dress code is not "my code"
+  await build('plan a birthday dinner for six, the dress code is casual, keep it under fifty dollars');
+  await noCard('a plain note shows no card');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  await p.context().close();
+});
+
+await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) shows or hides the card the way its step says (Test lab 11/25)', async () => {
+  const rel = JSON.parse(readFileSync(path.join(ROOT, '..', 'releases.json'), 'utf8')).releases.find((r) => r.version === '2.1.51');
+  const steps = rel.checks.filter((c) => c.paste);
+  expect(steps.length >= 3, 'the radar steps should each carry a note to copy: ' + steps.length);
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  let built = false;
+  for (const step of steps) {
+    if (built) await menuTap(p, '#reset');   /* each step starts with New prompt, as the step says */
+    built = true;
+    await p.fill('#thoughts', step.paste); await p.click('#build'); await done(p);
+    const quiet = /\bNO card\b/.test(step.see);
+    if (quiet) {
+      // the last step's card slides out after New prompt (250ms); wait for it to go rather than a fixed pause
+      await p.waitForSelector('#cantSee', { state: 'detached', timeout: 4000 }).catch(() => { throw new Error('step says no card, but one showed for: ' + step.paste); });
+    } else {
+      await p.waitForSelector('#cantSee', { timeout: 6000 });
+      const line = (await p.textContent('#cantSee .cs')).replace(/^🙈\s*/, '').trim();
+      expect(step.see.includes(line), 'the card should say what the step says: ' + JSON.stringify([line, step.see]));
+    }
+  }
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  await p.context().close();
 });
 
 await browser.close();

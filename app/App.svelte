@@ -30,6 +30,7 @@
   import JourneyStrip from './JourneyStrip.svelte';
   import OutputMore from './OutputMore.svelte';
   import MoveCard from './MoveCard.svelte';
+  import CantSee from './CantSee.svelte';
   import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
@@ -216,6 +217,7 @@
     <textarea id="output" readonly aria-label="Your prompt"></textarea>
     <OutputMore />
     <MoveCard />
+    <CantSee />
     <!-- Copy prompt, Open in (ChatGPT, Claude, Gemini) and New prompt live in the Next step dock (NextDock.svelte, #17).
          The other copy sits right under the prompt (#18); Report and Remember for next time? come after it. -->
     <div class="finish">
@@ -304,7 +306,7 @@
       </div>
       <div class="stats">
         <label class="check"><input type="checkbox" id="ideasToggle" bind:checked={ideas.on} onchange={() => ideas.saveOn()}> Show my Ideas tab</label>
-        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then copy them all into one Fix session for Claude. Saves only what you type there, on this phone. For building the app.</p>
+        <p class="hint">A 💡 button opens a side panel to log bugs, ideas, and faster ways while you use the app, then send them to Kevin (or, with dev tools on, copy them all into one Fix session for Claude). Saves only what you type there, on this phone.</p>
       </div>
       <div class="stats gradersrc" id="graderSrc" hidden={!core.dev}>
         <p class="srchead">Grader on this device</p>
@@ -389,5 +391,5 @@
   <KeyboardCoach />
   <NextDock />
 
-  <footer id="footer"><span id="footerLead">This site saves nothing. What you type stays in this tab only, for up to 30 minutes, so a reload doesn't lose it. Close the tab and it's gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
+  <footer id="footer"><span id="footerLead">This site saves nothing. What you type, and your last finished prompt, stay in this tab only, for up to 30 minutes, so a reload doesn't lose them. Close the tab and they're gone.</span> If you add a Gemini key, your words go to Google to build your prompt, and nowhere else.{#if core.dev && context.usable.length} <span id="footerContext">Your saved context is on this phone only.</span>{/if}{#if ideas.on && ideas.list.length} <span id="footerIdeas">Your Ideas tab notes are saved on this phone only.</span>{/if}{#if lab.visible && Object.keys(lab.results).length} <span id="footerLab">Your Test lab results are saved on this phone only.</span>{/if}{#if memory.active} <span id="footerMemory">Your memory (Tailored to you) is saved on this phone only. See, export, or forget it in Your core.</span>{/if}</footer>
 </div>

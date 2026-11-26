@@ -2,6 +2,236 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.54",
+      "date": "2026-11-25",
+      "title": "Test lab: clearer steps for the Can't-see-it radar",
+      "items": [
+        "The Test lab steps for the 🙈 Can't-see-it radar (v2.1.51) now come with a note you can copy, say where to find New prompt, and spell out what to look for. The last step, the plain birthday note, now says plainly that seeing no 🙈 card is the right result.",
+        "Nothing in the app itself changed. A new automatic check builds each of those Test lab notes and makes sure the card shows or stays away exactly the way the step says."
+      ],
+      "checks": [
+        {
+          "say": "Open the Test lab and go to the v2.1.51 Can't-see-it radar steps. Re-check the last one: tap New prompt (in the ⋯ menu), tap Copy on the note, paste it, and tap Build.",
+          "see": "The step now tells you that no 🙈 card under the prompt is the right result. No card shows, so mark it Works.",
+          "paste": "plan a birthday dinner for six, the dress code is casual."
+        }
+      ]
+    },
+    {
+      "version": "2.1.53",
+      "date": "2026-11-25",
+      "title": "Polish: with a key, the finished prompt comes into view by itself",
+      "items": [
+        "With a key, a finished prompt used to stop on the cooking plate and leave the prompt a whole screen further down, so you had to scroll to find it. Now the plate still gets its moment, and about 2 seconds later the page glides down so the prompt and its notes sit right above the Copy prompt button.",
+        "If you touch, scroll, tap, or press a key before then, or tap New prompt, the page stays where you put it. With Reduce Motion on it jumps instead of gliding. Quick version (no key) is unchanged."
+      ],
+      "checks": [
+        {
+          "say": "On your phone with your key in, build any note (for example: plan a cozy game night for 6 this friday, one friend is colorblind so no red and green games) and keep your hands off the screen.",
+          "see": "Ready shows the plate first, then the page glides down by itself and the prompt box sits above Copy prompt."
+        },
+        {
+          "say": "Build another note, and as soon as Ready shows, scroll a little with your thumb.",
+          "see": "The page stays where you put it. No jump a second later."
+        }
+      ]
+    },
+    {
+      "version": "2.1.52",
+      "date": "2026-11-25",
+      "title": "Polish: Hear it, Glow-Up, and X-ray are easier to tap on a phone",
+      "items": [
+        "The three buttons under the finished prompt (🔊 Hear it, ✨ Glow-Up, 🩻 X-ray) are now a full 44px tall, the size phones recommend for a finger, up from about 34px. They look the same otherwise and now fit on one line even on a smaller phone like an iPhone SE or mini (375px wide), where X-ray used to drop to a second line.",
+        "The three now line up exactly (Glow-Up used to sit 2px taller than the other two), and X-ray's Done button got the same bigger size."
+      ],
+      "checks": [
+        {
+          "say": "On your phone, build any note (for example: plan a cozy movie night for 4 friends this saturday, we have a small couch and one guy hates horror) and scroll to the buttons under the prompt.",
+          "see": "Hear it, Glow-Up, and X-ray sit on one line, all the same height, a little taller than before, and easy to hit with your thumb."
+        },
+        {
+          "say": "Tap X-ray, then tap Done.",
+          "see": "X-ray opens on the first tap and Done (same bigger size) closes it. Nothing jumps around."
+        },
+        {
+          "say": "Tap Hear it, then tap it again.",
+          "see": "It starts reading and the button says Stop; the second tap stops it. The button stays the same height the whole time."
+        }
+      ]
+    },
+    {
+      "version": "2.1.51",
+      "date": "2026-11-25",
+      "title": "Can't-see-it radar: when your words mention an email, resume, rubric, file, or screenshot, a card under the prompt says to paste or attach it",
+      "items": [
+        "Under the finished prompt, a small 🙈 card shows when your words point at something your AI can't see, like this email, my resume, the rubric, the attached file, or the screenshot. Typed things get Paste it right under the prompt; a file, screenshot, or photo gets Attach it in the chat.",
+        "It names up to two things in one line, and stays away when a big block of text (over about 150 words) already follows, since you probably pasted it in. Dress code and other everyday words don't set it off.",
+        "Got it hides the card until your next prompt. It runs on the phone with a plain word list: free, no Gemini call, nothing saved or sent, and the prompt itself never changes."
+      ],
+      "checks": [
+        {
+          "say": "Copy the note below, paste it in the box, and tap Build.",
+          "see": "Scroll under the finished prompt. Below the Move I made card there is a small card that starts with 🙈 and says Your AI can't see your email or your file. Paste the email right under the prompt, and attach the file in the chat. The prompt itself has no such line.",
+          "paste": "fix this email, I'm replying to my landlord, the attached lease says 30 days notice but he's saying 60, keep it polite"
+        },
+        {
+          "say": "Tap Got it (a quick double tap is fine).",
+          "see": "The card slides away and doesn't come back on that prompt."
+        },
+        {
+          "say": "Tap New prompt (in the ⋯ menu at the bottom), then paste the note below and tap Build.",
+          "see": "The 🙈 card is back under the prompt and says Your AI can't see your screenshot. Attach it in the chat after you paste the prompt.",
+          "paste": "what does the screenshot of my bank error mean"
+        },
+        {
+          "say": "This one checks the card stays quiet. Tap New prompt (in the ⋯ menu), paste the note below, and tap Build. The note mentions nothing your AI can't see, and 'dress code' should not count as code.",
+          "see": "Scroll under the finished prompt: there is NO card starting with 🙈 Your AI can't see. Seeing nothing there is the right result, so mark it Works.",
+          "paste": "plan a birthday dinner for six, the dress code is casual."
+        }
+      ]
+    },
+    {
+      "version": "2.1.50",
+      "date": "2026-11-24",
+      "title": "Test lab fixes: the open context piece fits an iPhone screen, Done snaps back to your contexts, Copy my ideas never shows an old warning, and your last prompt survives a reload",
+      "items": [
+        "My context editor: a piece with a long title no longer stretches the editor past the right edge of an iPhone. The open box, its buttons, and the floating Add another / Done bar stay inside the screen, and a long piece scrolls inside its box (about 6 lines) instead of growing past the screen.",
+        "With the keyboard up, the title or text box you tapped moves up so it isn't hidden behind the floating Done bar.",
+        "Done in the My context editor now snaps back up to your My context chips, where you pick what goes in the prompt.",
+        "💡 Ideas jar: the Nothing to copy yet warning goes away as soon as you drop an idea or type your name, so it can't look like the answer to your next tap, and every tap's answer flashes in fresh. It also names who the pasted-in ideas came from. If iPhone's copy never answers, after 1.5 seconds the message shows in a box to copy by hand.",
+        "Last prompt: a finished prompt now waits in one spot in this tab (replaced by your next prompt, gone after 30 minutes or when the tab closes, never sent). After a reload the box still comes back empty with no Your words are back note; a small line under it offers 📋 Copy it, ↩ Put my words back, See it, and ✕ to forget it."
+      ],
+      "checks": [
+        {
+          "say": "With 3 or more pieces in My context (give one a long title), tap Edit, then tap the long-titled pill.",
+          "see": "Its box opens right under that pill and fits the screen: no part runs off the right edge, Delete is in view above the floating bar, and a long piece scrolls inside its box."
+        },
+        {
+          "say": "Tap into the piece's text so the keyboard comes up.",
+          "see": "The text box sits above the floating Add another / Done bar, not behind it."
+        },
+        {
+          "say": "Scroll down to the bottom of the editor, then tap Done in the floating bar.",
+          "see": "The editor closes and the page snaps back up to the My context chips, ready to tap."
+        },
+        {
+          "say": "Open the 💡 Ideas jar with only the Sample cousin ideas in Open, tap 📋 Copy my ideas, then drop one idea of your own in the jar.",
+          "see": "The first tap says Nothing to copy yet, naming Sample cousin. Once your idea is in the jar that warning is gone and the button says Copy my ideas (1)."
+        },
+        {
+          "say": "Type your first name, tap 📋 Copy my ideas (1), and paste it into a note.",
+          "see": "Copied 1 idea. The note starts Speak to Prompt · Shared ideas · from (your name), has only your idea (no Sample cousin ones), and ends with ~ end of shared ideas ~. Then delete the sample ideas and your test idea."
+        },
+        {
+          "say": "Type a few words, build a prompt, wait for Your prompt is ready, then reload the page.",
+          "see": "The box comes back empty with no Your words are back note. A small line says Your last prompt is still here, with 📋 Copy it, ↩ Put my words back, See it, and ✕."
+        },
+        {
+          "say": "Tap 📋 Copy it and paste somewhere, then tap ↩ Put my words back.",
+          "see": "The paste is the prompt you just built. Your words come back in the box."
+        },
+        {
+          "say": "Reload once more and tap ✕, then reload again.",
+          "see": "The last prompt line goes away and stays gone after the reload."
+        }
+      ]
+    },
+    {
+      "version": "2.1.49",
+      "date": "2026-11-19",
+      "title": "Test lab fixes: a context piece opens right under its pill, All pieces snaps back up, Copy my ideas always answers, and a finished prompt clears Your words are back",
+      "items": [
+        "My context editor: tap a pill and its box opens right under that pill (the pills after it move below the box), with the pill brought to the top of the screen. It used to open below every pill, down near the bottom.",
+        "← All pieces, + Add another, and a delete now scroll back up to the pills instead of leaving you at the bottom of the editor.",
+        "💡 Ideas jar: 📋 Copy my ideas is never a dead gray button. With no ideas of your own (only ones pasted in, like Sample cousin's), a tap says why and to drop one in the jar first. If the browser won't copy, the message shows selected in a box to copy by hand.",
+        "Your words are back note: a finished prompt now forgets your saved words, so after a prompt is done a reload brings back an empty box and no note. A reload while it's still writing still brings them back."
+      ],
+      "checks": [
+        {
+          "say": "With 3 or more pieces in My context, tap Edit, then tap the second pill.",
+          "see": "Its box opens right under that pill (not at the bottom), the pills after it sit below the box, and the pill you tapped is near the top of the screen."
+        },
+        {
+          "say": "Scroll down to the bottom of the editor, then tap ← All pieces.",
+          "see": "The page snaps back up to the pills, with no piece open."
+        },
+        {
+          "say": "Scroll down again, then tap + Add another in the floating bar.",
+          "see": "The page snaps up to a blank piece open under the first pill, with the cursor in its title. Tap Delete twice to remove it: the page stays on the pills, with Undo showing."
+        },
+        {
+          "say": "Open the 💡 Ideas jar with only the Sample cousin ideas in Open (none of your own), then tap 📋 Copy my ideas.",
+          "see": "A line says Copy my ideas only sends ideas you logged yourself, and to drop one in the jar first. The button never just sits gray."
+        },
+        {
+          "say": "Drop one idea of your own in the jar, type your first name, tap 📋 Copy my ideas (1), and paste it into a note.",
+          "see": "Copied 1 idea. The note starts Speak to Prompt · Shared ideas · from (your name), has only your idea (no Sample cousin ones), and ends with ~ end of shared ideas ~. Then delete the sample ideas and your test idea."
+        },
+        {
+          "say": "Type a few words, build a prompt, wait for Your prompt is ready, then reload the page.",
+          "see": "The box comes back empty, with no Your words are back note."
+        },
+        {
+          "say": "Type a few words (don't build), then reload.",
+          "see": "Your words come back with Your words are back from before the page reloaded and Start fresh, like before."
+        }
+      ]
+    },
+    {
+      "version": "2.1.48",
+      "date": "2026-11-18",
+      "title": "My context as pills with Revert and Undo, Options snaps to your contexts, and shared ideas by copy and paste",
+      "items": [
+        "Options: My context now sits at the top of the panel, and opening Options scrolls down just enough that every context chip is on screen, ready to tap.",
+        "My context editor: Edit shows your pieces as pills. Tap one and only that piece opens, with ← All pieces, ↩ Revert changes (back to how it was when you opened it), and Delete. After a delete, Undo shows for 8 seconds. + New opens straight into a blank piece.",
+        "💡 Ideas jar: a new Shared ideas box. Someone testing the app types their first name and taps 📋 Copy my ideas to text them to Kevin; Kevin taps 📥 Paste shared ideas and they land in Open marked from that person, ride the Fix session, and close by themselves when a fix lists them. No server: the site sends nothing.",
+        "Fix session and Paste shared ideas are yours only: they show with Show my dev tools on (already on for your phone). Anyone else with the Ideas tab on sees Send your ideas to Kevin: their name and Copy my ideas.",
+        "Staging test link #sharedsample puts a made-up message from Sample cousin in the paste box, so Paste can be tried on one phone."
+      ],
+      "checks": [
+        {
+          "say": "Scroll to the top, then tap ⚙️ Options.",
+          "see": "The page slides down so My context sits right under the Options chip, above Mode and the sliders, with all its chips on screen."
+        },
+        {
+          "say": "With 2 or more pieces in My context, tap Edit.",
+          "see": "Your pieces show as pills (no big text boxes), with Tap a piece to edit or delete it above them."
+        },
+        {
+          "say": "Tap one pill, change its title and wipe its words, then tap ↩ Revert changes.",
+          "see": "Only that piece opened (its pill is filled in). Revert puts the title and words back the way they were when you opened it, and goes gray."
+        },
+        {
+          "say": "Tap Delete, then Tap again to delete, then Undo.",
+          "see": "The pill disappears and Deleted “…”. Undo shows; Undo brings the piece back in the same spot, open, with its words."
+        },
+        {
+          "say": "Tap ← All pieces, then + Add another.",
+          "see": "← All pieces goes back to just the pills; + Add another opens a blank piece first, with the cursor in its title."
+        },
+        {
+          "say": "Tap the #sharedsample test link, then Add to my jar.",
+          "see": "The 💡 Ideas jar opens with a message from Sample cousin in the paste box. After Add: From Sample cousin: 2 added, and both show in Open marked from Sample cousin."
+        },
+        {
+          "say": "Tap the #sharedsample test link again, then Add to my jar.",
+          "see": "From Sample cousin: 2 already here. Still no duplicates in Open."
+        },
+        {
+          "say": "Tap Copy fix session and paste it into a note.",
+          "see": "Both sample ideas are listed with · from Sample cousin · on their line."
+        },
+        {
+          "say": "In More options, turn off Show my dev tools, then open the 💡 Ideas jar.",
+          "see": "No Fix session box and no Paste shared ideas. The box says Send your ideas to Kevin, with a first name field and 📋 Copy my ideas. Turn Show my dev tools back on and Fix session is back."
+        },
+        {
+          "say": "Type your first name under Shared ideas, tap 📋 Copy my ideas, and paste it into a note.",
+          "see": "One message starting Speak to Prompt · Shared ideas · from (your name), with only your own ideas (no Sample cousin ones), ending with ~ end of shared ideas ~. Then delete the two sample ideas."
+        }
+      ]
+    },
+    {
       "version": "2.1.47",
       "date": "2026-11-18",
       "title": "Make it stronger can run on the shortcut too, on the model you last used",

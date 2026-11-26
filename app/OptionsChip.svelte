@@ -3,7 +3,8 @@
      Build my prompt. Mode, the four sliders and My context sit behind this one chip, which
      always says the mode you are in (Options · Quick), since that is the one setting that
      changes how long Build takes. Tapping it opens them inline right under it, and Build my
-     prompt moves down with them. Open or closed is kept in memory only: closed on every load.
+     prompt moves down with them. My context sits at the top of the panel (v2.1.48) so you
+     can pick pieces without scrolling. Open or closed is kept in memory only: closed on every load.
      The parts stay on the page while it is closed (the mode still follows your key, and
      picked context still goes into the prompt), they are only out of sight. */
   import { ui } from './lib/ui.svelte.js';
@@ -12,10 +13,28 @@
   import { SLIDERS } from './lib/starters.js';
   import ModePicker from './ModePicker.svelte';
   import ContextRow from './ContextRow.svelte';
+  import { tick } from 'svelte';
+  import { ms } from './lib/motion.js';
 
   const mode = $derived(ui.mode === 'auto' ? 'Auto' : ui.mode === 'quick' ? 'Quick' : 'Normal');
   /* The My context editor can be opened from elsewhere (Save as context, Bring in): it lives in here, so open up. */
   $effect(() => { if (context.open) ui.optionsOpen = true; });
+
+  /* Snap to My context (v2.1.48, idea mwmew9f943qi): when Options opens and the My context
+     chips land below the screen, the page scrolls so the chip sits near the top and every
+     context chip is in view, ready to tap. Nothing moves when they already fit. */
+  let chipEl = $state();
+  async function toggle() {
+    ui.optionsOpen = !ui.optionsOpen;
+    if (!ui.optionsOpen) return;
+    await tick();
+    const row = document.getElementById('contextRow');
+    if (!row || !chipEl) return;
+    const r = row.getBoundingClientRect();
+    if (r.bottom <= innerHeight - 12) return;
+    const by = Math.min(r.bottom - innerHeight + 24, chipEl.getBoundingClientRect().top - 12);
+    if (by > 0) window.scrollBy({ top: by, behavior: ms(1) ? 'smooth' : 'auto' });
+  }
 
   function said(sl) {
     const t = sl.steps[starter.tune[sl.key] - 1];
@@ -23,12 +42,14 @@
   }
 </script>
 
-<button type="button" class="optchip" id="optionsChip" aria-expanded={ui.optionsOpen} aria-controls="optionsPanel"
-        onclick={() => (ui.optionsOpen = !ui.optionsOpen)}>
+<button type="button" class="optchip" id="optionsChip" aria-expanded={ui.optionsOpen} aria-controls="optionsPanel" bind:this={chipEl}
+        onclick={toggle}>
   <span aria-hidden="true">⚙️</span> Options · <b id="optionsMode">{mode}</b><i class="chev" aria-hidden="true">▾</i>
 </button>
 
 <div class="optpanel" id="optionsPanel" hidden={!ui.optionsOpen}>
+  <!-- My context goes first (v2.1.48, idea mwmew9f943qi), so its chips are on screen the moment Options opens. -->
+  <ContextRow />
   <ModePicker />
   <div class="tune" id="optionsTune">
     <div class="tunehead">
@@ -45,7 +66,6 @@
     {/each}
     <p class="tunenote" id="optTuneNote">{starter.tuneLines.length ? 'Goes in with your words when you build: ' + starter.tuneLines.map((t) => t.line).join(' ') : 'In the middle, the sliders add nothing.'}</p>
   </div>
-  <ContextRow />
 </div>
 
 <style>

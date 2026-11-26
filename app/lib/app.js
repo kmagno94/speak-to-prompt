@@ -371,6 +371,8 @@ export function startApp() {
     }
   }
   function setReady(ready) {
+    /* v2.1.49: a finished prompt ends the draft safety net (lib/draft.svelte.js drops the saved words). */
+    if (ready) document.dispatchEvent(new Event("stp:ready"));
     document.getElementById("resultHead").textContent = ready ? "Your prompt is ready" : "Writing your prompt...";
     /* Cooking (v2.1.19): until the prompt is ready, the card shows only the heading, the
        tracker, and messages. The prompt comes up once Write, Polish, and Check are done. */
@@ -417,6 +419,7 @@ export function startApp() {
     if (st === 400 || st === 403) return notify("result", "error", "Google didn't accept your key", "Your quick prompt is below. Copy your key again from Google AI Studio, paste it, and tap Check key.", [{ label: "Fix my key", act: "key", primary: true }]);
     notify("result", "error", "Gemini didn't come through", "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
   }
+  var GLIDE_MS = 1800;
   function showResult(text, madeBy, title) {
     notify("result");
     ui.build = ""; ui.slow = null; ui.switched = false;   /* #51: Ready, the chip steps away */
@@ -439,6 +442,32 @@ export function startApp() {
     result.scrollIntoView({ behavior: "smooth", block: "start" });
     countRun();   /* first-timer count for the time strip (v2.1.33) */
     window.dispatchEvent(new Event("stp-ready"));   /* a prompt just finished: the dock's Copy prompt pulses once (#31) */
+    glideToPrompt();
+  }
+  /* A keyed build ends on the cooking plate, which leaves the prompt a whole screen down. Let
+     the plate have its moment, then glide to the grade and the prompt. Your own touch, scroll,
+     tap, or key wins, and so does anything else that moved the page or started a new write. */
+  var stopGlide = null;
+  function glideToPrompt() {
+    if (stopGlide) stopGlide();
+    var track = document.getElementById("resultTrack"), madeBy = document.getElementById("madeBy");
+    if (track.hidden) return;   /* no cooking ring: the prompt is already near the top */
+    var run = writeRun, moves = ["pointerdown", "touchstart", "wheel", "keydown"];
+    var stop = function () {
+      clearTimeout(timer); stopGlide = null;
+      moves.forEach(function (n) { window.removeEventListener(n, stop, true); });
+    };
+    var timer = setTimeout(function () {
+      stop();
+      if (run !== writeRun || result.hidden || result.classList.contains("cooking")) return;
+      var top = result.getBoundingClientRect().top;
+      if (top < -60 || top > 120) return;   /* the page is somewhere else now */
+      if (output.getBoundingClientRect().top < window.innerHeight - 200) return;   /* already in view */
+      var calm = document.hidden || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      window.scrollTo({ top: window.scrollY + madeBy.getBoundingClientRect().top - 12, behavior: calm ? "auto" : "smooth" });
+    }, GLIDE_MS);
+    stopGlide = stop;
+    moves.forEach(function (n) { window.addEventListener(n, stop, { capture: true, passive: true }); });
   }
   function showQuick(raw, reason) {
     showResult(buildPrompt(raw, quickBackground()),   /* core and My context go inside */
@@ -1438,7 +1467,7 @@ export function startApp() {
         var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, limit || TIME_LIMIT) : null;
         var hedge = hedgeAfter && i < list.length - 1 ? setTimeout(function () {
           if (done || next !== i + 1) return;
-          history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt) / 1000) + "s");
+          history.push(model + " was slow, so " + list[next] + " started too after " + Math.round((Date.now() - tAttempt - awayMs(tAttempt)) / 1000) + "s");   /* time away in another app is left out */
           cookSwitch();
           startNext();
         }, hedgeAfter) : null;

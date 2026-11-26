@@ -1,7 +1,8 @@
 /* 💡 Ideas tab: Kevin's own bug, idea, and "faster way" jar for improving Speak to Prompt.
    Ported from B&B Daily's Ideas tab, cut down for a static site:
    - Owner only. Hidden until "Show my Ideas tab" is on in More options.
-   - Saved on this phone only (localStorage). Nothing goes to a server.
+   - Saved on this phone only (localStorage). Nothing goes to a server. Shared ideas
+     (v2.1.48) travel only as a note the person copies and texts themselves.
    - Never holds the user's words: the panel saves only what is typed into the panel
      itself. The context trail keeps area names and problem signals (like "Gemini
      failed"), never anything from the prompt box, questions, or result.
@@ -9,9 +10,11 @@
    - Fix session copies one prompt that hands every open idea to a fresh Claude chat. */
 
 import { RELEASE_LIMIT } from './releases.js';
+import { packIdeas, unpackIdeas } from './ideashare.js';
 
 const LIST_KEY = 'stp-ideas';
 const ON_KEY = 'stp-ideas-on';
+const NAME_KEY = 'stp-ideas-name';   /* the first name on Copy my ideas to send (typed in the panel) */
 const SEMVER = typeof __SEMVER__ !== 'undefined' ? __SEMVER__ : '';
 export const REPO = 'kmagno94/speak-to-prompt';
 
@@ -78,7 +81,7 @@ class Ideas {
   todayCount = $derived(this.list.filter((i) => i.date === today()).length);
 
   constructor() {
-    try { this.on = localStorage.getItem(ON_KEY) === '1'; } catch (e) {}
+    try { this.on = localStorage.getItem(ON_KEY) === '1'; this.name = localStorage.getItem(NAME_KEY) || ''; } catch (e) {}
     this.list = readList();
   }
 
@@ -113,6 +116,34 @@ class Ideas {
   }
 
   remove(id) { this.list = this.list.filter((i) => i.id !== id); writeList(this.list); }
+
+  /* Shared ideas (v2.1.48, lib/ideashare.js): Copy my ideas to send packs your own open ideas
+     (not ones pasted in from someone else) as one plain note; Paste shared ideas reads one back.
+     Pasted ideas keep their ids, so pasting twice adds nothing new and ideas-done.json closes them. */
+  name = $state('');
+  mine = $derived(this.openList.filter((i) => !i.from));
+  setName(v) { this.name = String(v || '').slice(0, 30); try { if (this.name.trim()) localStorage.setItem(NAME_KEY, this.name); else localStorage.removeItem(NAME_KEY); } catch (e) {} }
+  shareText(date = new Date()) { return packIdeas(this.mine, { from: this.name, kinds: KINDS, soons: SOON, areaLabel: (a) => areaOf(a)?.label || a, date }); }
+  readShared(text) { return unpackIdeas(text, { kinds: KINDS, soons: SOON }); }
+  bringIn(note) {
+    const from = note.from || 'someone else';
+    let added = 0, same = 0;
+    const fresh = [];
+    for (const it of note.ideas) {
+      if (this.list.some((i) => i.id === it.id) || fresh.some((i) => i.id === it.id)) { same++; continue; }
+      const a = AREAS.find((x) => x.label === it.where);
+      const t = a ? a.topics.find((x) => x[1] === it.topicLabel) : null;
+      fresh.push({
+        id: it.id, kind: it.kind, area: a ? a.key : 'look', where: it.where || 'Other', topic: t ? t[0] : '', topicLabel: it.topicLabel || '',
+        text: it.text, soon: it.soon, context: { trail: it.trail || [], signals: [] },
+        at: /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date + 'T12:00:00.000Z' : new Date().toISOString(), date: it.date || today(),
+        version: String(it.version || '').slice(0, 20), status: 'open', from: from.slice(0, 30), pastedAt: new Date().toISOString()
+      });
+      added++;
+    }
+    if (fresh.length) { this.list = [...fresh, ...this.list]; writeList(this.list); }
+    return { added, same, from };
+  }
 
   /* Clear done: removes every fixed and won't-do idea from this phone. */
   clearDone() { this.list = this.list.filter((i) => i.status === 'open'); writeList(this.list); }
@@ -195,7 +226,7 @@ export function fixPrompt(list = ideas.openList) {
   const s = (key) => SOON.find((x) => x.key === key) || SOON[1];
   const lines = list.map((i, n) => {
     const ctx = [i.context?.trail?.length ? 'trail: ' + i.context.trail.map((a) => areaOf(a)?.label || a).join(' > ') : '', i.context?.signals?.length ? 'signals: ' + i.context.signals.map((g) => SIGNAL_LABEL[g.s] + ' in ' + (areaOf(g.area)?.label || g.area)).join(', ') : ''].filter(Boolean).join('; ');
-    return `${n + 1}. ${k(i.kind).icon} ${k(i.kind).label} · ${s(i.soon).icon} ${s(i.soon).label} · ${i.where}${i.topicLabel ? ' > ' + i.topicLabel : ''} · logged ${i.date}${i.version ? ' on v' + i.version : ''} (id ${i.id})\n   ${i.text}${ctx ? '\n   Context: ' + ctx : ''}`;
+    return `${n + 1}. ${k(i.kind).icon} ${k(i.kind).label} · ${s(i.soon).icon} ${s(i.soon).label} · ${i.where}${i.topicLabel ? ' > ' + i.topicLabel : ''}${i.from ? ' · from ' + i.from : ''} · logged ${i.date}${i.version ? ' on v' + i.version : ''} (id ${i.id})\n   ${i.text}${ctx ? '\n   Context: ' + ctx : ''}`;
   });
   return `Fix session: Speak to Prompt, ${list.length} open idea${list.length === 1 ? '' : 's'} from my Ideas tab.
 
