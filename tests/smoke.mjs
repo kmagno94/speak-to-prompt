@@ -51,6 +51,9 @@ async function check(name, fn) {
   if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
   catch (e) { results.push(['FAIL', name, e.message]); }
+  /* Close every page the check opened, pass or fail. Left open, ~330 pages kept their timers and animations
+     running all run long, and the last checks of a full staging run timed out until the runner gave up (11/24 to 11/26). */
+  for (const c of browser.contexts()) await c.close().catch(() => {});
   /* PROGRESS=1: print each result as it lands (handy on a slow machine) */
   if (process.env.PROGRESS) console.log(results[results.length - 1].slice(0, 2).join('  ') + (results[results.length - 1][2] ? '  ' + results[results.length - 1][2] : ''));
 }
