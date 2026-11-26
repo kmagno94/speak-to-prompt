@@ -503,7 +503,7 @@ await check('safari mic: dev tools show a Mic log of recognizer events per run w
 await check('mic log in dev tools (v2.1.28 Test lab report): the Mic log moved out from under the mic button into More options with the other dev tools; empty until Talk it out runs, then it fills in live', async () => {
   const p = await page({ hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await devOn(p);
-  await p.click('#moreOpts > summary');
+  await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
   expect(await p.isVisible('#micLogRow') && /Nothing yet/.test(await p.textContent('#micLogRow')), 'More options has the Mic log section, empty before any run');
   expect(await p.evaluate(() => { const r = document.getElementById('micLogRow'); return !!r && !!r.closest('#moreOpts') && !document.getElementById('micBtn').parentElement.contains(r); }), 'the Mic log sits in More options, not next to the mic button');
   await p.click('#moreOpts > summary');
@@ -2150,6 +2150,30 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   await p.mouse.click(box.x + box.width / 2, y);
   await p.waitForTimeout(250);
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
+});
+
+await check('faster first load: the Test lab, Your core, and the Mic log are fetched only when first shown; a fetch that fails says so with a reload button', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging';
+  const p = await page(); const got = [];
+  p.on('request', (r) => { const m = r.url().match(/\/assets\/(TestLab|CoreEditor|MicLog)-[^/]*\.js$/); if (m) got.push(m[1]); });
+  await p.reload(); await p.waitForLoadState('networkidle');
+  expect(!got.length, 'a plain visit fetches none of them, got: ' + got.join(', '));
+  await devOn(p); await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
+  await p.click('#starterBtn'); await p.waitForSelector('#coreBtn');
+  expect(!got.includes('CoreEditor') && !got.includes('TestLab'), 'dev tools on fetches only what is on the page, got: ' + got.join(', '));
+  await p.click('#coreBtn'); await p.waitForSelector('#coreEditor #coreUser');
+  await p.check('#ideasToggle');
+  if (stg) await p.waitForSelector('#labTab'); else await p.waitForTimeout(400);
+  expect(got.includes('CoreEditor') && got.includes('MicLog') && got.includes('TestLab') === stg, 'each is fetched when shown (Test lab on staging only), got: ' + got.join(', '));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  const q = await page();
+  await q.route(/\/assets\/CoreEditor-[^/]*\.js$/, (r) => r.abort());
+  await devOn(q); await q.click('#starterBtn'); await q.click('#coreBtn');
+  await q.waitForSelector('#starter [data-lazyfail] button');
+  await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
+  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyfail] button')]);
+  await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');
+  expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
 });
 
 await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {

@@ -5,9 +5,11 @@
   import { CATEGORIES, SLIDERS } from './lib/starters.js';
   import { ms } from './lib/motion.js';
   import { core } from './lib/core.svelte.js';
-  import CoreEditor from './CoreEditor.svelte';
+  import Lazy from './Lazy.svelte';
   import { startCategory, startLink } from './lib/startlink.js';
 
+  /* Your core is a dev tool: fetched the first time it opens (Lazy.svelte). */
+  const coreEditorPart = () => import('./CoreEditor.svelte');
   let draft = $state('');
   let showCore = $state(false);
   let thread = $state();
@@ -100,7 +102,7 @@
 
     {#if copied && copied !== 'Link copied'}<p class="linkout" id="starterLinkText">Copy this link: <span>{copied}</span></p>{/if}
     {#if showCore}
-      <CoreEditor onclose={() => (showCore = false)} />
+      <Lazy load={coreEditorPart} onclose={() => (showCore = false)} />
     {:else}
 
     <div class="thread" bind:this={thread} role="log" aria-live="polite">
