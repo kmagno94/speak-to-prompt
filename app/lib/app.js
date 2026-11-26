@@ -422,15 +422,16 @@ export function startApp() {
     notify("result", "error", "Gemini didn't come through", kept ? "Your answers are kept. Tap Try again to write the full version with them. The quick prompt below doesn't include them."
       : "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
   }
-  /* Try again after a failed write: same note and a key still in, so write again with the
-     answers you already gave. Anything else builds from the top, as before. */
+  /* Try again after a failed write: same note, same sliders, same mode and a key still in,
+     so write again with the answers you already gave. Anything else builds from the top, as before. */
   function retryBuild() {
     notify("result");
-    if (session && session.retryWrite && !busy && ui.hasKey && thoughts.value.trim() === session.box) {
-      var again = session.retryWrite;
+    var r = session && session.retryWrite;
+    if (r && !busy && ui.hasKey && starter.withTune(thoughts.value.trim()) === session.raw && currentMode() === r.mode) {
+      window.dispatchEvent(new Event("stp-build-start"));   /* same as a Build tap: calls off the full-version countdown */
       ui.switched = false;
       delete session.writeError;
-      return writeFinal(again.answers, again.quick);
+      return writeFinal(r.answers, r.quick);
     }
     form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
   }
@@ -782,8 +783,10 @@ export function startApp() {
      - lowgrade (v2.1.39): the first Quality check of each prompt comes back under the bar
        (3.4, missing who the AI is and background), so Ask me, then rewrite can be tried
        without waiting for a weak prompt. The grader still runs; only its answer is swapped,
-       and round 2 gets its real grade. Needs Show run stats on, like every Quality check. */
-  var fakeBusyUntil = 0, fakeLowGrade = false;
+       and round 2 gets its real grade. Needs Show run stats on, like every Quality check.
+     - writefail: the next write after you answer the questions fails once without anything
+       being sent, so Try again (which keeps your answers) can be tried without going offline. */
+  var fakeBusyUntil = 0, fakeLowGrade = false, fakeWriteFail = false;
   function stagingSwitches() {
     var h = location.hash || "";
     if (/^#stpback=/.test(h)) return;   /* a shortcut result (#53) is never a test switch */
@@ -793,6 +796,12 @@ export function startApp() {
       notify("form", "info", "Low grade test is on", fakeLowGrade === "vlow"
         ? "Staging test. Build any prompt with your key: its first Quality check comes back as 1.6, so the first prompt stays on screen while a stronger one writes. Reload to go back to normal."
         : "Staging test. Build any prompt with your key: its first Quality check comes back under the bar (3.4), so you can try What's thin, Use it and Make it stronger. Reload to go back to normal.");
+      return;
+    }
+    if (IS_STAGING && /writefail/.test(h)) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      fakeWriteFail = true;
+      notify("form", "info", "Write fail test is on", "Staging test. Build any note with your key and answer a question: that one write fails, so you can tap Try again and see your answers kept. Reload to go back to normal.");
       return;
     }
     if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
@@ -2562,7 +2571,7 @@ export function startApp() {
   }
 
   function geminiFlow(raw, key) {
-    session = { raw: raw, known: knownText(), forceAsk: forceAsk, auto: currentMode() === "auto", box: thoughts.value.trim() };   /* #56 Auto: questions, a Flash-Lite write, the grade decides */
+    session = { raw: raw, known: knownText(), forceAsk: forceAsk, auto: currentMode() === "auto" };   /* #56 Auto: questions, a Flash-Lite write, the grade decides */
     forceAsk = false;
     result.hidden = true;
     setBusy(true, "Reading your thoughts...");
@@ -3282,7 +3291,11 @@ export function startApp() {
     var handle = { cycle: !quick && flashOnly() && !session.auto };
     if (!quick && !viaSc) watchSlowWrite(run, handle);
     var onWriter = function (m) { if (run === writeRun) eta(m); };
-    return (viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
+    /* Staging #writefail: this one write fails without anything being sent. */
+    var failOnce = fakeWriteFail && !viaSc && session.answers.length > 0;
+    if (failOnce) fakeWriteFail = false;
+    return (failOnce ? new Promise(function (res, rej) { setTimeout(function () { var f = new Error("Staging test: the write failed."); f.status = 502; rej(f); }, 600); })
+      : viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
@@ -3464,7 +3477,7 @@ export function startApp() {
         return notify("result", "error", "Round " + failedN + " didn't come through", "Your round " + backN + " prompt is back and ready to copy. Tap Rework from this prompt to try again.");
       }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
-      if (session.answers.length) session.retryWrite = { answers: session.answers, quick: quick };
+      if (session.answers.length) session.retryWrite = { answers: session.answers, quick: quick, mode: currentMode() };
       failNotice(e, !!session.retryWrite);
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
