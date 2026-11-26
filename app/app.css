@@ -140,9 +140,9 @@ textarea#thoughts { resize: none; }
 @media (prefers-reduced-transparency: reduce) { .ideas .panel { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .ideas-top, .ideas-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .ideas-top span, .ideas-bottom span { font-size: 13px; font-weight: 700; color: var(--muted); }
-.ideas button { pointer-events: auto; min-height: 40px; border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
-.ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -6px -4px -6px 0; }
-.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); }
+.ideas button { pointer-events: auto; min-height: var(--tap); border: 0; border-radius: 999px; font-size: 14px; font-weight: 700; padding: 8px 14px; }
+.ideas .ideas-pause { background: transparent; color: var(--muted); padding: 8px 10px; margin: -8px -4px -8px 0; }
+.ideas .ideas-try { background: var(--accent-soft); color: var(--accent); margin-block: -2px; }
 .ideas-track { pointer-events: auto; display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; cursor: text; }
 .ideas-track::-webkit-scrollbar { display: none; }
 @media (prefers-reduced-motion: no-preference) {
@@ -331,7 +331,7 @@ button.pastebtn { flex: 1 1 auto; font-weight: 700; color: var(--accent); }
 /* Clarity mirror (AGT-13): "Your goal: ..." with Edit, above the questions. */
 .need.goal { color: var(--ink); line-height: 1.45; }
 .need.goal .goallbl { font-weight: 700; margin-right: 4px; }
-.need.goal .goalbtn { background: none; border: none; padding: 6px 4px; margin-left: 2px; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; box-shadow: none; }
+.need.goal .goalbtn { background: none; border: none; padding: 6px 4px; margin-left: 2px; color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; min-width: 44px; box-shadow: none; }
 .goalhint { margin: 0; font-size: 13px; color: var(--muted); }
 .goaledit { display: grid; gap: 8px; margin: 2px 0; }
 .goaledit label { font-size: 13px; font-weight: 700; color: var(--muted); }
