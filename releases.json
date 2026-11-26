@@ -2,6 +2,22 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.55",
+      "date": "2026-11-26",
+      "title": "Polish: Try again after a failed write keeps your answers",
+      "items": [
+        "If the write failed after you answered the questions (offline, or Google had a hiccup), Try again used to start over and ask you the same questions again. Now it goes straight back to writing with the answers you already gave, and the message says your answers are kept.",
+        "If you change your note or a slider before tapping Try again, it starts fresh like before. New staging test link #writefail makes that one write fail on purpose so you can try it without going offline."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging link that ends in #writefail with your key in. Paste the note, tap Build, answer one question, and tap Write my prompt.",
+          "see": "The write fails once and the message says your answers are kept. Tap Try again: no questions come back, it writes the full prompt right away.",
+          "paste": "ok so my sister's birthday is saturday and i wanna do a little picnic at the park, she likes lemon stuff, maybe 8 people, one friend is vegan"
+        }
+      ]
+    },
+    {
       "version": "2.1.54",
       "date": "2026-11-25",
       "title": "Test lab: clearer steps for the Can't-see-it radar",
