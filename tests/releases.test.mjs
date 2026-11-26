@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { parseVersion, compareVersions, aheadOf, releaseStatus, registryProblems, RELEASE_LIMIT } from '../app/lib/releases.js';
+import { parseVersion, compareVersions, aheadOf, releaseStatus, registryProblems } from '../app/lib/releases.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const rel = (version, extra = {}) => ({ version, title: 't', items: ['i'], checks: [{ say: 's', see: 'e' }], ...extra });
@@ -27,13 +27,13 @@ test('ahead counts only staging builds newer than live, newest first', () => {
 
 test('status: green, caramel at 4, red at 5, preview shows 5/5 with no builds', () => {
   const mk = (n) => Array.from({ length: n }, (_, i) => rel(`1.0.${i + 1}`));
-  assert.equal(releaseStatus(mk(3), '1.0.0').tone, 'green');
-  assert.equal(releaseStatus(mk(4), '1.0.0').tone, 'caramel');
-  const five = releaseStatus(mk(5), '1.0.0');
+  assert.equal(releaseStatus(mk(3), '1.0.0', 5).tone, 'green');
+  assert.equal(releaseStatus(mk(4), '1.0.0', 5).tone, 'caramel');
+  const five = releaseStatus(mk(5), '1.0.0', 5);   /* pinned to the normal 5, so sprint days can raise RELEASE_LIMIT */
   assert.equal(five.tone, 'red');
   assert.equal(five.atLimit, true);
   assert.equal(five.label, 'Staging is 5/5 ahead of live');
-  const pv = releaseStatus([], '1.0.0', RELEASE_LIMIT, { preview: true });
+  const pv = releaseStatus([], '1.0.0', 5, { preview: true });
   assert.equal(pv.count, 5);
   assert.equal(pv.ahead, 0);
 });
