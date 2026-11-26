@@ -2,6 +2,21 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.56",
+      "date": "2026-11-26",
+      "title": "Behind the scenes: the full test run is split in 3 and can't hang for hours",
+      "items": [
+        "Nothing in the app changed. The big background test run on every staging push now runs as 3 smaller jobs side by side, so it finishes in about a third of the time.",
+        "Each of those jobs, and the promote check's full test run, now stops after 30 minutes instead of hanging for up to 6 hours if something gets stuck."
+      ],
+      "checks": [
+        {
+          "say": "On GitHub, open Actions and tap the newest Test and deploy run on staging.",
+          "see": "Three jobs named Full tests (staging, background) 1/3, 2/3 and 3/3, all green, each done in well under 30 minutes. The app on staging looks and works the same as before."
+        }
+      ]
+    },
+    {
       "version": "2.1.55",
       "date": "2026-11-26",
       "title": "Polish: Try again after a failed write keeps your answers",

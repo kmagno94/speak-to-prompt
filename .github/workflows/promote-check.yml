@@ -22,6 +22,7 @@ jobs:
   full:
     name: Full tests (what goes live)
     runs-on: ubuntu-latest
+    timeout-minutes: 30   # a normal run takes about 16 minutes; a hung one fails fast
     steps:
       - name: Only staging promotes into main
         if: github.head_ref != 'staging'
