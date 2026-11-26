@@ -3729,6 +3729,64 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
 });
 
+await check('thumb targets: the small buttons are at least 44px to tap at 390 and 360, rows stay on one line, no sideways scroll (bundle B)', async () => {
+  const seen = [], bad = [];
+  for (const w of [390, 360]) {
+    const p = await page({ intake: { title: 'Japan Trip', need: 'Plan a trip to Japan', category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['5 days'] }] } });
+    await p.setViewportSize({ width: w, height: 844 });
+    /* size, plus a real hit test near both edges: nothing nearby may steal the tap */
+    const tap = async (name, sel, wide) => {
+      await p.waitForSelector(sel, { state: 'visible' });
+      await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center' }));
+      await p.waitForTimeout(450);
+      const m = await p.$$eval(sel, (l) => l.filter((e) => e.getClientRects().length).map((e) => {
+        e.scrollIntoView({ block: 'center' });
+        const r = e.getBoundingClientRect(), x = r.left + r.width / 2;
+        const hit = [r.top + 2, r.bottom - 2].every((y) => { const t = document.elementFromPoint(x, y); return !!t && e.contains(t); });
+        return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, hit };
+      }));
+      if (!m.length) bad.push(w + ' ' + name + ' missing');
+      for (const r of m) {
+        seen.push(w + ' ' + name + ' ' + r.w + 'x' + r.h);
+        if (r.h < 43.9 || (wide && r.w < 43.9) || !r.hit) bad.push(w + ' ' + name + ' ' + r.w + 'x' + r.h + (r.hit ? '' : ' covered'));
+      }
+    };
+    const flat = async (where) => { if (await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) bad.push(w + ' sideways scroll ' + where); };
+    const oneLine = async (name, sel) => { const tops = await p.$$eval(sel, (l) => l.filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; })); if (tops.length && Math.max(...tops) - Math.min(...tops) > 6) bad.push(w + ' ' + name + ' wrapped'); };
+    await tap('Latest pill', '#versionPill');
+    await tap('Ideas Pause', '#ideasPause');
+    await tap('Try this one', '#ideasTry');
+    await oneLine('ideas top row', '.ideas-top > *'); await oneLine('ideas bottom row', '.ideas-bottom > *');
+    await tap('report button (first screen)', '.reportbtn');
+    await flat('first screen');
+    await p.click('#keyPanel > summary');
+    await tap('Show me the steps', '#keyStepsHelp > summary');
+    await tap('Lock your key', '#keyPanel details.lock:not(#keyStepsHelp) > summary');
+    await tap('Remember my key', '#keyPanel label.check');
+    /* tapping near the label's edge, well away from the 18px box, ticks it */
+    const lab = await p.$('#keyPanel label.check'), before = await p.isChecked('#remember');
+    await lab.scrollIntoViewIfNeeded(); const lb = await lab.boundingBox();
+    await p.mouse.click(lb.x + 120, lb.y + lb.height - 3);
+    if (await p.isChecked('#remember') === before) bad.push(w + ' Remember label edge tap did nothing');
+    await flat('key panel');
+    await p.click('#moreOpts > summary');
+    await tap('Hear speed', '#hearSpeed .seg button');
+    await oneLine('hear speed', '#hearSpeed .seg button');
+    await flat('more options');
+    await withKey(p); await p.fill('#thoughts', 'japan trip with my wife'); await p.click('#build');
+    await p.waitForSelector('#qa:not([hidden])');
+    await tap('Edit goal', '#qaGoalEditBtn', true);
+    await flat('questions');
+    await p.click('#qaGo'); await done(p);
+    await tap('report button (result)', '#result .reportbtn');
+    await flat('result');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  if (process.env.SIZES) console.log(seen.join('\n'));
+  expect(!bad.length, 'small or covered targets: ' + bad.join(' | '));
+});
+
 await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 375 and 390 (phone) and 1280 (desktop)', async () => {
   /* One page, resized: building once keeps this check quick on a busy machine. */
   const p = await page();
