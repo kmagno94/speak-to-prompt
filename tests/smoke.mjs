@@ -6534,10 +6534,12 @@ await check('cant-see radar: a card names what the AI cannot see, hides when the
   expect(/Attach it in the chat/.test(await p.textContent('#cantSee')), 'screenshot says attach');
   // The whole email already pasted (a 200 word block): no card
   await build('fix this email and make it kind:\n' + Array.from({ length: 200 }, (_, i) => 'word' + i).join(' '));
-  expect(!(await p.$('#cantSee')), 'a pasted long email hides the card');
+  // New prompt slides the last card out (250ms); a slow runner can still be mid-slide when the prompt is ready
+  const noCard = (why) => p.waitForSelector('#cantSee', { state: 'detached', timeout: 4000 }).catch(() => { throw new Error(why); });
+  await noCard('a pasted long email hides the card');
   // A plain note, and dress code is not "my code"
   await build('plan a birthday dinner for six, the dress code is casual, keep it under fifty dollars');
-  expect(!(await p.$('#cantSee')), 'a plain note shows no card');
+  await noCard('a plain note shows no card');
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   await p.context().close();
 });
@@ -6554,8 +6556,8 @@ await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) 
     await p.fill('#thoughts', step.paste); await p.click('#build'); await done(p);
     const quiet = /\bNO card\b/.test(step.see);
     if (quiet) {
-      await p.waitForTimeout(400);
-      expect(!(await p.$('#cantSee')), 'step says no card, but one showed for: ' + step.paste);
+      // the last step's card slides out after New prompt (250ms); wait for it to go rather than a fixed pause
+      await p.waitForSelector('#cantSee', { state: 'detached', timeout: 4000 }).catch(() => { throw new Error('step says no card, but one showed for: ' + step.paste); });
     } else {
       await p.waitForSelector('#cantSee', { timeout: 6000 });
       const line = (await p.textContent('#cantSee .cs')).replace(/^🙈\s*/, '').trim();
