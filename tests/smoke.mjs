@@ -2152,7 +2152,7 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
 });
 
-await check('faster first load: the Test lab, Your core, and the Mic log are fetched only when first shown; a fetch that fails says so with a reload button', async () => {
+await check('faster first load: the Test lab, Your core, and the Mic log are fetched only when first shown; a slow fetch says it is opening, a failed one says so with a reload button', async () => {
   const stg = process.env.APP_CHANNEL === 'staging';
   const p = await page(); const got = [];
   p.on('request', (r) => { const m = r.url().match(/\/assets\/(TestLab|CoreEditor|MicLog)-[^/]*\.js$/); if (m) got.push(m[1]); });
@@ -2167,9 +2167,11 @@ await check('faster first load: the Test lab, Your core, and the Mic log are fet
   expect(got.includes('CoreEditor') && got.includes('MicLog') && got.includes('TestLab') === stg, 'each is fetched when shown (Test lab on staging only), got: ' + got.join(', '));
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   const q = await page();
-  await q.route(/\/assets\/CoreEditor-[^/]*\.js$/, (r) => r.abort());
+  await q.route(/\/assets\/CoreEditor-[^/]*\.js$/, async (r) => { await new Promise((z) => setTimeout(z, 600)); r.abort(); });
   await devOn(q); await q.click('#starterBtn'); await q.click('#coreBtn');
+  expect(/Opening your core/.test(await q.textContent('#starter [data-lazywait]')), 'a slow fetch says Opening your core instead of an empty card');
   await q.waitForSelector('#starter [data-lazyfail] button');
+  expect(!(await q.$('#starter [data-lazywait]')), 'the waiting line goes away once the fetch settles');
   await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
   await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyfail] button')]);
   await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');

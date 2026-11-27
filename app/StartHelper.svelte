@@ -102,7 +102,7 @@
 
     {#if copied && copied !== 'Link copied'}<p class="linkout" id="starterLinkText">Copy this link: <span>{copied}</span></p>{/if}
     {#if showCore}
-      <Lazy load={coreEditorPart} onclose={() => (showCore = false)} />
+      <Lazy load={coreEditorPart} waiting="Opening your core…" onclose={() => (showCore = false)} />
     {:else}
 
     <div class="thread" bind:this={thread} role="log" aria-live="polite">
