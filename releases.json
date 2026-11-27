@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.58",
+      "date": "2026-11-26",
+      "title": "Polish: the first screen loads faster",
+      "items": [
+        "The first screen downloads less: the Test lab, Your core, and the Mic log (tools most people never open) now load the first time you open them instead of with every visit. The main app file is about 15 kB smaller and the styles about 8 kB smaller. They look and work the same once open; on a slow phone Your core says Opening your core for a moment the first time.",
+        "The fonts no longer hold up the first screen. On a slow connection the words show right away in the phone's own font, then switch to the usual fonts when they arrive. Same fonts as before."
+      ],
+      "checks": [
+        {
+          "say": "Turn on Show my dev tools, tap Not sure where to start?, then Set up your core (or Your core). Then turn on Show my Ideas tab.",
+          "see": "Your core opens like before (you may see Opening your core for a blink), and the Test lab tab still shows up and opens."
+        },
+        {
+          "say": "Close the tab, then open staging again on cell data, not Wi-Fi.",
+          "see": "The words and the box show right away. The usual fonts are in place at once or a moment later, and nothing jumps around."
+        }
+      ]
+    },
+    {
       "version": "2.1.57",
       "date": "2026-11-26",
       "title": "Polish: the small buttons are easier to tap with a thumb",
