@@ -1,7 +1,8 @@
 import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, shortWriteText, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
-import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { numberTokens, normalizeSpokenTimes, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { prefillLink } from './openlink.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
@@ -511,16 +512,29 @@ export function startApp() {
   }
 
   /* Copy and open: the copy starts inside the tap, and the link opens the app
-     (or website) at the same time, so the prompt is ready to paste there. */
+     (or website) at the same time, so the prompt is ready to paste there.
+     On computers and iPad the ChatGPT and Claude links also carry the prompt
+     (lib/openlink.js), swapped in for this one tap only. */
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
+    var swappedFrom = "";   /* the plain address while a prompt address is swapped in, so a quick double tap can't keep the old prompt on the link */
     a.addEventListener("click", function () {
       if (!output.value) return;
+      var name = a.textContent.trim(), plain = swappedFrom || a.getAttribute("href");
+      var typed = plain ? prefillLink(name, output.value, navigator) : "";
+      if (typed) {
+        swappedFrom = plain;
+        a.setAttribute("href", typed);   /* the tap follows this address */
+        setTimeout(function () { a.setAttribute("href", plain); swappedFrom = ""; }, 0);
+      }
       /* The status line sits right under these links, so the answer shows where you tapped. */
-      var cant = "Couldn't copy it. Tap Copy prompt first, then open " + a.textContent + ".";
+      var done = typed ? "Copied. Opening " + name + ". Typed it in for you. If you don't see it there, just paste."
+        : "Copied. Opening " + name + ": paste it there.";
+      var cant = typed ? "Opening " + name + " with your prompt typed in. If you don't see it there, tap Copy prompt, then paste."
+        : "Couldn't copy it. Tap Copy prompt first, then open " + name + ".";
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(output.value).then(function () {
           promptCopied = true;
-          status.textContent = "Copied. Opening " + a.textContent + ": paste it there.";
+          status.textContent = done;
         }, function () { signal("copy-failed", "Copy and open"); status.textContent = cant; });
       } else status.textContent = cant;
     });
@@ -3980,7 +3994,7 @@ export function startApp() {
     if (hanging(fixed) && !hanging(draft)) return false;
     var len = words(fixed) / Math.max(1, words(draft));
     /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
-    var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
+    var said = numberTokens(normalizeSpokenTimes(saidText()) + "\n" + saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
     var lost = Object.keys(had).some(function (n) { return said[n] && !kept[n]; });
     return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && (after.strict || []).length <= (before.strict || []).length && len >= 0.7 && len <= 1.8;
   }

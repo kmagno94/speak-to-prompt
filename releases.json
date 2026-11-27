@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.60",
+      "date": "2026-11-27",
+      "title": "Open in ChatGPT or Claude types your prompt in for you (computers and iPad)",
+      "items": [
+        "On a computer or iPad, Open in ChatGPT or Open in Claude now opens the chat with your prompt already typed in the box, so there's nothing to paste. Your prompt is still copied on the same tap as a backup. iPhone, Android, Gemini, and very long prompts keep the old copy and open.",
+        "Spoken times like 5 30 or 7 45pm now count as 5:30 and 7:45, so a prompt that says the time right no longer gets a false red Heads up, and a time the prompt really left out is named as 5:30 instead of a stray 30."
+      ],
+      "checks": [
+        {
+          "say": "On a computer or iPad, build a short prompt, tap the three dots, then Open in ChatGPT (and again with Claude).",
+          "see": "A new tab opens with your prompt already in the chat box, and the status line says Copied. Opening ChatGPT. Typed it in for you."
+        },
+        {
+          "say": "Say a note with a spoken time, like soccer tuesday at 5 30, and build it.",
+          "see": "The prompt says 5:30 and there's no red Heads up about 5:30 or 30."
+        }
+      ]
+    },
+    {
       "version": "2.1.59",
       "date": "2026-11-27",
       "title": "Polish: a steadier, shorter screen (bundle D)",
