@@ -6808,7 +6808,7 @@ await check('in-app browser: inside Instagram, Facebook, TikTok, or Snapchat one
 });
 
 await check('in-app browser: Start here waits behind the card, Continue here anyway lets it play, once per visit, and run stats keep a fixed label on the phone (AGT-147)', async () => {
-  const stg = process.env.APP_CHANNEL === 'staging', k = (stg ? 'stg:' : '') + 'stp-inapp';
+  const stg = process.env.APP_CHANNEL === 'staging', k = 'stp-inapp';   /* staging's page adds its own stg: prefix */
   const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 400.0.0.0';
   const p = await page({ ua, fresh: true });
   await p.waitForSelector('#inApp');
