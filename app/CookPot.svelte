@@ -171,7 +171,6 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .ring { transition: stroke-dashoffset 0.9s ease, stroke 0.4s ease; }
-    .stage { transition: width 0.4s ease; }
     .flames path { animation: flick 0.5s ease-in-out calc(var(--i) * -0.13s) infinite alternate; }
     .steam path { animation: rise 2.2s ease-in-out infinite; }
     .steam path:nth-child(2) { animation-delay: 0.7s; } .steam path:nth-child(3) { animation-delay: 1.4s; }
