@@ -120,6 +120,10 @@
   .ring { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
   .glow { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0; }
   .done .ring { stroke: var(--ok); }
+  /* Ready: the ring draws in smaller so the prompt is less of a scroll away. Same parts, same plate. */
+  .cook.done { gap: 4px; }
+  .done .stage { width: min(160px, 48vw); }
+  .done .sub { font-size: 13px; }
 
   .burner { fill: var(--muted); opacity: 0.6; }
   .flames path { fill: #f97316; transform-box: fill-box; transform-origin: 50% 100%; }
@@ -167,6 +171,7 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .ring { transition: stroke-dashoffset 0.9s ease, stroke 0.4s ease; }
+    .stage { transition: width 0.4s ease; }
     .flames path { animation: flick 0.5s ease-in-out calc(var(--i) * -0.13s) infinite alternate; }
     .steam path { animation: rise 2.2s ease-in-out infinite; }
     .steam path:nth-child(2) { animation-delay: 0.7s; } .steam path:nth-child(3) { animation-delay: 1.4s; }

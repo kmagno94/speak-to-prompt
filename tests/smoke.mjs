@@ -6731,6 +6731,19 @@ await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) 
   await p.context().close();
 });
 
+await check('steady screen: at Ready the cooking ring draws in smaller, with the same parts, and the clock stays readable', async () => {
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+    await p.setViewportSize(vp);
+    await withKey(p); await p.fill('#thoughts', 'plan a friendsgiving for 8 on saturday'); await p.click('#build'); await done(p);
+    await p.waitForTimeout(900);
+    const r = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook.done'), h = (e) => e.getBoundingClientRect().height; return { cook: h(c), stage: h(c.querySelector('.stage')), clock: h(c.querySelector('.clock')), parts: ['.ring', '.plate', '.cloche', '.clock', '.cap', '.ing'].filter((x) => c.querySelector(x)).length }; });
+    expect(r.stage <= 162 && r.cook <= 232 && r.clock >= 18 && r.parts === 6, 'a compact done ring with all its parts: ' + JSON.stringify([vp.width, r]));
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
