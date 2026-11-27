@@ -6437,6 +6437,8 @@ await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every writ
   const out1 = await p.textContent('#bbOut');
   expect(/6 of 8 ready/.test(out1) && /no answer came back/.test(out1) && /looks cut off/.test(out1), 'B12 missing and B15 cut off are failed cases: ' + out1.slice(0, 200));
   expect(await p.isDisabled('#bbCopy') && await p.isEnabled('#bbRetry'), 'Copy waits for 8 of 8; Rerun failed is on');
+  const fold = () => p.evaluate(() => document.querySelector('#bbOut details').open);
+  expect(await fold(), 'steady screen: with failed cases the results stand open');
   await p.click('#bbRetry');
   await p.waitForFunction(() => window.__scOpens.length === 2);
   const rerun = await p.evaluate(() => navigator.clipboard.readText());
@@ -6445,6 +6447,17 @@ await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every writ
   await p.click('#bbPaste');
   await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent), null, { timeout: 30000 });
   expect(await p.isEnabled('#bbCopy') && await p.isDisabled('#bbRetry'), 'Copy for answer key is on at 8 of 8');
+  expect(!(await fold()), 'steady screen: all ready closes the results');
+  /* A re-render with all ready keeps it open, or closed, the way you left it. */
+  for (const want of [true, false]) {
+    if ((await fold()) !== want) await p.click('#bbOut summary');
+    await p.evaluate(() => { document.querySelector('#bbOut details').dataset.old = '1'; document.getElementById('bbInfo').textContent = ''; location.hash = '#benchback'; });
+    await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+    await p.evaluate((t) => navigator.clipboard.writeText(t), '@@@\n' + ['B10|chatgpt', 'B11|chatgpt', 'B12|cloud', 'B13|cloud', 'B14|ondevice', 'B15|ondevice'].map((h) => h + '\n' + fake(h.split('|')[0])).join('\n@@@\n'));
+    await p.click('#bbPaste');
+    await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent) && !document.querySelector('#bbOut details').dataset.old, null, { timeout: 30000 });
+    expect((await fold()) === want, 'steady screen: a re-render keeps the results ' + (want ? 'open' : 'closed'));
+  }
   await p.click('#bbCopy');
   const key = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^bench add\n/.test(key) && (key.match(/^== B\d+ /gm) || []).length === 8, 'answer key copy starts with bench add and has 8 cases');
@@ -6742,6 +6755,22 @@ await check('steady screen: at Ready the cooking ring draws in smaller, with the
     expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
     await p.context().close();
   }
+});
+
+await check('steady screen: bench builder results fold under the count when all are ready, open on a failed case, and stay how you left them', async () => {
+  const p = await page();
+  const run = (bad) => { const c = Array.from({ length: 6 }, (_, i) => ({ id: 'B1' + i, name: 'Case ' + i, writer: 'cloud', job: 'x', prompt: 'a b c', err: bad && !i ? 'cut off' : '' })); return { at: new Date().toISOString(), phase: 'back', cases: c, seededSpec: [{}, {}], seeded: [{ id: 'S1', name: 'S', flaw: 'x', prompt: 'a' }, { id: 'S2', name: 'S', flaw: 'y', prompt: 'a' }] }; };
+  const load = async (bad) => { await p.evaluate((s) => localStorage.setItem('stp-benchbuild', JSON.stringify(s)), run(bad)); await devOn(p); await p.click('#moreOpts > summary'); };
+  const state = () => p.evaluate(() => { const d = document.querySelector('#bbOut details'); return { open: d.open, h: Math.round(document.getElementById('bbOut').getBoundingClientRect().height), sum: d.querySelector('summary').textContent }; });
+  await load(false);
+  const shut = await state();
+  expect(!shut.open && shut.h < 100 && /8 of 8 ready/.test(shut.sum), 'closed when all ready: ' + JSON.stringify(shut));
+  await p.click('#bbOut summary');
+  expect((await state()).h > 300 && await p.isVisible('#bbOut table'), 'one tap shows the table');
+  await load(true);
+  const bad = await state();
+  expect(bad.open && /7 of 8 ready/.test(bad.sum) && await p.isVisible('#bbOut table'), 'a failed case opens it: ' + JSON.stringify(bad));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await browser.close();

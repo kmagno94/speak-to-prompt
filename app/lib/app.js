@@ -2146,7 +2146,11 @@ export function startApp() {
       var state = bbOk(c) ? "✅<small>" + words(c.prompt) + " words" + (c.repair && c.repair !== "none" ? " · Polish " + esc(c.repair) : "") + "</small>" : c.err ? "⚠️<small>" + esc(c.err) + "</small>" : c.job ? "job ready" : "…";
       return "<tr><td>" + esc(c.id) + "<small>" + esc(c.name) + "</small></td><td>" + esc(c.flaw ? "seeded" : (BB_TAG[c.writer] || "").replace("shortcut-", "")) + "</td><td>" + state + "</td></tr>";
     }).join("");
-    el.innerHTML = "<p class=\"benchsum\">" + ok + " of " + total + " ready</p><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    /* The table folds under the count. It stands open while any case is working or failed; once all
+       are ready it closes, and from then on a re-render keeps it the way you left it. */
+    var done = total > 0 && ok === total, was = el.querySelector("details");
+    var open = !done || !!(was && was.hasAttribute("data-done") && was.open);
+    el.innerHTML = "<details class=\"benchfold benchres\"" + (done ? " data-done" : "") + (open ? " open" : "") + "><summary><span class=\"benchsum\">" + ok + " of " + total + " ready</span> <small>Show or hide cases</small></summary><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></details>";
     el.hidden = false;
   }
   function bbButtons() {
