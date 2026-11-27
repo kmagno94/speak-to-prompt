@@ -5631,7 +5631,7 @@ await check('my context: Done floats at the bottom of the screen (and on top of 
   await devOn(p);
   await ideasOn(p);
   const fabs = process.env.APP_CHANNEL === 'staging' ? ['#ideaTab', '#labTab'] : ['#ideaTab'];
-  for (const f of fabs) expect(await p.isVisible(f), f + ' should show before the editor opens');
+  for (const f of fabs) expect(await p.waitForSelector(f, { state: 'visible', timeout: 5000 }).then(() => true, () => false), f + ' should show before the editor opens');
   for (let i = 0; i < 4; i++) { await p.click(i ? '#contextBar button:text-is("+ Add another")' : '#contextNew'); await p.waitForTimeout(150); }
   await p.evaluate(() => document.getElementById('contextEditor').scrollIntoView({ block: 'start' })); await p.waitForTimeout(200);
   const tall = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().height > innerHeight);
