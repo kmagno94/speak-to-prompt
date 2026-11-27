@@ -19,9 +19,16 @@ function restyle() {
   })));
 }
 
+/* Parts that only loaded on a retry: opening one again reuses it, since the browser may still
+   remember the first failure. */
+const got = new Map();
+export const loadPart = (load) => got.get(load) || load();
+
 export async function retryPart(load) {
   const file = (String(load).match(/import\(\s*[`'"]\.\/([\w.-]+\.js)[`'"]/) || [])[1];
   if (!file) return load();
   await restyle();
-  return import(/* @vite-ignore */ import.meta.url.replace(/[^/]*$/, '') + file + bust());
+  const m = await import(/* @vite-ignore */ import.meta.url.replace(/[^/]*$/, '') + file + bust());
+  got.set(load, m);
+  return m;
 }

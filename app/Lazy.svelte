@@ -4,10 +4,10 @@
      an optional `waiting` line says so (a slow phone would otherwise show an empty card). If the
      fetch fails (offline, or a newer build replaced the file), say so and offer Try again (keeps
      what's on screen), with a reload as the fallback. */
-  import { retryPart } from './lib/retrypart.js';
+  import { loadPart, retryPart } from './lib/retrypart.js';
   let { load, waiting = '', ...props } = $props();
   let again = $state.raw(null);
-  const part = $derived(again || load());
+  const part = $derived(again || loadPart(load));
 </script>
 
 {#await part}

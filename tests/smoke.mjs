@@ -2193,6 +2193,8 @@ await check('faster first load: the Test lab, Your core, and the Mic log are fet
     const styled = await r.evaluate(() => [...document.styleSheets].some((s) => { try { return /CoreEditor-/.test(s.href || '') && s.cssRules.length > 0; } catch (e) { return false; } }));
     expect(loads === 0 && styled, 'opens without a page reload, with its styles: ' + JSON.stringify({ loads, styled }));
     expect(await r.inputValue('#thoughts') === 'keep these words', 'what was on screen is still there');
+    await r.click('#coreDone'); await r.waitForSelector('#coreEditor', { state: 'detached' }); await r.click('#coreBtn');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
     expect(!r.errors.length, 'page errors: ' + r.errors.join('; '));
   }
 });
