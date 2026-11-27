@@ -2,6 +2,7 @@ import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gap
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { prefillLink } from './openlink.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
@@ -511,16 +512,27 @@ export function startApp() {
   }
 
   /* Copy and open: the copy starts inside the tap, and the link opens the app
-     (or website) at the same time, so the prompt is ready to paste there. */
+     (or website) at the same time, so the prompt is ready to paste there.
+     On computers and iPad the ChatGPT and Claude links also carry the prompt
+     (lib/openlink.js), swapped in for this one tap only. */
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
     a.addEventListener("click", function () {
       if (!output.value) return;
+      var name = a.textContent.trim(), plain = a.getAttribute("href");
+      var typed = plain ? prefillLink(name, output.value, navigator) : "";
+      if (typed) {
+        a.setAttribute("href", typed);   /* the tap follows this address */
+        setTimeout(function () { a.setAttribute("href", plain); }, 0);
+      }
       /* The status line sits right under these links, so the answer shows where you tapped. */
-      var cant = "Couldn't copy it. Tap Copy prompt first, then open " + a.textContent + ".";
+      var done = typed ? "Copied. Opening " + name + ". Typed it in for you. If you don't see it there, just paste."
+        : "Copied. Opening " + name + ": paste it there.";
+      var cant = typed ? "Opening " + name + " with your prompt typed in. If you don't see it there, tap Copy prompt, then paste."
+        : "Couldn't copy it. Tap Copy prompt first, then open " + name + ".";
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(output.value).then(function () {
           promptCopied = true;
-          status.textContent = "Copied. Opening " + a.textContent + ": paste it there.";
+          status.textContent = done;
         }, function () { signal("copy-failed", "Copy and open"); status.textContent = cant; });
       } else status.textContent = cant;
     });

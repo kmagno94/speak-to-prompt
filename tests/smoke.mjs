@@ -6801,6 +6801,62 @@ await check('steady screen: the end of the page scrolls clear of the dock and th
   }
 });
 
+/* Skip the paste (AGT-87): the Open in tap carries the prompt on computers and iPad. */
+await check('skip the paste: the link helper prefills ChatGPT and Claude on computers and iPad only, up to the cap', async () => {
+  const { prefillLink, PREFILL_MAX } = await import('../app/lib/openlink.js');
+  const mac = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', maxTouchPoints: 0 };
+  const win = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0 Safari/537.36', maxTouchPoints: 10 };
+  const ipad = { userAgent: mac.userAgent, maxTouchPoints: 5 };
+  const ipadOld = { userAgent: 'Mozilla/5.0 (iPad; CPU OS 12_0 like Mac OS X) Mobile/15E148', maxTouchPoints: 5 };
+  const iphone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148', maxTouchPoints: 5 };
+  const android = { userAgent: 'Mozilla/5.0 (Linux; Android 10; K) Chrome/130.0 Mobile Safari/537.36', maxTouchPoints: 5 };
+  const tablet = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; Android 14) Chrome/130.0 Safari/537.36', maxTouchPoints: 5 };
+  const text = 'Line one & two?\n\n#3 100% a+b="c" 🎉';
+  for (const d of [mac, win, ipad, ipadOld]) for (const [name, base] of [['ChatGPT', 'https://chatgpt.com/?q='], ['Claude', 'https://claude.ai/new?q=']]) {
+    const url = prefillLink(name, text, d);
+    expect(url.startsWith(base) && new URL(url).searchParams.get('q') === text, name + ' should carry the exact prompt: ' + url);
+  }
+  for (const d of [iphone, android, tablet]) expect(prefillLink('ChatGPT', text, d) === '' && prefillLink('Claude', text, d) === '', 'phones keep the plain link: ' + d.userAgent);
+  expect(prefillLink('Gemini', text, mac) === '' && prefillLink('ChatGPT', '  ', mac) === '' && prefillLink('ChatGPT', 'a\ud800', mac) === '', 'Gemini, an empty prompt, and unencodable text keep the plain link');
+  expect(prefillLink('Claude', 'a'.repeat(PREFILL_MAX), mac) !== '' && prefillLink('Claude', 'a'.repeat(PREFILL_MAX + 1), mac) === '' && prefillLink('Claude', ' '.repeat(10) + 'é'.repeat(1001), mac) === '', 'the cap counts the encoded characters');
+});
+
+await check('skip the paste: Open in opens the chat with the prompt typed, still copies, and falls back when it should', async () => {
+  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
+  const start = async (opts) => {
+    const p = await page({ intake, ...opts }); p.opened = [];
+    await p.context().route(/^https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com)\//, (r) => { p.opened.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: 'ai' }); });
+    await withKey(p); await p.fill('#thoughts', 'thank Aunt Carol for the blender'); await p.click('#build'); await done(p);
+    return p;
+  };
+  const open = async (p, name) => {
+    await p.evaluate(() => navigator.clipboard.writeText(''));
+    if (!(await p.isVisible(`.openrow a >> text=${name}`))) await p.click('#dockMore');
+    const [tab] = await Promise.all([p.context().waitForEvent('page'), p.click(`.openrow a >> text=${name}`)]);
+    await tab.waitForLoadState(); const url = tab.url(); await tab.close(); await p.waitForTimeout(250);
+    return { url, status: await p.textContent('#status'), copied: await p.evaluate(() => navigator.clipboard.readText()), href: await p.getAttribute(`.openrow a >> text=${name}`, 'href') };
+  };
+  const p = await start({ write: 'Role: You are a warm writer.\n\nTask: Thank Aunt Carol & keep it under 100 words (100% sincere) 🎉' });
+  const prompt = await p.inputValue('#output');
+  for (const [name, base, plain] of [['ChatGPT', 'https://chatgpt.com/?q=', 'https://chatgpt.com/'], ['Claude', 'https://claude.ai/new?q=', 'https://claude.ai/new']]) {
+    const r = await open(p, name);
+    expect(r.url.startsWith(base) && new URL(r.url).searchParams.get('q') === prompt, name + ' should open with the exact prompt: ' + r.url);
+    expect(r.copied === prompt && new RegExp('Copied\\. Opening ' + name + '\\. Typed it in for you\\.').test(r.status), 'it still copies and says so: ' + r.status);
+    expect(r.href === plain, 'the link goes back to the plain address after the tap: ' + r.href);
+  }
+  await p.evaluate(() => { document.getElementById('output').value = 'My own edit?'; });   /* later changes to the prompt (an added line, another round) */
+  expect(new URL((await open(p, 'Claude')).url).searchParams.get('q') === 'My own edit?', 'the prompt on screen at the tap is the one that goes in');
+  const g = await open(p, 'Gemini');
+  expect(g.url === 'https://gemini.google.com/app' && g.copied === 'My own edit?' && /paste it there/.test(g.status), 'Gemini stays as before: ' + g.url);
+  const long = await start({ write: 'Plan the whole week. '.repeat(350) });
+  const l = await open(long, 'ChatGPT');
+  expect(l.url === 'https://chatgpt.com/' && l.copied.length > 6000 && /Opening ChatGPT: paste it there\./.test(l.status), 'a very long prompt opens the plain chat and copies: ' + l.url.slice(0, 80));
+  const phone = await start({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' });
+  const i = await open(phone, 'Claude');
+  expect(i.url === 'https://claude.ai/new' && i.copied === 'THE PROMPT' && /paste it there/.test(i.status), 'iPhone stays as before: ' + i.url);
+  for (const q of [p, long, phone]) expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
