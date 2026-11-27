@@ -6773,6 +6773,34 @@ await check('steady screen: bench builder results fold under the count when all 
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('steady screen: the end of the page scrolls clear of the dock and the floating buttons', async () => {
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    const p = await page();
+    await p.setViewportSize(vp);
+    await devOn(p); await ideasOn(p);
+    await p.waitForSelector('#ideaTab', { state: 'visible' });
+    if (process.env.APP_CHANNEL === 'staging') await p.waitForSelector('#labTab', { state: 'visible' });
+    for (const docked of [false, true]) {
+      if (docked) { await p.fill('#thoughts', 'plan a 5k'); await p.click('#build'); await done(p); await p.waitForTimeout(2600); }
+      await p.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' })); await p.waitForTimeout(700);
+      const hits = await p.evaluate(() => {
+        const out = [];
+        for (const e of document.querySelectorAll('#moreOpts p, #moreOpts label, #moreOpts summary, #footer')) {
+          const range = document.createRange(); range.selectNodeContents(e);
+          for (const r of range.getClientRects()) {
+            if (r.top < 0 || r.bottom > innerHeight || r.width < 2) continue;
+            if ([r.left + 2, r.left + r.width / 2, r.right - 2].some((x) => document.elementFromPoint(x, r.top + r.height / 2)?.closest('#ideaTab, #labTab, .dock'))) out.push(e.id || e.textContent.trim().slice(0, 30));
+          }
+        }
+        return { out, docked: document.body.classList.contains('dock-on') };
+      });
+      expect(!hits.out.length, 'nothing under the dock or buttons at the end: ' + JSON.stringify([vp.width, docked, hits]));
+    }
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
