@@ -226,6 +226,8 @@ details.benchfold > summary::-webkit-details-marker { display: none; }
 details.benchfold > summary::before { content: '▸'; color: var(--muted); }
 details.benchfold[open] > summary::before { content: '▾'; }
 details.benchfold .benchbody { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+/* Closed bench results: drop the 10px gap that More options gives every open summary inside it. */
+#bbOut details.benchres:not([open]) > summary { margin: 0; }
 .seg { display: inline-flex; gap: 0; align-self: flex-start; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
 .seg button { border: none; border-radius: 0; min-height: 40px; padding: 8px 18px; background: var(--surface); color: var(--ink); font-weight: 600; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
@@ -550,6 +552,10 @@ body.dock-on { padding-bottom: calc(48px + var(--dock-lift)); }
 body.dock-on #ideaTab { bottom: calc(var(--dock-lift) + 12px); }
 body.dock-on #labTab { left: auto; right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: calc(var(--dock-lift) + 12px); }
 body.dock-on:has(#ideaTab) #labTab { bottom: calc(var(--dock-lift) + 12px + 56px); }
+/* The end of the page scrolls clear of the floating buttons too, not just the dock (one, or two stacked). */
+body.dock-on:has(#ideaTab, #labTab) { padding-bottom: calc(var(--dock-lift) + 68px); }
+body.dock-on:has(#ideaTab):has(#labTab) { padding-bottom: calc(var(--dock-lift) + 124px); }
+body:not(.dock-on):has(#ideaTab, #labTab) { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 body.dock-on #guide { bottom: calc(var(--dock-lift) + 12px); }
 /* While the 6 second Undo (#19) shows above the dock, the floating buttons sit above it too. */
 body.dock-on.undo-on #ideaTab { bottom: calc(var(--dock-lift) + 12px + 60px); }

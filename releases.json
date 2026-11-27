@@ -2,6 +2,30 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.59",
+      "date": "2026-11-27",
+      "title": "Polish: a steadier, shorter screen (bundle D)",
+      "items": [
+        "At Ready the done cooking ring draws in smaller (the ring block is about 70px shorter on phone and laptop), so your prompt is less of a scroll away. Same ring, same plate and Order up moment, and the page still glides to your prompt like before.",
+        "Dev tools: in More options, the Bench builder results fold under one '8 of 8 ready' line once every case is ready, which takes about 420px off More options on a phone. Tap the line to see the table. While a case is still working or shows a warning, the table stays open so problems are never tucked away, and it keeps the way you left it when the results refresh.",
+        "With the Ideas or Test lab buttons on, the very end of the page now scrolls clear of them, so the footer is no longer stuck under the round buttons on a phone."
+      ],
+      "checks": [
+        {
+          "say": "Add your key, say a short note, and tap Build my prompt.",
+          "see": "At Ready the Order up plate and ring are a bit smaller, all the same parts are there, and the page still glides down to your prompt above Copy."
+        },
+        {
+          "say": "Turn on Show my dev tools, open More options, then Bench builder (only shows results if you ran the bench on this phone).",
+          "see": "With all cases ready you see one '8 of 8 ready' line. Tap it and the full table opens; tap again and it folds."
+        },
+        {
+          "say": "Turn on Show my dev tools and Show my Ideas tab, then scroll to the very bottom of the page.",
+          "see": "The footer text sits clear above the round Ideas and Test lab buttons, nothing hidden under them."
+        }
+      ]
+    },
+    {
       "version": "2.1.58",
       "date": "2026-11-26",
       "title": "Polish: the first screen loads faster",
