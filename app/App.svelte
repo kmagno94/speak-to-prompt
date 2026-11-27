@@ -24,7 +24,7 @@
   import { memory } from './lib/memory.svelte.js';
   import MemorySuggest from './MemorySuggest.svelte';
   import IdeasTab from './IdeasTab.svelte';
-  import TestLab from './TestLab.svelte';
+  import Lazy from './Lazy.svelte';
   import { lab } from './lib/testlab.svelte.js';
   import Notice from './Notice.svelte';
   import JourneyStrip from './JourneyStrip.svelte';
@@ -45,11 +45,16 @@
   import KeyNudge from './KeyNudge.svelte';
   import KeyCatcher from './KeyCatcher.svelte';
   import MicButton from './MicButton.svelte';
-  import MicLog from './MicLog.svelte';
   import DraftNote from './DraftNote.svelte';
   import { watchDraft } from './lib/draft.svelte.js';
   import { hasSpeech } from './lib/voice.js';
   let tutorial;
+  /* Loaded on first use (Lazy.svelte). The Test lab is staging only, so the live page never fetches it;
+     once shown it stays, so a walk in progress keeps its place. */
+  const testLabPart = () => import('./TestLab.svelte');
+  const micLogPart = () => import('./MicLog.svelte');
+  let labWanted = $state(false);
+  $effect.pre(() => { if (lab.visible) labWanted = true; });
   /* v2.1.27: where the browser has speech-to-text, Talk it out is the mic and the shortcut hides
      unless Show my dev tools is on (kept for anyone who still likes the Voice Memos way). */
   const shortcutAway = $derived(hasSpeech && !core.dev);
@@ -355,7 +360,7 @@
         <p class="hint" id="bbInfo">Makes new grader bench cases: 6 notes get Read, Clean, and the fact ledger here, then one tap hands every write to the STP Bench Runner shortcut (ChatGPT, Cloud, On-Device). Paste results brings them back for Polish, the phone adds 2 seeded flaws, and Copy for answer key shows up at 8 of 8.</p>
         <div id="bbOut" class="benchout" hidden></div>
       </div>
-      {#if core.dev && hasSpeech}<MicLog />{/if}
+      {#if core.dev && hasSpeech}<Lazy load={micLogPart} />{/if}
       <div class="stats" id="myShortcutsRow" hidden>
         <label class="check"><input type="checkbox" id="myShortcuts"> Use my Notes shortcuts</label>
         <p class="hint">Save to Notes runs <b>Save Voice Note</b>, and a <b>File voice note</b> button shows up top to send a saved note to Claude. Turn on only if both shortcuts are on this phone.</p>
@@ -386,7 +391,7 @@
   <Tutorial bind:this={tutorial} />
   <SaveContext />
   <IdeasTab />
-  <TestLab />
+  {#if labWanted}<Lazy load={testLabPart} />{/if}
   <Guide />
   <KeyboardCoach />
   <NextDock />

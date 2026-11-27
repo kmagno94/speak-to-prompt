@@ -235,6 +235,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | Path | What it is |
   |---|---|
   | `app/App.svelte` | The page markup |
+  | `app/Lazy.svelte` | Loads the Test lab, Your core, and the Mic log only when first shown (offers a reload if that fetch fails) |
   | `app/Message.svelte`, `app/Notice.svelte` | The one look for empty, error, warning, and success messages, and where each shows |
   | `app/JourneyStrip.svelte`, `app/QualityCheck.svelte`, `app/OutputMore.svelte` | Speak › Answer › Copy, the glanceable Quality check, and Show the whole prompt |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |

@@ -503,7 +503,7 @@ await check('safari mic: dev tools show a Mic log of recognizer events per run w
 await check('mic log in dev tools (v2.1.28 Test lab report): the Mic log moved out from under the mic button into More options with the other dev tools; empty until Talk it out runs, then it fills in live', async () => {
   const p = await page({ hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await devOn(p);
-  await p.click('#moreOpts > summary');
+  await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
   expect(await p.isVisible('#micLogRow') && /Nothing yet/.test(await p.textContent('#micLogRow')), 'More options has the Mic log section, empty before any run');
   expect(await p.evaluate(() => { const r = document.getElementById('micLogRow'); return !!r && !!r.closest('#moreOpts') && !document.getElementById('micBtn').parentElement.contains(r); }), 'the Mic log sits in More options, not next to the mic button');
   await p.click('#moreOpts > summary');
@@ -2150,6 +2150,45 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   await p.mouse.click(box.x + box.width / 2, y);
   await p.waitForTimeout(250);
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
+});
+
+await check('faster first load: the Test lab, Your core, and the Mic log are fetched only when first shown; a slow fetch says it is opening, a failed one says so with a reload button', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging';
+  const p = await page(); const got = [];
+  p.on('request', (r) => { const m = r.url().match(/\/assets\/(TestLab|CoreEditor|MicLog)-[^/]*\.js$/); if (m) got.push(m[1]); });
+  await p.reload(); await p.waitForLoadState('networkidle');
+  expect(!got.length, 'a plain visit fetches none of them, got: ' + got.join(', '));
+  await devOn(p); await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
+  await p.click('#starterBtn'); await p.waitForSelector('#coreBtn');
+  expect(!got.includes('CoreEditor') && !got.includes('TestLab'), 'dev tools on fetches only what is on the page, got: ' + got.join(', '));
+  await p.click('#coreBtn'); await p.waitForSelector('#coreEditor #coreUser');
+  await p.check('#ideasToggle');
+  if (stg) await p.waitForSelector('#labTab'); else await p.waitForTimeout(400);
+  expect(got.includes('CoreEditor') && got.includes('MicLog') && got.includes('TestLab') === stg, 'each is fetched when shown (Test lab on staging only), got: ' + got.join(', '));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  const q = await page();
+  await q.route(/\/assets\/CoreEditor-[^/]*\.js$/, async (r) => { await new Promise((z) => setTimeout(z, 600)); r.abort(); });
+  await devOn(q); await q.click('#starterBtn'); await q.click('#coreBtn');
+  expect(/Opening your core/.test(await q.textContent('#starter [data-lazywait]')), 'a slow fetch says Opening your core instead of an empty card');
+  await q.waitForSelector('#starter [data-lazyfail] button');
+  expect(!(await q.$('#starter [data-lazywait]')), 'the waiting line goes away once the fetch settles');
+  await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
+  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyfail] button')]);
+  await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');
+  expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+});
+
+await check('faster first load: a slow font sheet never holds up the first screen, and the fonts still apply when it arrives', async () => {
+  const p = await page(); let sent = false, release;
+  const held = new Promise((r) => { release = r; });
+  await p.route(/fonts\.googleapis\.com\/css2/, async (r) => { await held; sent = true; await r.fulfill({ status: 200, contentType: 'text/css', body: '@font-face{font-family:"Atkinson Hyperlegible";src:local("Arial")}' }); });
+  await p.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => performance.getEntriesByName('first-contentful-paint').length > 0, null, { timeout: 5000 });
+  expect(!sent && await p.isVisible('#thoughts'), 'the box shows while the font sheet is still on its way');
+  release();
+  await p.waitForFunction(() => document.querySelector('link[href*="fonts.googleapis.com/css2"]').media === 'all', null, { timeout: 5000 });
+  expect(/display=swap/.test(await p.getAttribute('link[href*="fonts.googleapis.com/css2"]', 'href')), 'font-display stays swap');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {
