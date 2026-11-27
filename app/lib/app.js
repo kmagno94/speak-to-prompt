@@ -1,7 +1,7 @@
 import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, shortWriteText, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
-import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { numberTokens, normalizeSpokenTimes, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
 import { prefillLink } from './openlink.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
@@ -3992,7 +3992,7 @@ export function startApp() {
     if (hanging(fixed) && !hanging(draft)) return false;
     var len = words(fixed) / Math.max(1, words(draft));
     /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
-    var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
+    var said = numberTokens(normalizeSpokenTimes(saidText()) + "\n" + saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
     var lost = Object.keys(had).some(function (n) { return said[n] && !kept[n]; });
     return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && (after.strict || []).length <= (before.strict || []).length && len >= 0.7 && len <= 1.8;
   }

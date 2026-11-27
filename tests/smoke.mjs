@@ -6857,6 +6857,32 @@ await check('skip the paste: Open in opens the chat with the prompt typed, still
   for (const q of [p, long, phone]) expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
 });
 
+await check('spoken times: "5 30" counts as 5:30 for the number check, and units or a really missing time still behave', async () => {
+  const N = await import('../app/lib/numcheck.js');
+  const { analyze } = await import('../app/lib/xray.js');
+  const clean = (prompt, said) => { const r = N.numberIssuesFor(prompt, said); expect(!r.missing.length && !r.extra.length, said + ' should be clean: ' + JSON.stringify(r)); };
+  clean('soccer Tue and Thu at 5:30', 'soccer tuesday and thursday at 5 30');
+  clean('Dinner at 7:45 PM.', 'dinner 7 45pm');
+  clean('Pickup from 5:30 to 6:15.', 'pickup from 5 30 to 6 15');
+  clean('Be there around 9:00 a.m.', 'be there around 9 00 a.m.');
+  clean('Practice at 5 30.', 'practice at 5 30');
+  for (const s of ['5 30 minute breaks', 'at 5 30-minute slots', 'after 5 30 dollars', '1 2 3 4', 'it costs 5 30', 'at 5', 'at $5 30']) expect(N.normalizeSpokenTimes(s) === s, 'left alone: ' + s + ' -> ' + N.normalizeSpokenTimes(s));
+  expect(N.numberIssuesFor('Take breaks.', 'at least 5 30 minute breaks').missing.join() === '30', 'a unit number still reports as before');
+  expect(N.numberIssuesFor('Soccer Tuesday.', 'soccer tuesday at 5 30').missing.join() === '5:30', 'a time the prompt dropped is still flagged');
+  expect(N.numberIssuesFor('Soccer at 6:30.', 'soccer at 5 30').extra.join() === '6:30', 'a changed time is still flagged');
+  const note = 'soccer tuesday and thursday at 5 30 for maya, game saturday at 9 15, snacks for 12 kids, text the other parents';
+  const prompt = 'Write a text to the other parents. Soccer is Tuesday and Thursday at 5:30 for Maya, the game is Saturday at 9:15, and snacks are for 12 kids.';
+  const x = analyze(prompt, note);
+  expect(x.stray === 0 && x.dropped === 0, 'X-ray should list nothing left out or made up: ' + JSON.stringify([x.stray, x.dropped]));
+  const p = await page({ intake: noQ, write: prompt });
+  await withKey(p); await p.fill('#thoughts', note); await p.click('#build'); await done(p); await p.waitForTimeout(600);
+  expect(await p.$eval('#numWarn', (e) => e.hidden), 'no red Heads up: ' + await p.textContent('#numWarn'));
+  const q = await page({ intake: noQ, write: 'Write a text to the other parents about soccer and 12 kids.' });
+  await withKey(q); await q.fill('#thoughts', note); await q.click('#build'); await done(q); await q.waitForSelector('#numWarn:not([hidden])', { timeout: 5000 });
+  expect(/leaves out 5:30 and 9:15|leaves out 9:15 and 5:30/.test(await q.textContent('#numWarn')), 'really missing times are named: ' + await q.textContent('#numWarn'));
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
