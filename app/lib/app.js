@@ -516,13 +516,15 @@ export function startApp() {
      On computers and iPad the ChatGPT and Claude links also carry the prompt
      (lib/openlink.js), swapped in for this one tap only. */
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
+    var swappedFrom = "";   /* the plain address while a prompt address is swapped in, so a quick double tap can't keep the old prompt on the link */
     a.addEventListener("click", function () {
       if (!output.value) return;
-      var name = a.textContent.trim(), plain = a.getAttribute("href");
+      var name = a.textContent.trim(), plain = swappedFrom || a.getAttribute("href");
       var typed = plain ? prefillLink(name, output.value, navigator) : "";
       if (typed) {
+        swappedFrom = plain;
         a.setAttribute("href", typed);   /* the tap follows this address */
-        setTimeout(function () { a.setAttribute("href", plain); }, 0);
+        setTimeout(function () { a.setAttribute("href", plain); swappedFrom = ""; }, 0);
       }
       /* The status line sits right under these links, so the answer shows where you tapped. */
       var done = typed ? "Copied. Opening " + name + ". Typed it in for you. If you don't see it there, just paste."

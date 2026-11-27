@@ -6844,6 +6844,14 @@ await check('skip the paste: Open in opens the chat with the prompt typed, still
     expect(r.copied === prompt && new RegExp('Copied\\. Opening ' + name + '\\. Typed it in for you\\.').test(r.status), 'it still copies and says so: ' + r.status);
     expect(r.href === plain, 'the link goes back to the plain address after the tap: ' + r.href);
   }
+  /* A double tap lands both clicks before the link is put back: it must still end on the plain address,
+     or a later tap with an empty or too long prompt would open the old prompt. */
+  if (!(await p.isVisible('.openrow a >> text=Claude'))) await p.click('#dockMore');
+  const tabs = []; const grab = (t) => tabs.push(t); p.context().on('page', grab);
+  await p.dblclick('.openrow a >> text=Claude'); await p.waitForTimeout(600); p.context().off('page', grab);
+  expect(tabs.length && tabs.every((t) => t.url().startsWith('https://claude.ai/new?q=')), 'a double tap opens the prompt: ' + tabs.map((t) => t.url().slice(0, 40)).join(' | '));
+  for (const t of tabs) await t.close();
+  expect((await p.$$eval('.openrow a', (as) => as.map((a) => a.getAttribute('href')))).every((h) => !/\?q=/.test(h)), 'every link is plain again after a double tap');
   await p.evaluate(() => { document.getElementById('output').value = 'My own edit?'; });   /* later changes to the prompt (an added line, another round) */
   expect(new URL((await open(p, 'Claude')).url).searchParams.get('q') === 'My own edit?', 'the prompt on screen at the tap is the one that goes in');
   const g = await open(p, 'Gemini');
