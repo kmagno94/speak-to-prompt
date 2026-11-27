@@ -6720,6 +6720,20 @@ await check('cant-see radar: a card names what the AI cannot see, hides when the
   await p.context().close();
 });
 
+await check('cant-see radar: plurals and close variants name the thing, say them, and everyday words stay quiet (AGT-228)', async () => {
+  const C = await import('../app/lib/coach.js');
+  const names = (s) => C.cantSeeThings(s).map((t) => t.name).join('+');
+  for (const [note, want] of [['sort my emails', 'emails'], ['reply to these emails', 'emails'], ['read this e-mail', 'email'], ['what do my screenshots say', 'screenshots'], ['look at my screen shot', 'screenshot'], ['organize my photos', 'photos'], ['summarize the attachments', 'files'], ['read the attached files', 'files'], ['compare these documents', 'documents'], ['clean up my spreadsheets', 'spreadsheets'], ['fix my email, then these emails', 'emails'], ['my emails and my photos', 'emails+photos']]) expect(names(note) === want, note + ' -> ' + names(note) + ', wanted ' + want);
+  for (const note of ['the dress code is casual', 'write a cold email', 'send emails to parents weekly', 'write the emails for my launch', 'take photos of food', 'plan a photo shoot']) expect(!names(note), 'no card for: ' + note + ' -> ' + names(note));
+  expect(C.cantSeeLine(C.cantSeeThings('sort my emails')) === "Your AI can't see your emails. Paste them right under the prompt when you send it.", 'one plural says them');
+  expect(/Attach them in the chat/.test(C.cantSeeLine(C.cantSeeThings('organize my photos'))), 'plural pictures say attach them');
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  await p.fill('#thoughts', 'help me sort my emails'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/can't see your emails\. Paste them/.test(await p.textContent('#cantSee')), 'the card shows for a plural');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) shows or hides the card the way its step says (Test lab 11/25)', async () => {
   const rel = JSON.parse(readFileSync(path.join(ROOT, '..', 'releases.json'), 'utf8')).releases.find((r) => r.version === '2.1.51');
   const steps = rel.checks.filter((c) => c.paste);
