@@ -2173,9 +2173,28 @@ await check('faster first load: the Test lab, Your core, and the Mic log are fet
   await q.waitForSelector('#starter [data-lazyfail] button');
   expect(!(await q.$('#starter [data-lazywait]')), 'the waiting line goes away once the fetch settles');
   await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
-  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyfail] button')]);
+  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyreload]')]);
   await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');
   expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  /* AGT-228: Try again opens the part with no reload, styles too. Still offline, it keeps both buttons. */
+  for (const part of [/\/assets\/CoreEditor-[^/]*\.js(\?.*)?$/, /\/assets\/CoreEditor-[^/]*\.(js|css)(\?.*)?$/]) {
+    const r = await page(); let loads = 0;
+    await r.route(part, (x) => x.abort());
+    await devOn(r); r.on('load', () => loads++);
+    await r.fill('#thoughts', 'keep these words');
+    await r.click('#starterBtn'); await r.click('#coreBtn');
+    await r.waitForSelector('#starter [data-lazyretry]');
+    await r.click('#starter [data-lazyretry]'); await r.waitForTimeout(500);
+    await r.waitForSelector('#starter [data-lazyretry]');
+    expect(await r.isVisible('#starter [data-lazyreload]'), 'still failing keeps Reload the page as the fallback');
+    await r.unroute(part);
+    await r.click('#starter [data-lazyretry]');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
+    const styled = await r.evaluate(() => [...document.styleSheets].some((s) => { try { return /CoreEditor-/.test(s.href || '') && s.cssRules.length > 0; } catch (e) { return false; } }));
+    expect(loads === 0 && styled, 'opens without a page reload, with its styles: ' + JSON.stringify({ loads, styled }));
+    expect(await r.inputValue('#thoughts') === 'keep these words', 'what was on screen is still there');
+    expect(!r.errors.length, 'page errors: ' + r.errors.join('; '));
+  }
 });
 
 await check('faster first load: a slow font sheet never holds up the first screen, and the fonts still apply when it arrives', async () => {
