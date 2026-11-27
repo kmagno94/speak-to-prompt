@@ -6744,6 +6744,70 @@ await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) 
   await p.context().close();
 });
 
+await check('in-app browser: inside Instagram, Facebook, TikTok, or Snapchat one card says how to open in a real browser; normal browsers never see it (AGT-147)', async () => {
+  const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 ';
+  const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0 Mobile Safari/537.36 ';
+  for (const [app, browser, ua] of [
+    ['Instagram', 'Safari', ios + 'Instagram 400.0.0.0 (iPhone16,2; iOS 18_5)'],
+    ['Facebook', 'Safari', ios + '[FBAN/FBIOS;FBAV/500.0.0.0;FBDV/iPhone16,2]'],
+    ['Facebook', 'Chrome', android + '[FB_IAB/FB4A;FBAV/500.0.0.0;]'],
+    ['TikTok', 'Chrome', android + 'musical_ly_2023001030 BytedanceWebview/d8a21c6'],
+    ['Snapchat', 'Safari', ios + 'Snapchat/13.0.0.0 (like Safari/8620.2.4)']
+  ]) {
+    const p = await page({ ua, calm: true });
+    await p.waitForSelector('#inApp', { timeout: 4000 });
+    const txt = (await p.textContent('#inApp')).replace(/\s+/g, ' ');
+    expect(txt.includes('Open this in ' + browser) && txt.includes("You're in " + app + "'s built-in browser") && /Open in browser/.test(txt), app + ' card wording: ' + txt);
+    const r = await p.evaluate(() => { const c = document.getElementById('inApp'), b = document.getElementById('inAppStay').getBoundingClientRect(); return { first: c === document.querySelector('.wrap').firstElementChild, bottom: b.bottom, tall: b.height, wide: document.documentElement.scrollWidth }; });
+    expect(r.first && r.bottom <= 844 && r.tall >= 44 && r.wide <= 390, 'first on the page, button on screen, no sideways scroll: ' + JSON.stringify(r));
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  for (const ua of [ios + 'Version/18.5 Safari/604.1', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15']) {
+    const p = await page({ ua });
+    await p.waitForTimeout(500);
+    expect(!(await p.$('#inApp')), 'a normal browser shows no card: ' + ua);
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('in-app browser: Start here waits behind the card, Continue here anyway lets it play, once per visit, and run stats keep a fixed label on the phone (AGT-147)', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging', k = (stg ? 'stg:' : '') + 'stp-inapp';
+  const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 400.0.0.0';
+  const p = await page({ ua, fresh: true });
+  await p.waitForSelector('#inApp');
+  await p.waitForTimeout(4200);   /* past the time Start here would have scrolled to the box */
+  expect(!(await p.$('#startHere')) && (await p.evaluate(() => scrollY)) < 5, 'nothing scrolls the card away');
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'shown', 'counted as shown');
+  await p.click('#inAppStay');
+  await p.waitForSelector('#inApp', { state: 'detached', timeout: 4000 });
+  await p.waitForSelector('#startHere', { timeout: 5000 });
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'continued here', 'counted as continued here');
+  expect(!(await p.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }))).includes('Instagram'), 'the browser name is never saved');
+  await p.reload(); await p.waitForTimeout(500);
+  expect(!(await p.$('#inApp')), 'once per visit: a reload does not show it again');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  /* Run stats: the label shows on this phone and is not sent to the relay. */
+  const q = await page({ ua, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  const sent = [];
+  await q.route('https://relay.test/report/run', async (r) => { if (r.request().method() === 'POST') sent.push(r.request().postData()); await r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: '{"ok":true}' }); });
+  await q.click('#inAppStay');
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'plan a birthday dinner for six'); await q.click('#build'); await done(q);
+  await q.click('#testLog summary');
+  expect(/in-app browser card: continued here/.test(await q.textContent('#testRuns')), 'run stats show the label: ' + (await q.textContent('#testRuns')));
+  await q.click('#copy');
+  await q.waitForTimeout(600);
+  expect(sent.length === 1 && !sent.join('').includes('inapp') && !sent.join('').includes('continued here'), 'the relay gets the run without the new label: ' + sent.length);
+  /* Staging switch: #inapp shows it in a normal browser, live ignores it. */
+  const s = await page();
+  await s.evaluate(() => { location.hash = '#inapp'; });
+  if (stg) { await s.waitForSelector('#inApp'); expect(/Safari or Chrome/.test(await s.textContent('#inApp')), 'a computer is told Safari or Chrome'); }
+  else { await s.waitForTimeout(400); expect(!(await s.$('#inApp')), 'live ignores the staging switch'); }
+  for (const x of [q, s]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
 await check('steady screen: at Ready the cooking ring draws in smaller, with the same parts, and the clock stays readable', async () => {
   for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
     const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });

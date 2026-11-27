@@ -31,6 +31,7 @@
   import OutputMore from './OutputMore.svelte';
   import MoveCard from './MoveCard.svelte';
   import CantSee from './CantSee.svelte';
+  import InAppCard from './InAppCard.svelte';
   import ProMoment from './ProMoment.svelte';
   import QualityCheck from './QualityCheck.svelte';
   import RoundBanner from './RoundBanner.svelte';
@@ -79,6 +80,7 @@
 </script>
 
 <div class="wrap">
+  <InAppCard />
   <header>
     <div class="toprow">
       {#if memory.active}
