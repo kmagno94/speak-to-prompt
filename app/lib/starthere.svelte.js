@@ -8,6 +8,7 @@
    flag ("stp-started"), never anything typed. StartHere.svelte draws it; app.js holds
    the idea strip back while it shows and brings it in after. */
 import { reduceMotion } from './motion.js';
+import { inApp } from './inapp.svelte.js';
 
 const KEY = 'stp-started';
 /* The waveform entrance takes about 1.5s (app.css .wave); Reduce Motion has none. */
@@ -28,11 +29,17 @@ class StartHereState {
     const h = (typeof location !== 'undefined' && location.hash) || '';
     if (h === '#paste' || h.indexOf('#t=') === 0 || h.indexOf('#start=') === 0) return;   /* #start=: a starter link (AGT-9) */
     this.active = true;
-    this.phase = INTRO_MS ? 'intro' : 'title';
+    if (inApp.show) return;   /* AGT-147: wait behind the in-app browser card, so nothing scrolls it away */
+    this.#play(INTRO_MS);
+  }
+  /* The card is gone: play it now. The title's entrance already ran. */
+  resume() { if (this.active && !this.phase) this.#play(0); }
+  #play(intro) {
+    this.phase = intro ? 'intro' : 'title';
     this.#clear();
-    this.#timers.push(setTimeout(() => { if (this.active) this.phase = 'title'; }, INTRO_MS));
-    this.#timers.push(setTimeout(() => { if (this.active) this.phase = 'box'; }, INTRO_MS + TITLE_MS));
-    this.#timers.push(setTimeout(() => this.#end(), INTRO_MS + TITLE_MS + BOX_MS));
+    this.#timers.push(setTimeout(() => { if (this.active) this.phase = 'title'; }, intro));
+    this.#timers.push(setTimeout(() => { if (this.active) this.phase = 'box'; }, intro + TITLE_MS));
+    this.#timers.push(setTimeout(() => this.#end(), intro + TITLE_MS + BOX_MS));
   }
   /* The first action: stop now and never show it again. */
   started() {

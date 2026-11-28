@@ -2173,9 +2173,30 @@ await check('faster first load: the Test lab, Your core, and the Mic log are fet
   await q.waitForSelector('#starter [data-lazyfail] button');
   expect(!(await q.$('#starter [data-lazywait]')), 'the waiting line goes away once the fetch settles');
   await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
-  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyfail] button')]);
+  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyreload]')]);
   await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');
   expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  /* AGT-228: Try again opens the part with no reload, styles too. Still offline, it keeps both buttons. */
+  for (const part of [/\/assets\/CoreEditor-[^/]*\.js(\?.*)?$/, /\/assets\/CoreEditor-[^/]*\.(js|css)(\?.*)?$/]) {
+    const r = await page(); let loads = 0;
+    await r.route(part, (x) => x.abort());
+    await devOn(r); r.on('load', () => loads++);
+    await r.fill('#thoughts', 'keep these words');
+    await r.click('#starterBtn'); await r.click('#coreBtn');
+    await r.waitForSelector('#starter [data-lazyretry]');
+    await r.click('#starter [data-lazyretry]'); await r.waitForTimeout(500);
+    await r.waitForSelector('#starter [data-lazyretry]');
+    expect(await r.isVisible('#starter [data-lazyreload]'), 'still failing keeps Reload the page as the fallback');
+    await r.unroute(part);
+    await r.click('#starter [data-lazyretry]');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
+    const styled = await r.evaluate(() => [...document.styleSheets].some((s) => { try { return /CoreEditor-/.test(s.href || '') && s.cssRules.length > 0; } catch (e) { return false; } }));
+    expect(loads === 0 && styled, 'opens without a page reload, with its styles: ' + JSON.stringify({ loads, styled }));
+    expect(await r.inputValue('#thoughts') === 'keep these words', 'what was on screen is still there');
+    await r.click('#coreDone'); await r.waitForSelector('#coreEditor', { state: 'detached' }); await r.click('#coreBtn');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
+    expect(!r.errors.length, 'page errors: ' + r.errors.join('; '));
+  }
 });
 
 await check('faster first load: a slow font sheet never holds up the first screen, and the fonts still apply when it arrives', async () => {
@@ -6720,6 +6741,20 @@ await check('cant-see radar: a card names what the AI cannot see, hides when the
   await p.context().close();
 });
 
+await check('cant-see radar: plurals and close variants name the thing, say them, and everyday words stay quiet (AGT-228)', async () => {
+  const C = await import('../app/lib/coach.js');
+  const names = (s) => C.cantSeeThings(s).map((t) => t.name).join('+');
+  for (const [note, want] of [['sort my emails', 'emails'], ['reply to these emails', 'emails'], ['read this e-mail', 'email'], ['what do my screenshots say', 'screenshots'], ['look at my screen shot', 'screenshot'], ['organize my photos', 'photos'], ['summarize the attachments', 'files'], ['read the attached files', 'files'], ['compare these documents', 'documents'], ['clean up my spreadsheets', 'spreadsheets'], ['fix my email, then these emails', 'emails'], ['my emails and my photos', 'emails+photos']]) expect(names(note) === want, note + ' -> ' + names(note) + ', wanted ' + want);
+  for (const note of ['the dress code is casual', 'write a cold email', 'send emails to parents weekly', 'write the emails for my launch', 'take photos of food', 'plan a photo shoot']) expect(!names(note), 'no card for: ' + note + ' -> ' + names(note));
+  expect(C.cantSeeLine(C.cantSeeThings('sort my emails')) === "Your AI can't see your emails. Paste them right under the prompt when you send it.", 'one plural says them');
+  expect(/Attach them in the chat/.test(C.cantSeeLine(C.cantSeeThings('organize my photos'))), 'plural pictures say attach them');
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  await p.fill('#thoughts', 'help me sort my emails'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/can't see your emails\. Paste them/.test(await p.textContent('#cantSee')), 'the card shows for a plural');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) shows or hides the card the way its step says (Test lab 11/25)', async () => {
   const rel = JSON.parse(readFileSync(path.join(ROOT, '..', 'releases.json'), 'utf8')).releases.find((r) => r.version === '2.1.51');
   const steps = rel.checks.filter((c) => c.paste);
@@ -6742,6 +6777,70 @@ await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) 
   }
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
   await p.context().close();
+});
+
+await check('in-app browser: inside Instagram, Facebook, TikTok, or Snapchat one card says how to open in a real browser; normal browsers never see it (AGT-147)', async () => {
+  const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 ';
+  const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0 Mobile Safari/537.36 ';
+  for (const [app, browser, ua] of [
+    ['Instagram', 'Safari', ios + 'Instagram 400.0.0.0 (iPhone16,2; iOS 18_5)'],
+    ['Facebook', 'Safari', ios + '[FBAN/FBIOS;FBAV/500.0.0.0;FBDV/iPhone16,2]'],
+    ['Facebook', 'Chrome', android + '[FB_IAB/FB4A;FBAV/500.0.0.0;]'],
+    ['TikTok', 'Chrome', android + 'musical_ly_2023001030 BytedanceWebview/d8a21c6'],
+    ['Snapchat', 'Safari', ios + 'Snapchat/13.0.0.0 (like Safari/8620.2.4)']
+  ]) {
+    const p = await page({ ua, calm: true });
+    await p.waitForSelector('#inApp', { timeout: 4000 });
+    const txt = (await p.textContent('#inApp')).replace(/\s+/g, ' ');
+    expect(txt.includes('Open this in ' + browser) && txt.includes("You're in " + app + "'s built-in browser") && /Open in browser/.test(txt), app + ' card wording: ' + txt);
+    const r = await p.evaluate(() => { const c = document.getElementById('inApp'), b = document.getElementById('inAppStay').getBoundingClientRect(); return { first: c === document.querySelector('.wrap').firstElementChild, bottom: b.bottom, tall: b.height, wide: document.documentElement.scrollWidth }; });
+    expect(r.first && r.bottom <= 844 && r.tall >= 44 && r.wide <= 390, 'first on the page, button on screen, no sideways scroll: ' + JSON.stringify(r));
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  for (const ua of [ios + 'Version/18.5 Safari/604.1', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15']) {
+    const p = await page({ ua });
+    await p.waitForTimeout(500);
+    expect(!(await p.$('#inApp')), 'a normal browser shows no card: ' + ua);
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('in-app browser: Start here waits behind the card, Continue here anyway lets it play, once per visit, and run stats keep a fixed label on the phone (AGT-147)', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging', k = 'stp-inapp';   /* staging's page adds its own stg: prefix */
+  const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 400.0.0.0';
+  const p = await page({ ua, fresh: true });
+  await p.waitForSelector('#inApp');
+  await p.waitForTimeout(4200);   /* past the time Start here would have scrolled to the box */
+  expect(!(await p.$('#startHere')) && (await p.evaluate(() => scrollY)) < 5, 'nothing scrolls the card away');
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'shown', 'counted as shown');
+  await p.click('#inAppStay');
+  await p.waitForSelector('#inApp', { state: 'detached', timeout: 4000 });
+  await p.waitForSelector('#startHere', { timeout: 5000 });
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'continued here', 'counted as continued here');
+  expect(!(await p.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }))).includes('Instagram'), 'the browser name is never saved');
+  await p.reload(); await p.waitForTimeout(500);
+  expect(!(await p.$('#inApp')), 'once per visit: a reload does not show it again');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  /* Run stats: the label shows on this phone and is not sent to the relay. */
+  const q = await page({ ua, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  const sent = [];
+  await q.route('https://relay.test/report/run', async (r) => { if (r.request().method() === 'POST') sent.push(r.request().postData()); await r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: '{"ok":true}' }); });
+  await q.click('#inAppStay');
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'plan a birthday dinner for six'); await q.click('#build'); await done(q);
+  await q.click('#testLog summary');
+  expect(/in-app browser card: continued here/.test(await q.textContent('#testRuns')), 'run stats show the label: ' + (await q.textContent('#testRuns')));
+  await q.click('#copy');
+  await q.waitForTimeout(600);
+  expect(sent.length === 1 && !sent.join('').includes('inapp') && !sent.join('').includes('continued here'), 'the relay gets the run without the new label: ' + sent.length);
+  /* Staging switch: #inapp shows it in a normal browser, live ignores it. */
+  const s = await page();
+  await s.evaluate(() => { location.hash = '#inapp'; });
+  if (stg) { await s.waitForSelector('#inApp'); expect(/Safari or Chrome/.test(await s.textContent('#inApp')), 'a computer is told Safari or Chrome'); }
+  else { await s.waitForTimeout(400); expect(!(await s.$('#inApp')), 'live ignores the staging switch'); }
+  for (const x of [q, s]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
 });
 
 await check('steady screen: at Ready the cooking ring draws in smaller, with the same parts, and the clock stays readable', async () => {

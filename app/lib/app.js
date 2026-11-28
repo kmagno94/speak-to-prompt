@@ -7,6 +7,7 @@ import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
 import { startHere } from './starthere.svelte.js';
+import { inApp } from './inapp.svelte.js';   /* AGT-147 */
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';
@@ -95,6 +96,7 @@ export function startApp() {
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
         (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") + (r.worked ? "\n  \ud83d\udc4d worked great" : "") +
+        (r.inapp ? "\n  in-app browser card: " + r.inapp : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -275,7 +277,8 @@ export function startApp() {
       clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null,
       ledger: session.ledger ? session.ledger.status : null, ledger_items: session.ledger && session.ledger.items ? session.ledger.items.length : null, ledger_model: session.ledger && session.ledger.model || null,
       shape: session.shape ? !!(session.shape.success || session.shape.format) : null,
-      ctx_nudge: savectx.stat || null   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
+      ctx_nudge: savectx.stat || null,   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
+      inapp: inApp.stat || null   /* AGT-147: a fixed label only (shown, continued here). Stays on this phone. */
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -4191,7 +4194,7 @@ export function startApp() {
     var ans = (session && session.answers) || [];
     var run = { app: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev", device: deviceLine(),
       tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null, xray_opened: false };
-    for (var k in r) if (k !== "when") run[k] = r[k];
+    for (var k in r) if (k !== "when" && k !== "inapp") run[k] = r[k];   /* the relay has no inapp field yet */
     pendingRun = run;
     pendingTimer = setTimeout(function () { flushRun("none in 10 min"); }, 600000);   // long prompts take a while to read
   }
