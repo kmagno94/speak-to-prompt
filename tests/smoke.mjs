@@ -2019,6 +2019,29 @@ await check('starter links: #start=food opens Not sure where to start? on Food w
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
+await check('walk in ready: #start=appointment asks 4 quick questions with all 5 answers showing, and the build asks for a timeline, 3 questions, what to bring, and a short way to say it (AGT-144)', async () => {
+  const p = await page({ fresh: true, hash: '#start=appointment' });
+  const chips = () => p.$$eval('#starter .chips button', (l) => l.filter((b) => !b.classList.contains('skip')).map((b) => b.textContent.trim()));
+  for (const [q, pick] of [["What's the appointment?", 'Doctor visit'], ['When did this start?', 'A few weeks ago'], ['What have you tried so far?', null], ['What do you want to leave with?', 'A plan']]) {
+    await p.waitForSelector(`#starter .msg.ai >> text=${q}`);
+    await p.waitForSelector('#starter .chips button.skip');
+    expect((await chips()).length === 5 && !(await p.$('#rotateMore')), q + ' shows all 5, no rotation: ' + (await chips()).join(','));
+    if (pick) await p.click(`#starter .chips button:text-is("${pick}")`);
+    else { await p.fill('#starterOwn', 'ice and rest, still sore.'); await p.press('#starterOwn', 'Enter'); }
+  }
+  await p.waitForSelector("#starter .chips button >> text=That's it"); await p.click("#starter .chips button >> text=That's it");
+  await p.waitForSelector('#starterBuild'); await p.click('#starterBuild'); await done(p);
+  const out = await p.inputValue('#output');
+  for (const want of ['I need help with getting ready for an appointment.', 'Appointment: Doctor visit.', 'When it started: A few weeks ago.', 'Tried so far: ice and rest, still sore.', 'I want to leave with: A plan.', 'a short timeline of what happened, the 3 questions most worth asking, what to bring, and how to say it all in under a minute'])
+    expect(out.includes(want), 'prompt carries: ' + want + ' in ' + out);
+  // It is also a normal pick in the grid, with its own Copy link
+  const q = await page(); await q.click('#starterBtn'); await q.click('#starter .cats button >> text=Appointment prep');
+  await q.waitForSelector("#starter .msg.ai >> text=What's the appointment?");
+  await q.click('#starterLink'); await q.waitForSelector('#starterLink >> text=Link copied');
+  expect(/#start=appointment$/.test(await q.evaluate(() => navigator.clipboard.readText())), 'copies the appointment link');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
 await check('pro prompt button: a 5 of 5 note shows a 🏆 button that stays put, tapping it plays confetti and lists what made it good, tapping again tucks it away, and only a yes/no is saved (Test lab report, folded into v2.1.36)', async () => {
   const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
   const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };
