@@ -48,18 +48,28 @@ export function assess(text) {
    (this email, my resume, the rubric). Free, on the phone, no Gemini call. Bare "code" is left
    out on purpose (dress code), only "my code" and "this code" count. */
 const CANT_SEE = [
-  { name: 'email', see: false, re: /\b(?:this|my|the|that) email\b|\bthe email below\b/i },
+  { name: 'email', see: false, re: /\b(?:this|my|the|that) e-?mail\b|\bthe e-?mail below\b/i },
+  /* Plurals (AGT-228) need a pointing word, so "write the emails for my launch" stays quiet. */
+  { name: 'emails', see: false, re: /\b(?:these|those|my) e-?mails\b|\bthe e-?mails below\b/i },
   { name: 'resume', see: false, re: /\b(?:my|the|this) (?:resume|résumé)\b/i },
+  { name: 'resumes', see: false, re: /\b(?:these|those|my) (?:resumes|résumés)(?![\w])/i },
   { name: 'CV', see: false, re: /\b(?:my|the|this) cv\b/i },
-  { name: 'file', see: true, re: /\b(?:the|my) attach(?:ed|ment)\b/i },
+  { name: 'file', see: true, re: /\b(?:the|my) attach(?:ed(?! files)|ment)\b/i },
+  { name: 'files', see: true, re: /\b(?:the|my|these|those) (?:attachments|attached files)\b/i },
   { name: 'code', see: false, re: /\b(?:my|this) code\b/i },
   { name: 'article', see: false, re: /\b(?:that|this|the) article\b/i },
+  { name: 'articles', see: false, re: /\b(?:these|those) articles\b/i },
   { name: 'essay', see: false, re: /\bmy essay\b/i },
+  { name: 'essays', see: false, re: /\bmy essays\b/i },
   { name: 'rubric', see: false, re: /\bthe rubric\b|\bmy rubric\b/i },
   { name: 'document', see: false, re: /\b(?:this|my) document\b/i },
+  { name: 'documents', see: false, re: /\b(?:these|those|my) documents\b/i },
   { name: 'spreadsheet', see: false, re: /\b(?:this|my) spreadsheet\b/i },
-  { name: 'screenshot', see: true, re: /\b(?:the|this|my|that) screenshot\b/i },
-  { name: 'photo', see: true, re: /\b(?:this|my|the|that) photo\b/i }
+  { name: 'spreadsheets', see: false, re: /\b(?:these|those|my) spreadsheets\b/i },
+  { name: 'screenshot', see: true, re: /\b(?:the|this|my|that) screen ?shot\b/i },
+  { name: 'screenshots', see: true, re: /\b(?:the|these|my|those) screen ?shots\b/i },
+  { name: 'photo', see: true, re: /\b(?:this|my|the|that) photo\b/i },
+  { name: 'photos', see: true, re: /\b(?:the|these|my|those) photos\b/i }
 ];
 const BIG_BLOCK = 150;   /* more than this many words after the phrase: the text is probably already pasted */
 
@@ -73,14 +83,15 @@ export function cantSeeThings(text) {
     if (words(t.slice(m.index + m[0].length)) > BIG_BLOCK) continue;
     if (!out.some((o) => o.name === c.name)) out.push({ name: c.name, see: c.see, at: m.index });
   }
-  return out.sort((a, b) => a.at - b.at).slice(0, 2).map(({ name, see }) => ({ name, see }));
+  /* "my email ... these emails" is one thing: keep the plural */
+  return out.filter((o) => !out.some((p) => p.name === o.name + 's')).sort((a, b) => a.at - b.at).slice(0, 2).map(({ name, see }) => ({ name, see }));
 }
 
 /* The card's one short line. Typed things get pasted, files and pictures get attached. */
 export function cantSeeLine(things) {
   if (!things.length) return '';
   const and = (list) => list.map((t) => t.name).join(' and ');
-  const it = (list) => (list.length === 2 ? 'them' : 'it');
+  const it = (list) => (list.length === 2 || list[0].name.endsWith('s') ? 'them' : 'it');
   const attach = things.filter((t) => t.see), paste = things.filter((t) => !t.see);
   if (!attach.length) return "Your AI can't see your " + and(paste) + '. Paste ' + it(paste) + ' right under the prompt when you send it.';
   if (!paste.length) return "Your AI can't see your " + and(attach) + '. Attach ' + it(attach) + ' in the chat after you paste the prompt.';

@@ -36,7 +36,7 @@ const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null;
 const CORE = [
   'quick version works with no key', 'full flow:', 'Quick mode writes', 'falls back to the next Flash', 'model switching:', 'flash cycle:', 'staging switches:', 'prep crew:', 'cooking:', 'quality crew:', 'bench fixes:', 'grader: never the model', 'model routing:',
   'slow write:',
-  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'first screen is simple',
+  'Couldn\'t reach Google', 'cut-off answer', 'errors: Gemini failing', 'errors: Try again after', 'first screen is simple',
   'messages: a blank Build', 'mode picker', 'chat questions:', 'journey strip:', 'finish line:',
   'AI app links:', 'calm first screen (#29)', 'result extras stay in view', 'run stats: logs numbers only', 'number check flags a changed version',
   'ideas tab: never saves', 'my context: only picked pieces', 'motion and touch:', 'key catcher:',
@@ -45,8 +45,14 @@ const CORE = [
   'questions card (idea mwk245csqohp)', 'auto (#56): with a key'
 ];
 const QUICK = process.env.QUICK === '1';
-let skipped = 0;
+/* SHARD=2/3: run only every third check, starting with the second, so CI can split the full
+   suite across parallel jobs. Each check keeps its slot whatever ONLY or QUICK skip. */
+const SHARD = /^(\d+)\/(\d+)$/.exec(process.env.SHARD || '');
+if (process.env.SHARD && !(SHARD && +SHARD[1] >= 1 && +SHARD[1] <= +SHARD[2])) { console.log('SHARD must look like 2/3 (a shard from 1 to the total), got ' + process.env.SHARD); process.exit(1); }
+let skipped = 0, seen = 0;
 async function check(name, fn) {
+  const slot = seen++;
+  if (SHARD && slot % Number(SHARD[2]) !== Number(SHARD[1]) - 1) { skipped++; return; }
   if (ONLY && !ONLY.test(name)) { skipped++; return; }
   if (QUICK && !CORE.some((c) => name.startsWith(c))) { skipped++; return; }
   try { await fn(); results.push(['PASS', name]); }
@@ -497,7 +503,7 @@ await check('safari mic: dev tools show a Mic log of recognizer events per run w
 await check('mic log in dev tools (v2.1.28 Test lab report): the Mic log moved out from under the mic button into More options with the other dev tools; empty until Talk it out runs, then it fills in live', async () => {
   const p = await page({ hooks: { __micRestartMs: 20 } });
   await p.addInitScript(FAKE_SPEECH); await devOn(p);
-  await p.click('#moreOpts > summary');
+  await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
   expect(await p.isVisible('#micLogRow') && /Nothing yet/.test(await p.textContent('#micLogRow')), 'More options has the Mic log section, empty before any run');
   expect(await p.evaluate(() => { const r = document.getElementById('micLogRow'); return !!r && !!r.closest('#moreOpts') && !document.getElementById('micBtn').parentElement.contains(r); }), 'the Mic log sits in More options, not next to the mic button');
   await p.click('#moreOpts > summary');
@@ -2146,6 +2152,66 @@ await check('idea strip: a swipe never counts as a tap; a clean tap still starts
   expect(await p.evaluate(() => document.activeElement.id) === 'thoughts', 'a clean tap should start typing');
 });
 
+await check('faster first load: the Test lab, Your core, and the Mic log are fetched only when first shown; a slow fetch says it is opening, a failed one says so with a reload button', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging';
+  const p = await page(); const got = [];
+  p.on('request', (r) => { const m = r.url().match(/\/assets\/(TestLab|CoreEditor|MicLog)-[^/]*\.js$/); if (m) got.push(m[1]); });
+  await p.reload(); await p.waitForLoadState('networkidle');
+  expect(!got.length, 'a plain visit fetches none of them, got: ' + got.join(', '));
+  await devOn(p); await p.click('#moreOpts > summary'); await p.waitForSelector('#micLogRow');
+  await p.click('#starterBtn'); await p.waitForSelector('#coreBtn');
+  expect(!got.includes('CoreEditor') && !got.includes('TestLab'), 'dev tools on fetches only what is on the page, got: ' + got.join(', '));
+  await p.click('#coreBtn'); await p.waitForSelector('#coreEditor #coreUser');
+  await p.check('#ideasToggle');
+  if (stg) await p.waitForSelector('#labTab'); else await p.waitForTimeout(400);
+  expect(got.includes('CoreEditor') && got.includes('MicLog') && got.includes('TestLab') === stg, 'each is fetched when shown (Test lab on staging only), got: ' + got.join(', '));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  const q = await page();
+  await q.route(/\/assets\/CoreEditor-[^/]*\.js$/, async (r) => { await new Promise((z) => setTimeout(z, 600)); r.abort(); });
+  await devOn(q); await q.click('#starterBtn'); await q.click('#coreBtn');
+  expect(/Opening your core/.test(await q.textContent('#starter [data-lazywait]')), 'a slow fetch says Opening your core instead of an empty card');
+  await q.waitForSelector('#starter [data-lazyfail] button');
+  expect(!(await q.$('#starter [data-lazywait]')), 'the waiting line goes away once the fetch settles');
+  await q.unroute(/\/assets\/CoreEditor-[^/]*\.js$/);
+  await Promise.all([q.waitForEvent('load'), q.click('#starter [data-lazyreload]')]);
+  await q.click('#starterBtn'); await q.click('#coreBtn'); await q.waitForSelector('#coreEditor');
+  expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  /* AGT-228: Try again opens the part with no reload, styles too. Still offline, it keeps both buttons. */
+  for (const part of [/\/assets\/CoreEditor-[^/]*\.js(\?.*)?$/, /\/assets\/CoreEditor-[^/]*\.(js|css)(\?.*)?$/]) {
+    const r = await page(); let loads = 0;
+    await r.route(part, (x) => x.abort());
+    await devOn(r); r.on('load', () => loads++);
+    await r.fill('#thoughts', 'keep these words');
+    await r.click('#starterBtn'); await r.click('#coreBtn');
+    await r.waitForSelector('#starter [data-lazyretry]');
+    await r.click('#starter [data-lazyretry]'); await r.waitForTimeout(500);
+    await r.waitForSelector('#starter [data-lazyretry]');
+    expect(await r.isVisible('#starter [data-lazyreload]'), 'still failing keeps Reload the page as the fallback');
+    await r.unroute(part);
+    await r.click('#starter [data-lazyretry]');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
+    const styled = await r.evaluate(() => [...document.styleSheets].some((s) => { try { return /CoreEditor-/.test(s.href || '') && s.cssRules.length > 0; } catch (e) { return false; } }));
+    expect(loads === 0 && styled, 'opens without a page reload, with its styles: ' + JSON.stringify({ loads, styled }));
+    expect(await r.inputValue('#thoughts') === 'keep these words', 'what was on screen is still there');
+    await r.click('#coreDone'); await r.waitForSelector('#coreEditor', { state: 'detached' }); await r.click('#coreBtn');
+    await r.waitForSelector('#coreEditor #coreUser', { timeout: 6000 });
+    expect(!r.errors.length, 'page errors: ' + r.errors.join('; '));
+  }
+});
+
+await check('faster first load: a slow font sheet never holds up the first screen, and the fonts still apply when it arrives', async () => {
+  const p = await page(); let sent = false, release;
+  const held = new Promise((r) => { release = r; });
+  await p.route(/fonts\.googleapis\.com\/css2/, async (r) => { await held; sent = true; await r.fulfill({ status: 200, contentType: 'text/css', body: '@font-face{font-family:"Atkinson Hyperlegible";src:local("Arial")}' }); });
+  await p.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => performance.getEntriesByName('first-contentful-paint').length > 0, null, { timeout: 5000 });
+  expect(!sent && await p.isVisible('#thoughts'), 'the box shows while the font sheet is still on its way');
+  release();
+  await p.waitForFunction(() => document.querySelector('link[href*="fonts.googleapis.com/css2"]').media === 'all', null, { timeout: 5000 });
+  expect(/display=swap/.test(await p.getAttribute('link[href*="fonts.googleapis.com/css2"]', 'href')), 'font-display stays swap');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('core (USER, SOUL, IDENTITY): set up once, shapes every prompt but never tacked on, switch, kept on reload, delete', async () => {
   const p = await page(); await devOn(p);
   expect(!(await p.$('#coreToggle')), 'no switch before a core exists');
@@ -3645,6 +3711,60 @@ await check('quality check: a glanceable score, a plain label, and one tip (neve
   expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
+await check('errors: Try again after a failed write keeps your answers and asks nothing again', async () => {
+  const writers = { 'gemini-3.8-flash': 500, 'gemini-3.7-flash': 500, 'gemini-3.6-flash': 500, 'gemini-3.5-flash-lite': 500 };
+  for (const how of ['server', 'offline', 'edited', 'slider']) {
+    const opts = { auto: true, write: 'RETRIED PROMPT' };
+    const p = await page(opts);
+    await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build');
+    await p.click('#qaList .chips button:has-text("iPhone")');
+    if (how === 'offline') opts.drop = Object.fromEntries(Object.keys(writers).map(m => [m, true])); else opts.fail = writers;
+    await p.click('#qaGoCard'); await p.waitForSelector('#notice-result button:has-text("Try again")', { timeout: 15000 });
+    const t = await p.textContent('#notice-result');
+    expect(/answers are kept/.test(t), how + ': the message should say the answers are kept: ' + t);
+    delete opts.fail; delete opts.drop;
+    if (how === 'edited') await p.fill('#thoughts', 'plan a beach day instead');
+    if (how === 'slider') await p.$eval('#opt-tune-detail', (el) => { el.value = '5'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    const before = p.calls.length;
+    await p.click('#notice-result button:has-text("Try again")');
+    if (how === 'edited' || how === 'slider') {
+      await p.waitForSelector('#qaList .chips button', { state: 'visible' });
+      expect(p.calls.slice(before).some(c => c.intake), how + ': a changed note or slider should start fresh with new questions');
+    } else {
+      await p.waitForFunction(() => document.getElementById('output').value.includes('RETRIED PROMPT'), null, { timeout: 15000 });
+      const after = p.calls.slice(before);
+      expect(after.length && !after.some(c => c.intake), how + ': Try again should not ask the questions again');
+      expect(/Q: Devices\?\nA: iPhone/.test(after[0].text), how + ': the retried write should carry the answer');
+      expect(after[0].text === p.calls.slice(0, before).filter(c => !c.intake)[0].text, how + ': the retried write should send the same thing as the first try');
+      expect(!(await p.isVisible('#qa')) && !(await p.isVisible('#notice-result')), how + ': no questions card or old error should remain');
+    }
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('staging switches: #writefail fails the first write after the questions once, Try again then writes with the kept answers, and live ignores it', async () => {
+  const staging = process.env.APP_CHANNEL === 'staging';
+  const p = await page({ auto: true, write: 'WRITTEN AFTER RETRY', hash: '#writefail' });
+  await p.waitForTimeout(300);
+  expect(/Write fail test is on/.test(await p.evaluate(() => document.body.textContent)) === staging, 'the switch should say it is on, on staging only');
+  await withKey(p); await p.fill('#thoughts', 'plan a road trip'); await p.click('#build');
+  await p.click('#qaList .chips button:has-text("iPhone")'); await p.click('#qaGoCard');
+  if (!staging) {
+    await p.waitForFunction(() => document.getElementById('output').value.includes('WRITTEN AFTER RETRY'), null, { timeout: 15000 });
+    expect(!(await p.isVisible('#notice-result')), 'live must ignore #writefail');
+    return;
+  }
+  await p.waitForSelector('#notice-result button:has-text("Try again")', { timeout: 15000 });
+  expect(/answers are kept/.test(await p.textContent('#notice-result')), 'the message should say the answers are kept');
+  const sent = p.calls.filter(c => !c.intake).length;
+  expect(sent === 0, 'the failed test write should send nothing, sent ' + sent);
+  await p.click('#notice-result button:has-text("Try again")');
+  await p.waitForFunction(() => document.getElementById('output').value.includes('WRITTEN AFTER RETRY'), null, { timeout: 15000 });
+  expect(p.calls.filter(c => c.intake).length === 1 && /A: iPhone/.test(p.calls.filter(c => !c.intake)[0].text), 'one questions call in all, and the write carries the answer');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('errors: Gemini failing still gives a prompt, plus a plain message with Try again; a used-up limit says when it comes back', async () => {
   const all = (code) => ({ 'gemini-3.8-flash': code, 'gemini-3.7-flash': code, 'gemini-3.6-flash': code, 'gemini-3.5-flash-lite': code });
   const p = await page({ fail: all(500) });
@@ -3667,6 +3787,67 @@ await check('errors: Gemini failing still gives a prompt, plus a plain message w
   await r.click('#notice-result button:has-text("Fix my key")');
   expect(await r.evaluate(() => document.getElementById('keyPanel').open), 'Fix my key should open the key panel');
   expect(!p.errors.length && !q.errors.length && !r.errors.length, 'page errors');
+});
+
+await check('thumb targets: the small buttons are at least 44px to tap at 390 and 360, rows stay on one line, no sideways scroll (bundle B)', async () => {
+  const seen = [], bad = [];
+  for (const w of [390, 360]) {
+    const p = await page({ intake: { title: 'Japan Trip', need: 'Plan a trip to Japan', category: 'Travel', complexity: 'standard', questions: [{ question: 'How long?', choices: ['5 days'] }] } });
+    await p.setViewportSize({ width: w, height: 844 });
+    /* size, plus a real hit test near both edges: nothing nearby may steal the tap */
+    const tap = async (name, sel, wide) => {
+      await p.waitForSelector(sel, { state: 'visible' });
+      await p.$eval(sel, (e) => e.scrollIntoView({ block: 'center' }));
+      await p.waitForTimeout(450);
+      const m = await p.$$eval(sel, (l) => l.filter((e) => e.getClientRects().length).map((e) => {
+        e.scrollIntoView({ block: 'center' });
+        const r = e.getBoundingClientRect(), x = r.left + r.width / 2;
+        const hit = [r.top + 2, r.bottom - 2].every((y) => { const t = document.elementFromPoint(x, y); return !!t && e.contains(t); });
+        return { w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, hit };
+      }));
+      if (!m.length) bad.push(w + ' ' + name + ' missing');
+      for (const r of m) {
+        seen.push(w + ' ' + name + ' ' + r.w + 'x' + r.h);
+        if (r.h < 43.9 || (wide && r.w < 43.9) || !r.hit) bad.push(w + ' ' + name + ' ' + r.w + 'x' + r.h + (r.hit ? '' : ' covered'));
+      }
+    };
+    const flat = async (where) => { if (await p.evaluate(() => document.documentElement.scrollWidth > innerWidth)) bad.push(w + ' sideways scroll ' + where); };
+    const oneLine = async (name, sel) => { const tops = await p.$$eval(sel, (l) => l.filter((e) => e.getClientRects().length).map((e) => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; })); if (tops.length && Math.max(...tops) - Math.min(...tops) > 6) bad.push(w + ' ' + name + ' wrapped'); };
+    await tap('Latest pill', '#versionPill');
+    await tap('Ideas Pause', '#ideasPause');
+    await tap('Try this one', '#ideasTry');
+    /* the longest category label used to squeeze Try this one onto 2 lines at 360 */
+    const tryH = await p.evaluate(() => { document.getElementById('ideasCat').textContent = '⏰ Money and time'; return document.getElementById('ideasTry').getBoundingClientRect().height; });
+    if (tryH > 46) bad.push(w + ' Try this one wrapped to 2 lines (' + tryH + 'px)');
+    await oneLine('ideas top row', '.ideas-top > *'); await oneLine('ideas bottom row', '.ideas-bottom > *');
+    await tap('report button (first screen)', '.reportbtn');
+    await flat('first screen');
+    await p.click('#keyPanel > summary');
+    await tap('Show me the steps', '#keyStepsHelp > summary');
+    await tap('Lock your key', '#keyPanel details.lock:not(#keyStepsHelp) > summary');
+    await tap('Remember my key', '#keyPanel label.check');
+    /* tapping near the label's edge, well away from the 18px box, ticks it */
+    const lab = await p.$('#keyPanel label.check'), before = await p.isChecked('#remember');
+    await lab.scrollIntoViewIfNeeded(); const lb = await lab.boundingBox();
+    await p.mouse.click(lb.x + 120, lb.y + lb.height - 3);
+    if (await p.isChecked('#remember') === before) bad.push(w + ' Remember label edge tap did nothing');
+    await flat('key panel');
+    await p.click('#moreOpts > summary');
+    await tap('Hear speed', '#hearSpeed .seg button');
+    await oneLine('hear speed', '#hearSpeed .seg button');
+    await flat('more options');
+    await withKey(p); await p.fill('#thoughts', 'japan trip with my wife'); await p.click('#build');
+    await p.waitForSelector('#qa:not([hidden])');
+    await tap('Edit goal', '#qaGoalEditBtn', true);
+    await flat('questions');
+    await p.click('#qaGo'); await done(p);
+    await tap('report button (result)', '#result .reportbtn');
+    await flat('result');
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  if (process.env.SIZES) console.log(seen.join('\n'));
+  expect(!bad.length, 'small or covered targets: ' + bad.join(' | '));
 });
 
 await check('result row buttons: Hear it, Glow-Up and X-ray are 44px tall and stay on one line at 375 and 390 (phone) and 1280 (desktop)', async () => {
@@ -5471,7 +5652,7 @@ await check('my context: Done floats at the bottom of the screen (and on top of 
   await devOn(p);
   await ideasOn(p);
   const fabs = process.env.APP_CHANNEL === 'staging' ? ['#ideaTab', '#labTab'] : ['#ideaTab'];
-  for (const f of fabs) expect(await p.isVisible(f), f + ' should show before the editor opens');
+  for (const f of fabs) expect(await p.waitForSelector(f, { state: 'visible', timeout: 5000 }).then(() => true, () => false), f + ' should show before the editor opens');
   for (let i = 0; i < 4; i++) { await p.click(i ? '#contextBar button:text-is("+ Add another")' : '#contextNew'); await p.waitForTimeout(150); }
   await p.evaluate(() => document.getElementById('contextEditor').scrollIntoView({ block: 'start' })); await p.waitForTimeout(200);
   const tall = await p.evaluate(() => document.getElementById('contextEditor').getBoundingClientRect().height > innerHeight);
@@ -6277,6 +6458,8 @@ await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every writ
   const out1 = await p.textContent('#bbOut');
   expect(/6 of 8 ready/.test(out1) && /no answer came back/.test(out1) && /looks cut off/.test(out1), 'B12 missing and B15 cut off are failed cases: ' + out1.slice(0, 200));
   expect(await p.isDisabled('#bbCopy') && await p.isEnabled('#bbRetry'), 'Copy waits for 8 of 8; Rerun failed is on');
+  const fold = () => p.evaluate(() => document.querySelector('#bbOut details').open);
+  expect(await fold(), 'steady screen: with failed cases the results stand open');
   await p.click('#bbRetry');
   await p.waitForFunction(() => window.__scOpens.length === 2);
   const rerun = await p.evaluate(() => navigator.clipboard.readText());
@@ -6285,6 +6468,17 @@ await check('bench builder: 6 notes prep on Flash-Lite, one tap hands every writ
   await p.click('#bbPaste');
   await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent), null, { timeout: 30000 });
   expect(await p.isEnabled('#bbCopy') && await p.isDisabled('#bbRetry'), 'Copy for answer key is on at 8 of 8');
+  expect(!(await fold()), 'steady screen: all ready closes the results');
+  /* A re-render with all ready keeps it open, or closed, the way you left it. */
+  for (const want of [true, false]) {
+    if ((await fold()) !== want) await p.click('#bbOut summary');
+    await p.evaluate(() => { document.querySelector('#bbOut details').dataset.old = '1'; document.getElementById('bbInfo').textContent = ''; location.hash = '#benchback'; });
+    await p.waitForFunction(() => !document.getElementById('bbPaste').disabled && /is back/.test(document.getElementById('bbInfo').textContent));
+    await p.evaluate((t) => navigator.clipboard.writeText(t), '@@@\n' + ['B10|chatgpt', 'B11|chatgpt', 'B12|cloud', 'B13|cloud', 'B14|ondevice', 'B15|ondevice'].map((h) => h + '\n' + fake(h.split('|')[0])).join('\n@@@\n'));
+    await p.click('#bbPaste');
+    await p.waitForFunction(() => /All 8 ready/.test(document.getElementById('bbInfo').textContent) && !document.querySelector('#bbOut details').dataset.old, null, { timeout: 30000 });
+    expect((await fold()) === want, 'steady screen: a re-render keeps the results ' + (want ? 'open' : 'closed'));
+  }
   await p.click('#bbCopy');
   const key = await p.evaluate(() => navigator.clipboard.readText());
   expect(/^bench add\n/.test(key) && (key.match(/^== B\d+ /gm) || []).length === 8, 'answer key copy starts with bench add and has 8 cases');
@@ -6547,6 +6741,20 @@ await check('cant-see radar: a card names what the AI cannot see, hides when the
   await p.context().close();
 });
 
+await check('cant-see radar: plurals and close variants name the thing, say them, and everyday words stay quiet (AGT-228)', async () => {
+  const C = await import('../app/lib/coach.js');
+  const names = (s) => C.cantSeeThings(s).map((t) => t.name).join('+');
+  for (const [note, want] of [['sort my emails', 'emails'], ['reply to these emails', 'emails'], ['read this e-mail', 'email'], ['what do my screenshots say', 'screenshots'], ['look at my screen shot', 'screenshot'], ['organize my photos', 'photos'], ['summarize the attachments', 'files'], ['read the attached files', 'files'], ['compare these documents', 'documents'], ['clean up my spreadsheets', 'spreadsheets'], ['fix my email, then these emails', 'emails'], ['my emails and my photos', 'emails+photos']]) expect(names(note) === want, note + ' -> ' + names(note) + ', wanted ' + want);
+  for (const note of ['the dress code is casual', 'write a cold email', 'send emails to parents weekly', 'write the emails for my launch', 'take photos of food', 'plan a photo shoot']) expect(!names(note), 'no card for: ' + note + ' -> ' + names(note));
+  expect(C.cantSeeLine(C.cantSeeThings('sort my emails')) === "Your AI can't see your emails. Paste them right under the prompt when you send it.", 'one plural says them');
+  expect(/Attach them in the chat/.test(C.cantSeeLine(C.cantSeeThings('organize my photos'))), 'plural pictures say attach them');
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  await p.fill('#thoughts', 'help me sort my emails'); await p.click('#build'); await done(p);
+  await p.waitForSelector('#cantSee', { timeout: 6000 });
+  expect(/can't see your emails\. Paste them/.test(await p.textContent('#cantSee')), 'the card shows for a plural');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
 await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) shows or hides the card the way its step says (Test lab 11/25)', async () => {
   const rel = JSON.parse(readFileSync(path.join(ROOT, '..', 'releases.json'), 'utf8')).releases.find((r) => r.version === '2.1.51');
   const steps = rel.checks.filter((c) => c.paste);
@@ -6571,13 +6779,197 @@ await check('cant-see radar: every Test lab note for it (releases.json v2.1.51) 
   await p.context().close();
 });
 
+await check('in-app browser: inside Instagram, Facebook, TikTok, or Snapchat one card says how to open in a real browser; normal browsers never see it (AGT-147)', async () => {
+  const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 ';
+  const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0 Mobile Safari/537.36 ';
+  for (const [app, browser, ua] of [
+    ['Instagram', 'Safari', ios + 'Instagram 400.0.0.0 (iPhone16,2; iOS 18_5)'],
+    ['Facebook', 'Safari', ios + '[FBAN/FBIOS;FBAV/500.0.0.0;FBDV/iPhone16,2]'],
+    ['Facebook', 'Chrome', android + '[FB_IAB/FB4A;FBAV/500.0.0.0;]'],
+    ['TikTok', 'Chrome', android + 'musical_ly_2023001030 BytedanceWebview/d8a21c6'],
+    ['Snapchat', 'Safari', ios + 'Snapchat/13.0.0.0 (like Safari/8620.2.4)']
+  ]) {
+    const p = await page({ ua, calm: true });
+    await p.waitForSelector('#inApp', { timeout: 4000 });
+    const txt = (await p.textContent('#inApp')).replace(/\s+/g, ' ');
+    expect(txt.includes('Open this in ' + browser) && txt.includes("You're in " + app + "'s built-in browser") && /Open in browser/.test(txt), app + ' card wording: ' + txt);
+    const r = await p.evaluate(() => { const c = document.getElementById('inApp'), b = document.getElementById('inAppStay').getBoundingClientRect(); return { first: c === document.querySelector('.wrap').firstElementChild, bottom: b.bottom, tall: b.height, wide: document.documentElement.scrollWidth }; });
+    expect(r.first && r.bottom <= 844 && r.tall >= 44 && r.wide <= 390, 'first on the page, button on screen, no sideways scroll: ' + JSON.stringify(r));
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+  for (const ua of [ios + 'Version/18.5 Safari/604.1', 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15']) {
+    const p = await page({ ua });
+    await p.waitForTimeout(500);
+    expect(!(await p.$('#inApp')), 'a normal browser shows no card: ' + ua);
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('in-app browser: Start here waits behind the card, Continue here anyway lets it play, once per visit, and run stats keep a fixed label on the phone (AGT-147)', async () => {
+  const stg = process.env.APP_CHANNEL === 'staging', k = 'stp-inapp';   /* staging's page adds its own stg: prefix */
+  const ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 400.0.0.0';
+  const p = await page({ ua, fresh: true });
+  await p.waitForSelector('#inApp');
+  await p.waitForTimeout(4200);   /* past the time Start here would have scrolled to the box */
+  expect(!(await p.$('#startHere')) && (await p.evaluate(() => scrollY)) < 5, 'nothing scrolls the card away');
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'shown', 'counted as shown');
+  await p.click('#inAppStay');
+  await p.waitForSelector('#inApp', { state: 'detached', timeout: 4000 });
+  await p.waitForSelector('#startHere', { timeout: 5000 });
+  expect(await p.evaluate((k) => sessionStorage.getItem(k), k) === 'continued here', 'counted as continued here');
+  expect(!(await p.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }))).includes('Instagram'), 'the browser name is never saved');
+  await p.reload(); await p.waitForTimeout(500);
+  expect(!(await p.$('#inApp')), 'once per visit: a reload does not show it again');
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+  /* Run stats: the label shows on this phone and is not sent to the relay. */
+  const q = await page({ ua, intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'THE PROMPT' });
+  const sent = [];
+  await q.route('https://relay.test/report/run', async (r) => { if (r.request().method() === 'POST') sent.push(r.request().postData()); await r.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: '{"ok":true}' }); });
+  await q.click('#inAppStay');
+  await q.click('#moreOpts summary'); await q.check('#statsToggle');
+  await withKey(q); await q.fill('#thoughts', 'plan a birthday dinner for six'); await q.click('#build'); await done(q);
+  await q.click('#testLog summary');
+  expect(/in-app browser card: continued here/.test(await q.textContent('#testRuns')), 'run stats show the label: ' + (await q.textContent('#testRuns')));
+  await q.click('#copy');
+  await q.waitForTimeout(600);
+  expect(sent.length === 1 && !sent.join('').includes('inapp') && !sent.join('').includes('continued here'), 'the relay gets the run without the new label: ' + sent.length);
+  /* Staging switch: #inapp shows it in a normal browser, live ignores it. */
+  const s = await page();
+  await s.evaluate(() => { location.hash = '#inapp'; });
+  if (stg) { await s.waitForSelector('#inApp'); expect(/Safari or Chrome/.test(await s.textContent('#inApp')), 'a computer is told Safari or Chrome'); }
+  else { await s.waitForTimeout(400); expect(!(await s.$('#inApp')), 'live ignores the staging switch'); }
+  for (const x of [q, s]) expect(!x.errors.length, 'page errors: ' + x.errors.join('; '));
+});
+
+await check('steady screen: at Ready the cooking ring draws in smaller, with the same parts, and the clock stays readable', async () => {
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] } });
+    await p.setViewportSize(vp);
+    await withKey(p); await p.fill('#thoughts', 'plan a friendsgiving for 8 on saturday'); await p.click('#build'); await done(p);
+    await p.waitForTimeout(900);
+    const r = await p.evaluate(() => { const c = document.querySelector('#resultTrack .cook.done'), h = (e) => e.getBoundingClientRect().height; return { cook: h(c), stage: h(c.querySelector('.stage')), clock: h(c.querySelector('.clock')), parts: ['.ring', '.plate', '.cloche', '.clock', '.cap', '.ing'].filter((x) => c.querySelector(x)).length }; });
+    expect(r.stage <= 162 && r.cook <= 232 && r.clock >= 18 && r.parts === 6, 'a compact done ring with all its parts: ' + JSON.stringify([vp.width, r]));
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+await check('steady screen: bench builder results fold under the count when all are ready, open on a failed case, and stay how you left them', async () => {
+  const p = await page();
+  const run = (bad) => { const c = Array.from({ length: 6 }, (_, i) => ({ id: 'B1' + i, name: 'Case ' + i, writer: 'cloud', job: 'x', prompt: 'a b c', err: bad && !i ? 'cut off' : '' })); return { at: new Date().toISOString(), phase: 'back', cases: c, seededSpec: [{}, {}], seeded: [{ id: 'S1', name: 'S', flaw: 'x', prompt: 'a' }, { id: 'S2', name: 'S', flaw: 'y', prompt: 'a' }] }; };
+  const load = async (bad) => { await p.evaluate((s) => localStorage.setItem('stp-benchbuild', JSON.stringify(s)), run(bad)); await devOn(p); await p.click('#moreOpts > summary'); };
+  const state = () => p.evaluate(() => { const d = document.querySelector('#bbOut details'); return { open: d.open, h: Math.round(document.getElementById('bbOut').getBoundingClientRect().height), sum: d.querySelector('summary').textContent }; });
+  await load(false);
+  const shut = await state();
+  expect(!shut.open && shut.h < 100 && /8 of 8 ready/.test(shut.sum), 'closed when all ready: ' + JSON.stringify(shut));
+  await p.click('#bbOut summary');
+  expect((await state()).h > 300 && await p.isVisible('#bbOut table'), 'one tap shows the table');
+  await load(true);
+  const bad = await state();
+  expect(bad.open && /7 of 8 ready/.test(bad.sum) && await p.isVisible('#bbOut table'), 'a failed case opens it: ' + JSON.stringify(bad));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('steady screen: the end of the page scrolls clear of the dock and the floating buttons', async () => {
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    const p = await page();
+    await p.setViewportSize(vp);
+    await devOn(p); await ideasOn(p);
+    await p.waitForSelector('#ideaTab', { state: 'visible' });
+    if (process.env.APP_CHANNEL === 'staging') await p.waitForSelector('#labTab', { state: 'visible' });
+    for (const docked of [false, true]) {
+      if (docked) { await p.fill('#thoughts', 'plan a 5k'); await p.click('#build'); await done(p); await p.waitForTimeout(2600); }
+      await p.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' })); await p.waitForTimeout(700);
+      const hits = await p.evaluate(() => {
+        const out = [];
+        for (const e of document.querySelectorAll('#moreOpts p, #moreOpts label, #moreOpts summary, #footer')) {
+          const range = document.createRange(); range.selectNodeContents(e);
+          for (const r of range.getClientRects()) {
+            if (r.top < 0 || r.bottom > innerHeight || r.width < 2) continue;
+            if ([r.left + 2, r.left + r.width / 2, r.right - 2].some((x) => document.elementFromPoint(x, r.top + r.height / 2)?.closest('#ideaTab, #labTab, .dock'))) out.push(e.id || e.textContent.trim().slice(0, 30));
+          }
+        }
+        return { out, docked: document.body.classList.contains('dock-on') };
+      });
+      expect(!hits.out.length, 'nothing under the dock or buttons at the end: ' + JSON.stringify([vp.width, docked, hits]));
+    }
+    expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+    await p.context().close();
+  }
+});
+
+/* Skip the paste (AGT-87): the Open in tap carries the prompt on computers and iPad. */
+await check('skip the paste: the link helper prefills ChatGPT and Claude on computers and iPad only, up to the cap', async () => {
+  const { prefillLink, PREFILL_MAX } = await import('../app/lib/openlink.js');
+  const mac = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15', maxTouchPoints: 0 };
+  const win = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/130.0 Safari/537.36', maxTouchPoints: 10 };
+  const ipad = { userAgent: mac.userAgent, maxTouchPoints: 5 };
+  const ipadOld = { userAgent: 'Mozilla/5.0 (iPad; CPU OS 12_0 like Mac OS X) Mobile/15E148', maxTouchPoints: 5 };
+  const iphone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148', maxTouchPoints: 5 };
+  const android = { userAgent: 'Mozilla/5.0 (Linux; Android 10; K) Chrome/130.0 Mobile Safari/537.36', maxTouchPoints: 5 };
+  const tablet = { userAgent: 'Mozilla/5.0 (X11; Linux x86_64; Android 14) Chrome/130.0 Safari/537.36', maxTouchPoints: 5 };
+  const text = 'Line one & two?\n\n#3 100% a+b="c" 🎉';
+  for (const d of [mac, win, ipad, ipadOld]) for (const [name, base] of [['ChatGPT', 'https://chatgpt.com/?q='], ['Claude', 'https://claude.ai/new?q=']]) {
+    const url = prefillLink(name, text, d);
+    expect(url.startsWith(base) && new URL(url).searchParams.get('q') === text, name + ' should carry the exact prompt: ' + url);
+  }
+  for (const d of [iphone, android, tablet]) expect(prefillLink('ChatGPT', text, d) === '' && prefillLink('Claude', text, d) === '', 'phones keep the plain link: ' + d.userAgent);
+  expect(prefillLink('Gemini', text, mac) === '' && prefillLink('ChatGPT', '  ', mac) === '' && prefillLink('ChatGPT', 'a\ud800', mac) === '', 'Gemini, an empty prompt, and unencodable text keep the plain link');
+  expect(prefillLink('Claude', 'a'.repeat(PREFILL_MAX), mac) !== '' && prefillLink('Claude', 'a'.repeat(PREFILL_MAX + 1), mac) === '' && prefillLink('Claude', ' '.repeat(10) + 'é'.repeat(1001), mac) === '', 'the cap counts the encoded characters');
+});
+
+await check('skip the paste: switched off, so Open in uses the plain address on a computer, still copies, and says to paste', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Thank Aunt Carol for the blender.' });
+  await p.context().route(/^https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com)\//, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: 'ai' }));
+  await withKey(p); await p.fill('#thoughts', 'thank Aunt Carol for the blender'); await p.click('#build'); await done(p);
+  for (const [name, plain] of [['ChatGPT', 'https://chatgpt.com/'], ['Claude', 'https://claude.ai/new'], ['Gemini', 'https://gemini.google.com/app']]) {
+    await p.evaluate(() => navigator.clipboard.writeText(''));
+    if (!(await p.isVisible(`.openrow a >> text=${name}`))) await p.click('#dockMore');
+    const [tab] = await Promise.all([p.context().waitForEvent('page'), p.click(`.openrow a >> text=${name}`)]);
+    await tab.waitForLoadState(); const url = tab.url(); await tab.close(); await p.waitForTimeout(250);
+    expect(url === plain, name + ' should open the plain address, with no prompt in it: ' + url);
+    expect(await p.evaluate(() => navigator.clipboard.readText()) === 'Thank Aunt Carol for the blender.', name + ' still copies the prompt');
+    expect(new RegExp('Copied\\. Opening ' + name + ': paste it there\\.').test(await p.textContent('#status')), 'status says to paste: ' + await p.textContent('#status'));
+  }
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
+});
+
+await check('spoken times: "5 30" counts as 5:30 for the number check, and units or a really missing time still behave', async () => {
+  const N = await import('../app/lib/numcheck.js');
+  const { analyze } = await import('../app/lib/xray.js');
+  const clean = (prompt, said) => { const r = N.numberIssuesFor(prompt, said); expect(!r.missing.length && !r.extra.length, said + ' should be clean: ' + JSON.stringify(r)); };
+  clean('soccer Tue and Thu at 5:30', 'soccer tuesday and thursday at 5 30');
+  clean('Dinner at 7:45 PM.', 'dinner 7 45pm');
+  clean('Pickup from 5:30 to 6:15.', 'pickup from 5 30 to 6 15');
+  clean('Be there around 9:00 a.m.', 'be there around 9 00 a.m.');
+  clean('Practice at 5 30.', 'practice at 5 30');
+  for (const s of ['5 30 minute breaks', 'at 5 30-minute slots', 'after 5 30 dollars', '1 2 3 4', 'it costs 5 30', 'at 5', 'at $5 30']) expect(N.normalizeSpokenTimes(s) === s, 'left alone: ' + s + ' -> ' + N.normalizeSpokenTimes(s));
+  expect(N.numberIssuesFor('Take breaks.', 'at least 5 30 minute breaks').missing.join() === '30', 'a unit number still reports as before');
+  expect(N.numberIssuesFor('Soccer Tuesday.', 'soccer tuesday at 5 30').missing.join() === '5:30', 'a time the prompt dropped is still flagged');
+  expect(N.numberIssuesFor('Soccer at 6:30.', 'soccer at 5 30').extra.join() === '6:30', 'a changed time is still flagged');
+  const note = 'soccer tuesday and thursday at 5 30 for maya, game saturday at 9 15, snacks for 12 kids, text the other parents';
+  const prompt = 'Write a text to the other parents. Soccer is Tuesday and Thursday at 5:30 for Maya, the game is Saturday at 9:15, and snacks are for 12 kids.';
+  const x = analyze(prompt, note);
+  expect(x.stray === 0 && x.dropped === 0, 'X-ray should list nothing left out or made up: ' + JSON.stringify([x.stray, x.dropped]));
+  const p = await page({ intake: noQ, write: prompt });
+  await withKey(p); await p.fill('#thoughts', note); await p.click('#build'); await done(p); await p.waitForTimeout(600);
+  expect(await p.$eval('#numWarn', (e) => e.hidden), 'no red Heads up: ' + await p.textContent('#numWarn'));
+  const q = await page({ intake: noQ, write: 'Write a text to the other parents about soccer and 12 kids.' });
+  await withKey(q); await q.fill('#thoughts', note); await q.click('#build'); await done(q); await q.waitForSelector('#numWarn:not([hidden])', { timeout: 5000 });
+  expect(/leaves out 5:30 and 9:15|leaves out 9:15 and 5:30/.test(await q.textContent('#numWarn')), 'really missing times are named: ' + await q.textContent('#numWarn'));
+  expect(!p.errors.length && !q.errors.length, 'page errors');
+});
+
 await browser.close();
 server.kill();
 for (const r of results) console.log(r.join('  '));
 /* On GitHub Actions, each failure also becomes an annotation on the run page. */
 if (process.env.GITHUB_ACTIONS) for (const r of results) if (r[0] === 'FAIL') console.log('::error title=Smoke test failed::' + (r[1] + ': ' + (r[2] || '')).replace(/\r?\n/g, ' ').slice(0, 900));
 const failed = results.filter(r => r[0] === 'FAIL').length;
-console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : ''));
-if (QUICK && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
+console.log(`\n${results.length - failed} passed, ${failed} failed` + (ONLY ? `, ${skipped} skipped (ONLY=${process.env.ONLY}; run plain npm test before pushing)` : QUICK ? `, ${skipped} skipped (QUICK core set; the full suite runs in the background and gates promote)` : SHARD ? `, ${skipped} skipped (SHARD=${process.env.SHARD}; the other shards run the rest)` : ''));
+if (QUICK && !SHARD && results.length < CORE.length - 1) { console.log(`QUICK ran ${results.length} checks but CORE lists ${CORE.length}: a core check was renamed or removed. Update CORE in tests/smoke.mjs.`); process.exit(1); }
 if (ONLY && !results.length) { console.log('No check name matches ONLY=' + process.env.ONLY); process.exit(1); }
+if (SHARD && !ONLY && !results.length) { console.log('SHARD=' + process.env.SHARD + ' ran no checks'); process.exit(1); }
 process.exit(failed ? 1 : 0);

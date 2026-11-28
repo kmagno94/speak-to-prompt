@@ -235,6 +235,7 @@ Voice Memos transcripts are made on the phone and need iOS 18 or later on an iPh
   | Path | What it is |
   |---|---|
   | `app/App.svelte` | The page markup |
+  | `app/Lazy.svelte` | Loads the Test lab, Your core, and the Mic log only when first shown (offers a reload if that fetch fails) |
   | `app/Message.svelte`, `app/Notice.svelte` | The one look for empty, error, warning, and success messages, and where each shows |
   | `app/JourneyStrip.svelte`, `app/QualityCheck.svelte`, `app/OutputMore.svelte` | Speak › Answer › Copy, the glanceable Quality check, and Show the whole prompt |
   | `app/ModePicker.svelte` | The Quick and Normal picker, the first part rebuilt as a Svelte component |
@@ -305,7 +306,7 @@ Staging first. Live only changes through a promote.
 | When | What runs | Gates |
 |---|---|---|
 | Push to `staging` | Release check, release tests, `QUICK=1` core smoke tests (22 checks: the main journey, Gemini failures, privacy rules, Ideas tab, staging/live split). Live is rebuilt without re-testing when main's commit already passed its full run | The staging deploy (a few minutes) |
-| Same push, in the background | "Full tests (staging, background)": every check | Nothing, but a failure turns the run red. Fix it before the next session |
+| Same push, in the background | "Full tests (staging, background) 1/3, 2/3, 3/3": every check, split across 3 parallel jobs (`SHARD=n/3`), 30 minutes max each | Nothing, but a failure turns the run red. All three should be green. Fix it before the next session |
 | Pull request `staging` into `main` | "Promote check" (`.github/workflows/promote-check.yml`): release check plus every check on the live build. Fails if the pull request isn't from `staging` | The merge |
 | Push to `main`, or a roll back | Every check on both versions | The live deploy |
 

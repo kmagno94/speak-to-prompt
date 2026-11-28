@@ -19,5 +19,5 @@
 {/if}
 
 <style>
-  .seg button { padding: 8px 14px; }
+  .seg button { padding: 8px 14px; min-height: var(--tap); }
 </style>

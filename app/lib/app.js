@@ -1,11 +1,13 @@
 import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gapFillPrompt, withContext, SQUEEZE, repairPrompt, stackChoice, withStackHint, withMemory, withLessons, todayText, withToday, gradePrompt, isAside, LABEL_FIXES, LABEL_NAMES, labelFixPrompt, shortWriteText, tipQuestionsPrompt, tipQuestions, TIP_MAX, GRADE_MISSING, GRADE_PASS, capGrade, gradeLabel, goalText } from './prompts.js';
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
-import { numberTokens, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { numberTokens, normalizeSpokenTimes, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
+import { PREFILL_ON, prefillLink } from './openlink.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
 import { startHere } from './starthere.svelte.js';
+import { inApp } from './inapp.svelte.js';   /* AGT-147 */
 import { cook, cookStart, cookStop, cookClock } from './cook.svelte.js';
 import { chat } from './chat.svelte.js';
 import { core } from './core.svelte.js';
@@ -94,6 +96,7 @@ export function startApp() {
         "  " + r.words_in + " words in, " + (r.words_out || 0) + " out, " + r.answered + "/" + r.questions + " answered" +
         (r.context ? "\n  context: " + r.context + " picked, about " + n(r.context_tok) + " tokens added" + (r.context_raw_tok ? " (squeezed from " + n(r.context_raw_tok) + ")" : r.squeeze ? " (squeeze " + r.squeeze + ")" : "") : "") +
         (r.ctx_nudge ? "\n  save as context offer: " + r.ctx_nudge : "") + (r.worked ? "\n  \ud83d\udc4d worked great" : "") +
+        (r.inapp ? "\n  in-app browser card: " + r.inapp : "") +
         (r.detours ? "\n  detours: " + r.detours : "") + (r.outcome !== "ok" ? "\n  " + r.outcome : "");
     }
     /* Every Flash model the key can use (from Google's model list), plus any
@@ -274,7 +277,8 @@ export function startApp() {
       clean_model: session.clean && session.clean.model || null, clean_s: session.clean && session.clean.ms != null ? Math.round(session.clean.ms / 100) / 10 : null, clean_words: session.clean && session.clean.words || null,
       ledger: session.ledger ? session.ledger.status : null, ledger_items: session.ledger && session.ledger.items ? session.ledger.items.length : null, ledger_model: session.ledger && session.ledger.model || null,
       shape: session.shape ? !!(session.shape.success || session.shape.format) : null,
-      ctx_nudge: savectx.stat || null   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
+      ctx_nudge: savectx.stat || null,   /* Save as context (#50): a fixed label only (shown, tapped, saved, not now, manual, manual saved) */
+      inapp: inApp.stat || null   /* AGT-147: a fixed label only (shown, continued here). Stays on this phone. */
     };
     for (var k in extra) r[k] = extra[k];
     testLog.add(r);
@@ -312,7 +316,7 @@ export function startApp() {
     if (act === "idea") { if (typeof ideasTry !== "undefined" && DECK.length) { ideasTry.click(); } thoughts.focus(); notify("form"); }
     else if (act === "paste") pasteBtn.click();
     else if (act === "pasteanyway" && pendingPaste) pasteFromClipboard(pendingPaste.fromShortcut, pendingPaste.wrap, true);
-    else if (act === "retry") { notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
+    else if (act === "retry") retryBuild();
     else if (act === "key") { var kp = document.getElementById("keyPanel"); kp.open = true; kp.scrollIntoView({ behavior: "smooth", block: "start" }); }
     else if (act === "quickmode") { ui.mode = "quick"; ui.modePicked = true; notify("result"); form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click(); }
     else if (act === "dismiss") notify(e.detail.where);
@@ -409,15 +413,31 @@ export function startApp() {
   }
   /* When Gemini can't finish, the quick prompt still shows, and one message says what
      happened and the next step (Try again, Fix my key, or just wait). */
-  function failNotice(e) {
+  function failNotice(e, kept) {   /* kept: a write failed after your answers, so Try again reuses them */
     var st = e && e.status, offline = navigator.onLine === false || st === "network";
     var retry = { label: "Try again", act: "retry", primary: true };
-    if (offline) return notify("result", "error", "You look offline", "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
+    if (offline) return notify("result", "error", "You look offline", kept ? "Your answers are kept. Reconnect, then tap Try again to write the full version with them. The quick prompt below doesn't include them."
+      : "Your quick prompt below still works. Reconnect, then tap Try again for follow-up questions.", [retry]);
     if (st === 429) return e.perMinute
-      ? notify("result", "warn", "Google needs a short breather", "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
+      ? notify("result", "warn", "Google needs a short breather", kept ? "Too many requests this minute. Your answers are kept: wait a minute, then tap Try again. The quick prompt below doesn't include them."
+        : "Too many requests this minute. Your quick prompt is below. Wait a minute, then tap Try again.", [retry])
       : notify("result", "warn", "Today's free Gemini limit is used up", "Your quick prompt is below and ready to copy. Google's free limit refreshes overnight, so follow-up questions are back tomorrow.");
     if (st === 400 || st === 403) return notify("result", "error", "Google didn't accept your key", "Your quick prompt is below. Copy your key again from Google AI Studio, paste it, and tap Check key.", [{ label: "Fix my key", act: "key", primary: true }]);
-    notify("result", "error", "Gemini didn't come through", "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+    notify("result", "error", "Gemini didn't come through", kept ? "Your answers are kept. Tap Try again to write the full version with them. The quick prompt below doesn't include them."
+      : "No problem: your quick prompt is below, ready to copy. Tap Try again for the full version with follow-up questions.", [retry]);
+  }
+  /* Try again after a failed write: same note, same sliders, same mode and a key still in,
+     so write again with the answers you already gave. Anything else builds from the top, as before. */
+  function retryBuild() {
+    notify("result");
+    var r = session && session.retryWrite;
+    if (r && !busy && ui.hasKey && starter.withTune(thoughts.value.trim()) === session.raw && currentMode() === r.mode) {
+      window.dispatchEvent(new Event("stp-build-start"));   /* same as a Build tap: calls off the full-version countdown */
+      ui.switched = false;
+      delete session.writeError;
+      return writeFinal(r.answers, r.quick);
+    }
+    form.requestSubmit ? form.requestSubmit() : document.getElementById("build").click();
   }
   var GLIDE_MS = 1800;
   function showResult(text, madeBy, title) {
@@ -495,16 +515,29 @@ export function startApp() {
   }
 
   /* Copy and open: the copy starts inside the tap, and the link opens the app
-     (or website) at the same time, so the prompt is ready to paste there. */
+     (or website) at the same time, so the prompt is ready to paste there.
+     Putting the prompt in the ChatGPT or Claude address is switched off
+     (PREFILL_ON in lib/openlink.js); when on, it's swapped in for one tap only. */
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
+    var swappedFrom = "";   /* the plain address while a prompt address is swapped in, so a quick double tap can't keep the old prompt on the link */
     a.addEventListener("click", function () {
       if (!output.value) return;
+      var name = a.textContent.trim(), plain = swappedFrom || a.getAttribute("href");
+      var typed = PREFILL_ON && plain ? prefillLink(name, output.value, navigator) : "";
+      if (typed) {
+        swappedFrom = plain;
+        a.setAttribute("href", typed);   /* the tap follows this address */
+        setTimeout(function () { a.setAttribute("href", plain); swappedFrom = ""; }, 0);
+      }
       /* The status line sits right under these links, so the answer shows where you tapped. */
-      var cant = "Couldn't copy it. Tap Copy prompt first, then open " + a.textContent + ".";
+      var done = typed ? "Copied. Opening " + name + ". Typed it in for you. If you don't see it there, just paste."
+        : "Copied. Opening " + name + ": paste it there.";
+      var cant = typed ? "Opening " + name + " with your prompt typed in. If you don't see it there, tap Copy prompt, then paste."
+        : "Couldn't copy it. Tap Copy prompt first, then open " + name + ".";
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(output.value).then(function () {
           promptCopied = true;
-          status.textContent = "Copied. Opening " + a.textContent + ": paste it there.";
+          status.textContent = done;
         }, function () { signal("copy-failed", "Copy and open"); status.textContent = cant; });
       } else status.textContent = cant;
     });
@@ -767,8 +800,10 @@ export function startApp() {
      - lowgrade (v2.1.39): the first Quality check of each prompt comes back under the bar
        (3.4, missing who the AI is and background), so Ask me, then rewrite can be tried
        without waiting for a weak prompt. The grader still runs; only its answer is swapped,
-       and round 2 gets its real grade. Needs Show run stats on, like every Quality check. */
-  var fakeBusyUntil = 0, fakeLowGrade = false;
+       and round 2 gets its real grade. Needs Show run stats on, like every Quality check.
+     - writefail: the next write after you answer the questions fails once without anything
+       being sent, so Try again (which keeps your answers) can be tried without going offline. */
+  var fakeBusyUntil = 0, fakeLowGrade = false, fakeWriteFail = false;
   function stagingSwitches() {
     var h = location.hash || "";
     if (/^#stpback=/.test(h)) return;   /* a shortcut result (#53) is never a test switch */
@@ -778,6 +813,12 @@ export function startApp() {
       notify("form", "info", "Low grade test is on", fakeLowGrade === "vlow"
         ? "Staging test. Build any prompt with your key: its first Quality check comes back as 1.6, so the first prompt stays on screen while a stronger one writes. Reload to go back to normal."
         : "Staging test. Build any prompt with your key: its first Quality check comes back under the bar (3.4), so you can try What's thin, Use it and Make it stronger. Reload to go back to normal.");
+      return;
+    }
+    if (IS_STAGING && /writefail/.test(h)) {
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+      fakeWriteFail = true;
+      notify("form", "info", "Write fail test is on", "Staging test. Build any note with your key and answer a question: that one write fails, so you can tap Try again and see your answers kept. Reload to go back to normal.");
       return;
     }
     if (!IS_STAGING || !/flashbusy|slowtest/.test(h)) return;
@@ -2122,7 +2163,11 @@ export function startApp() {
       var state = bbOk(c) ? "✅<small>" + words(c.prompt) + " words" + (c.repair && c.repair !== "none" ? " · Polish " + esc(c.repair) : "") + "</small>" : c.err ? "⚠️<small>" + esc(c.err) + "</small>" : c.job ? "job ready" : "…";
       return "<tr><td>" + esc(c.id) + "<small>" + esc(c.name) + "</small></td><td>" + esc(c.flaw ? "seeded" : (BB_TAG[c.writer] || "").replace("shortcut-", "")) + "</td><td>" + state + "</td></tr>";
     }).join("");
-    el.innerHTML = "<p class=\"benchsum\">" + ok + " of " + total + " ready</p><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    /* The table folds under the count. It stands open while any case is working or failed; once all
+       are ready it closes, and from then on a re-render keeps it the way you left it. */
+    var done = total > 0 && ok === total, was = el.querySelector("details");
+    var open = !done || !!(was && was.hasAttribute("data-done") && was.open);
+    el.innerHTML = "<details class=\"benchfold benchres\"" + (done ? " data-done" : "") + (open ? " open" : "") + "><summary><span class=\"benchsum\">" + ok + " of " + total + " ready</span> <small>Show or hide cases</small></summary><table><thead><tr><th>Case</th><th>Writer</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></details>";
     el.hidden = false;
   }
   function bbButtons() {
@@ -3209,6 +3254,7 @@ export function startApp() {
        Flash-Lite. Make it stronger (a Rework round) is the only Flash write. */
     if (session.auto && !(session.round >= 2)) { quick = true; if (!session.mode || session.mode === "Full" || /^Full /.test(session.mode)) session.mode = "Auto"; }
     if (!session.mode) session.mode = quick ? "Quick prompt button" : "Full";
+    session.retryWrite = null;
     session.answers = answers.filter(function (a) { return a.answer; });
     /* Clarity mirror (AGT-13): the goal line from the questions card. An edited goal is
        the person's own words; one left as is was seen and kept. Rework rounds keep it. */
@@ -3266,7 +3312,11 @@ export function startApp() {
     var handle = { cycle: !quick && flashOnly() && !session.auto };
     if (!quick && !viaSc) watchSlowWrite(run, handle);
     var onWriter = function (m) { if (run === writeRun) eta(m); };
-    return (viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
+    /* Staging #writefail: this one write fails without anything being sent. */
+    var failOnce = fakeWriteFail && !viaSc && session.answers.length > 0;
+    if (failOnce) fakeWriteFail = false;
+    return (failOnce ? new Promise(function (res, rej) { setTimeout(function () { var f = new Error("Staging test: the write failed."); f.status = 502; rej(f); }, 600); })
+      : viaSc ? askShortcut(scText(), run, onWriter) : askGemini(text, false, models, depth.level, onWriter, WRITE_LIMIT, hedgeAfter, handle)).then(function (r) {
       if (slowWrite && slowWrite.run === run) { if (slowWrite.offered) notify("result"); stopSlowWrite(); }
       if (run !== writeRun) { setBusy(false); return; }
       var draft = cleanPrompt(r.text);
@@ -3448,7 +3498,8 @@ export function startApp() {
         return notify("result", "error", "Round " + failedN + " didn't come through", "Your round " + backN + " prompt is back and ready to copy. Tap Rework from this prompt to try again.");
       }
       showQuick(session.raw, "Gemini couldn't finish, so this is the quick version. " + (e && e.message ? e.message : ""));
-      failNotice(e);
+      if (session.answers.length) session.retryWrite = { answers: session.answers, quick: quick, mode: currentMode() };
+      failNotice(e, !!session.retryWrite);
       session.writeError = e && e.message ? e.message : "unknown";
       logRun({ depth: depthKey, est_s: est.secs, est_from: est.from, outcome: "write failed: " + (e && e.message ? e.message : "unknown") });
     });
@@ -3946,7 +3997,7 @@ export function startApp() {
     if (hanging(fixed) && !hanging(draft)) return false;
     var len = words(fixed) / Math.max(1, words(draft));
     /* Never keep a fix that deleted a number you said (even small ones like a 6am start). */
-    var said = numberTokens(saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
+    var said = numberTokens(normalizeSpokenTimes(saidText()) + "\n" + saidText(), true), kept = numberTokens(fixed, true), had = numberTokens(draft, true);
     var lost = Object.keys(had).some(function (n) { return said[n] && !kept[n]; });
     return !lost && after.score < before.score && after.stray.length <= before.stray.length && after.missingNums.length <= before.missingNums.length && (after.strict || []).length <= (before.strict || []).length && len >= 0.7 && len <= 1.8;
   }
@@ -4143,7 +4194,7 @@ export function startApp() {
     var ans = (session && session.answers) || [];
     var run = { app: typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev", device: deviceLine(),
       tapped: ans.filter(function (a) { return a.tapped; }).length, num_flags: session ? session.numFlags : null, xray_opened: false };
-    for (var k in r) if (k !== "when") run[k] = r[k];
+    for (var k in r) if (k !== "when" && k !== "inapp") run[k] = r[k];   /* the relay has no inapp field yet */
     pendingRun = run;
     pendingTimer = setTimeout(function () { flushRun("none in 10 min"); }, 600000);   // long prompts take a while to read
   }

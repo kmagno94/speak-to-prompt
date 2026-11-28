@@ -28,6 +28,21 @@ export function numberTokens(text, keepSmall) {
 }
 /* Numbers that plain words already say: "two weeks" is 14 days, "half an hour" is 30 minutes. */
 const IMPLIED = [[/\btwo weeks?\b/i, ["14"]], [/\bthree weeks?\b/i, ["21"]], [/\b(a|one) week\b/i, ["7"]], [/\bhalf (an )?hour\b/i, ["30"]], [/\b(an|one) hour\b/i, ["60"]], [/\b(a|one) year\b/i, ["12", "365"]]];
+/* Spoken times (AGT-123): dictation writes "at 5 30" for 5:30. An hour, a space, and two-digit
+   minutes count as a time only with a time word just before (or after another time: "5 30 to
+   6 15") or am, pm, or o'clock right after, and never when a unit follows ("5 30 minute
+   breaks"). Only the number check reads the rewrite; their words are never changed. */
+const HM = "(2[0-3]|1\\d|0?[1-9]) ([0-5]\\d)";
+const AMPM = "(?:[ap]\\.?m\\.?|o['\u2019]?clock)(?![a-z])";
+const NOT_UNIT = "(?![\\d:]|[.,]\\d|\\s\\d{3}|\\s*%|[\\s-]*(?:minute|min|hour|hr|second|sec|dollar|buck|cent|percent|day|week|month|year|people|person|kid|guest|page|word|mile|km|pound|lb|ounce|oz|inch|foot|feet|ft|gallon|piece|pack|bag|box|dozen)(?:e?s)?\\b)";
+const TIME_AFTER_WORD = new RegExp("\\b((?:at|by|around|until|till?|from|before|after)\\s+)" + HM + NOT_UNIT, "gi");
+const TIME_BEFORE_AMPM = new RegExp("(^|[^\\w:.,$])" + HM + "(?=\\s*" + AMPM + ")", "gi");
+const NEXT_TIME = new RegExp("(\\d:[0-5]\\d(?:\\s*" + AMPM + ")?(?:\\s*-\\s*|\\s+(?:to|or|and|through)\\s+))" + HM + NOT_UNIT, "gi");
+export function normalizeSpokenTimes(text) {
+  let t = String(text || "").replace(TIME_AFTER_WORD, "$1$2:$3").replace(TIME_BEFORE_AMPM, "$1$2:$3"), last;
+  do { last = t; t = t.replace(NEXT_TIME, "$1$2:$3"); } while (t !== last);
+  return t;
+}
 /* "October 30th, wait no, the 31st": the part before the correction isn't something to keep. */
 export const CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|correction|or rather|actually it'?s|actually make it)\b/gi;
 
@@ -39,9 +54,11 @@ export const CORRECTION = /[^.!?\n]*?\b(wait,? no|no,? wait|scratch that|i mean|
 export function numberIssuesFor(promptText, said, background) {
   said = String(said || "");
   const bg = String(background || ""), all = bg ? said + "\n" + bg : said;
-  const have = numberTokens(all, true), given = numberTokens(said.replace(CORRECTION, " "), false);
+  /* A spoken "5 30" is theirs as 5:30 (and still as the two plain numbers), and it's the time that must be kept. */
+  const timed = normalizeSpokenTimes(all);
+  const have = { ...numberTokens(all, true), ...numberTokens(timed, true) }, given = numberTokens(normalizeSpokenTimes(said).replace(CORRECTION, " "), false);
   IMPLIED.forEach((x) => { if (x[0].test(all)) x[1].forEach((n) => { have[n] = true; }); });
-  const got = numberTokens(promptText, true), gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(all)));
+  const got = { ...numberTokens(promptText, true), ...numberTokens(normalizeSpokenTimes(promptText), true) }, gotBig = numberTokens(promptText, false), math = mathOf(Object.keys(have).concat(wordNums(all)));
   conversions(promptText, Object.keys(have)).forEach((n) => { have[n] = true; });   /* 140 miles is about 225 km */
   const money = {}; (String(promptText || "").match(/\$\d[\d,]*(?:\.\d+)?/g) || []).forEach((m) => { money[m.slice(1).replace(/,/g, "").replace(/\.0+$/, "")] = true; });
   const extra = Object.keys(gotBig).filter((n) => !have[n] && !(money[n] && math(n)));   /* correct money math isn't made up */

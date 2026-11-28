@@ -120,6 +120,10 @@
   .ring { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
   .glow { fill: none; stroke: var(--accent); stroke-width: 18; opacity: 0; }
   .done .ring { stroke: var(--ok); }
+  /* Ready: the ring draws in smaller so the prompt is less of a scroll away. Same parts, same plate. */
+  .cook.done { gap: 4px; }
+  .done .stage { width: min(160px, 48vw); }
+  .done .sub { font-size: 13px; }
 
   .burner { fill: var(--muted); opacity: 0.6; }
   .flames path { fill: #f97316; transform-box: fill-box; transform-origin: 50% 100%; }
