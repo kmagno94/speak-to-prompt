@@ -222,5 +222,7 @@
   .chips .moreopts { color: var(--accent); border-style: dashed; }
   .out { display: grid; gap: 6px; }
   .out p { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
-  .out .text { white-space: pre-wrap; padding: 12px 14px; border-radius: 12px; background: var(--bg); line-height: 1.5; }
+  /* Long words kept from the box scroll inside the preview, so the buttons stay close (review 11/28). */
+  .out .text { white-space: pre-wrap; padding: 12px 14px; border-radius: 12px; background: var(--bg); line-height: 1.5;
+    max-height: max(340px, 45vh); overflow-y: auto; overscroll-behavior: contain; }
 </style>

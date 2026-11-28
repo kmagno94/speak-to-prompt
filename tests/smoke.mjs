@@ -2073,6 +2073,15 @@ await check('starter keeps your words: typed words stay under the starting point
   await q.waitForSelector("#starter .chips button >> text=That's it"); await q.click("#starter .chips button >> text=That's it");
   await q.click('#starterUse');
   expect(await q.inputValue('#thoughts') === 'I need help with my health and fitness.', 'empty box gets only the starting point');
+  // A long ramble scrolls inside the preview, so Build my prompt stays close (review 11/28)
+  await q.fill('#thoughts', 'my knee hurts when i walk the dog in the morning and ice is not helping much. '.repeat(30));
+  await q.click('#starterBtn'); await q.click('#starter .cats button >> text=Health and fitness');
+  for (let i = 0; i < 2; i++) { await q.waitForSelector('#starter button.skip'); await q.click('#starter button.skip'); }
+  await q.waitForSelector("#starter .chips button >> text=That's it"); await q.click("#starter .chips button >> text=That's it");
+  await q.waitForSelector('#starterBuild');
+  const gap = await q.evaluate(() => document.getElementById('starterBuild').getBoundingClientRect().top - document.querySelector('#starter .out .text').getBoundingClientRect().top);
+  expect(gap < 480, 'Build my prompt sits under a capped preview, gap ' + Math.round(gap));
+  expect((await q.textContent('#starter .out .text')).includes('In my own words: my knee hurts'), 'the long words are still all in the preview');
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
