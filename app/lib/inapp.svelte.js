@@ -5,7 +5,6 @@
    run stats while Show run stats is on. The user agent is read here and never stored or sent.
    Staging switch: #inapp shows the card in any browser. */
 import { IS_STAGING } from './channel.js';
-import { startHere } from './starthere.svelte.js';
 
 const KEY = 'stp-inapp';
 const APPS = [
@@ -62,7 +61,6 @@ class InApp {
     if (!this.show) return;
     this.show = false;
     this.#mark('continued here');
-    startHere.resume();
   }
 }
 

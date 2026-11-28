@@ -2,9 +2,10 @@
   /* In-app browser rescue (AGT-147): the first thing on the page when it opens inside
      Instagram, Facebook, TikTok, or Snapchat. Says what may break, shows the two taps that
      open it in a real browser, and gets out of the way with Continue here anyway.
-     State and detection: lib/inapp.svelte.js. */
+     State and detection: lib/inapp.svelte.js. Start here waits behind it and plays after. */
   import { slide } from 'svelte/transition';
   import { inApp } from './lib/inapp.svelte.js';
+  import { startHere } from './lib/starthere.svelte.js';
   import { ms } from './lib/motion.js';
 </script>
 
@@ -20,7 +21,7 @@
       <li>Tap <b>⋯</b> (or the menu button), usually in a top corner.</li>
       <li>Tap <b>Open in browser</b>. It may say <b>Open in external browser</b> or <b>Open in {inApp.browser === 'Safari or Chrome' ? 'Safari' : inApp.browser}</b>.</li>
     </ol>
-    <button type="button" id="inAppStay" onclick={() => inApp.carryOn()}>Continue here anyway</button>
+    <button type="button" id="inAppStay" onclick={() => { inApp.carryOn(); startHere.resume(); }}>Continue here anyway</button>
   </aside>
 {/if}
 
@@ -37,4 +38,6 @@
   .menu span { height: 8px; width: 70%; border-radius: 4px; background: var(--line); }
   .menu b { color: var(--accent); }
   button { min-height: 48px; font-weight: 700; color: var(--accent); }
+  /* Short phones (iPhone SE): the drawing goes so Continue here anyway stays on the first screen. */
+  @media (max-height: 640px) { .pic { display: none; } }
 </style>
