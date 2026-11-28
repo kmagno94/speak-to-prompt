@@ -60,6 +60,26 @@ class StarterSession {
     return lines.join('\n');
   });
   #timer = 0;
+  #put = null;   // { out, mine }: what the starter last put in the box, held in memory only
+
+  /* The starting point never wipes words already in the box: they go under it. Using the
+     starter again on its own untouched text swaps the starting point and keeps your words once. */
+  withWords(box) {
+    const mine = this.#mine(box);
+    return mine ? this.text + '\nIn my own words: ' + mine : this.text;
+  }
+
+  /* The text to put in the box, remembered so a second round doesn't stack on the first. */
+  use(box) {
+    const mine = this.#mine(box), out = this.withWords(box);
+    this.#put = { out: out.trim(), mine };
+    return out;
+  }
+
+  #mine(box) {
+    const had = String(box || '').trim();
+    return this.#put && had === this.#put.out ? this.#put.mine : had;
+  }
 
   begin() {
     clearTimeout(this.#timer);

@@ -2042,6 +2042,40 @@ await check('walk in ready: #start=appointment asks 4 quick questions with all 5
   expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
 });
 
+await check('starter keeps your words: typed words stay under the starting point, the preview shows exactly that, and a second round never stacks (rough edge 11/28)', async () => {
+  const p = await page();
+  const mine = 'my knee has hurt for two weeks\nand ice is not helping';
+  const run = async (cat) => {
+    await p.click('#starterBtn'); await p.click(`#starter .cats button >> text=${cat}`);
+    for (let i = 0; i < 2; i++) { await p.waitForSelector('#starter button.skip'); await p.click('#starter button.skip'); }
+    await p.waitForSelector("#starter .chips button >> text=That's it"); await p.click("#starter .chips button >> text=That's it");
+    await p.waitForSelector('#starterUse');
+  };
+  const count = (s, part) => s.split(part).length - 1;
+  await p.fill('#thoughts', mine); await run('Health and fitness');
+  const preview = await p.textContent('#starter .out .text');
+  await p.click('#starterUse');
+  const first = await p.inputValue('#thoughts');
+  expect(first === preview && first === 'I need help with my health and fitness.\nIn my own words: ' + mine, 'words kept and previewed: ' + JSON.stringify([preview, first]));
+  await run('Money and budgeting'); await p.click('#starterUse');
+  const second = await p.inputValue('#thoughts');
+  expect(second === 'I need help with money and budgeting.\nIn my own words: ' + mine, 'second round swaps the starting point: ' + JSON.stringify(second));
+  // Edited after: everything in the box is kept
+  await p.fill('#thoughts', second + ' at night'); await run('Health and fitness');
+  await p.fill('#thoughts', second + ' at night mostly');   /* typing while the preview is open updates it */
+  await p.waitForFunction(() => /at night mostly$/.test(document.querySelector('#starter .out .text').textContent));
+  await p.click('#starterBuild'); await done(p);
+  const out = await p.inputValue('#output');
+  expect(out.includes('at night mostly') && count(out, 'and ice is not helping') === 1, 'edited words go into the build once: ' + out);
+  // Empty box: exactly the starting point, nothing added
+  const q = await page(); await q.click('#starterBtn'); await q.click('#starter .cats button >> text=Health and fitness');
+  for (let i = 0; i < 2; i++) { await q.waitForSelector('#starter button.skip'); await q.click('#starter button.skip'); }
+  await q.waitForSelector("#starter .chips button >> text=That's it"); await q.click("#starter .chips button >> text=That's it");
+  await q.click('#starterUse');
+  expect(await q.inputValue('#thoughts') === 'I need help with my health and fitness.', 'empty box gets only the starting point');
+  expect(!p.errors.length && !q.errors.length, 'page errors: ' + [...p.errors, ...q.errors].join('; '));
+});
+
 await check('pro prompt button: a 5 of 5 note shows a 🏆 button that stays put, tapping it plays confetti and lists what made it good, tapping again tucks it away, and only a yes/no is saved (Test lab report, folded into v2.1.36)', async () => {
   const STRONG = 'I need help planning a game night for my coworkers this Friday. 10 people, most never played board games, keep it under $90 total. I want a short checklist with 3 game picks, snacks, and a rough schedule for the night so I can shop tomorrow and set up in 2 hours.';
   const intake = { title: 'Game Night', need: 'Plan a game night', category: 'Social', complexity: 'quick', questions: [] };

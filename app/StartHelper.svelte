@@ -37,12 +37,22 @@
      page react as if it were typed (the idea strip clears, notices reset). */
   function useText(build) {
     const box = document.getElementById('thoughts');
-    box.value = starter.text;
+    box.value = starter.use(box.value);
     box.dispatchEvent(new Event('input', { bubbles: true }));
     starter.close();
     if (build) document.getElementById('form').requestSubmit();
     else box.scrollIntoView({ block: 'center', behavior: ms(1) ? 'smooth' : 'auto' });
   }
+
+  /* What's already in the box when the starting point shows, so the preview is exactly what goes in. */
+  let boxWords = $state('');
+  const readBox = () => { boxWords = document.getElementById('thoughts')?.value || ''; };
+  $effect(() => { if (starter.open && starter.done) readBox(); });
+  onMount(() => {
+    const typed = (e) => { if (e.target?.id === 'thoughts') readBox(); };
+    document.addEventListener('input', typed);
+    return () => document.removeEventListener('input', typed);
+  });
 
   /* Starter links (AGT-9): #start=food opens the starter with that category picked.
      The hash is cleared after, so a reload starts fresh. */
@@ -157,7 +167,7 @@
       </div>
       <div class="out" in:fly={{ y: 8, duration: ms(220) }}>
         <p>Your starting point</p>
-        <div class="text">{starter.text}</div>
+        <div class="text">{starter.withWords(boxWords)}</div>
       </div>
       <div class="row">
         <button type="button" class="primary" id="starterBuild" onclick={() => useText(true)}>Build my prompt</button>
