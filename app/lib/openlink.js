@@ -4,6 +4,9 @@
    question mark), and so does Gemini and any prompt too long for an address. Plain JS, no page
    access, so the tests can use it too. */
 
+/* Off (Kevin, 11/27, privacy): a prompt in the address can sit in browser history. While this
+   is false every Open in tap uses the plain link and you paste, as before. */
+export const PREFILL_ON = false;
 export const PREFILL_MAX = 6000;   /* characters of the encoded prompt */
 const PREFILL = { ChatGPT: 'https://chatgpt.com/?q=', Claude: 'https://claude.ai/new?q=' };
 

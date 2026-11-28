@@ -6920,48 +6920,20 @@ await check('skip the paste: the link helper prefills ChatGPT and Claude on comp
   expect(prefillLink('Claude', 'a'.repeat(PREFILL_MAX), mac) !== '' && prefillLink('Claude', 'a'.repeat(PREFILL_MAX + 1), mac) === '' && prefillLink('Claude', ' '.repeat(10) + 'é'.repeat(1001), mac) === '', 'the cap counts the encoded characters');
 });
 
-await check('skip the paste: Open in opens the chat with the prompt typed, still copies, and falls back when it should', async () => {
-  const intake = { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] };
-  const start = async (opts) => {
-    const p = await page({ intake, ...opts }); p.opened = [];
-    await p.context().route(/^https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com)\//, (r) => { p.opened.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: 'ai' }); });
-    await withKey(p); await p.fill('#thoughts', 'thank Aunt Carol for the blender'); await p.click('#build'); await done(p);
-    return p;
-  };
-  const open = async (p, name) => {
+await check('skip the paste: switched off, so Open in uses the plain address on a computer, still copies, and says to paste', async () => {
+  const p = await page({ intake: { title: 'T', need: 'N', category: 'Ideas', complexity: 'simple', questions: [] }, write: 'Thank Aunt Carol for the blender.' });
+  await p.context().route(/^https:\/\/(chatgpt\.com|claude\.ai|gemini\.google\.com)\//, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: 'ai' }));
+  await withKey(p); await p.fill('#thoughts', 'thank Aunt Carol for the blender'); await p.click('#build'); await done(p);
+  for (const [name, plain] of [['ChatGPT', 'https://chatgpt.com/'], ['Claude', 'https://claude.ai/new'], ['Gemini', 'https://gemini.google.com/app']]) {
     await p.evaluate(() => navigator.clipboard.writeText(''));
     if (!(await p.isVisible(`.openrow a >> text=${name}`))) await p.click('#dockMore');
     const [tab] = await Promise.all([p.context().waitForEvent('page'), p.click(`.openrow a >> text=${name}`)]);
     await tab.waitForLoadState(); const url = tab.url(); await tab.close(); await p.waitForTimeout(250);
-    return { url, status: await p.textContent('#status'), copied: await p.evaluate(() => navigator.clipboard.readText()), href: await p.getAttribute(`.openrow a >> text=${name}`, 'href') };
-  };
-  const p = await start({ write: 'Role: You are a warm writer.\n\nTask: Thank Aunt Carol & keep it under 100 words (100% sincere) 🎉' });
-  const prompt = await p.inputValue('#output');
-  for (const [name, base, plain] of [['ChatGPT', 'https://chatgpt.com/?q=', 'https://chatgpt.com/'], ['Claude', 'https://claude.ai/new?q=', 'https://claude.ai/new']]) {
-    const r = await open(p, name);
-    expect(r.url.startsWith(base) && new URL(r.url).searchParams.get('q') === prompt, name + ' should open with the exact prompt: ' + r.url);
-    expect(r.copied === prompt && new RegExp('Copied\\. Opening ' + name + '\\. Typed it in for you\\.').test(r.status), 'it still copies and says so: ' + r.status);
-    expect(r.href === plain, 'the link goes back to the plain address after the tap: ' + r.href);
+    expect(url === plain, name + ' should open the plain address, with no prompt in it: ' + url);
+    expect(await p.evaluate(() => navigator.clipboard.readText()) === 'Thank Aunt Carol for the blender.', name + ' still copies the prompt');
+    expect(new RegExp('Copied\\. Opening ' + name + ': paste it there\\.').test(await p.textContent('#status')), 'status says to paste: ' + await p.textContent('#status'));
   }
-  /* A double tap lands both clicks before the link is put back: it must still end on the plain address,
-     or a later tap with an empty or too long prompt would open the old prompt. */
-  if (!(await p.isVisible('.openrow a >> text=Claude'))) await p.click('#dockMore');
-  const tabs = []; const grab = (t) => tabs.push(t); p.context().on('page', grab);
-  await p.dblclick('.openrow a >> text=Claude'); await p.waitForTimeout(600); p.context().off('page', grab);
-  expect(tabs.length && tabs.every((t) => t.url().startsWith('https://claude.ai/new?q=')), 'a double tap opens the prompt: ' + tabs.map((t) => t.url().slice(0, 40)).join(' | '));
-  for (const t of tabs) await t.close();
-  expect((await p.$$eval('.openrow a', (as) => as.map((a) => a.getAttribute('href')))).every((h) => !/\?q=/.test(h)), 'every link is plain again after a double tap');
-  await p.evaluate(() => { document.getElementById('output').value = 'My own edit?'; });   /* later changes to the prompt (an added line, another round) */
-  expect(new URL((await open(p, 'Claude')).url).searchParams.get('q') === 'My own edit?', 'the prompt on screen at the tap is the one that goes in');
-  const g = await open(p, 'Gemini');
-  expect(g.url === 'https://gemini.google.com/app' && g.copied === 'My own edit?' && /paste it there/.test(g.status), 'Gemini stays as before: ' + g.url);
-  const long = await start({ write: 'Plan the whole week. '.repeat(350) });
-  const l = await open(long, 'ChatGPT');
-  expect(l.url === 'https://chatgpt.com/' && l.copied.length > 6000 && /Opening ChatGPT: paste it there\./.test(l.status), 'a very long prompt opens the plain chat and copies: ' + l.url.slice(0, 80));
-  const phone = await start({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' });
-  const i = await open(phone, 'Claude');
-  expect(i.url === 'https://claude.ai/new' && i.copied === 'THE PROMPT' && /paste it there/.test(i.status), 'iPhone stays as before: ' + i.url);
-  for (const q of [p, long, phone]) expect(!q.errors.length, 'page errors: ' + q.errors.join('; '));
+  expect(!p.errors.length, 'page errors: ' + p.errors.join('; '));
 });
 
 await check('spoken times: "5 30" counts as 5:30 for the number check, and units or a really missing time still behave', async () => {

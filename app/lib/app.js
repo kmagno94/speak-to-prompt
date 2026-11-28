@@ -2,7 +2,7 @@ import { withCandidate, buildPrompt, ANALYZE, WRITE, CLEAN, LEDGER, STANDIN, gap
 import { memory, answerFact } from './memory.svelte.js';   /* memory: dev-only, see memory.svelte.js */
 import { analyze } from './xray.js';
 import { numberTokens, normalizeSpokenTimes, numberIssuesFor, numberFlags, flagText, numberDock } from './numcheck.js';
-import { prefillLink } from './openlink.js';
+import { PREFILL_ON, prefillLink } from './openlink.js';
 import { assess } from './coach.js';
 import { IDEAS as IDEA_LIST } from './ideas.js';
 import { ui, notify, saveMode, manualModes } from "./ui.svelte.js";
@@ -516,14 +516,14 @@ export function startApp() {
 
   /* Copy and open: the copy starts inside the tap, and the link opens the app
      (or website) at the same time, so the prompt is ready to paste there.
-     On computers and iPad the ChatGPT and Claude links also carry the prompt
-     (lib/openlink.js), swapped in for this one tap only. */
+     Putting the prompt in the ChatGPT or Claude address is switched off
+     (PREFILL_ON in lib/openlink.js); when on, it's swapped in for one tap only. */
   Array.prototype.forEach.call(document.querySelectorAll(".openrow a"), function (a) {
     var swappedFrom = "";   /* the plain address while a prompt address is swapped in, so a quick double tap can't keep the old prompt on the link */
     a.addEventListener("click", function () {
       if (!output.value) return;
       var name = a.textContent.trim(), plain = swappedFrom || a.getAttribute("href");
-      var typed = plain ? prefillLink(name, output.value, navigator) : "";
+      var typed = PREFILL_ON && plain ? prefillLink(name, output.value, navigator) : "";
       if (typed) {
         swappedFrom = plain;
         a.setAttribute("href", typed);   /* the tap follows this address */
