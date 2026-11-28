@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.63",
+      "date": "2026-11-28",
+      "title": "Appointment prep starter: walk in ready for a doctor, vet, school, or mechanic visit",
+      "items": [
+        "Not sure where to start? has a new Appointment prep pick. Four quick taps (what the appointment is, when it started, what you tried, what you want to leave with) and your prompt asks the AI for a short timeline, the 3 questions most worth asking, what to bring, and how to say it all in under a minute. The link #start=appointment opens it straight away.",
+        "Using any starter no longer wipes words you already typed in the box. They go under the starting point as In my own words:, the preview shows exactly what goes in, and a long ramble scrolls inside the preview so the buttons stay close."
+      ],
+      "checks": [
+        {
+          "say": "Open the staging link ending in #start=appointment, tap Doctor visit, A few weeks ago, Looking it up online, A plan, then That's it, then Build my prompt.",
+          "see": "Your prompt says Appointment: Doctor visit and asks for a short timeline, the 3 questions most worth asking, what to bring, and how to say it in under a minute."
+        },
+        {
+          "say": "Type a sentence in the box, tap Not sure where to start?, pick Health and fitness, skip both questions, tap That's it, then Put it in the box.",
+          "see": "The box shows the starting point with your sentence under it after In my own words:, exactly like the preview showed."
+        }
+      ]
+    },
+    {
       "version": "2.1.62",
       "date": "2026-11-28",
       "title": "Open in uses the plain link again, so your prompt stays out of the web address",
