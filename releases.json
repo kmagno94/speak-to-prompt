@@ -2,6 +2,25 @@
   "about": "Every staging build, newest first. The top version always matches package.json. Each entry's checks are what to run on staging before a promote. Live = main's package.json version; staging may be at most 5 builds ahead (scripts/check-release.mjs). Plain words about the change only, never anything a user typed.",
   "releases": [
     {
+      "version": "2.1.61",
+      "date": "2026-11-27",
+      "title": "Opened from Instagram, TikTok, Facebook, or Snapchat? A card shows how to open it in Safari or Chrome",
+      "items": [
+        "When you tap a Speak to Prompt link inside Instagram, Facebook, TikTok, or Snapchat, the first thing you see is a card that says the mic, copying, and saving your key often don't work in that app's built-in browser, with a little drawing and two taps to open it in Safari (iPhone) or Chrome (Android). Continue here anyway closes it, and it shows once per visit.",
+        "Your AI can't see card now catches plurals too, like my emails, these screenshots, or my photos, and when Your core, Mic log, or Test lab can't load, Try again opens it without reloading the page, so what you typed stays put."
+      ],
+      "checks": [
+        {
+          "say": "On staging, open the page with #inapp at the end of the link (or tap a link to it from an Instagram DM), then tap Continue here anyway.",
+          "see": "A blue card at the very top says Open this in Safari or Chrome with a drawn menu and two steps. Continue here anyway closes it and Start here plays. A reload doesn't bring it back."
+        },
+        {
+          "say": "Say a note like help me sort my emails from the school, and build it.",
+          "see": "A card says Your AI can't see your emails. Paste them right under the prompt when you send it."
+        }
+      ]
+    },
+    {
       "version": "2.1.60",
       "date": "2026-11-27",
       "title": "Open in ChatGPT or Claude types your prompt in for you (computers and iPad)",
