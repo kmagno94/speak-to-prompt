@@ -40,6 +40,14 @@ export const CATEGORIES = [
   { id: 'creative', emoji: '\u{1F3A8}', label: 'Creative and ideas', phrase: 'a creative idea', questions: [
     { q: 'What are you working on?', say: 'What I want', choices: ['Name something', 'Content ideas', 'Start a project', 'Get unstuck', 'A gift idea', 'Write a story', 'A logo idea', 'Plan a video', 'A playlist theme', 'Start a hobby'] },
     { q: 'Who\'s it for?', say: 'Who it\'s for', choices: ['Me', 'My business', 'A friend', 'School', 'Social media', 'My family'] } ] },
+  /* Walk in ready (AGT-144): a real-life moment, not a topic. Five answers each, so they all show every time. */
+  { id: 'appointment', emoji: '\u{1F5D3}\uFE0F', label: 'Appointment prep', phrase: 'getting ready for an appointment',
+    ask: 'What I want back: a short timeline of what happened, the 3 questions most worth asking, what to bring, and how to say it all in under a minute.',
+    questions: [
+      { q: 'What\'s the appointment?', say: 'Appointment', choices: ['Doctor visit', 'Dentist', 'Vet visit', 'Parent-teacher meeting', 'Car mechanic'] },
+      { q: 'When did this start?', say: 'When it started', choices: ['This week', 'A few weeks ago', 'Months ago', 'Over a year ago', 'It\'s a routine visit'] },
+      { q: 'What have you tried so far?', say: 'Tried so far', choices: ['Nothing yet', 'Waiting it out', 'Looking it up online', 'Fixing it myself', 'Asking someone I know'] },
+      { q: 'What do you want to leave with?', say: 'I want to leave with', choices: ['Clear answers', 'A plan', 'A fix', 'A price', 'Next steps'] } ] },
   /* DEVELOPMENT ONLY: prompts for improving Speak to Prompt itself, with the app's
      background built in. Remove before shipping, along with "Your core". */
   { id: 'app', emoji: '\u{1F6E0}\uFE0F', label: 'Improve this app', phrase: 'improving my Speak to Prompt web app', dev: true,
